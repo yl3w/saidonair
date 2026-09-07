@@ -1,6 +1,7 @@
 import type { ChannelRequestStatus } from "@media-digest/shared";
-import { RegistryError } from "../../lib/errors";
-import { createChannel, getChannel, requireChannelId } from "./channels";
+import { DomainError } from "../../lib/errors";
+import { requireChannelId } from "../../lib/youtube/ids";
+import { createChannel, getChannel } from "./channels";
 import type {
   ApproveRequestInput,
   CatalogChannel,
@@ -43,7 +44,7 @@ export function submitRequest(
   const youtubeChannelId = requireChannelId(input.youtubeChannelId);
   const submittedUrl = input.submittedUrl.trim();
   if (submittedUrl.length === 0) {
-    throw new RegistryError("INVALID_INPUT", "submittedUrl is required");
+    throw new DomainError("INVALID_INPUT", "submittedUrl is required");
   }
   ensureUser(sql, email, now);
 
@@ -187,13 +188,10 @@ function requirePendingRequest(
       requestId,
     )
     .toArray()[0];
-  if (!row) throw new RegistryError("NOT_FOUND", "request not found");
+  if (!row) throw new DomainError("NOT_FOUND", "request not found");
   const request = toRequest(row);
   if (request.status !== "pending") {
-    throw new RegistryError(
-      "INVALID_STATE",
-      `request already ${request.status}`,
-    );
+    throw new DomainError("INVALID_STATE", `request already ${request.status}`);
   }
   return request;
 }

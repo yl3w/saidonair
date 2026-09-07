@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { registryMigrations } from "../../migrations/registry";
 import type { Env } from "../env";
 import { normalizeEmail } from "../lib/email";
+import { requireChannelId } from "../lib/youtube/ids";
 import { applyMigrations } from "./migrations";
 import * as channels from "./registry/channels";
 import * as requests from "./registry/requests";
@@ -65,7 +66,7 @@ export class RegistryDO extends DurableObject<Env> {
   }
 
   getChannel(channelId: string): CatalogChannel | null {
-    return channels.getChannel(this.#sql, channels.requireChannelId(channelId));
+    return channels.getChannel(this.#sql, requireChannelId(channelId));
   }
 
   /** Owner: every channel in every state, including deleted. */

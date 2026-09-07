@@ -1,7 +1,7 @@
 import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { seedOwner } from "../src/do/registry/users";
-import { ALICE, expectRegistryError, OWNER, registry } from "./helpers";
+import { ALICE, expectDomainError, OWNER, registry } from "./helpers";
 
 describe("registry identities", () => {
   it("seeds OWNER_EMAIL as the owner on start", async () => {
@@ -40,7 +40,7 @@ describe("registry identities", () => {
   it("returns null for unknown users and rejects malformed emails", async () => {
     const stub = registry();
     expect(await stub.getUser("ghost@example.com")).toBeNull();
-    await expectRegistryError(stub.ensureUser("not-an-email"), "INVALID_INPUT");
-    await expectRegistryError(stub.getUser(""), "INVALID_INPUT");
+    await expectDomainError(stub.ensureUser("not-an-email"), "INVALID_INPUT");
+    await expectDomainError(stub.getUser(""), "INVALID_INPUT");
   });
 });

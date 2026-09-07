@@ -3,7 +3,7 @@ import {
   ALICE,
   CHANNEL_A,
   CHANNEL_B,
-  expectRegistryError,
+  expectDomainError,
   OWNER,
   registry,
   setChannelState,
@@ -16,22 +16,13 @@ describe("registry catalog (owner-only mutations)", () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
 
-    await expectRegistryError(
-      stub.configureChannel(ALICE, INPUT_A),
-      "NOT_OWNER",
-    );
-    await expectRegistryError(stub.retryChannel(ALICE, CHANNEL_A), "NOT_OWNER");
-    await expectRegistryError(
-      stub.deleteChannel(ALICE, CHANNEL_A),
-      "NOT_OWNER",
-    );
-    await expectRegistryError(
-      stub.restoreChannel(ALICE, CHANNEL_A),
-      "NOT_OWNER",
-    );
-    await expectRegistryError(stub.listChannels(ALICE), "NOT_OWNER");
+    await expectDomainError(stub.configureChannel(ALICE, INPUT_A), "NOT_OWNER");
+    await expectDomainError(stub.retryChannel(ALICE, CHANNEL_A), "NOT_OWNER");
+    await expectDomainError(stub.deleteChannel(ALICE, CHANNEL_A), "NOT_OWNER");
+    await expectDomainError(stub.restoreChannel(ALICE, CHANNEL_A), "NOT_OWNER");
+    await expectDomainError(stub.listChannels(ALICE), "NOT_OWNER");
     // An email nobody has registered is not an owner either.
-    await expectRegistryError(
+    await expectDomainError(
       stub.configureChannel("ghost@example.com", INPUT_A),
       "NOT_OWNER",
     );
@@ -82,28 +73,25 @@ describe("registry catalog (owner-only mutations)", () => {
 
   it("validates configuration input", async () => {
     const stub = registry();
-    await expectRegistryError(
+    await expectDomainError(
       stub.configureChannel(OWNER, { channelId: "not-a-channel", title: "x" }),
       "INVALID_INPUT",
     );
-    await expectRegistryError(
+    await expectDomainError(
       stub.configureChannel(OWNER, { channelId: CHANNEL_A, title: "   " }),
       "INVALID_INPUT",
     );
-    await expectRegistryError(
+    await expectDomainError(
       stub.configureChannel(OWNER, { ...INPUT_A, initialImportCount: 0 }),
       "INVALID_INPUT",
     );
-    await expectRegistryError(
-      stub.deleteChannel(OWNER, CHANNEL_B),
-      "NOT_FOUND",
-    );
+    await expectDomainError(stub.deleteChannel(OWNER, CHANNEL_B), "NOT_FOUND");
   });
 
   it("retry only applies to failed channels and fences stale runs", async () => {
     const stub = registry();
     await stub.configureChannel(OWNER, INPUT_A);
-    await expectRegistryError(
+    await expectDomainError(
       stub.retryChannel(OWNER, CHANNEL_A),
       "INVALID_STATE",
     );
@@ -145,7 +133,7 @@ describe("registry catalog (owner-only mutations)", () => {
       lifecycleVersion: 2,
     });
 
-    await expectRegistryError(
+    await expectDomainError(
       stub.retryChannel(OWNER, CHANNEL_A),
       "INVALID_STATE",
     );

@@ -1,5 +1,6 @@
 import type { ChannelFailureCode, ChannelStatus } from "@media-digest/shared";
-import { RegistryError } from "../../lib/errors";
+import { DomainError } from "../../lib/errors";
+import { requireChannelId } from "../../lib/youtube/ids";
 import type { CatalogChannel, ConfigureChannelInput } from "./types";
 
 type ChannelRow = {
@@ -22,20 +23,6 @@ type ChannelRow = {
 const CHANNEL_COLUMNS = `channel_id, title, canonical_url, status, initial_import_count,
   failure_code, failure_detail, available_at, last_checked_at, last_ingested_at, deleted_at,
   lifecycle_version, created_at, updated_at`;
-
-// Canonical YouTube channel ids: "UC" followed by 22 URL-safe base64 characters.
-const CHANNEL_ID_SHAPE = /^UC[A-Za-z0-9_-]{22}$/;
-
-export function requireChannelId(raw: string): string {
-  const channelId = raw.trim();
-  if (!CHANNEL_ID_SHAPE.test(channelId)) {
-    throw new RegistryError(
-      "INVALID_INPUT",
-      "channelId must be a canonical UC… id",
-    );
-  }
-  return channelId;
-}
 
 export function canonicalChannelUrl(channelId: string): string {
   return `https://www.youtube.com/channel/${channelId}`;
@@ -146,13 +133,13 @@ export function retryChannel(
 ): CatalogChannel {
   const channel = requireChannel(sql, channelId);
   if (channel.deletedAt !== null) {
-    throw new RegistryError(
+    throw new DomainError(
       "INVALID_STATE",
       "channel is deleted; restore it first",
     );
   }
   if (channel.status !== "failed") {
-    throw new RegistryError(
+    throw new DomainError(
       "INVALID_STATE",
       `only failed channels can be retried (status: ${channel.status})`,
     );
@@ -218,14 +205,14 @@ export function restoreChannel(
 
 function requireChannel(sql: SqlStorage, channelId: string): CatalogChannel {
   const channel = getChannel(sql, requireChannelId(channelId));
-  if (!channel) throw new RegistryError("NOT_FOUND", "channel not found");
+  if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
   return channel;
 }
 
 function requireTitle(raw: string): string {
   const title = raw.trim();
   if (title.length === 0) {
-    throw new RegistryError("INVALID_INPUT", "title is required");
+    throw new DomainError("INVALID_INPUT", "title is required");
   }
   return title;
 }
@@ -233,7 +220,7 @@ function requireTitle(raw: string): string {
 function optionalImportCount(value: number | undefined): number | null {
   if (value === undefined) return null;
   if (!Number.isInteger(value) || value <= 0) {
-    throw new RegistryError(
+    throw new DomainError(
       "INVALID_INPUT",
       "initialImportCount must be a positive integer",
     );

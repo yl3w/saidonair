@@ -1,6 +1,6 @@
 import type { UserRole } from "@media-digest/shared";
 import { normalizeEmail } from "../../lib/email";
-import { RegistryError } from "../../lib/errors";
+import { DomainError } from "../../lib/errors";
 import type { RegistryUser } from "./types";
 
 type UserRow = {
@@ -15,7 +15,7 @@ const USER_COLUMNS = "email, role, created_at, last_seen_at";
 /** Normalizes an email argument or rejects the call; the DO never trusts caller casing. */
 export function requireEmail(raw: string): string {
   const email = normalizeEmail(raw);
-  if (!email) throw new RegistryError("INVALID_INPUT", "malformed email");
+  if (!email) throw new DomainError("INVALID_INPUT", "malformed email");
   return email;
 }
 
@@ -67,7 +67,7 @@ export function seedOwner(sql: SqlStorage, email: string, now: number): void {
 /** Owner checks live in the DO so ordinary identity can never authorize owner actions. */
 export function assertOwner(sql: SqlStorage, email: string): void {
   if (getUser(sql, email)?.role !== "owner") {
-    throw new RegistryError("NOT_OWNER");
+    throw new DomainError("NOT_OWNER");
   }
 }
 

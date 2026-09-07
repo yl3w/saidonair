@@ -1,10 +1,10 @@
-export type RegistryErrorCode =
+export type DomainErrorCode =
   | "INVALID_INPUT"
   | "NOT_OWNER"
   | "NOT_FOUND"
   | "INVALID_STATE";
 
-const REGISTRY_ERROR_CODES: readonly RegistryErrorCode[] = [
+const REGISTRY_ERROR_CODES: readonly DomainErrorCode[] = [
   "INVALID_INPUT",
   "NOT_OWNER",
   "NOT_FOUND",
@@ -12,22 +12,22 @@ const REGISTRY_ERROR_CODES: readonly RegistryErrorCode[] = [
 ];
 
 /**
- * Thrown by Registry DO methods. Custom properties are not guaranteed to survive the
- * DO RPC boundary, so the code is also the message prefix; callers use `registryErrorCode`.
+ * Thrown by Durable Object methods. Custom properties are not guaranteed to survive the
+ * DO RPC boundary, so the code is also the message prefix; callers use `domainErrorCode`.
  */
-export class RegistryError extends Error {
-  readonly code: RegistryErrorCode;
+export class DomainError extends Error {
+  readonly code: DomainErrorCode;
 
-  constructor(code: RegistryErrorCode, detail?: string) {
+  constructor(code: DomainErrorCode, detail?: string) {
     super(detail ? `${code}: ${detail}` : code);
-    this.name = "RegistryError";
+    this.name = "DomainError";
     this.code = code;
   }
 }
 
-/** Recovers the code from a RegistryError, including one that crossed an RPC boundary. */
-export function registryErrorCode(error: unknown): RegistryErrorCode | null {
-  if (error instanceof RegistryError) return error.code;
+/** Recovers the code from a DomainError, including one that crossed an RPC boundary. */
+export function domainErrorCode(error: unknown): DomainErrorCode | null {
+  if (error instanceof DomainError) return error.code;
   if (!(error instanceof Error)) return null;
   const prefix = error.message.split(":", 1)[0]?.trim();
   return REGISTRY_ERROR_CODES.find((code) => code === prefix) ?? null;

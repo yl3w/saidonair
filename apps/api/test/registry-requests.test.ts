@@ -4,7 +4,7 @@ import {
   BOB,
   CHANNEL_A,
   CHANNEL_B,
-  expectRegistryError,
+  expectDomainError,
   OWNER,
   registry,
 } from "./helpers";
@@ -54,7 +54,7 @@ describe("registry channel requests", () => {
     expect(await stub.listOwnRequests("nobody@example.com")).toEqual([]);
 
     expect(await stub.listAllRequests(OWNER)).toHaveLength(2);
-    await expectRegistryError(stub.listAllRequests(ALICE), "NOT_OWNER");
+    await expectDomainError(stub.listAllRequests(ALICE), "NOT_OWNER");
   });
 
   it("approval creates the shared channel once and reuses it for later requesters", async () => {
@@ -121,47 +121,44 @@ describe("registry channel requests", () => {
       submittedUrl: URL_A,
     });
 
-    await expectRegistryError(
+    await expectDomainError(
       stub.approveRequest(ALICE, a.requestId, { title: "x" }),
       "NOT_OWNER",
     );
-    await expectRegistryError(
+    await expectDomainError(
       stub.rejectRequest(ALICE, a.requestId),
       "NOT_OWNER",
     );
 
     await stub.approveRequest(OWNER, a.requestId, { title: "Channel A" });
-    await expectRegistryError(
+    await expectDomainError(
       stub.approveRequest(OWNER, a.requestId, { title: "x" }),
       "INVALID_STATE",
     );
-    await expectRegistryError(
+    await expectDomainError(
       stub.rejectRequest(OWNER, a.requestId),
       "INVALID_STATE",
     );
-    await expectRegistryError(
-      stub.rejectRequest(OWNER, "missing"),
-      "NOT_FOUND",
-    );
+    await expectDomainError(stub.rejectRequest(OWNER, "missing"), "NOT_FOUND");
   });
 
   it("validates request input", async () => {
     const stub = registry();
-    await expectRegistryError(
+    await expectDomainError(
       stub.submitRequest(ALICE, {
         youtubeChannelId: "@handle",
         submittedUrl: URL_A,
       }),
       "INVALID_INPUT",
     );
-    await expectRegistryError(
+    await expectDomainError(
       stub.submitRequest(ALICE, {
         youtubeChannelId: CHANNEL_A,
         submittedUrl: "  ",
       }),
       "INVALID_INPUT",
     );
-    await expectRegistryError(
+    await expectDomainError(
       stub.submitRequest("nope", {
         youtubeChannelId: CHANNEL_A,
         submittedUrl: URL_A,

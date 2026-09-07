@@ -2,7 +2,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { expect } from "vitest";
 import { getRegistry } from "../src/do/registry";
-import { type RegistryErrorCode, registryErrorCode } from "../src/lib/errors";
+import { type DomainErrorCode, domainErrorCode } from "../src/lib/errors";
 
 /** Must match `miniflare.bindings.OWNER_EMAIL` in vitest.config.ts. */
 export const OWNER = "owner@example.com";
@@ -17,10 +17,10 @@ export function registry() {
   return getRegistry(env);
 }
 
-/** Asserts a Registry RPC call fails with the given typed code, whatever crosses the RPC boundary. */
-export async function expectRegistryError(
+/** Asserts a DO RPC call fails with the given typed code, whatever crosses the RPC boundary. */
+export async function expectDomainError(
   call: Promise<unknown>,
-  code: RegistryErrorCode,
+  code: DomainErrorCode,
 ): Promise<void> {
   let caught: unknown;
   try {
@@ -29,7 +29,7 @@ export async function expectRegistryError(
     caught = error;
   }
   expect(caught, `expected ${code} but the call succeeded`).toBeDefined();
-  expect(registryErrorCode(caught)).toBe(code);
+  expect(domainErrorCode(caught)).toBe(code);
 }
 
 type ChannelState = {
