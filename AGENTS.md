@@ -5,9 +5,9 @@ Single source of truth for every coding agent working in this repo (Claude Code,
 
 ## What this is
 
-A personal, multi-user tool that ingests transcripts from subscribed YouTube channels/podcasts 2–3× daily,
-summarizes them with Workers AI, stores embeddings in Vectorize, and exposes a text-only chat UI for
-digests and RAG Q&A. Runs entirely on Cloudflare.
+A personal, multi-user tool with an owner-managed global YouTube channel catalog. It ingests and summarizes
+each episode once with Workers AI, stores shared transcript embeddings in Vectorize, and exposes a text-only
+UI for per-user follows, digests, and multiple chats. Runs entirely on Cloudflare; cron cadence is undecided.
 
 This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainable over clever. Small, readable modules.
 The full PRD lives at `docs/PRD.md`; this file overrides the PRD where they disagree.
@@ -26,8 +26,11 @@ The full PRD lives at `docs/PRD.md`; this file overrides the PRD where they disa
 1. **Never add or upgrade a dependency without explicit approval** in the conversation. Propose the package and why.
 2. **Never call any paid or third-party API** other than YouTube (public RSS + transcript endpoints) and Cloudflare services.
    No OpenAI, no Anthropic, no scraping services, no analytics SDKs.
-3. **Never query, upsert, or delete in Vectorize without a `namespace`.** The namespace is always the user's email.
-   A missing namespace is a data-isolation bug, not a default.
+3. **Never query, upsert, or delete in Vectorize without an explicit namespace scope.** Shared episode vectors use
+   `shared-catalog`, never a user's email. Chat retrieval must filter to the user's current followed, available,
+   non-deleted channels and validate processed episodes before using results. Never fall back to an unfiltered query.
+   For ID-based operations, enforce namespace ownership in `lib/vectorize.ts`; do not assume the underlying API
+   accepts a namespace argument for every operation.
 4. **Never run destructive commands**: no `DROP`, `DELETE FROM` without a `WHERE` on user data, no
    `wrangler delete`, `wrangler d1/vectorize delete`, no resetting Durable Object storage, no `rm -rf` outside build output.
    If a task seems to require one, stop and ask.
@@ -95,7 +98,7 @@ If a file doesn't exist yet, create it at the path above rather than inventing a
 | Orchestration | Cloudflare Workflows for ingestion; Cron Trigger in the same Worker |
 | LLM | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
 | Embeddings | Workers AI `@cf/baai/bge-base-en-v1` (768 dims, 512-token input limit) |
-| Vectors | Vectorize index `media-rag`, 768 dimensions, cosine, partitioned by `namespace: <email>`, metadata index on `channelId` (see Setup) |
+| Vectors | Vectorize index `media-rag`, 768 dimensions, cosine, `namespace: shared-catalog`, metadata indexes on `channelId` and `videoId` (see Setup) |
 | UI | Cloudflare Pages, Vite + Preact + TypeScript, `preact-iso` for routing, text only |
 | Language | TypeScript, `strict: true`, `noUncheckedIndexedAccess: true`, ESM only |
 | Tests | Vitest + `@cloudflare/vitest-pool-workers` |
@@ -112,7 +115,7 @@ wrangler vectorize create-metadata-index media-rag --property-name=videoId   --t
 ```
 
 The metadata indexes **must exist before the first upsert** — vectors inserted earlier are not filterable on those
-fields and would have to be re-ingested. Chat is not channel-filtered today; the index exists for future use cases.
+fields and would have to be re-upserted. Chat requires `channelId` filtering from its first release.
 
 ## Commands
 
@@ -142,13 +145,16 @@ Workers runtime behavior must have been exercised under `wrangler dev`, not only
   This is trusted, personal use. Do not add login, sessions, JWTs, or Cloudflare Access unless the owner asks.
 - Middleware normalizes the email (trim, lowercase), **auto-registers unknown emails** in the Global Registry DO,
   and attaches the per-user DO stub (`env.USER_DO.idFromName(email)`) to Hono context as `c.var.user`.
-- Registration is what enrolls a user in scheduled ingestion: the cron iterates only emails the Registry knows about.
-- Every read/write of user data goes through that user's DO or that user's Vectorize namespace. There is no
-  cross-user query path anywhere. Tests must prove this (see Testing).
+- Registration creates an identity, not an ingestion subscription. Cron iterates shared catalog channels, not users.
+- Private follows, read status, preferences, chats, messages, and citations live in the user's DO. Global identities,
+  catalog approval requests, channels, episodes, and shared summaries live in the Registry DO. Requesters see only
+  their own requests; the owner can review all requests. Never expose another user's private DO data.
+- Only the owner can configure/approve, delete/restore, or retry catalog channels. Users can request and follow them.
+  `TODO(owner):` decide how the trusted deployment identifies the owner for management operations; do not add authentication.
 
 ## Data & schema conventions
 
-Durable Object SQLite schema is **not** specified here; design it as needed, following these rules:
+The agreed logical schema, keys, and indexes are in `docs/PRD.md` §5. Implement it using these conventions:
 
 - Schema lives in `apps/api/migrations/` as numbered SQL files: `0001_init.sql`, `0002_add_x.sql`, …
   One file per DO class subdirectory: `migrations/registry/`, `migrations/user/`.
@@ -157,26 +163,59 @@ Durable Object SQLite schema is **not** specified here; design it as needed, fol
   Never drop, rename, or change a column type in a migration without owner approval. Deprecate instead.
 - Never edit a migration file that has been committed. Add a new one.
 - `snake_case` for tables and columns. Every table has `created_at INTEGER` (unix ms). Use `TEXT` for ids.
-- The PRD names these tables as a starting point; shape them as you see fit:
-  Registry DO: `global_users`. User DO: `channels`, `processed_videos`, `user_preferences`, plus chat history.
-- Store only what the app needs. Full transcripts go to Vectorize metadata per chunk, not to SQLite.
-- Chat history is one global thread per user; still give chat messages a nullable `channel_id` column so a
-  scoped view can be added later without a migration.
-- `channels` carries `status` (`pending | active | error`), `last_ingested_at`, and `last_error`.
-- "Unread": a summary is unread until it has been returned by `GET /digest` or viewed on its channel screen.
-  Track with a `read_at` column on the summaries table.
+- The single Registry DO owns `global_users`, `channels`, `channel_requests`, `episodes`, `episode_summaries`,
+  `ingestion_runs`, and `ingestion_run_episodes`. One User DO per normalized email owns `channel_follows`,
+  `summary_reads`, `chats`, `chat_messages`, `chat_message_sources`, and `user_preferences`.
+- Enforce local foreign keys and transactions. References across DOs are validated through DO methods; there are
+  no cross-DO SQL joins or atomic transactions. Do not copy shared episodes or summaries into each User DO.
+- Transcript text lives once as shared Vectorize chunk metadata, not in SQLite. Stable vector IDs make retries
+  idempotent; “once” means one canonical stored copy, not a promise of exactly-once external API execution.
+- Users have zero or more independent chats. Each chat uses its own history and the user's current follows;
+  there is no chat-to-channel membership table. Retain the nullable `chat_messages.channel_id` as null for global chat.
+- A summary is unread until actually returned by `GET /digest` or viewed on its channel screen. Store read receipts
+  in the User DO's `summary_reads`; absence means unread. Existing summaries start unread on first follow.
+  Preserve read receipts through unfollow and channel deletion/restoration.
+- Retain chats, messages, requests, follow tombstones, episodes, summaries, and vectors. Deletion is soft.
+
+## Catalog, requests, and follows
+
+- Resolve URLs to canonical YouTube channel IDs. Requests retain requester, submitted URL, approval/rejection
+  status, and optional owner explanation. One request per `(user_email, youtube_channel_id)`; multiple requesters
+  share one approved channel and ingestion pipeline. Requests do not configure catalog channels before approval.
+- Channel states: `pending | available | failed`. Only available, non-deleted channels can be followed.
+  Deletion is a separate `deleted_at`, preserving the underlying processing state and all follow records.
+- Owner approval/configuration starts initial ingestion. One fully processed episode (complete vectors plus shared
+  summary, including the accepted raw fallback) makes the channel available. Later episode failures do not revoke it.
+- Initial import defaults to five recent RSS episodes. If none is processed after attempts finish, mark the channel
+  failed with `NO_TRANSCRIPTS` when all attempted episodes lack captions, `NO_EPISODES` for an empty feed, or
+  `INITIAL_IMPORT_FAILED` for technical/mixed failures. Keep episode-level reasons distinct.
+- Failed channels are excluded from scheduling. Only an owner-triggered `failed → pending` transition enables retry.
+- Approval plus availability triggers automatic following for every requester, once. Deliver from persisted approved
+  requests with `auto_follow_completed_at IS NULL`. In the User DO, insert only if no follow row exists; never overwrite
+  an active follow or an unfollow tombstone. Acknowledge completion in the Registry after the User DO succeeds.
+  Retrying this handoff must never reverse an explicit unfollow.
+- Unfollow sets `unfollowed_at`; it does not delete the catalog channel. Explicit manual refollow can clear it.
+  Owner channel deletion stops ingestion and excludes future retrieval. Restoration preserves previous active follows;
+  access resumes when the channel is available. An explicit unfollow stays unfollowed.
 
 ## Ingestion pipeline
 
-Cron → Registry lists emails → one Workflow instance per `{ email, channelId }` → per video not yet in
-`processed_videos`: fetch transcript → chunk → embed → upsert to Vectorize (namespace email) → summarize →
-write summary + mark processed in user DO.
+Owner approval/configuration or cron → Registry selects channel → one Workflow per channel run → per unprocessed
+video: fetch transcript → chunk → embed → upsert in `shared-catalog` → summarize → write shared summary and mark
+processed in the Registry DO. Following never launches per-user ingestion or duplicates vectors/summaries.
 
-- **Cron schedule:** `TODO(owner)` — not yet decided. Put a placeholder in `wrangler.jsonc` triggers and do not
-  choose a cadence. Ask if the task requires it.
-- Cold start on subscribe: same Workflow, limited to the channel's 5–10 most recent RSS entries.
-- Workflows: each external call (RSS fetch, transcript fetch, AI call, Vectorize upsert) is its own `step.do()`
-  so retries are granular. Steps must be idempotent — check `processed_videos` before writing.
+- **Cron schedule:** `TODO(owner)` — not yet decided. Keep a placeholder in `wrangler.jsonc`; do not choose a cadence.
+  Scheduled runs select available, non-deleted channels independently of follower count.
+- Persist `ingestion_runs` and the exact selected `ingestion_run_episodes`. Permit at most one queued/running run
+  per channel. Owner retry selects the latest configured episode count, reuses completed work, and may reattempt
+  unsuccessful episodes, including those previously without captions.
+- Episode states: `pending | processing | processed | no_transcript | failed`. Record attempts, reason codes,
+  transcript checks, vector completion, and processing timestamps; distinguish no captions from network/parse failure.
+- Workflows: each external call (RSS, transcript, AI, Vectorize) is its own `step.do()` for granular retries.
+  Check persisted episode progress and use deterministic vector IDs. Publish `processed` only after the full vector
+  set is ready for retrieval and a summary is stored; never expose partial ingestion as completed content.
+- Channel deletion and owner retry increment `lifecycle_version`; run writes must match that version. Cancel/fence
+  stale runs so they cannot change catalog state after deletion/restart. Retained partial vectors remain ineligible.
 - Channel resolution: accept `@handle`, `/channel/UC…`, and `/c/…` URLs; resolve to a `UC…` channel id and use
   `https://www.youtube.com/feeds/videos.xml?channel_id=UC…`.
 
@@ -190,7 +229,7 @@ export async function fetchTranscript(videoId: string): Promise<TranscriptSegmen
 // null = no captions available (not an error); throw on network/parse failure
 ```
 
-The implementation is your choice (the PRD's `youtube-transcript` package, direct caption-track fetch, or other),
+The implementation is your choice (direct caption-track fetch or an explicitly approved package),
 subject to the dependency rule above and one requirement: **it must be verified working under `wrangler dev`**,
 not just Node. Many YouTube transcript libraries depend on Node APIs and fail in workerd. Document the approach
 and its known failure modes in a comment at the top of the file.
@@ -205,7 +244,7 @@ Hybrid time/token strategy:
 4. Never emit a chunk over 480 tokens — `bge-base-en-v1` truncates silently at 512.
 
 Vectorize vector id: `${videoId}:${chunkIndex}`. Metadata: `{ videoId, channelId, channelTitle, title, startSec, endSec, text, publishedAt }`.
-`channelId` and `videoId` are required on every vector (they are indexed for future filtering). Metadata `text` is what
+`channelId` and `videoId` are required on every vector (they support retrieval filtering). Metadata `text` is what
 gets fed to the LLM at query time, so keep it exact.
 
 ## AI usage
@@ -215,35 +254,47 @@ gets fed to the LLM at query time, so keep it exact.
   non-trivial — ask first.
 - Per-video summary output: 3–5 bullet takeaways, ≤3-sentence executive summary, topic tags. Ask the model for
   JSON and validate the shape before storing; on validation failure retry once, then store raw text with a flag.
-- RAG Q&A: embed the question → `vectorize.query(vec, { namespace: email, topK: 3, returnMetadata: 'all' })` →
-  build context from metadata `text` → include the user's `user_preferences` system rules and recent chat history
-  from the DO → Llama 3.3. Cite `videoId` + `startSec` in answers so the UI can link to `?t=`.
-- Cross-references in summaries: after summarizing a new video, query its own embedding (k=3, same namespace),
-  excluding its own `videoId`, and append matching past titles.
+- Summaries are shared once per episode. User preferences affect chat answers only.
+- RAG Q&A: read current follows → intersect with available, non-deleted catalog channels → embed question →
+  query `shared-catalog` with `filter: { channelId: { $in: eligibleChannelIds } }`, `topK: 3`, all metadata → validate
+  matched episodes are processed and channels still eligible → build context → include preferences and this chat's
+  recent history → Llama 3.3. Cite `videoId` + `startSec`. Split oversized filters and merge results by score; never
+  drop the channel filter to accommodate limits. Refill candidates as needed when rejecting incomplete episodes.
+- With no eligible channels, store a normal assistant reply: "Chat requires following at least one available channel."
+  Skip AI and Vectorize calls. Chat creation, history, and message submission remain accessible.
+- Following/unfollowing or deleting/restoring channels changes future retrieval for every existing chat. Earlier
+  messages and citations remain visible and may still be used as conversation context; do not scrub history.
+- Shared summary cross-references query the same namespace, excluding the video's own ID. Retain related video IDs
+  and filter referenced titles to the reader's eligible channels when displaying them.
 
 ## API shape
 
 Hono app in `apps/api/src/index.ts`. Keep routes thin; logic lives in `do/` and `lib/`.
 Request/response types live in `packages/shared` and are imported by `apps/web`.
 
-Expected routes (adjust as needed, but keep the resource naming):
+Target resource contract (not a claim that these routes are implemented):
 
-```
-POST /chat                 { message }          → { reply, sources: [{videoId, channelId, title, startSec}] }
-GET  /chat/history         ?limit=50            → recent messages (global thread)
-GET  /digest               ?since=<iso>          → summaries across all channels, newest first; default = last 24h
-POST /channels             { url }              → { channelId, title, status }   # triggers cold-start Workflow
-GET  /channels                                  → [{ channelId, title, status, lastIngestedAt, videoCount, unreadCount }]
-GET  /channels/:id                              → channel + its recent summaries
-DELETE /channels/:id                            # soft: mark inactive, never delete rows (hard rule 4)
-GET  /preferences  PUT /preferences
-```
+| Route | Purpose |
+|---|---|
+| `POST /chats` / `GET /chats` | Create an empty chat / list the user's chats |
+| `GET /chats/:id/messages?limit=50` | That chat's messages and citation snapshots |
+| `POST /chats/:id/messages` `{ message }` | Reply and sources, using current eligible follows |
+| `GET /digest?since=<iso>` | Eligible followed-channel summaries, newest first; default last 24h; mark returned items read |
+| `GET /channels` | Available, non-deleted catalog, with user follow state |
+| `GET /channels/:id` | Available catalog channel; summaries/counts for followers; mark only returned summaries read |
+| `GET /follows` | User's follow list and current channel availability/counts |
+| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | Explicit follow/refollow / retained unfollow tombstone |
+| `POST /channel-requests` `{ url }` / `GET /channel-requests` | Request a channel / list own requests and processing status |
+| `GET /preferences` / `PUT /preferences` | User's chat rules |
+| `GET /owner/channels` / `POST /owner/channels` | Inspect all catalog states / configure a channel |
+| `GET /owner/channel-requests` | Review all users' requests |
+| `POST /owner/channel-requests/:id/approve` or `/reject` | Owner review with optional explanation |
+| `POST /owner/channels/:id/retry` | Reset failed channel to pending and start retry |
+| `DELETE /owner/channels/:id` / `POST /owner/channels/:id/restore` | Soft-delete / restore the shared channel |
 
-Chat is **global across all channels** — one thread per user, retrieval over the whole email namespace, no
-`channelId` filter. Do not add per-channel chat. `channels.status` is `pending | active | error`; the ingest Workflow
-writes it back to the user DO when the cold start finishes or fails.
-
-All routes require `X-User-Email`. Return 400 if missing or malformed. JSON everywhere. No HTML from the API.
+All routes require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require the trusted
+owner check (see open decision). Validate chat ownership in the caller's User DO. JSON everywhere, no API HTML.
+There are no chat deletion routes and no per-channel chats.
 
 ## Web UI (`apps/web`)
 
@@ -263,18 +314,22 @@ All routes require `X-User-Email`. Return 400 if missing or malformed. JSON ever
 previously used emails from `localStorage` for one-click selection. If an email is already selected, skip
 straight to `/home`. A "switch account" link is visible on every other screen.
 
-**`/home` — Home.** Three regions, top to bottom:
-1. **Today's digest** — `GET /digest` (last 24h) rendered as a feed: per video, channel title, video title,
-   executive summary, takeaways, link. Empty state: "Nothing new since yesterday."
-2. **Chat** — the global thread (`GET /chat/history` + `POST /chat`). One input, one message list. Sources rendered
-   under each reply as text links.
-3. **Channels** — `GET /channels` as a list of rows: title, status badge, last ingested, video count, unread count.
-   Each row links to `/channel/:id`. An "Add channel" input (paste URL) posts to `/channels`; the new row appears
-   immediately with status `pending` and the list polls every ~15s while any channel is pending.
-   Empty state explains what to paste.
+**`/home` — Home.** First-time users are presented with the available channel catalog to follow. Returning users
+see their digest, chat list/selected conversation, and channels:
+1. **Today's digest** — eligible followed channels only; last 24h, with shared summary/takeaways and links.
+   Empty state: "Nothing new since yesterday."
+2. **Chats** — list/create/select independent conversations. Preserve each chat's messages and source links.
+   Never disable chat controls for lack of follows; use the fixed follow-required response above.
+3. **Channels** — available catalog with follow/unfollow controls, plus followed-channel rows with last ingestion,
+   processed video count, and per-user unread count. Show requests separately with approval, processing state,
+   failure reason, and owner explanation. A "Request channel" URL input submits for approval; poll about every 15s
+   while own requests await approval or approved channels are pending. Request completion automatically follows once.
 
-**`/channel/:id` — Channel.** `GET /channels/:id`: channel header (title, status, counts) and its recent summaries
-as a feed, newest first. **No chat input on this screen** — chat is global and lives on Home. Back link to `/home`.
+**`/channel/:id` — Channel.** Available channel header, with shared summaries newest first for followers; viewing
+marks returned summaries read for this user. Non-followers can follow an available channel. No chat input here;
+conversations live on Home. Back link to `/home`.
+
+Owner catalog management is required, but a general admin dashboard is not. Owner identity/mechanism is `TODO(owner)`.
 
 ## Testing
 
@@ -284,9 +339,14 @@ interfaces and inject fakes.
 
 Tests are focused, not exhaustive. Required coverage:
 
-- **Isolation** — the most important tests in the repo. Two emails, actions by one, assertions that the other's
-  DO state is untouched and every Vectorize call carried the right `namespace`. Add or extend these whenever a
-  new route or data path is introduced.
+- **Isolation and retrieval scope** — two emails with overlapping and disjoint follows; private chats, preferences,
+  requests, and read receipts remain isolated. Shared ingestion produces one canonical episode/vector set. Every
+  Vectorize call uses `shared-catalog`; chat queries carry only eligible channel IDs. Prove changes to follows and
+  deletion/restoration affect existing chats, history remains intact, and zero eligible channels skip AI/Vectorize.
+- **Lifecycle and retry** — approval and first processed episode unlock availability; no-caption and technical failures
+  remain distinct; failed channels require owner retry; stale run writes are rejected. Automatic-follow retries never
+  reverse an unfollow. Restore preserves follows/read receipts. Test owner-only mutations and own-request visibility.
+  Add or extend these tests whenever a route or data path is introduced.
 - **Pure functions** — chunking (token caps, overlap, edge cases: empty, one segment, very long segment),
   RSS parsing, channel URL resolution, summary JSON validation.
 - **Migrations** — a fresh DO runs all migrations idempotently; running twice is a no-op.
@@ -312,9 +372,11 @@ Don't write tests for Hono plumbing, Preact components, or Workflow step orderin
 ## Non-goals (don't build these unless asked)
 
 Authentication, per-channel chat, multi-region anything, a rich UI, notifications/email delivery, non-YouTube sources,
-transcript generation via Whisper for videos without captions, admin dashboards, rate limiting.
+transcript generation via Whisper for videos without captions, general admin dashboards beyond required owner catalog
+management, rate limiting.
 
 ## Open decisions (owner)
 
 - Cron cadence and times — `TODO(owner)` in `wrangler.jsonc`.
-- Retention: how long to keep `processed_videos` summaries and chat history. Until decided, keep everything.
+- Owner identification and management interface in the trusted, unauthenticated deployment — `TODO(owner)`.
+- Retention: keep all chats and shared/user records for now; any future retention policy requires an owner decision.
