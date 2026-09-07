@@ -1,0 +1,4 @@
+# Copy to .dev.vars (gitignored) for `wrangler dev`. Tests pin their own value in vitest.config.ts.
+# OWNER_EMAIL is normalized and seeded as the Registry owner (role `owner`) on start.
+# Deployed environments set it with `wrangler secret put OWNER_EMAIL`.
+OWNER_EMAIL=owner@example.com

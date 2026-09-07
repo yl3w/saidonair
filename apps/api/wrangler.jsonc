@@ -2,9 +2,22 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "media-digest-api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-09-07",
+  // Newest date accepted by the workerd bundled with the pinned @cloudflare/vitest-pool-workers.
+  // Raise it together with that dependency.
+  "compatibility_date": "2026-08-22",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true
+  "workers_dev": true,
 
+  // `.sql` migration files are imported as strings (see migrations/registry/index.ts).
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+
+  "durable_objects": {
+    "bindings": [{ "name": "REGISTRY_DO", "class_name": "RegistryDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RegistryDO"] }]
+
+  // Secrets (never `vars`, never committed):
+  //   OWNER_EMAIL — seeded as the Registry owner. Local: apps/api/.dev.vars (copy .dev.vars.example).
+  //                 Deployed: `wrangler secret put OWNER_EMAIL`.
   // TODO(owner): Add the cron trigger after its cadence and times are decided.
 }
