@@ -40,7 +40,9 @@ The full PRD lives at `docs/PRD.md`; this file overrides the PRD where they disa
 pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `npm`/`yarn`/`bun`. Use `pnpm dlx` instead of `npx`.
 
 Toolchain pinning:
-- **Node** is pinned by Volta in the root `package.json` (`"volta": { "node": "22.x.y" }`). Never change it without approval.
+- **Node** is pinned by Volta in the root `package.json` (`"volta": { "node": "22.x.y" }`). Only the major matters
+  (`engines.node` is `22.x`, the floor wrangler requires); Volta needs an exact version, so pin the newest 22 release
+  with `volta pin node@22`. Never move off the 22 line without approval.
 - **pnpm** is pinned by the `"packageManager": "pnpm@x.y.z"` field in the root `package.json` and enforced with
   `engine-strict=true` in `.npmrc`. Do not pin pnpm through Volta — its pnpm support is experimental.
 - If you see a version mismatch error, stop and report it; do not work around it by switching tools.
