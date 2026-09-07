@@ -19,6 +19,7 @@
     "check": "turbo run typecheck lint test",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
+    "skills:install": "pnpm dlx skills@1.5.24 add ./skills",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },

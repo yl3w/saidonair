@@ -57,6 +57,7 @@ Toolchain pinning:
 ├── pnpm-workspace.yaml
 ├── .npmrc                    # engine-strict=true
 ├── turbo.json                # build / typecheck / lint / test / dev pipelines
+├── skills/                   # agent skills (Agent Skills standard), one directory per skill; see Commands
 ├── apps/
 │   ├── api/                  # Cloudflare Worker: Hono router, Durable Objects, Workflows, cron
 │   │   ├── src/
@@ -141,11 +142,25 @@ pnpm lint           # turbo run lint (biome check)
 pnpm test           # turbo run test
 pnpm check          # turbo run typecheck lint test — the pre-finish gate
 pnpm --filter api deploy
+pnpm skills:install --agent <agents…>   # copy skills/ into those agents' directories; see below
 ```
 
-To restart local `wrangler dev` from empty Durable Objects, the owner runs `/clean-local-do` in Claude Code, or
-`sh .claude/skills/clean-local-do/scripts/clean-local-do.sh --yes` from any tool. It removes only
-`apps/api/.wrangler/state/v3/do/` (never deployed state). Hard rule 4 still applies: agents never run it unprompted.
+Agent skills live in `skills/<name>/SKILL.md` following the Agent Skills standard (agentskills.io): standard frontmatter
+only, no agent-specific syntax in the body. They are installed into each developer's agent directory with the Vercel
+`skills` CLI and never committed there:
+
+```
+pnpm skills:install --agent claude-code     # -> .claude/skills/   (Claude Code)
+pnpm skills:install --agent codex cursor    # -> .agents/skills/   (Codex, Cursor, Copilot, and other .agents readers)
+```
+
+The CLI copies `skills/` into the first agent directory and symlinks any further agents to that copy, so re-run it
+after editing anything under `skills/`. `.claude/skills/`, `.agents/skills/`, and `skills-lock.json` are generated and
+gitignored. `skills:install` is a root-only tooling script, not a Turborepo task; it pins the `skills` CLI version, so bump
+it deliberately (recent releases need Node 22.20+, which the 22 line satisfies).
+
+Skills so far: `clean-local-do` wipes local `wrangler dev` Durable Object state (`apps/api/.wrangler/state/v3/do/`
+only, never deployed state). Hard rule 4 still applies, so agents run it only when the owner asks in so many words.
 
 `turbo.json` conventions: `build` depends on `^build` (so `packages/shared` builds first); `typecheck`, `lint`, `test`
 depend on `^build`; `dev` is `persistent: true, cache: false`. Add a new task to `turbo.json` and to the root

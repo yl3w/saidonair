@@ -1,20 +1,23 @@
 #!/bin/sh
 # Wipes this repo's LOCAL `wrangler dev` Durable Object storage (apps/api/.wrangler/state/v3/do).
-# Owner-invoked through the `clean-local-do` skill (see ../SKILL.md). It never touches deployed
-# Cloudflare resources, test storage (in-memory), .dev.vars, or the other local stores under
-# state/v3 (kv, cache, d1, r2, observability).
+# Bundled with the `clean-local-do` skill (see ../SKILL.md); the canonical copy lives at
+# skills/clean-local-do/ and agent directories (.claude/skills, .agents/skills) symlink to it.
+# It never touches deployed Cloudflare resources, test storage (in-memory), .dev.vars, or the
+# other local stores under state/v3 (kv, cache, d1, r2, observability).
 #
-# Usage: clean-local-do.sh [--yes] [--include-workflows] [ClassName]
+# Usage: sh skills/clean-local-do/scripts/clean-local-do.sh [--yes] [--include-workflows] [ClassName]
 #   (no flags)           dry run: list what would be deleted, delete nothing
 #   --yes                actually delete
-#   --dry-run            force a dry run even when --yes is present (the skill preview relies on this)
+#   --dry-run            force a dry run even when --yes is present
 #   --include-workflows  also remove state/v3/workflows (local Workflow instances reference DO rows)
-#   ClassName            only the Durable Object class with that name, e.g. RegistryDO
-# Exit: 0 done or nothing to do, 2 usage, 3 refused because wrangler dev / workerd from this repo is running.
+#   ClassName            only the Durable Object class with that name, e.g. RegistryDO or UserDO
+# Run it from anywhere inside the repo; it locates the repo root from the current directory.
+# Exit: 0 done or nothing to do, 2 usage or not inside the repo, 3 refused because wrangler dev / workerd
+#       from this repo is running, 4 internal path guard tripped.
 set -eu
 
 usage() {
-  sed -n '/^# Usage:/,/^# Exit:/p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '/^# Usage:/,/^#       from this repo/p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 YES=0
@@ -35,10 +38,21 @@ for arg in "$@"; do
 done
 if [ "$DRY" -eq 1 ]; then YES=0; fi
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
-if [ ! -f "$REPO_ROOT/AGENTS.md" ] || [ ! -f "$REPO_ROOT/apps/api/wrangler.jsonc" ]; then
-  printf 'refusing: %s does not look like the media-digest-assistant repo root\n' "$REPO_ROOT" >&2
+# Agents run commands from the repo root, and the skill may be reached through a symlinked or copied
+# install, so the repo root is found by walking up from the current directory, not from $0.
+find_repo_root() {
+  dir=$PWD
+  while :; do
+    if [ -f "$dir/AGENTS.md" ] && [ -f "$dir/apps/api/wrangler.jsonc" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    [ "$dir" = "/" ] && return 1
+    dir=$(dirname -- "$dir")
+  done
+}
+if ! REPO_ROOT=$(find_repo_root); then
+  printf 'refusing: not inside the media-digest-assistant repo (no AGENTS.md + apps/api/wrangler.jsonc above %s)\n' "$PWD" >&2
   exit 2
 fi
 
