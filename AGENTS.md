@@ -139,6 +139,10 @@ pnpm check          # turbo run typecheck lint test — the pre-finish gate
 pnpm --filter api deploy
 ```
 
+To restart local `wrangler dev` from empty Durable Objects, the owner runs `/clean-local-do` in Claude Code, or
+`sh .claude/skills/clean-local-do/scripts/clean-local-do.sh --yes` from any tool. It removes only
+`apps/api/.wrangler/state/v3/do/` (never deployed state). Hard rule 4 still applies: agents never run it unprompted.
+
 `turbo.json` conventions: `build` depends on `^build` (so `packages/shared` builds first); `typecheck`, `lint`, `test`
 depend on `^build`; `dev` is `persistent: true, cache: false`. Add a new task to `turbo.json` and to the root
 `package.json` scripts together — never one without the other.
