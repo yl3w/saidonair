@@ -81,7 +81,7 @@ CREATE TABLE episodes (
   -- Processed means the full vector set is retrievable and a summary exists.
   CHECK (
     status <> 'processed'
-    OR (chunk_count > 0 AND vectorized_at IS NOT NULL AND processed_at IS NOT NULL)
+    OR (chunk_count IS NOT NULL AND chunk_count > 0 AND vectorized_at IS NOT NULL AND processed_at IS NOT NULL)
   )
 );
 
