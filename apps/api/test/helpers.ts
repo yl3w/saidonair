@@ -2,6 +2,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { expect } from "vitest";
 import { getRegistry } from "../src/do/registry";
+import { getUserDO } from "../src/do/user";
 import { type DomainErrorCode, domainErrorCode } from "../src/lib/errors";
 
 /** Must match `miniflare.bindings.OWNER_EMAIL` in vitest.config.ts. */
@@ -13,8 +14,24 @@ export const BOB = "bob@example.com";
 export const CHANNEL_A = "UCAAAAAAAAAAAAAAAAAAAAAA";
 export const CHANNEL_B = "UCBBBBBBBBBBBBBBBBBBBBBB";
 
+// 11-character video ids.
+export const VIDEO_A = "aaaaaaaaaaa";
+export const VIDEO_B = "bbbbbbbbbbb";
+
+/** `count` distinct valid video ids, for exercising parameter chunking. */
+export function videoIds(count: number): string[] {
+  return Array.from(
+    { length: count },
+    (_, i) => `v${String(i).padStart(10, "0")}`,
+  );
+}
+
 export function registry() {
   return getRegistry(env);
+}
+
+export function userDO(email: string) {
+  return getUserDO(env, email);
 }
 
 /** Asserts a DO RPC call fails with the given typed code, whatever crosses the RPC boundary. */

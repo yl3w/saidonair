@@ -26,3 +26,9 @@ export type ChannelFailureCode =
   | "INITIAL_IMPORT_FAILED";
 
 export type ChannelRequestStatus = "pending" | "approved" | "rejected";
+
+export type FollowOrigin = "manual" | "request";
+
+export type ChatRole = "user" | "assistant";
+
+export type ChatMessageStatus = "pending" | "completed" | "failed";

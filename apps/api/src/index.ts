@@ -7,6 +7,7 @@ import { meRoutes } from "./routes/me";
 
 // Durable Object classes must be exported from the Worker entry.
 export { RegistryDO } from "./do/registry";
+export { UserDO } from "./do/user";
 
 const app = new Hono<AppEnv>();
 

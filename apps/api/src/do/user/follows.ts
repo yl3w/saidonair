@@ -1,0 +1,177 @@
+import type { FollowOrigin } from "@media-digest/shared";
+import { DomainError } from "../../lib/errors";
+import { requireChannelId } from "../../lib/youtube/ids";
+import type { ChannelFollow, ListFollowsOptions } from "./types";
+
+type FollowRow = {
+  channel_id: string;
+  followed_at: number;
+  unfollowed_at: number | null;
+  origin: string;
+  origin_request_id: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+const FOLLOW_COLUMNS = `channel_id, followed_at, unfollowed_at, origin, origin_request_id,
+  created_at, updated_at`;
+
+/**
+ * Explicit follow or refollow. Eligibility (available, non-deleted channel) is the caller's
+ * responsibility via the Registry; this only owns the row semantics. Idempotent on an
+ * active follow; a tombstone is cleared and the follow becomes manual.
+ */
+export function follow(
+  sql: SqlStorage,
+  channelId: string,
+  now: number,
+): ChannelFollow {
+  const id = requireChannelId(channelId);
+  const existing = getFollow(sql, id);
+  if (existing && existing.unfollowedAt === null) return existing;
+  if (!existing) {
+    return toFollow(
+      sql
+        .exec<FollowRow>(
+          `INSERT INTO channel_follows
+             (channel_id, followed_at, origin, origin_request_id, created_at, updated_at)
+           VALUES (?, ?, 'manual', NULL, ?, ?)
+           RETURNING ${FOLLOW_COLUMNS}`,
+          id,
+          now,
+          now,
+          now,
+        )
+        .one(),
+    );
+  }
+  return toFollow(
+    sql
+      .exec<FollowRow>(
+        `UPDATE channel_follows
+         SET followed_at = ?, unfollowed_at = NULL, origin = 'manual', origin_request_id = NULL,
+             updated_at = ?
+         WHERE channel_id = ?
+         RETURNING ${FOLLOW_COLUMNS}`,
+        now,
+        now,
+        id,
+      )
+      .one(),
+  );
+}
+
+/** Retains a tombstone; never deletes the row. Idempotent once unfollowed. */
+export function unfollow(
+  sql: SqlStorage,
+  channelId: string,
+  now: number,
+): ChannelFollow {
+  const id = requireChannelId(channelId);
+  const existing = getFollow(sql, id);
+  if (!existing) throw new DomainError("NOT_FOUND", "channel is not followed");
+  if (existing.unfollowedAt !== null) return existing;
+  return toFollow(
+    sql
+      .exec<FollowRow>(
+        `UPDATE channel_follows SET unfollowed_at = ?, updated_at = ?
+         WHERE channel_id = ?
+         RETURNING ${FOLLOW_COLUMNS}`,
+        now,
+        now,
+        id,
+      )
+      .one(),
+  );
+}
+
+/**
+ * Automatic follow delivered for an approved request. Inserts only when no row exists:
+ * an active follow and an unfollow tombstone are both left untouched, so a retried
+ * handoff can never reverse an explicit unfollow.
+ */
+export function autoFollow(
+  sql: SqlStorage,
+  channelId: string,
+  requestId: string,
+  now: number,
+): { follow: ChannelFollow; inserted: boolean } {
+  const id = requireChannelId(channelId);
+  const request = requestId.trim();
+  if (request.length === 0) {
+    throw new DomainError("INVALID_INPUT", "requestId is required");
+  }
+  // RETURNING yields a row only when the insert actually happened.
+  const inserted =
+    sql
+      .exec(
+        `INSERT OR IGNORE INTO channel_follows
+           (channel_id, followed_at, origin, origin_request_id, created_at, updated_at)
+         VALUES (?, ?, 'request', ?, ?, ?)
+         RETURNING channel_id`,
+        id,
+        now,
+        request,
+        now,
+        now,
+      )
+      .toArray().length > 0;
+  const current = getFollow(sql, id);
+  if (!current) throw new Error("channel_follows row vanished after insert");
+  return { follow: current, inserted };
+}
+
+export function getFollow(
+  sql: SqlStorage,
+  channelId: string,
+): ChannelFollow | null {
+  const row = sql
+    .exec<FollowRow>(
+      `SELECT ${FOLLOW_COLUMNS} FROM channel_follows WHERE channel_id = ?`,
+      channelId,
+    )
+    .toArray()[0];
+  return row ? toFollow(row) : null;
+}
+
+export function listFollows(
+  sql: SqlStorage,
+  options: ListFollowsOptions = {},
+): ChannelFollow[] {
+  const where = options.includeUnfollowed ? "" : "WHERE unfollowed_at IS NULL";
+  return sql
+    .exec<FollowRow>(
+      `SELECT ${FOLLOW_COLUMNS} FROM channel_follows ${where}
+       ORDER BY followed_at DESC, channel_id`,
+    )
+    .toArray()
+    .map(toFollow);
+}
+
+/** Channel ids currently followed; chat eligibility intersects this with the Registry. */
+export function activeChannelIds(sql: SqlStorage): string[] {
+  return sql
+    .exec<{ channel_id: string }>(
+      `SELECT channel_id FROM channel_follows WHERE unfollowed_at IS NULL
+       ORDER BY channel_id`,
+    )
+    .toArray()
+    .map((row) => row.channel_id);
+}
+
+function toFollow(row: FollowRow): ChannelFollow {
+  return {
+    channelId: row.channel_id,
+    followedAt: row.followed_at,
+    unfollowedAt: row.unfollowed_at,
+    origin: toOrigin(row.origin),
+    originRequestId: row.origin_request_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toOrigin(value: string): FollowOrigin {
+  if (value === "manual" || value === "request") return value;
+  throw new Error(`unexpected channel_follows.origin: ${value}`);
+}
