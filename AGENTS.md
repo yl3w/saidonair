@@ -370,7 +370,8 @@ Don't write tests for Hono plumbing, Preact components, or Workflow step orderin
 
 Every test starts with an empty Registry: `apps/api/test/setup.ts` wipes the DO and aborts its instance after each test,
 because the pinned pool's `reset()` does not clear SQLite-backed Durable Objects. Tests pin `OWNER_EMAIL` in
-`vitest.config.ts` (`miniflare.bindings`) and never read the developer's `.dev.vars`.
+`vitest.config.ts` (`miniflare.bindings`), overriding that value from the developer's `.dev.vars`.
+Wrangler still loads the file; other values are not explicitly overridden.
 
 ## Code style
 
