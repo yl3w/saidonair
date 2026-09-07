@@ -4,7 +4,10 @@ import type { AppEnv } from "./env";
 import { onError } from "./middleware/errors";
 import { requireIdentity } from "./middleware/user";
 import { catalogRoutes } from "./routes/catalog";
+import { channelRequestRoutes } from "./routes/channel-requests";
 import { channelRoutes } from "./routes/channels";
+import { digestRoutes } from "./routes/digest";
+import { followRoutes } from "./routes/follows";
 import { meRoutes } from "./routes/me";
 
 // Durable Object classes must be exported from the Worker entry.
@@ -27,5 +30,8 @@ app.use("*", requireIdentity);
 app.route("/me", meRoutes);
 app.route("/catalog", catalogRoutes);
 app.route("/channels", channelRoutes);
+app.route("/channel-requests", channelRequestRoutes);
+app.route("/follows", followRoutes);
+app.route("/digest", digestRoutes);
 
 export default app;
