@@ -59,18 +59,25 @@ Toolchain pinning:
 │   ├── api/                  # Cloudflare Worker: Hono router, Durable Objects, Workflows, cron
 │   │   ├── src/
 │   │   │   ├── index.ts              # Worker entry: fetch + scheduled handlers, Hono app
+│   │   │   ├── env.ts / bindings.d.ts # Hono AppEnv + hand-maintained Cloudflare.Env (no generated types)
 │   │   │   ├── middleware/user.ts    # X-User-Email → registry + per-user DO stub on context
-│   │   │   ├── routes/               # one file per resource (chat, channels, digest, ...)
-│   │   │   ├── do/registry.ts        # Global Registry Durable Object
+│   │   │   ├── middleware/errors.ts  # typed Registry errors → HTTP status
+│   │   │   ├── routes/               # one file per resource (me, chat, channels, digest, ...)
+│   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
+│   │   │   ├── do/registry/          # Registry store modules: users, channels, requests, types
+│   │   │   ├── do/migrations.ts      # shared SQLite migration runner
 │   │   │   ├── do/user.ts            # Per-user Durable Object
 │   │   │   ├── workflows/ingest.ts   # channel ingestion Workflow
 │   │   │   ├── lib/youtube/          # rss.ts, transcript.ts (see contract below)
+│   │   │   ├── lib/email.ts          # identity normalization (pure)
+│   │   │   ├── lib/errors.ts         # RegistryError + code recovery across RPC
 │   │   │   ├── lib/chunk.ts          # transcript chunking (pure)
 │   │   │   ├── lib/ai.ts             # Workers AI wrappers: embed, summarize, chat
 │   │   │   ├── lib/vectorize.ts      # namespaced upsert/query helpers
 │   │   │   └── prompts/              # prompt templates as .ts exporting strings
 │   │   ├── migrations/               # DO SQLite migrations (see Schema)
-│   │   ├── test/
+│   │   ├── test/                     # setup.ts wipes the Registry after each test
+│   │   ├── .dev.vars.example         # copy to .dev.vars (gitignored) for OWNER_EMAIL
 │   │   ├── wrangler.jsonc
 │   │   └── vitest.config.ts
 │   └── web/                  # Cloudflare Pages: Vite + Preact + TypeScript text UI
@@ -150,7 +157,11 @@ Workers runtime behavior must have been exercised under `wrangler dev`, not only
   catalog approval requests, channels, episodes, and shared summaries live in the Registry DO. Requesters see only
   their own requests; the owner can review all requests. Never expose another user's private DO data.
 - Only the owner can configure/approve, delete/restore, or retry catalog channels. Users can request and follow them.
-  `TODO(owner):` decide how the trusted deployment identifies the owner for management operations; do not add authentication.
+- The owner is whoever has `role = 'owner'` in `global_users`. The deployment seeds that role from the `OWNER_EMAIL`
+  secret (`apps/api/.dev.vars` locally, copied from `.dev.vars.example`; `wrangler secret put OWNER_EMAIL` when deployed)
+  every time the Registry DO starts. Seeding promotes and never demotes, so more owners can be granted later. Owner-only
+  Registry DO methods take the acting email and verify the role themselves; routes are not the only check. The email is
+  never committed. This is still not authentication.
 
 ## Data & schema conventions
 
@@ -276,6 +287,7 @@ Target resource contract (not a claim that these routes are implemented):
 
 | Route | Purpose |
 |---|---|
+| `GET /me` | The caller's normalized email and `role` (`owner` or `user`); the UI uses it to show owner controls |
 | `POST /chats` / `GET /chats` | Create an empty chat / list the user's chats |
 | `GET /chats/:id/messages?limit=50` | That chat's messages and citation snapshots |
 | `POST /chats/:id/messages` `{ message }` | Reply and sources, using current eligible follows |
@@ -292,8 +304,9 @@ Target resource contract (not a claim that these routes are implemented):
 | `POST /owner/channels/:id/retry` | Reset failed channel to pending and start retry |
 | `DELETE /owner/channels/:id` / `POST /owner/channels/:id/restore` | Soft-delete / restore the shared channel |
 
-All routes require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require the trusted
-owner check (see open decision). Validate chat ownership in the caller's User DO. JSON everywhere, no API HTML.
+All routes except `/health` require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require
+`role = 'owner'`, and the Registry DO re-checks it inside every owner-only method. Typed `RegistryError`s map to HTTP in
+`middleware/errors.ts`: `INVALID_INPUT` 400, `NOT_OWNER` 403, `NOT_FOUND` 404, `INVALID_STATE` 409. Validate chat ownership in the caller's User DO. JSON everywhere, no API HTML.
 There are no chat deletion routes and no per-channel chats.
 
 ## Web UI (`apps/web`)
@@ -329,7 +342,8 @@ see their digest, chat list/selected conversation, and channels:
 marks returned summaries read for this user. Non-followers can follow an available channel. No chat input here;
 conversations live on Home. Back link to `/home`.
 
-Owner catalog management is required, but a general admin dashboard is not. Owner identity/mechanism is `TODO(owner)`.
+Owner catalog management is required, but a general admin dashboard is not. Render owner controls only when `GET /me`
+returns `role: "owner"`; the management screens themselves are `TODO(owner)`.
 
 ## Testing
 
@@ -353,6 +367,10 @@ Tests are focused, not exhaustive. Required coverage:
 
 Don't write tests for Hono plumbing, Preact components, or Workflow step ordering. `apps/web` has typecheck and lint only. Don't mock what you can run for real
 (DO storage, SQLite).
+
+Every test starts with an empty Registry: `apps/api/test/setup.ts` wipes the DO and aborts its instance after each test,
+because the pinned pool's `reset()` does not clear SQLite-backed Durable Objects. Tests pin `OWNER_EMAIL` in
+`vitest.config.ts` (`miniflare.bindings`) and never read the developer's `.dev.vars`.
 
 ## Code style
 
@@ -378,5 +396,8 @@ management, rate limiting.
 ## Open decisions (owner)
 
 - Cron cadence and times — `TODO(owner)` in `wrangler.jsonc`.
-- Owner identification and management interface in the trusted, unauthenticated deployment — `TODO(owner)`.
+- Owner management interface (which screens expose the owner routes) — `TODO(owner)`. Owner identification is decided:
+  `global_users.role`, seeded from the `OWNER_EMAIL` secret (see Identity model).
+- `compatibility_date` is capped at `2026-08-22`, the newest date the workerd bundled with the pinned
+  `@cloudflare/vitest-pool-workers` accepts. Raise it together with that dependency.
 - Retention: keep all chats and shared/user records for now; any future retention policy requires an owner decision.

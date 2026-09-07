@@ -36,8 +36,10 @@ email delivery, rich media, mobile apps, rate limiting, and general admin dashbo
 - A user has zero or more follows, requests, and chats. Registration does not trigger ingestion.
 - Only the owner configures catalog channels, approves/rejects requests, retries failed channels, and deletes/restores
   channels. Users can submit requests, follow available channels, and unfollow their own follows.
-- `TODO(owner):` specify how the trusted deployment identifies the owner and exposes management operations.
-  Ordinary user identity must not implicitly authorize owner actions. This does not introduce authentication.
+- The owner is the identity with `role = 'owner'` in the Registry's `global_users`, seeded from the `OWNER_EMAIL`
+  secret each time the Registry DO starts (promote only, never demote). Ordinary user identity never implicitly
+  authorizes owner actions; Registry methods verify the role. The management interface remains `TODO(owner)`.
+  This does not introduce authentication.
 - Chats, preferences, follow state, and read receipts are private to the User DO. Global identity and approval requests
   live in the Registry; users see only their own requests, while the owner can review all requests.
 
@@ -184,7 +186,7 @@ Other fields are `TEXT`; `_json` columns contain validated JSON text. `PK` and `
 
 | Table | Columns in addition to `created_at` | Keys and relationships |
 |---|---|---|
-| `global_users` | `email`, `last_seen_at` | PK `email`, normalized |
+| `global_users` | `email`, `role DEFAULT 'user'`, `last_seen_at` | PK `email`, normalized |
 | `channels` | `channel_id`, `title`, `canonical_url`, `status`, `initial_import_count DEFAULT 5`, `failure_code?`, `failure_detail?`, `available_at?`, `last_checked_at?`, `last_ingested_at?`, `deleted_at?`, `lifecycle_version DEFAULT 1`, `updated_at` | PK `channel_id` (YouTube `UC…` ID) |
 | `channel_requests` | `request_id`, `user_email`, `youtube_channel_id`, `submitted_url`, `status`, `reviewed_at?`, `reviewed_by_email?`, `owner_explanation?`, `approved_channel_id?`, `auto_follow_completed_at?`, `updated_at` | PK `request_id`; unique `(user_email, youtube_channel_id)`; FKs for requester/reviewer to `global_users.email` and approved channel to `channels.channel_id` |
 | `episodes` | `video_id`, `channel_id`, `title`, `published_at`, `status`, `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, `transcript_checked_at?`, `chunk_count?`, `vectorized_at?`, `processed_at?`, `updated_at` | PK `video_id`; FK `channel_id → channels.channel_id` |
@@ -220,6 +222,7 @@ Use `CHECK` constraints for these enums:
 
 | Column | Values |
 |---|---|
+| `global_users.role` | `owner`, `user` |
 | `channels.status` | `pending`, `available`, `failed` |
 | `channel_requests.status` | `pending`, `approved`, `rejected` |
 | `episodes.status` | `pending`, `processing`, `processed`, `no_transcript`, `failed` |
@@ -286,12 +289,13 @@ Use `CHECK` constraints for these enums:
 
 ### Target resource contract
 
-All endpoints require `X-User-Email`, return 400 for missing/malformed email, and exchange JSON. Owner endpoints
-additionally require the trusted owner check. Resolve chats only inside the caller's User DO. Shared request/response
+All endpoints except `/health` require `X-User-Email`, return 400 for missing/malformed email, and exchange JSON.
+Owner endpoints additionally require `role = 'owner'`. Resolve chats only inside the caller's User DO. Shared request/response
 types live in `packages/shared`; the web fetch wrapper remains the sole web `fetch` caller.
 
 | Method and path | Purpose |
 |---|---|
+| `GET /me` | Caller's normalized email and role |
 | `POST /chats` / `GET /chats` | Create an empty chat / list own chats |
 | `GET /chats/:id/messages?limit=50` | Selected chat history with citation snapshots |
 | `POST /chats/:id/messages` `{ message }` | Reply and sources using current eligible follows |
@@ -331,7 +335,8 @@ types live in `packages/shared`; the web fetch wrapper remains the sole web `fet
 ## 9. Open decisions and retention
 
 - `TODO(owner):` cron cadence and times; no chosen schedule is implied by this document.
-- `TODO(owner):` owner identification and management interface in the trusted deployment.
+- `TODO(owner):` owner management interface in the trusted deployment. Identification is decided:
+  `global_users.role` seeded from the `OWNER_EMAIL` secret.
 - Retain all chats and all shared/user records for now. A future retention policy needs an owner decision.
 - Whether Home's chat input should be pinned to the bottom when the digest is long remains a UI decision.
 
