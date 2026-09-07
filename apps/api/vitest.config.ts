@@ -9,8 +9,19 @@ const workersOptions = {
     configPath: "./wrangler.jsonc",
   },
   miniflare: {
-    // Tests must not depend on the developer's .dev.vars.
-    bindings: { OWNER_EMAIL: "owner@example.com" },
+    bindings: {
+      // Tests must not depend on the developer's .dev.vars.
+      OWNER_EMAIL: "owner@example.com",
+      // Canned YouTube feeds so no test reaches the network (see lib/youtube/rss.ts feedFetcher).
+      // Keys are the helpers' CHANNEL_A…E; E has no feed, like YouTube's 404 for an unknown id.
+      YOUTUBE_FEEDS_FAKE: JSON.stringify({
+        UCAAAAAAAAAAAAAAAAAAAAAA: "Feed A",
+        UCBBBBBBBBBBBBBBBBBBBBBB: "Feed B",
+        UCCCCCCCCCCCCCCCCCCCCCCC: "Feed C",
+        UCDDDDDDDDDDDDDDDDDDDDDD: "Feed D",
+        UCEEEEEEEEEEEEEEEEEEEEEE: null,
+      }),
+    },
   },
 };
 

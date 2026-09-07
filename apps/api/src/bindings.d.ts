@@ -9,5 +9,11 @@ declare namespace Cloudflare {
      * Registry DO starts; absent or malformed means no owner is seeded (logged as a warning).
      */
     OWNER_EMAIL?: string;
+    /**
+     * Test only (vitest.config.ts): JSON of channel id → canned feed title, or null for "no such
+     * channel", served by `lib/youtube/rss.ts` feedFetcher instead of fetching YouTube. Never set
+     * in `.dev.vars` or deployed.
+     */
+    YOUTUBE_FEEDS_FAKE?: string;
   }
 }

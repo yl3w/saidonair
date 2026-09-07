@@ -9,6 +9,7 @@ const STATUS_BY_CODE: Record<DomainErrorCode, ContentfulStatusCode> = {
   NOT_OWNER: 403,
   NOT_FOUND: 404,
   INVALID_STATE: 409,
+  UPSTREAM_UNAVAILABLE: 502,
 };
 
 /** The single place typed Registry errors become HTTP responses. */

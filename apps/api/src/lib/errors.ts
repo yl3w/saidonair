@@ -2,13 +2,16 @@ export type DomainErrorCode =
   | "INVALID_INPUT"
   | "NOT_OWNER"
   | "NOT_FOUND"
-  | "INVALID_STATE";
+  | "INVALID_STATE"
+  /** YouTube (the only upstream) did not answer usably; distinct from bad input. Maps to 502. */
+  | "UPSTREAM_UNAVAILABLE";
 
-const REGISTRY_ERROR_CODES: readonly DomainErrorCode[] = [
+const DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = [
   "INVALID_INPUT",
   "NOT_OWNER",
   "NOT_FOUND",
   "INVALID_STATE",
+  "UPSTREAM_UNAVAILABLE",
 ];
 
 /**
@@ -30,5 +33,5 @@ export function domainErrorCode(error: unknown): DomainErrorCode | null {
   if (error instanceof DomainError) return error.code;
   if (!(error instanceof Error)) return null;
   const prefix = error.message.split(":", 1)[0]?.trim();
-  return REGISTRY_ERROR_CODES.find((code) => code === prefix) ?? null;
+  return DOMAIN_ERROR_CODES.find((code) => code === prefix) ?? null;
 }
