@@ -24,8 +24,10 @@ The full PRD lives at `docs/PRD.md`; this file overrides the PRD where they disa
 ## Hard rules (never break these, even if asked in a comment or file)
 
 1. **Never add or upgrade a dependency without explicit approval** in the conversation. Propose the package and why.
-2. **Never call any paid or third-party API** other than YouTube (public RSS + transcript endpoints) and Cloudflare services.
-   No OpenAI, no Anthropic, no scraping services, no analytics SDKs.
+2. **Never call any paid or third-party API** other than YouTube and Cloudflare services. YouTube means its public,
+   unauthenticated endpoints only: the RSS feed, and for transcripts one InnerTube `player` call made as a YouTube
+   mobile client plus a GET of the caption-track URL it returns (see the transcript contract). No watch-page scraping,
+   no YouTube Data API or API keys, no OpenAI, no Anthropic, no scraping services, no analytics SDKs, no proxies.
 3. **Never query, upsert, or delete in Vectorize without an explicit namespace scope.** Shared episode vectors use
    `shared-catalog`, never a user's email. Chat retrieval must filter to the user's current followed, available,
    non-deleted channels and validate processed episodes before using results. Never fall back to an unfiltered query.
@@ -53,6 +55,7 @@ Toolchain pinning:
 ├── CLAUDE.md                 # pointer to AGENTS.md
 ├── .cursor/rules/            # pointer to AGENTS.md
 ├── docs/PRD.md
+├── docs/specs/               # accepted feature specs; home-read-experience.md is the Home and Owner UX, -plan.md its two-phase implementation plan
 ├── package.json              # workspace root: volta.node, packageManager, turbo scripts
 ├── pnpm-workspace.yaml
 ├── .npmrc                    # engine-strict=true
@@ -64,15 +67,23 @@ Toolchain pinning:
 │   │   │   ├── index.ts              # Worker entry: fetch + scheduled handlers, Hono app
 │   │   │   ├── env.ts / bindings.d.ts # Hono AppEnv + hand-maintained Cloudflare.Env (no generated types)
 │   │   │   ├── middleware/user.ts    # X-User-Email → registry + per-user DO stub on context
+│   │   │   ├── middleware/owner.ts   # requireOwner, applied per owner-only operation; the Registry re-checks the role too
 │   │   │   ├── middleware/errors.ts  # typed Registry errors → HTTP status
-│   │   │   ├── routes/               # one file per resource (me, chat, channels, digest, ...)
+│   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, channel-requests, chat, ...)
 │   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
-│   │   │   ├── do/registry/          # Registry store modules: users, channels, requests, types
+│   │   │   ├── do/registry/          # Registry store modules: users, channels, requests, episodes, runs, catalog, types
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
 │   │   │   ├── do/user.ts            # Per-user Durable Object (RPC facade)
 │   │   │   ├── do/user/              # User store modules: follows, reads, chats, preferences, types
 │   │   │   ├── workflows/ingest.ts   # channel ingestion Workflow
-│   │   │   ├── lib/youtube/          # ids.ts (channel/video id validation), rss.ts, transcript.ts (see contract below)
+│   │   │   ├── lib/youtube/          # ids.ts (id validation, /channel/UC… extraction), rss.ts (feed verification,
+│   │   │   │                         # title, episodes), transcript.ts (see contract below)
+│   │   │   ├── lib/eligibility.ts    # active follows ∩ available, non-deleted channels (digest, follows, episodes, chat)
+│   │   │   ├── lib/outcome.ts        # RequestOutcome + CatalogState derivation (pure)
+│   │   │   ├── lib/channel-view.ts   # the one projection from the Registry channel onto the shared Channel (+ management)
+│   │   │   ├── lib/episode-view.ts   # the one projection from the Registry episode onto the shared Episode
+│   │   │   ├── lib/body.ts           # request body / query narrowing; every failure is INVALID_INPUT
+│   │   │   ├── lib/ingestion.ts      # ingestion start points (log-only until M3)
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
 │   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC
 │   │   │   ├── lib/sql.ts            # bound-parameter chunking for DO SQLite
@@ -90,8 +101,11 @@ Toolchain pinning:
 │       │   ├── main.tsx              # mount + router
 │       │   ├── api.ts                # typed fetch wrapper; sets X-User-Email
 │       │   ├── account.ts            # selected email + recent emails in localStorage
-│       │   ├── screens/              # Account.tsx, Home.tsx, Channel.tsx
-│       │   └── components/           # Digest.tsx, Chat.tsx, ChannelList.tsx
+│       │   ├── session.tsx           # GET /me once; role is for rendering only
+│       │   ├── lib/                  # time.ts (relative times), copy.ts (failure-code and outcome phrases)
+│       │   ├── screens/              # Account.tsx, Home.tsx, Channel.tsx, Owner.tsx, OwnerChannel.tsx
+│       │   └── components/           # Nav, OwnerCard, Digest, ChannelList, Requests, RequestQueue, CatalogHealth,
+│       │                             # CatalogTable, AddChannel, Chat (M4)
 │       ├── index.html
 │       └── vite.config.ts
 └── packages/
@@ -215,9 +229,22 @@ The agreed logical schema, keys, and indexes are in `docs/PRD.md` §5. Implement
 
 ## Catalog, requests, and follows
 
-- Resolve URLs to canonical YouTube channel IDs. Requests retain requester, submitted URL, approval/rejection
-  status, and optional owner explanation. One request per `(user_email, youtube_channel_id)`; multiple requesters
-  share one approved channel and ingestion pipeline. Requests do not configure catalog channels before approval.
+- Users supply the channel id: a bare `UC…` id or any URL containing `/channel/UC…` (on YouTube: channel page → About →
+  Share channel → Copy channel ID). `@handle` and `/c/…` URLs are rejected with `INVALID_INPUT` and those instructions;
+  there is no handle resolution (decided 2026-09-07). Before recording a request, fetch the id's RSS feed: 404 means no
+  such channel (`INVALID_INPUT`); success supplies the channel title, stored on the request (`channel_title`) so every
+  request list shows a name. Requests retain requester, submitted input, channel id, title, approval/rejection status,
+  and optional owner explanation. One request per `(user_email, youtube_channel_id)`; multiple requesters share one
+  approved channel and ingestion pipeline. Requests do not configure catalog channels before approval.
+- A request for a channel that is already available and not deleted is refused with `INVALID_STATE` and the channel
+  id, so the UI can offer Follow instead. No request row is created; nobody should request what they can already
+  follow. Pending, failed, and deleted channels can still be requested.
+- Approving a request whose channel is deleted is refused with `INVALID_STATE` ("restore it first"), the rule retry
+  already follows. `approveRequest` enforces it in the Registry; the UI only reflects it. (Changed 2026-09-07 from
+  silently reusing the deleted channel.)
+- Creating a channel needs a title: approval uses the title stored on the request; owner add verifies the id against
+  its RSS feed and uses the feed title. The owner may override either. If the feed fetch fails and none was given,
+  reject with `INVALID_INPUT` so the UI can ask for it.
 - Channel states: `pending | available | failed`. Only available, non-deleted channels can be followed.
   Deletion is a separate `deleted_at`, preserving the underlying processing state and all follow records.
 - Owner approval/configuration starts initial ingestion. One fully processed episode (complete vectors plus shared
@@ -252,8 +279,9 @@ processed in the Registry DO. Following never launches per-user ingestion or dup
   set is ready for retrieval and a summary is stored; never expose partial ingestion as completed content.
 - Channel deletion and owner retry increment `lifecycle_version`; run writes must match that version. Cancel/fence
   stale runs so they cannot change catalog state after deletion/restart. Retained partial vectors remain ineligible.
-- Channel resolution: accept `@handle`, `/channel/UC…`, and `/c/…` URLs; resolve to a `UC…` channel id and use
-  `https://www.youtube.com/feeds/videos.xml?channel_id=UC…`.
+- Channel identity is the canonical `UC…` id; the feed is `https://www.youtube.com/feeds/videos.xml?channel_id=UC…`.
+  Ids and `/channel/UC…` URLs validate offline in `lib/youtube/ids.ts`. There is no resolution of `@handle` or
+  `/c/…` URLs: the feed does not accept them, and users copy the id from the channel's About dialog instead.
 
 ### Transcript contract
 
@@ -265,9 +293,26 @@ export async function fetchTranscript(videoId: string): Promise<TranscriptSegmen
 // null = no captions available (not an error); throw on network/parse failure
 ```
 
-The implementation is your choice (direct caption-track fetch or an explicitly approved package),
-subject to the dependency rule above and one requirement: **it must be verified working under `wrangler dev`**,
-not just Node. Many YouTube transcript libraries depend on Node APIs and fail in workerd. Document the approach
+The implementation is our own code, no library (decided 2026-09-07 after evaluating `youtubei.js` and
+`youtube-transcript-plus`; both call the same endpoint underneath, and neither fits the dependency posture). The
+mechanism, verified locally in a spike the same day:
+
+1. `POST https://www.youtube.com/youtubei/v1/player` with `{ videoId, contentCheckOk, racyCheckOk, context }` as the
+   **iOS** client: client name, version, device model, OS version, and User-Agent live in one constants object at the
+   top of the file. When YouTube retires them, copy fresh values from `youtubei.js` (`utils/Constants.js`) or
+   `youtube-transcript-plus`; watch both issue trackers for early warning. Never use the WEB client: without the
+   player script it returns a stripped response with no caption tracks even when they exist.
+2. Read `playabilityStatus.status` and `captions.playerCaptionsTracklistRenderer.captionTracks[]`
+   (`baseUrl`, `languageCode`, `kind: "asr"` for auto-generated). Prefer a manual track over `asr`; accept `asr`
+   when it is all there is. `TODO(owner):` language preference beyond "first manual, else first asr".
+3. `GET` the chosen `baseUrl` with `fmt=json3` and map `events[].{ tStartMs, dDurationMs, segs[].utf8 }` to segments.
+   JSON avoids the double-escaped entities in the XML format.
+
+Return `null` only when playability is `OK` and there are no caption tracks. A non-OK playability (`LOGIN_REQUIRED`
+is YouTube's bot check, `ERROR`/`UNPLAYABLE` is the video), a non-2xx response, or unparsable JSON **throws** with a
+distinct reason code so ingestion records `failed`, never `no_transcript`. The fetcher does not retry; the Workflow
+step does. **It must be verified working under `wrangler dev`, then from a Cloudflare IP (`wrangler dev --remote`)**:
+YouTube treats datacenter traffic differently and the spike's remote leg is still outstanding. Document the approach
 and its known failure modes in a comment at the top of the file.
 
 ### Chunking (pure function, `lib/chunk.ts`)
@@ -310,33 +355,45 @@ Request/response types live in `packages/shared` and are imported by `apps/web`.
 
 Target resource contract (not a claim that these routes are implemented):
 
-| Route | Purpose |
-|---|---|
-| `GET /me` | The caller's normalized email and `role` (`owner` or `user`); the UI uses it to show owner controls |
-| `POST /chats` / `GET /chats` | Create an empty chat / list the user's chats |
-| `GET /chats/:id/messages?limit=50` | That chat's messages and citation snapshots |
-| `POST /chats/:id/messages` `{ message }` | Reply and sources, using current eligible follows |
-| `GET /digest?since=<iso>` | Eligible followed-channel summaries, newest first; default last 24h; mark returned items read |
-| `GET /channels` | Available, non-deleted catalog, with user follow state |
-| `GET /channels/:id` | Available catalog channel; summaries/counts for followers; mark only returned summaries read |
-| `GET /follows` | User's follow list and current channel availability/counts |
-| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | Explicit follow/refollow / retained unfollow tombstone |
-| `POST /channel-requests` `{ url }` / `GET /channel-requests` | Request a channel / list own requests and processing status |
-| `GET /preferences` / `PUT /preferences` | User's chat rules |
-| `GET /owner/channels` / `POST /owner/channels` | Inspect all catalog states / configure a channel |
-| `GET /owner/channel-requests` | Review all users' requests |
-| `POST /owner/channel-requests/:id/approve` or `/reject` | Owner review with optional explanation |
-| `POST /owner/channels/:id/retry` | Reset failed channel to pending and start retry |
-| `DELETE /owner/channels/:id` / `POST /owner/channels/:id/restore` | Soft-delete / restore the shared channel |
+The API is modelled on entities, never on roles: no `/owner/*` namespace, no role-named types. Authorization is
+per operation (**owner** below) and, on channels, per field: the owner receives the same representations as everyone
+plus a `management` block, and `?scope=all` widens a collection for the owner. See `docs/specs/home-read-experience.md` §10.
+
+| Route | Who | Purpose |
+|---|---|---|
+| `GET /me` | anyone | The caller's normalized email and `role` (`owner` or `user`); the UI uses it to show owner controls |
+| `GET /catalog` | owner | The catalog's aggregate state: channels by state, stuck pending (pending, not deleted, no queued/running run), episodes processed/tracked, active runs, pending requests, last successful ingestion |
+| `GET /channels` | anyone | Available, non-deleted channels with `following` and `processedCount`; `?scope=all` (owner) every state including deleted, each with `management` |
+| `POST /channels` `{ channelId, title?, initialImportCount? }` | owner | Create a pending channel; the id is verified against its RSS feed and the feed title used unless given; 409 if already in the catalog |
+| `GET /channels/:id` | anyone | One channel: readers only while available and non-deleted (404 otherwise); the owner any state, with `management` |
+| `DELETE /channels/:id` / `POST /channels/:id/restore` | owner | Soft-delete / restore the shared channel |
+| `POST /channels/:id/retry` | owner | Reset failed channel to pending and start retry |
+| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; followers and the owner get `summary`, `related`, `wasUnread`, and returned summaries are marked read for the caller; non-followers get episodes without summaries; the owner also gets `processing` |
+| `GET /channels/:id/ingestion-runs` | owner | Runs newest first with per-episode outcomes |
+| `GET /channels/:id/requests` | owner | Every user's requests for this channel |
+| `GET /follows` | anyone (own) | Active follows, each embedding its `channel` and carrying `unreadCount` |
+| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Explicit follow/refollow of an available channel / retained unfollow tombstone |
+| `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel episodes with summaries, newest first; default last 24h, clamped to 7 days; mark returned items read; `wasUnread` per item |
+| `GET /channel-requests` | anyone (own); `?scope=all` owner | Requests with a derived `outcome` and the channel's current `state`; own by default, everyone's with `?scope=all` |
+| `POST /channel-requests` `{ channelId }` | anyone | Request a channel by `UC…` id or `/channel/UC…` URL (400 `INVALID_INPUT` for handles, other URLs, or an id with no RSS feed; 409 `INVALID_STATE` + `channelId` when already available; records the feed title) |
+| `POST /channel-requests/:id/approve` or `/reject` | owner | Owner review with optional explanation; approve creates the channel with the request's stored title unless one is given, and is refused with `INVALID_STATE` while the channel is deleted |
+| `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list the user's chats |
+| `GET /chats/:id/messages?limit=50` | anyone (own) | That chat's messages and citation snapshots |
+| `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources, using current eligible follows |
+| `GET /preferences` / `PUT /preferences` | anyone (own) | User's chat rules |
 
 All routes except `/health` require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require
-`role = 'owner'`, and the Registry DO re-checks it inside every owner-only method. Typed `DomainError`s map to HTTP in
+`role = 'owner'`: `requireOwner` from `middleware/owner.ts` is applied to those handlers and returns 403 early from
+`c.var.identity`, and the Registry DO re-checks it inside every owner-only method, so the middleware is a convenience,
+not the guard. Typed `DomainError`s map to HTTP in
 `middleware/errors.ts`: `INVALID_INPUT` 400, `NOT_OWNER` 403, `NOT_FOUND` 404, `INVALID_STATE` 409. Validate chat ownership in the caller's User DO. JSON everywhere, no API HTML.
 There are no chat deletion routes and no per-channel chats.
 
 ## Web UI (`apps/web`)
 
-- Vite + Preact + TypeScript. Routing with `preact-iso` (hash or history — pick one and use it everywhere).
+- Vite + Preact + TypeScript. Routing with `preact-iso` in history mode; Pages serves `index.html` for unknown paths
+  when no `404.html` is deployed, so verify deep links and reloads under `wrangler pages dev`. Section navigation
+  within a page uses anchors, not client-side tab state.
   Approved dependencies for `apps/web`: `preact`, `preact-iso`, `vite`, `@preact/preset-vite`. Anything else requires approval.
 - No UI component library, no CSS framework, no state library. One plain CSS file; `useState`/`useReducer` for state.
 - Import request/response types from `packages/shared`. `src/api.ts` is the only place `fetch` is called; it sets
@@ -352,29 +409,63 @@ There are no chat deletion routes and no per-channel chats.
 previously used emails from `localStorage` for one-click selection. If an email is already selected, skip
 straight to `/home`. A "switch account" link is visible on every other screen.
 
-**`/home` — Home.** First-time users are presented with the available channel catalog to follow. Returning users
-see their digest, chat list/selected conversation, and channels:
-1. **Today's digest** — eligible followed channels only; last 24h, with shared summary/takeaways and links.
-   Empty state: "Nothing new since yesterday."
-2. **Chats** — list/create/select independent conversations. Preserve each chat's messages and source links.
-   Never disable chat controls for lack of follows; use the fixed follow-required response above.
-3. **Channels** — available catalog with follow/unfollow controls, plus followed-channel rows with last ingestion,
-   processed video count, and per-user unread count. Show requests separately with approval, processing state,
-   failure reason, and owner explanation. A "Request channel" URL input submits for approval; poll about every 15s
-   while own requests await approval or approved channels are pending. Request completion automatically follows once.
+**`/home` — Home.** One page for everyone, with section jump links. The header shows the email, the word `owner`
+when applicable, and "Switch account"; the nav shows **Home** and, for owners, **Owner (n)** where `n` is the attention
+count. Owners also see an attention card first ("2 requests waiting for review · 1 channel failed", from
+`GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the count is zero. Then:
+1. **Today's digest** — eligible followed channels only (active follows ∩ available, non-deleted); last 24h, newest
+   first, flat list with the channel as byline; shared summary, takeaways, tags, related titles filtered to eligible
+   channels, and `youtu.be` links. Items with no read receipt at fetch time are marked NEW; returning them records the
+   receipt. "Show last 7 days" widens `since`. Two empty states: with no active follows, "Follow a channel to start
+   your digest." with the available catalog and follow controls rendered inline; otherwise "Nothing new since
+   yesterday." Load `/follows` and `/channels` before `/digest` so unread counts and NEW markers agree.
+2. **Channels** — three subsections. **Followed** (`GET /follows`): processed count, unread count, last ingestion,
+   Unfollow; a followed channel that is deleted stays listed as unavailable and drops out of the digest.
+   **Available** (`GET /channels` minus follows): processed count, Follow. **Your requests** (`GET /channel-requests`):
+   channel title, id, one phrase from the derived `outcome`, owner explanation, and a "Request channel" input for a
+   `UC…` id or `/channel/UC…` URL with one line saying where to copy it. An id that is already available gets
+   "Already in the catalog" and a Follow button, not a request.
+   Poll about every 15s only while a request is awaiting review, importing, or awaiting its automatic follow.
+3. **Chats** — joins Home in M4; no placeholder before then. List/create/select independent conversations. Preserve
+   each chat's messages and source links. Never disable chat controls for lack of follows; use the fixed
+   follow-required response above.
 
 **`/channel/:id` — Channel.** Available channel header, with shared summaries newest first for followers; viewing
 marks returned summaries read for this user. Non-followers can follow an available channel. No chat input here;
 conversations live on Home. Back link to `/home`.
 
-Owner catalog management is required, but a general admin dashboard is not. Render owner controls only when `GET /me`
-returns `role: "owner"`; the management screens themselves are `TODO(owner)`.
+**`/owner` — Owner.** Owner only: users are sent back to `/home` with a note, and the API returns 403 regardless. One
+page, sections **Requests** and **Catalog**, jump links `#requests`, `#catalog`, `#attention`.
+- **Requests.** Pending oldest first: requester, channel title, id linked to its YouTube page, that id's catalog state (not in catalog,
+  pending, available, failed, deleted), "also requested by N", Approve and Reject with an optional explanation. Approve
+  is refused for a deleted channel ("restore it first"). Reviewed requests are collapsed, with reviewer, time,
+  explanation, and whether the automatic follow was delivered.
+- **Catalog.** Health strip from `GET /catalog`. **Needs attention**: failed non-deleted channels with a
+  humanized failure code, detail, latest run, and Retry; and pending non-deleted channels with no queued or running
+  run, at any age, with how long they have waited. **All channels**: state, processed/tracked episodes with no-caption
+  and failed counts, last ingested, latest run, requester count, and Retry/Delete/Restore (Delete confirms once). An
+  "Add a channel" form calls `POST /channels`. Requester count stands in for follower count, which lives only in
+  User DOs and is not shown.
+
+**`/owner/channels/:id` — Owner channel detail.** From `GET /channels/:id` (with `management`), `/episodes`,
+`/ingestion-runs`, and `/requests`: header with state, failure code and
+detail, `available_at`, lifecycle version, import count, and actions; episodes with status, attempts, failure code,
+chunk count, processed time, and summary format; runs with per-episode outcomes; requests with auto-follow state.
+Never shows any user's read or chat activity.
+
+Owner catalog management is required, but a general admin dashboard is not: `/owner` shows only what supports approve,
+reject, retry, delete, and restore. Render owner controls only when `GET /me` returns `role: "owner"`; the client's role
+is for rendering, and authorization happens per request in the Registry. Humanized copy for failure codes and request
+outcomes, wireframes, load order, and acceptance criteria are in `docs/specs/home-read-experience.md`.
 
 ## Testing
 
 Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`. Bindings come from `wrangler.jsonc`.
 Workers AI and Vectorize are not available locally in tests — wrap them behind `lib/ai.ts` / `lib/vectorize.ts`
-interfaces and inject fakes.
+interfaces and inject fakes. The same pattern already covers YouTube's feed: `lib/youtube/rss.ts` `feedFetcher(env)`
+serves canned feeds when the test-only `YOUTUBE_FEEDS_FAKE` binding is set in `vitest.config.ts`, so no test reaches
+the network. The pinned `@cloudflare/vitest-pool-workers` has no `fetchMock`, and `vi.mock` does not reach modules the
+Worker loads for `SELF` requests, so env-selected fakes are the only seam that works end to end.
 
 Tests are focused, not exhaustive. Required coverage:
 
@@ -385,7 +476,9 @@ Tests are focused, not exhaustive. Required coverage:
 - **Lifecycle and retry** — approval and first processed episode unlock availability; no-caption and technical failures
   remain distinct; failed channels require owner retry; stale run writes are rejected. Automatic-follow retries never
   reverse an unfollow. Restore preserves follows/read receipts. Test owner-only mutations and own-request visibility.
-  Add or extend these tests whenever a route or data path is introduced.
+  A request for an already-available channel is refused and creates no row; handles and ids with no feed are
+  rejected. Owner overview and channel-health counts match SQL-seeded episodes and runs. Add or extend these tests
+  whenever a route or data path is introduced.
 - **Pure functions** — chunking (token caps, overlap, edge cases: empty, one segment, very long segment),
   RSS parsing, channel URL resolution, summary JSON validation.
 - **Migrations** — a fresh DO runs all migrations idempotently; running twice is a no-op.
@@ -423,8 +516,15 @@ management, rate limiting.
 ## Open decisions (owner)
 
 - Cron cadence and times — `TODO(owner)` in `wrangler.jsonc`.
-- Owner management interface (which screens expose the owner routes) — `TODO(owner)`. Owner identification is decided:
-  `global_users.role`, seeded from the `OWNER_EMAIL` secret (see Identity model).
+- **Transcript fetch from a Cloudflare IP — not yet verified** (`TODO(owner)`, 2026-09-07). The mechanism in the
+  transcript contract passed only from a residential IP under local `wrangler dev`. Both transcript libraries evaluated
+  that day have users reporting captchas and `LOGIN_REQUIRED` from cloud IPs on the same endpoint. Before relying on
+  ingestion: `wrangler login`, then run `lib/youtube/transcript.ts` under `wrangler dev --remote` against a video with
+  manual captions, one with auto-generated only, and a bogus id. Pass = same segments as locally. If it fails, the
+  approach needs rethinking for any implementation (no proxies, per hard rule 2), so do this before building M3 on it.
+- Owner management interface — decided 2026-09-07: `/owner` and `/owner/channels/:id` as specified in the Web UI
+  section and `docs/specs/home-read-experience.md`. Owner identification: `global_users.role`, seeded from the
+  `OWNER_EMAIL` secret (see Identity model).
 - `compatibility_date` is capped at `2026-08-22`, the newest date the workerd bundled with the pinned
   `@cloudflare/vitest-pool-workers` accepts. Raise it together with that dependency.
 - Retention: keep all chats and shared/user records for now; any future retention policy requires an owner decision.

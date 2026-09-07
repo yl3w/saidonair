@@ -3,6 +3,7 @@
 **Product:** Multi-User Personal Media Digest Assistant
 **Status:** v3 — shared catalog, owner approval, per-user follows and multiple chats
 **Companion:** `AGENTS.md` is the engineering source of truth and overrides this document where they disagree.
+The Home and Owner screens are specified in detail in `docs/specs/home-read-experience.md` (decided 2026-09-07).
 **Implementation status:** This document defines the target requirements and logical schema, not completed features.
 
 ## 1. Summary
@@ -38,7 +39,7 @@ email delivery, rich media, mobile apps, rate limiting, and general admin dashbo
   channels. Users can submit requests, follow available channels, and unfollow their own follows.
 - The owner is the identity with `role = 'owner'` in the Registry's `global_users`, seeded from the `OWNER_EMAIL`
   secret each time the Registry DO starts (promote only, never demote). Ordinary user identity never implicitly
-  authorizes owner actions; Registry methods verify the role. The management interface remains `TODO(owner)`.
+  authorizes owner actions; Registry methods verify the role. The management interface is the Owner screens in §7.
   This does not introduce authentication.
 - Chats, preferences, follow state, and read receipts are private to the User DO. Global identity and approval requests
   live in the Registry; users see only their own requests, while the owner can review all requests.
@@ -47,8 +48,9 @@ email delivery, rich media, mobile apps, rate limiting, and general admin dashbo
 
 ```text
 Cloudflare Pages: Vite + Preact + TypeScript
-    Account → Home (catalog/follows · digest · chat list/conversation · own requests)
+    Account → Home (owner attention card · digest · followed/available/requested channels · chats in M4)
                  → Channel details
+                 → Owner (request review · catalog health) → Owner channel detail
                          |
               Hono Worker + X-User-Email
                          |
@@ -91,11 +93,21 @@ validated through DO methods. There are no cross-DO SQL joins or atomic transact
 
 ### 4.1 Catalog and requests
 
-- Accept `@handle`, `/channel/UC…`, and `/c/…` URLs and resolve them to a canonical YouTube channel ID.
-- A request retains requester identity, submitted URL, canonical channel ID, approval/rejection status, review time,
-  reviewer, and an optional owner explanation. One request per user/channel; several users may request the same channel.
+- Users supply the channel id, a bare `UC…` id or any URL containing `/channel/UC…`, copied from the channel's About
+  dialog (Share channel, then Copy channel ID). `@handle` and `/c/…` URLs are rejected with those instructions; there
+  is no handle resolution and the YouTube Data API is not used. The id is verified by fetching its RSS feed, which
+  also supplies the channel title stored on the request.
+- A request for a channel that is already available and not deleted is refused with a follow hint and creates no
+  request; the user follows it directly. Pending, failed, and deleted channels can still be requested.
+- A request retains requester identity, submitted input, canonical channel ID, channel title, approval/rejection
+  status, review time, reviewer, and an optional owner explanation. One request per user/channel; several users may
+  request the same channel.
+- Creating a channel by approval uses the title stored on the request; owner configuration verifies the id against
+  its RSS feed and uses the feed title. The owner may override either. If the fetch fails and no title was given, the
+  action is rejected so the interface can ask for a title.
 - A request does not configure a catalog entry before approval. Owner approval creates or reuses one global channel
-  and starts initial ingestion when needed; multiple approvals never duplicate channel processing.
+  and starts initial ingestion when needed; multiple approvals never duplicate channel processing. Approval is refused
+  while the channel is deleted; the owner restores it first.
 - Only `available`, non-deleted channels appear in the followable catalog. Users see their requests separately,
   combining approval status with any approved channel's processing status and failure reason.
 - Every approved requester is automatically followed once the channel is available. A failed initial import leaves
@@ -127,6 +139,9 @@ Channel processing states are `pending`, `available`, and `failed`. `deleted_at`
 - Cron selects available, non-deleted catalog channels independently of users and follower count. Cadence is undecided.
 - Persist each run and its exact episode selection/outcomes. At most one run per channel can be queued or running.
   Each RSS, transcript, AI, and Vectorize call has its own retryable Workflow step.
+- Transcripts come from YouTube's InnerTube player response, requested as a mobile client, and the caption track it
+  advertises, fetched as JSON. This is our own code, not a library (decided 2026-09-07). A playable video with no
+  caption tracks is "no transcript"; a bot check or any other failure is a technical failure, kept distinct.
 - Reuse persisted progress and deterministic vector IDs. One canonical stored copy does not imply external API calls
   can execute exactly once under retries. Do not repeat completed ingestion just because another user follows.
 - Channel deletion and owner retry increment `lifecycle_version`. Run writes must match that version; cancel/fence
@@ -188,7 +203,7 @@ Other fields are `TEXT`; `_json` columns contain validated JSON text. `PK` and `
 |---|---|---|
 | `global_users` | `email`, `role DEFAULT 'user'`, `last_seen_at` | PK `email`, normalized |
 | `channels` | `channel_id`, `title`, `canonical_url`, `status`, `initial_import_count DEFAULT 5`, `failure_code?`, `failure_detail?`, `available_at?`, `last_checked_at?`, `last_ingested_at?`, `deleted_at?`, `lifecycle_version DEFAULT 1`, `updated_at` | PK `channel_id` (YouTube `UC…` ID) |
-| `channel_requests` | `request_id`, `user_email`, `youtube_channel_id`, `submitted_url`, `status`, `reviewed_at?`, `reviewed_by_email?`, `owner_explanation?`, `approved_channel_id?`, `auto_follow_completed_at?`, `updated_at` | PK `request_id`; unique `(user_email, youtube_channel_id)`; FKs for requester/reviewer to `global_users.email` and approved channel to `channels.channel_id` |
+| `channel_requests` | `request_id`, `user_email`, `youtube_channel_id`, `submitted_url`, `channel_title?`, `status`, `reviewed_at?`, `reviewed_by_email?`, `owner_explanation?`, `approved_channel_id?`, `auto_follow_completed_at?`, `updated_at` | PK `request_id`; unique `(user_email, youtube_channel_id)`; FKs for requester/reviewer to `global_users.email` and approved channel to `channels.channel_id` |
 | `episodes` | `video_id`, `channel_id`, `title`, `published_at`, `status`, `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, `transcript_checked_at?`, `chunk_count?`, `vectorized_at?`, `processed_at?`, `updated_at` | PK `video_id`; FK `channel_id → channels.channel_id` |
 | `episode_summaries` | `video_id`, `format`, `executive_summary?`, `takeaways_json?`, `topic_tags_json?`, `raw_text?`, `related_video_ids_json`, `model`, `prompt_version` | PK/FK `video_id → episodes.video_id`; `prompt_version` is a TEXT identifier |
 | `ingestion_runs` | `run_id`, `channel_id`, `workflow_id`, `kind`, `status`, `lifecycle_version`, `episode_limit?`, `started_at?`, `finished_at?`, `failure_code?`, `failure_detail?` | PK `run_id`; unique `workflow_id`; FK `channel_id → channels.channel_id` |
@@ -277,15 +292,32 @@ Use `CHECK` constraints for these enums:
 
 - **Account `/`:** "Who is this for?" email input and recent local emails. Selected accounts go to `/home`;
   "Switch account" remains visible elsewhere.
-- **Home `/home`:** first-time users are presented with the available catalog to follow. Show a digest from eligible
-  follows, a chat list with create/select and a selected conversation, followed channels with processing/counts, and
-  available catalog follow controls. Show own requests separately, including owner explanations and processing reasons.
-  A "Request channel" URL input requests approval. Poll about every 15 seconds while own requests await approval or
-  their approved channels are pending. Lack of follows never disables chat controls.
+- **Home `/home`:** one page for everyone. Owners see an attention card first (pending requests, failed channels,
+  stuck pending channels) linking to the Owner page; users never see it. Then the digest from eligible follows (last
+  24 hours, newest first, NEW markers for items with no prior read receipt, "Show last 7 days"), and channels in three
+  subsections: followed (processed count, unread count, last ingestion, unfollow; deleted channels stay listed as
+  unavailable), available (follow), and own requests with channel title, a derived outcome phrase, owner explanation,
+  and a "Request channel" input for the `UC…` channel id with a line saying where to copy it. An id that is already
+  available offers Follow instead of creating a request.
+  Poll about every 15 seconds only while a request is awaiting review, importing, or awaiting its automatic follow.
+  Chats join Home in M4; lack of follows never disables chat controls.
 - **Channel `/channel/:id`:** available channel header; follow control for non-followers; recent shared summaries and
   per-user read status for followers. No per-channel chat input. Back link to Home.
-- Digest empty state: "Nothing new since yesterday." Chats display plain text with preserved newlines and source links.
-- Owner management is required, but the concrete management interface remains `TODO(owner)`.
+- **Owner `/owner`:** owner only. Request review: pending requests oldest first with requester, channel title,
+  id, that id's catalog state, approve and reject with optional explanation; reviewed requests collapsed. Catalog
+  health: counts by state, episodes processed over tracked, active runs, last successful ingestion; a needs-attention
+  list of failed channels (humanized reason, latest run, retry) and pending channels with no queued or running run;
+  an all-channels table with processed and failed episode counts, last ingestion, latest run, requester count, and
+  retry, delete, restore; an add-channel form. Requester count stands in for follower count, which lives only in
+  User DOs and is not shown.
+- **Owner channel detail `/owner/channels/:id`:** state, failure, lifecycle version, import count; episodes with
+  status, attempts, failure code, and summary format; ingestion runs with per-episode outcomes; requests with
+  automatic-follow state. Never shows any user's read or chat activity.
+- Digest empty states: "Follow a channel to start your digest." with the available catalog inline when the reader has
+  no active follows; otherwise "Nothing new since yesterday." Chats display plain text with preserved newlines and
+  source links.
+- Owner management is limited to what supports approve, reject, retry, delete, and restore; there is no general
+  admin dashboard. Routing is history mode. The owner label is "Owner" throughout.
 
 ### Target resource contract
 
@@ -293,24 +325,32 @@ All endpoints except `/health` require `X-User-Email`, return 400 for missing/ma
 Owner endpoints additionally require `role = 'owner'`. Resolve chats only inside the caller's User DO. Shared request/response
 types live in `packages/shared`; the web fetch wrapper remains the sole web `fetch` caller.
 
-| Method and path | Purpose |
-|---|---|
-| `GET /me` | Caller's normalized email and role |
-| `POST /chats` / `GET /chats` | Create an empty chat / list own chats |
-| `GET /chats/:id/messages?limit=50` | Selected chat history with citation snapshots |
-| `POST /chats/:id/messages` `{ message }` | Reply and sources using current eligible follows |
-| `GET /digest?since=<iso>` | Eligible summaries, default last 24h; mark returned summaries read |
-| `GET /channels` | Available, non-deleted catalog with caller follow state |
-| `GET /channels/:id` | Available channel; recent summaries/counts for followers; mark returned summaries read |
-| `GET /follows` | Own follows with channel availability, last ingestion, processed count, and unread count |
-| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | Follow/refollow available channel / retain unfollow tombstone |
-| `POST /channel-requests` `{ url }` / `GET /channel-requests` | Submit request / list own requests with processing outcome |
-| `GET /preferences` / `PUT /preferences` | Chat preference rules |
-| `GET /owner/channels` / `POST /owner/channels` | Inspect all catalog states / configure a channel |
-| `GET /owner/channel-requests` | Review all requests |
-| `POST /owner/channel-requests/:id/approve` or `/reject` | Owner review with optional explanation |
-| `POST /owner/channels/:id/retry` | Reset failed channel to pending and start retry |
-| `DELETE /owner/channels/:id` / `POST /owner/channels/:id/restore` | Soft-delete / restore channel |
+The API is modelled on entities, not roles: there is no owner namespace and no role-named type. Owner-only
+operations are marked and return 403 to other callers; `?scope=all` widens a collection for the owner; channels
+carry a `management` block for the owner and are otherwise identical for every caller.
+
+| Method and path | Who | Purpose |
+|---|---|---|
+| `GET /me` | anyone | Caller's normalized email and role |
+| `GET /catalog` | owner | Aggregate catalog state: channels by state, stuck pending, episodes processed/tracked, active runs, pending requests, last successful ingestion |
+| `GET /channels` | anyone | Available, non-deleted channels with follow state; `?scope=all` (owner) every state including deleted, with `management` |
+| `POST /channels` `{ channelId, title?, initialImportCount? }` | owner | Create a pending channel; id verified against its RSS feed, feed title unless given; 409 if already present |
+| `GET /channels/:id` | anyone | One channel; readers only while available and non-deleted; the owner any state, with `management` |
+| `DELETE /channels/:id` / `POST /channels/:id/restore` | owner | Soft-delete / restore channel |
+| `POST /channels/:id/retry` | owner | Reset failed channel to pending and start retry |
+| `GET /channels/:id/episodes` | anyone | Episodes newest first; followers and the owner receive summaries, which are marked read for the caller; the owner also receives processing detail |
+| `GET /channels/:id/ingestion-runs` | owner | Ingestion runs with per-episode outcomes |
+| `GET /channels/:id/requests` | owner | Every requester's request for this channel |
+| `GET /follows` | anyone (own) | Own follows, each with its channel and unread count |
+| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow/refollow available channel / retain unfollow tombstone |
+| `GET /digest?since=<iso>` | anyone (own) | Eligible summaries, default last 24h, clamped to 7 days; mark returned summaries read |
+| `GET /channel-requests` | anyone (own); `?scope=all` owner | Requests with a derived `outcome` and channel state; own by default, all with `?scope=all` |
+| `POST /channel-requests` `{ channelId }` | anyone | Submit a `UC…` id or `/channel/UC…` URL (400 for handles or ids with no feed; 409 with the channel id when already available) |
+| `POST /channel-requests/:id/approve` or `/reject` | owner | Owner review with optional explanation; approve uses the request's stored title unless one is given, and is refused while the channel is deleted |
+| `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats |
+| `GET /chats/:id/messages?limit=50` | anyone (own) | Selected chat history with citation snapshots |
+| `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources using current eligible follows |
+| `GET /preferences` / `PUT /preferences` | anyone (own) | Chat preference rules |
 
 ## 8. Verification and success criteria
 
@@ -335,8 +375,8 @@ types live in `packages/shared`; the web fetch wrapper remains the sole web `fet
 ## 9. Open decisions and retention
 
 - `TODO(owner):` cron cadence and times; no chosen schedule is implied by this document.
-- `TODO(owner):` owner management interface in the trusted deployment. Identification is decided:
-  `global_users.role` seeded from the `OWNER_EMAIL` secret.
+- Owner management interface: decided 2026-09-07 as the Owner screens in §7 and `docs/specs/home-read-experience.md`.
+  Identification: `global_users.role` seeded from the `OWNER_EMAIL` secret.
 - Retain all chats and all shared/user records for now. A future retention policy needs an owner decision.
 - Whether Home's chat input should be pinned to the bottom when the digest is long remains a UI decision.
 
@@ -347,6 +387,6 @@ M1 Foundation    pnpm/Turbo/Volta scaffold · Hono · identity · Registry/User 
 M2 Catalog       owner review/configuration · channel requests · follows · catalog lifecycle
 M3 Ingestion     shared runs/episodes · RSS/transcripts · chunking · embeddings · retry fencing
 M4 Intelligence  shared summaries · unread receipts · multiple chats · filtered retrieval/citations
-M5 UI            account · available catalog/requests · digest · conversations · channel details
+M5 UI            account · home (digest · channels · requests) · owner review · catalog health · channel details · conversations
 M6 Hardening     isolation/lifecycle tests · wrangler verification · owner-decided cron · docs
 ```
