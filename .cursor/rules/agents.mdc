@@ -1,0 +1,6 @@
+---
+description: Repository-wide agent instructions
+alwaysApply: true
+---
+
+Follow the repository's root `AGENTS.md` as the single source of truth.

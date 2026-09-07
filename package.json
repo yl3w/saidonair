@@ -1,0 +1,30 @@
+{
+  "name": "media-digest-assistant",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.29.3",
+  "engines": {
+    "node": "22.x",
+    "pnpm": "10.29.3"
+  },
+  "volta": {
+    "node": "22.16.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "workerd"]
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "check": "turbo run typecheck lint test",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.12",
+    "turbo": "^2.10.12",
+    "typescript": "^6.0.3"
+  }
+}
