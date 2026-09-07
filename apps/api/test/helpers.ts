@@ -1,4 +1,5 @@
-import { env, runInDurableObject } from "cloudflare:test";
+import { runInDurableObject } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { expect } from "vitest";
 import { getRegistry } from "../src/do/registry";
 import { type RegistryErrorCode, registryErrorCode } from "../src/lib/errors";

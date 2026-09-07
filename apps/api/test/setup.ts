@@ -1,8 +1,5 @@
-import {
-  abortAllDurableObjects,
-  env,
-  runInDurableObject,
-} from "cloudflare:test";
+import { abortAllDurableObjects, runInDurableObject } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { afterEach } from "vitest";
 import { getRegistry } from "../src/do/registry";
 
