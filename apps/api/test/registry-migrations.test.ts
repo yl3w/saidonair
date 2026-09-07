@@ -36,7 +36,23 @@ describe("registry migrations", () => {
       "ingestion_run_episodes",
       "ingestion_runs",
     ]);
-    expect(versions).toEqual(["0001_init"]);
+    expect(versions).toEqual(["0001_init", "0002_channel_request_title"]);
+  });
+
+  it("adds a nullable channel_requests.channel_title in 0002", async () => {
+    const stub = registry();
+    await stub.ensureUser(ALICE);
+
+    const column = await runInDurableObject(stub, (_, state) =>
+      state.storage.sql
+        .exec<{ name: string; type: string; notnull: number }>(
+          "PRAGMA table_info(channel_requests)",
+        )
+        .toArray()
+        .find((row) => row.name === "channel_title"),
+    );
+
+    expect(column).toMatchObject({ type: "TEXT", notnull: 0 });
   });
 
   it("is a no-op when run a second time", async () => {

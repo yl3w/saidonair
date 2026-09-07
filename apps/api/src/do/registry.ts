@@ -1,16 +1,25 @@
 import { DurableObject } from "cloudflare:workers";
+import type { Catalog, EpisodeCounts } from "@media-digest/shared";
 import { registryMigrations } from "../../migrations/registry";
 import type { Env } from "../env";
 import { normalizeEmail } from "../lib/email";
-import { requireChannelId } from "../lib/youtube/ids";
+import { DomainError } from "../lib/errors";
+import { requireChannelId, requireChannelIds } from "../lib/youtube/ids";
 import { applyMigrations } from "./migrations";
+import * as catalog from "./registry/catalog";
 import * as channels from "./registry/channels";
+import * as episodes from "./registry/episodes";
 import * as requests from "./registry/requests";
+import * as runs from "./registry/runs";
 import type {
   ApproveRequestInput,
   CatalogChannel,
+  ChannelManagementRecord,
   ChannelRequest,
   ConfigureChannelInput,
+  EpisodeRecord,
+  IngestionRunRecord,
+  ListEpisodesOptions,
   RegistryUser,
   RejectRequestInput,
   SubmitRequestInput,
@@ -26,12 +35,14 @@ export function getRegistry(env: Env): DurableObjectStub<RegistryDO> {
 
 /**
  * Global Registry Durable Object: identities, the shared channel catalog, approval requests,
- * and (schema only for now) episodes, summaries, and ingestion runs.
+ * episodes with their shared summaries, and ingestion runs (reads only until M3 writes them).
  *
  * Every public method is an RPC endpoint. Owner-only methods take the acting email first and
  * verify the `owner` role here, so a route bug can never grant catalog management to a user.
- * Methods are synchronous: DO input gates make each call atomic against other callers, and
- * multi-statement writes are additionally wrapped in `transactionSync`.
+ * Read methods that any caller may use are scoped by the channel ids the caller passes; the
+ * routes compose them with the caller's follows. Methods are synchronous: DO input gates make
+ * each call atomic against other callers, and multi-statement writes are additionally wrapped
+ * in `transactionSync`.
  */
 export class RegistryDO extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -63,6 +74,11 @@ export class RegistryDO extends DurableObject<Env> {
 
   listAvailableChannels(): CatalogChannel[] {
     return channels.listAvailableChannels(this.#sql);
+  }
+
+  /** Any state, including deleted; used for follows, request outcomes, and channel views. */
+  listChannelsByIds(channelIds: string[]): CatalogChannel[] {
+    return channels.listChannelsByIds(this.#sql, requireChannelIds(channelIds));
   }
 
   getChannel(channelId: string): CatalogChannel | null {
@@ -104,6 +120,75 @@ export class RegistryDO extends DurableObject<Env> {
     return channels.restoreChannel(this.#sql, channelId, Date.now());
   }
 
+  /** Owner: the catalog's aggregate state for the attention card and health strip. */
+  getCatalogSummary(actorEmail: string): Catalog {
+    this.#assertOwner(actorEmail);
+    return catalog.summarize(this.#sql);
+  }
+
+  /**
+   * Owner: channels with their management facts (episode counts, latest run, requester count,
+   * stuck flag). All channels in every state by default, or just the given ids.
+   */
+  listChannelManagement(
+    actorEmail: string,
+    channelIds?: string[],
+  ): ChannelManagementRecord[] {
+    this.#assertOwner(actorEmail);
+    const selected = channelIds
+      ? channels.listChannelsByIds(this.#sql, requireChannelIds(channelIds))
+      : channels.listChannels(this.#sql);
+    return catalog.withManagement(this.#sql, selected);
+  }
+
+  // --- episodes -------------------------------------------------------------
+
+  /** Processed video ids for the given channels; routes derive counts and unread state. */
+  listProcessedVideoIds(
+    channelIds: string[],
+  ): { channelId: string; videoId: string }[] {
+    return episodes.listProcessedVideoIds(
+      this.#sql,
+      requireChannelIds(channelIds),
+    );
+  }
+
+  countEpisodesByChannel(channelIds: string[]): Record<string, EpisodeCounts> {
+    return episodes.countByChannel(this.#sql, requireChannelIds(channelIds));
+  }
+
+  /** Processed episodes with summaries since `sinceMs` in the given channels, newest first. */
+  listDigest(channelIds: string[], sinceMs: number): EpisodeRecord[] {
+    if (!Number.isFinite(sinceMs) || sinceMs < 0) {
+      throw new DomainError("INVALID_INPUT", "sinceMs must be a timestamp");
+    }
+    return episodes.listDigest(
+      this.#sql,
+      requireChannelIds(channelIds),
+      sinceMs,
+    );
+  }
+
+  /** One channel's episodes in every status, newest first; the route decides what the caller sees. */
+  listEpisodes(
+    channelId: string,
+    options: ListEpisodesOptions,
+  ): EpisodeRecord[] {
+    return episodes.listByChannel(this.#sql, requireChannelId(channelId), {
+      limit: options.limit,
+      relatedScope: requireChannelIds(options.relatedScope),
+    });
+  }
+
+  // --- ingestion runs -------------------------------------------------------
+
+  /** Owner: every run of one channel with per-episode outcomes, newest first. */
+  listRuns(actorEmail: string, channelId: string): IngestionRunRecord[] {
+    this.#assertOwner(actorEmail);
+    this.#requireChannel(channelId);
+    return runs.listByChannel(this.#sql, requireChannelId(channelId));
+  }
+
   // --- channel requests -----------------------------------------------------
 
   submitRequest(email: string, input: SubmitRequestInput): ChannelRequest {
@@ -127,14 +212,23 @@ export class RegistryDO extends DurableObject<Env> {
     return requests.listAllRequests(this.#sql);
   }
 
+  /** Owner: every requester's request for one channel, newest first. */
+  listRequestsForChannel(
+    actorEmail: string,
+    channelId: string,
+  ): ChannelRequest[] {
+    this.#assertOwner(actorEmail);
+    return requests.listByChannel(this.#sql, requireChannelId(channelId));
+  }
+
   /**
-   * Owner: approve a pending request, creating or reusing the shared channel.
-   * `channelCreated` signals that initial ingestion should be started by the caller.
+   * Owner: approve a pending request, creating or reusing the shared channel; refused while
+   * the channel is deleted. `channelCreated` signals that initial ingestion should start.
    */
   approveRequest(
     actorEmail: string,
     requestId: string,
-    input: ApproveRequestInput,
+    input: ApproveRequestInput = {},
   ): {
     request: ChannelRequest;
     channel: CatalogChannel;
@@ -182,6 +276,12 @@ export class RegistryDO extends DurableObject<Env> {
     const email = users.requireEmail(actorEmail);
     users.assertOwner(this.#sql, email);
     return email;
+  }
+
+  #requireChannel(channelId: string): CatalogChannel {
+    const channel = channels.getChannel(this.#sql, requireChannelId(channelId));
+    if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
+    return channel;
   }
 
   #seedOwner(): void {

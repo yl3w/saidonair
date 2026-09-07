@@ -1,5 +1,6 @@
 import type { ChannelFailureCode, ChannelStatus } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
+import { chunk, placeholders } from "../../lib/sql";
 import { requireChannelId } from "../../lib/youtube/ids";
 import type { CatalogChannel, ConfigureChannelInput } from "./types";
 
@@ -49,6 +50,28 @@ export function listChannels(sql: SqlStorage): CatalogChannel[] {
     )
     .toArray()
     .map(toChannel);
+}
+
+/** Channels by id in any state, including deleted; ids that do not exist are simply absent. */
+export function listChannelsByIds(
+  sql: SqlStorage,
+  channelIds: readonly string[],
+): CatalogChannel[] {
+  const found: CatalogChannel[] = [];
+  for (const batch of chunk(channelIds)) {
+    for (const row of sql.exec<ChannelRow>(
+      `SELECT ${CHANNEL_COLUMNS} FROM channels
+       WHERE channel_id IN (${placeholders(batch.length)})`,
+      ...batch,
+    )) {
+      found.push(toChannel(row));
+    }
+  }
+  return found.sort(
+    (a, b) =>
+      a.title.localeCompare(b.title, undefined, { sensitivity: "base" }) ||
+      a.channelId.localeCompare(b.channelId),
+  );
 }
 
 /** The followable catalog: available and not deleted. */
