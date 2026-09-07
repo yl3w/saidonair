@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import type { AppEnv } from "./env";
 import { onError } from "./middleware/errors";
 import { requireIdentity } from "./middleware/user";
+import { catalogRoutes } from "./routes/catalog";
+import { channelRoutes } from "./routes/channels";
 import { meRoutes } from "./routes/me";
 
 // Durable Object classes must be exported from the Worker entry.
@@ -19,8 +21,11 @@ app.get("/health", (context) =>
   context.json<HealthResponse>({ service: "api", status: "ok" }),
 );
 
-// Everything below requires X-User-Email.
+// Everything below requires X-User-Email. Routes are named after entities; owner-only
+// operations carry `requireOwner` themselves (AGENTS.md → API shape).
 app.use("*", requireIdentity);
 app.route("/me", meRoutes);
+app.route("/catalog", catalogRoutes);
+app.route("/channels", channelRoutes);
 
 export default app;
