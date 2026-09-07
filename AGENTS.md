@@ -66,11 +66,13 @@ Toolchain pinning:
 │   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
 │   │   │   ├── do/registry/          # Registry store modules: users, channels, requests, types
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
-│   │   │   ├── do/user.ts            # Per-user Durable Object
+│   │   │   ├── do/user.ts            # Per-user Durable Object (RPC facade)
+│   │   │   ├── do/user/              # User store modules: follows, reads, chats, preferences, types
 │   │   │   ├── workflows/ingest.ts   # channel ingestion Workflow
-│   │   │   ├── lib/youtube/          # rss.ts, transcript.ts (see contract below)
+│   │   │   ├── lib/youtube/          # ids.ts (channel/video id validation), rss.ts, transcript.ts (see contract below)
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
-│   │   │   ├── lib/errors.ts         # RegistryError + code recovery across RPC
+│   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC
+│   │   │   ├── lib/sql.ts            # bound-parameter chunking for DO SQLite
 │   │   │   ├── lib/chunk.ts          # transcript chunking (pure)
 │   │   │   ├── lib/ai.ts             # Workers AI wrappers: embed, summarize, chat
 │   │   │   ├── lib/vectorize.ts      # namespaced upsert/query helpers
@@ -183,6 +185,8 @@ The agreed logical schema, keys, and indexes are in `docs/PRD.md` §5. Implement
   `summary_reads`, `chats`, `chat_messages`, `chat_message_sources`, and `user_preferences`.
 - Enforce local foreign keys and transactions. References across DOs are validated through DO methods; there are
   no cross-DO SQL joins or atomic transactions. Do not copy shared episodes or summaries into each User DO.
+- DO SQLite accepts at most 100 bound parameters per statement (verified against workerd 2026-09-07). Chunk
+  `IN (...)` lists and multi-row writes with `lib/sql.ts`; never interpolate ids into SQL instead.
 - Transcript text lives once as shared Vectorize chunk metadata, not in SQLite. Stable vector IDs make retries
   idempotent; “once” means one canonical stored copy, not a promise of exactly-once external API execution.
 - Users have zero or more independent chats. Each chat uses its own history and the user's current follows;
@@ -309,7 +313,7 @@ Target resource contract (not a claim that these routes are implemented):
 | `DELETE /owner/channels/:id` / `POST /owner/channels/:id/restore` | Soft-delete / restore the shared channel |
 
 All routes except `/health` require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require
-`role = 'owner'`, and the Registry DO re-checks it inside every owner-only method. Typed `RegistryError`s map to HTTP in
+`role = 'owner'`, and the Registry DO re-checks it inside every owner-only method. Typed `DomainError`s map to HTTP in
 `middleware/errors.ts`: `INVALID_INPUT` 400, `NOT_OWNER` 403, `NOT_FOUND` 404, `INVALID_STATE` 409. Validate chat ownership in the caller's User DO. JSON everywhere, no API HTML.
 There are no chat deletion routes and no per-channel chats.
 
@@ -372,7 +376,8 @@ Tests are focused, not exhaustive. Required coverage:
 Don't write tests for Hono plumbing, Preact components, or Workflow step ordering. `apps/web` has typecheck and lint only. Don't mock what you can run for real
 (DO storage, SQLite).
 
-Every test starts with an empty Registry: `apps/api/test/setup.ts` wipes the DO and aborts its instance after each test,
+Every test starts with an empty Registry and no User DOs: `apps/api/test/setup.ts` wipes each object and aborts the
+instances after every test,
 because the pinned pool's `reset()` does not clear SQLite-backed Durable Objects. Tests pin `OWNER_EMAIL` in
 `vitest.config.ts` (`miniflare.bindings`), overriding that value from the developer's `.dev.vars`.
 Wrangler still loads the file; other values are not explicitly overridden.
