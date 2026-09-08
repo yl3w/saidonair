@@ -139,9 +139,9 @@ Channel processing states are `pending`, `available`, and `failed`. `deleted_at`
 - Cron selects available, non-deleted catalog channels independently of users and follower count. Cadence is undecided.
 - Persist each run and its exact episode selection/outcomes. At most one run per channel can be queued or running.
   Each RSS, transcript, AI, and Vectorize call has its own retryable Workflow step.
-- Transcripts come from YouTube's InnerTube player response, requested as a mobile client, and the caption track it
-  advertises, fetched as JSON. This is our own code, not a library (decided 2026-09-07). A playable video with no
-  caption tracks is "no transcript"; a bot check or any other failure is a technical failure, kept distinct.
+- Transcripts come from DownSub's API (decided 2026-09-08; the InnerTube approach of 2026-09-07 was built, measured,
+  and dropped because YouTube bot-checks Cloudflare's egress). A playable video with no captions is "no transcript";
+  a provider error or any other failure is a technical failure, kept distinct. See AGENTS.md → Transcript contract.
 - Reuse persisted progress and deterministic vector IDs. One canonical stored copy does not imply external API calls
   can execute exactly once under retries. Do not repeat completed ingestion just because another user follows.
 - Channel deletion and owner retry increment `lifecycle_version`. Run writes must match that version; cancel/fence
