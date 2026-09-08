@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import app from "../src/index";
+import { SCALAR_CDN } from "../src/routes/docs";
 
 type Operation = {
   tags?: string[];
@@ -102,5 +103,17 @@ describe("GET /openapi.json", () => {
     }
     // Zod emits `$defs`; hono-openapi lifts them into components. A leftover ref would not resolve.
     expect(JSON.stringify(doc)).not.toContain("#/$defs/");
+  });
+});
+
+describe("GET /docs", () => {
+  it("serves the Scalar page publicly, pinned to one script version, without Scalar's proxy", async () => {
+    const response = await SELF.fetch("http://api/docs");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    const html = await response.text();
+    expect(html).toContain(SCALAR_CDN);
+    expect(html).toContain("/openapi.json");
+    expect(html).not.toContain("proxy.scalar.com");
   });
 });

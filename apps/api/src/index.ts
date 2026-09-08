@@ -12,6 +12,7 @@ import { catalogRoutes } from "./routes/catalog";
 import { channelRequestRoutes } from "./routes/channel-requests";
 import { channelRoutes } from "./routes/channels";
 import { digestRoutes } from "./routes/digest";
+import { docsPage } from "./routes/docs";
 import { followRoutes } from "./routes/follows";
 import { meRoutes } from "./routes/me";
 
@@ -44,6 +45,10 @@ app.get(
 app.get("/openapi.json", describeRoute({ hide: true }), async (context) =>
   context.json(await openApiDocument(app)),
 );
+
+// The browser test client (routes/docs.ts): this API's one HTML response, the owner's exception of
+// 2026-09-07 to "JSON everywhere".
+app.get("/docs", describeRoute({ hide: true }), docsPage);
 
 // Everything below requires X-User-Email. Routes are named after entities; owner-only
 // operations carry `requireOwner` themselves (AGENTS.md → API shape).
