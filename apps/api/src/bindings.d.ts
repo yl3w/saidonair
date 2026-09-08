@@ -10,6 +10,12 @@ declare namespace Cloudflare {
      */
     OWNER_EMAIL?: string;
     /**
+     * `vars` in wrangler.jsonc, overridable in `.dev.vars`: comma-separated browser origins allowed
+     * by CORS; `scheme://*.host` matches any subdomain (Pages previews). Unset means the local Vite
+     * origins (lib/cors.ts).
+     */
+    WEB_ORIGINS?: string;
+    /**
      * Test only (vitest.config.ts): JSON of channel id → canned feed title, or null for "no such
      * channel", served by `lib/youtube/rss.ts` feedFetcher instead of fetching YouTube. Never set
      * in `.dev.vars` or deployed.

@@ -5,6 +5,7 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import type { AppEnv } from "./env";
+import { corsMiddleware } from "./lib/cors";
 import { jsonResponse, openApiDocument } from "./lib/openapi";
 import { onError } from "./middleware/errors";
 import { requireIdentity } from "./middleware/user";
@@ -23,6 +24,10 @@ export { UserDO } from "./do/user";
 const app = new Hono<AppEnv>();
 
 app.onError(onError);
+
+// Browser clients on another origin (the Pages web app, Vite locally). First, so a preflight never
+// reaches the identity middleware. Allowed origins come from WEB_ORIGINS (lib/cors.ts).
+app.use("*", corsMiddleware);
 
 // Public. Registered before the identity middleware on purpose: Hono runs handlers in
 // registration order, so these never touch the Registry.

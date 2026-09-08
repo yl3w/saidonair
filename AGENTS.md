@@ -85,6 +85,7 @@ Toolchain pinning:
 │   │   │   ├── lib/episode-view.ts   # the one projection from the Registry episode onto the shared Episode
 │   │   │   ├── lib/validation.ts     # validate(target, schema): hono-openapi validator with the INVALID_INPUT 400 contract
 │   │   │   ├── lib/openapi.ts        # the document's fixed parts (info, tags, security) and describeRoute response helpers
+│   │   │   ├── lib/cors.ts           # browser origins allowed to call the API, from vars.WEB_ORIGINS
 │   │   │   ├── lib/ingestion.ts      # ingestion start points (log-only until M3)
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
 │   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC
@@ -191,6 +192,10 @@ Workers runtime behavior must have been exercised under `wrangler dev`, not only
 ## Identity model
 
 - Users are identified by the `X-User-Email` request header. There is **no authentication** and none should be added.
+- Browser clients on another origin (the Pages web app, Vite locally) are allowed by CORS from `WEB_ORIGINS` in
+  `wrangler.jsonc` `vars` (overridable in `.dev.vars`): comma-separated origins, `scheme://*.host` for any subdomain
+  (Pages previews). Unset means the local Vite origins. No credentials are involved, so this is hygiene, not a guard;
+  `lib/cors.ts` runs first so preflights never reach the identity middleware.
   This is trusted, personal use. Do not add login, sessions, JWTs, or Cloudflare Access unless the owner asks.
 - Middleware normalizes the email (trim, lowercase), **auto-registers unknown emails** in the Global Registry DO,
   and attaches the per-user DO stub (`env.USER_DO.idFromName(email)`) to Hono context as `c.var.user`.
@@ -412,7 +417,8 @@ There are no chat deletion routes and no per-channel chats.
   keep Zod out of the web bundle (`grep -ril zod apps/web/dist` after `pnpm build` must find nothing).
 - No UI component library, no CSS framework, no state library. One plain CSS file; `useState`/`useReducer` for state.
 - Import request/response types from `packages/shared`. `src/api.ts` is the only place `fetch` is called; it sets
-  `X-User-Email` from `account.ts` and the API base URL from `import.meta.env.VITE_API_URL`.
+  `X-User-Email` from `account.ts` and the API base URL from `import.meta.env.VITE_API_URL`. The API must list the
+  web's origin in `WEB_ORIGINS` (Identity model) or the browser blocks the calls.
 - Text only. No images, avatars, thumbnails, or rich embeds. Structured text (lists, headings) is fine.
 - Render assistant messages as plain text with newlines preserved. Linkify `youtube.com` URLs only; when a chat
   `source` has `startSec`, link to `https://youtu.be/<videoId>?t=<startSec>`.

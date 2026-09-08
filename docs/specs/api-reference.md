@@ -115,9 +115,9 @@ Telemetry: Scalar's open-source build sends nothing unless an analytics plugin i
 
 ## 8. Out of scope and follow-ups
 
-- **CORS for `apps/web`.** The API sends no CORS headers, so the Preact app on its own origin cannot call it from a
-  browser today. Unrelated to this feature (the test client is same-origin) and worth its own small change with
-  `hono/cors`. Flagged 2026-09-07.
+- **CORS for `apps/web`.** Flagged while writing this spec: the API sent no CORS headers, so the Preact app on its own
+  origin could not call it from a browser. Landed the same day, right after this feature, as `lib/cors.ts` with the
+  `WEB_ORIGINS` var (AGENTS.md → Identity model). The test client itself is same-origin and never needed it.
 - **Self-hosting Scalar.** If the pinned CDN script is ever unwanted: add `@scalar/api-reference` as a dev
   dependency of `apps/api`, copy `dist/browser/standalone.js` into an `assets` directory before `dev`/`deploy`, add
   `assets` to `wrangler.jsonc`, and point `cdn` at that path. The pinned pool references assets options, so tests should

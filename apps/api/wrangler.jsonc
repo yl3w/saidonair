@@ -8,6 +8,13 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
 
+  "vars": {
+    // Browser origins allowed to call the API (CORS): comma-separated; `scheme://*.host` matches any
+    // subdomain, for Pages previews. Not a guard: there is no authentication (AGENTS.md → Identity model).
+    // TODO(owner): add the deployed web origins, e.g. "https://<project>.pages.dev,https://*.<project>.pages.dev".
+    "WEB_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173"
+  },
+
   // `.sql` migration files are imported as strings (see migrations/registry/index.ts).
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
 
