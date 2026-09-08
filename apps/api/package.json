@@ -12,7 +12,10 @@
   },
   "dependencies": {
     "@media-digest/shared": "workspace:*",
-    "hono": "^4.13.7"
+    "@scalar/hono-api-reference": "^0.12.1",
+    "hono": "^4.13.7",
+    "hono-openapi": "^1.3.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
