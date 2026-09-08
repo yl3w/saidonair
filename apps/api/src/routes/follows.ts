@@ -1,7 +1,8 @@
-import type {
-  Follow,
-  FollowResponse,
-  FollowsResponse,
+import {
+  type Follow,
+  FollowParamsSchema,
+  type FollowResponse,
+  type FollowsResponse,
 } from "@media-digest/shared";
 import { type Context, Hono } from "hono";
 import type { CatalogChannel } from "../do/registry/types";
@@ -9,6 +10,7 @@ import type { ChannelFollow } from "../do/user/types";
 import type { AppEnv } from "../env";
 import { isAvailable, toChannel } from "../lib/channel-view";
 import { DomainError } from "../lib/errors";
+import { validate } from "../lib/validation";
 
 type Ctx = Context<AppEnv>;
 
@@ -51,8 +53,8 @@ export const followRoutes = new Hono<AppEnv>()
     return c.json<FollowsResponse>({ follows: rows });
   })
 
-  .put("/:channelId", async (c) => {
-    const channelId = c.req.param("channelId");
+  .put("/:channelId", validate("param", FollowParamsSchema), async (c) => {
+    const { channelId } = c.req.valid("param");
     const channel = await c.var.registry.getChannel(channelId);
     if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
     if (!isAvailable(channel)) {
@@ -67,8 +69,8 @@ export const followRoutes = new Hono<AppEnv>()
     });
   })
 
-  .delete("/:channelId", async (c) => {
-    const channelId = c.req.param("channelId");
+  .delete("/:channelId", validate("param", FollowParamsSchema), async (c) => {
+    const { channelId } = c.req.valid("param");
     const follow = await c.var.user.unfollow(channelId);
     const channel = await c.var.registry.getChannel(channelId);
     if (!channel) throw new DomainError("NOT_FOUND", "channel not found");

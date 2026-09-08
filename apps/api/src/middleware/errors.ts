@@ -1,8 +1,13 @@
 import type { ErrorResponse } from "@media-digest/shared";
 import type { ErrorHandler } from "hono";
+import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AppEnv } from "../env";
-import { type DomainErrorCode, domainErrorCode } from "../lib/errors";
+import {
+  DomainError,
+  type DomainErrorCode,
+  domainErrorCode,
+} from "../lib/errors";
 
 const STATUS_BY_CODE: Record<DomainErrorCode, ContentfulStatusCode> = {
   INVALID_INPUT: 400,
@@ -14,6 +19,20 @@ const STATUS_BY_CODE: Record<DomainErrorCode, ContentfulStatusCode> = {
 
 /** The single place typed Registry errors become HTTP responses. */
 export const onError: ErrorHandler<AppEnv> = (error, c) => {
+  // Hono's JSON validator raises a 400 HTTPException for a body that is not JSON. Everything else
+  // Hono raises this way is rare; it keeps its status and message, in this API's JSON shape.
+  if (error instanceof HTTPException) {
+    const failure =
+      error.status === 400
+        ? new DomainError("INVALID_INPUT", "body must be JSON")
+        : error;
+    const code = domainErrorCode(failure);
+    return c.json<ErrorResponse>(
+      code ? { error: failure.message, code } : { error: failure.message },
+      error.status as ContentfulStatusCode,
+    );
+  }
+
   const code = domainErrorCode(error);
   if (code) {
     return c.json<ErrorResponse>(

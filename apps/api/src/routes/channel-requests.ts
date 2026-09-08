@@ -1,25 +1,23 @@
-import type {
-  ApproveChannelRequestResponse,
-  ChannelAlreadyAvailableResponse,
-  ChannelRequest,
-  ChannelRequestResponse,
-  ChannelRequestsResponse,
+import {
+  ApproveChannelRequestBodySchema,
+  type ApproveChannelRequestResponse,
+  type ChannelAlreadyAvailableResponse,
+  type ChannelRequest,
+  ChannelRequestParamsSchema,
+  type ChannelRequestResponse,
+  type ChannelRequestsResponse,
+  CreateChannelRequestBodySchema,
+  RejectChannelRequestBodySchema,
+  ScopeQuerySchema,
 } from "@media-digest/shared";
 import { type Context, Hono } from "hono";
 import type { ChannelRequest as ChannelRequestRecord } from "../do/registry/types";
 import type { AppEnv } from "../env";
-import {
-  optionalPositiveInt,
-  optionalString,
-  parseScope,
-  readJsonObject,
-  readOptionalJsonObject,
-  requireString,
-} from "../lib/body";
 import { isAvailable } from "../lib/channel-view";
 import { DomainError } from "../lib/errors";
 import { requestIngestion } from "../lib/ingestion";
 import { toChannelRequest } from "../lib/outcome";
+import { validate } from "../lib/validation";
 import { extractChannelId } from "../lib/youtube/ids";
 import { feedFetcher, fetchChannelFeed } from "../lib/youtube/rss";
 import { assertOwner, requireOwner } from "../middleware/owner";
@@ -31,8 +29,8 @@ import { ownerChannel } from "./channels";
  * serves both: `outcome` for the requester's phrase, `channel.state` for the owner's decision.
  */
 export const channelRequestRoutes = new Hono<AppEnv>()
-  .get("/", async (c) => {
-    const scope = parseScope(c.req.query("scope"));
+  .get("/", validate("query", ScopeQuerySchema), async (c) => {
+    const { scope } = c.req.valid("query");
     const requests =
       scope === "all"
         ? await c.var.registry.listAllRequests(assertOwner(c))
@@ -42,9 +40,8 @@ export const channelRequestRoutes = new Hono<AppEnv>()
     });
   })
 
-  .post("/", async (c) => {
-    const body = await readJsonObject(c);
-    const submitted = requireString(body, "channelId").trim();
+  .post("/", validate("json", CreateChannelRequestBodySchema), async (c) => {
+    const submitted = c.req.valid("json").channelId;
     const channelId = extractChannelId(submitted);
 
     // Nobody should request what they can already follow (decision 6).
@@ -75,40 +72,47 @@ export const channelRequestRoutes = new Hono<AppEnv>()
     );
   })
 
-  .post("/:id/approve", requireOwner, async (c) => {
-    const body = await readOptionalJsonObject(c);
-    const { request, channel, channelCreated } =
-      await c.var.registry.approveRequest(
-        c.var.identity.email,
-        c.req.param("id"),
-        {
-          title: optionalString(body, "title"),
-          initialImportCount: optionalPositiveInt(body, "initialImportCount"),
-          explanation: optionalString(body, "explanation"),
-        },
-      );
-    if (channelCreated) {
-      requestIngestion(channel.channelId, "request_approved");
-    }
-    return c.json<ApproveChannelRequestResponse>({
-      request: toChannelRequest(request, channel),
-      channel: await ownerChannel(c, channel.channelId),
-      channelCreated,
-    });
-  })
+  .post(
+    "/:id/approve",
+    requireOwner,
+    validate("param", ChannelRequestParamsSchema),
+    validate("json", ApproveChannelRequestBodySchema),
+    async (c) => {
+      const { title, initialImportCount, explanation } = c.req.valid("json");
+      const { request, channel, channelCreated } =
+        await c.var.registry.approveRequest(
+          c.var.identity.email,
+          c.req.valid("param").id,
+          { title, initialImportCount, explanation },
+        );
+      if (channelCreated) {
+        requestIngestion(channel.channelId, "request_approved");
+      }
+      return c.json<ApproveChannelRequestResponse>({
+        request: toChannelRequest(request, channel),
+        channel: await ownerChannel(c, channel.channelId),
+        channelCreated,
+      });
+    },
+  )
 
-  .post("/:id/reject", requireOwner, async (c) => {
-    const body = await readOptionalJsonObject(c);
-    const request = await c.var.registry.rejectRequest(
-      c.var.identity.email,
-      c.req.param("id"),
-      { explanation: optionalString(body, "explanation") },
-    );
-    const channel = await c.var.registry.getChannel(request.youtubeChannelId);
-    return c.json<ChannelRequestResponse>({
-      request: toChannelRequest(request, channel),
-    });
-  });
+  .post(
+    "/:id/reject",
+    requireOwner,
+    validate("param", ChannelRequestParamsSchema),
+    validate("json", RejectChannelRequestBodySchema),
+    async (c) => {
+      const request = await c.var.registry.rejectRequest(
+        c.var.identity.email,
+        c.req.valid("param").id,
+        { explanation: c.req.valid("json").explanation },
+      );
+      const channel = await c.var.registry.getChannel(request.youtubeChannelId);
+      return c.json<ChannelRequestResponse>({
+        request: toChannelRequest(request, channel),
+      });
+    },
+  );
 
 /** Joins each request to its channel's current state in one Registry call. */
 async function withChannelState(

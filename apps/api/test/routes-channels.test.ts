@@ -197,9 +197,19 @@ describe("channel and catalog routes", () => {
     expect(titled.status).toBe(201);
     expect((titled.json.channel as Json).title).toBe("Given");
 
-    expect((await call(OWNER, "POST", "/channels", { nope: 1 })).status).toBe(
-      400,
-    );
+    const unnamed = await call(OWNER, "POST", "/channels", { nope: 1 });
+    expect(unnamed.status).toBe(400);
+    expect(unnamed.json).toMatchObject({ code: "INVALID_INPUT" });
+    expect(String(unnamed.json.error)).toContain("channelId");
+
+    // Not JSON at all: Hono's validator raises an HTTPException that must keep this API's 400 shape.
+    const malformed = await SELF.fetch("http://api/channels", {
+      method: "POST",
+      headers: { "X-User-Email": OWNER, "Content-Type": "application/json" },
+      body: "not json",
+    });
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toMatchObject({ code: "INVALID_INPUT" });
     expect(
       (
         await call(OWNER, "POST", "/channels", {
