@@ -3,21 +3,280 @@
   background: #faf9f6;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   line-height: 1.5;
+  font-size: 15px;
 }
 
 body {
   margin: 0;
 }
 
+a {
+  color: #1a4fa0;
+}
+
 main {
   width: min(42rem, calc(100% - 2rem));
-  margin: 4rem auto;
+  margin: 0 auto 4rem;
+}
+
+/* Owner pages carry tables; give them room, but the page itself never scrolls sideways. */
+main.wide {
+  width: min(64rem, calc(100% - 2rem));
 }
 
 h1 {
-  margin-bottom: 0.5rem;
+  font-size: 1.4rem;
+  margin: 1.5rem 0 0.25rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 2rem 0 0.5rem;
+  border-bottom: 1px solid #ddd8cc;
+  padding-bottom: 0.25rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.4rem;
 }
 
 p {
-  margin-top: 0;
+  margin: 0.4rem 0;
+}
+
+ul {
+  padding-left: 1.2rem;
+}
+
+/* header + nav */
+header.site {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #ddd8cc;
+}
+
+header.site .brand {
+  font-weight: 700;
+}
+
+header.site .who {
+  color: #555;
+}
+
+nav.primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+nav.primary a[aria-current="page"] {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+nav.sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: #555;
+  margin: 0.5rem 0 0;
+}
+
+/* pieces */
+.card {
+  border: 1px solid #c9c2b2;
+  background: #fff;
+  padding: 0.6rem 0.8rem;
+  margin: 1rem 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.note {
+  background: #fff7d6;
+  border: 1px solid #e6d89a;
+  padding: 0.4rem 0.8rem;
+  margin: 0.75rem 0;
+}
+
+.error {
+  color: #a0281a;
+}
+
+.muted {
+  color: #777;
+}
+
+.tag {
+  font-size: 0.85em;
+  color: #555;
+  margin-right: 0.5rem;
+}
+
+.new {
+  font-size: 0.75em;
+  font-weight: 700;
+  color: #fff;
+  background: #1a4fa0;
+  padding: 0 0.35em;
+  margin-right: 0.5em;
+  vertical-align: middle;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px dotted #ddd8cc;
+  flex-wrap: wrap;
+}
+
+.row .grow {
+  flex: 1 1 auto;
+}
+
+.row .meta {
+  color: #555;
+  font-size: 0.9em;
+}
+
+.episode {
+  padding: 0.75rem 0;
+  border-bottom: 1px dotted #ddd8cc;
+}
+
+.episode .byline {
+  color: #555;
+  font-size: 0.9em;
+}
+
+.episode pre {
+  white-space: pre-wrap;
+  font: inherit;
+  margin: 0.4rem 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+button {
+  font: inherit;
+  padding: 0.15rem 0.6rem;
+  background: #fff;
+  border: 1px solid #888;
+  cursor: pointer;
+}
+
+button:disabled {
+  color: #999;
+  border-color: #ccc;
+  cursor: default;
+}
+
+button.danger {
+  border-color: #a0281a;
+  color: #a0281a;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"] {
+  font: inherit;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #888;
+  background: #fff;
+}
+
+form.inline {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+
+form.inline input[type="text"],
+form.inline input[type="email"] {
+  flex: 1 1 18rem;
+}
+
+.help {
+  color: #555;
+  font-size: 0.9em;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92em;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.3rem 0.6rem 0.3rem 0;
+  border-bottom: 1px dotted #ddd8cc;
+  white-space: nowrap;
+}
+
+th {
+  color: #555;
+  font-weight: 600;
+}
+
+td.wrap {
+  white-space: normal;
+}
+
+details {
+  margin: 0.5rem 0;
+}
+
+summary {
+  cursor: pointer;
+}
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  padding: 0.5rem 0;
+  color: #333;
+}
+
+.strip button {
+  border: none;
+  padding: 0;
+  background: none;
+  color: #1a4fa0;
+  text-decoration: underline;
+}
+
+.unavailable {
+  color: #888;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
 }
