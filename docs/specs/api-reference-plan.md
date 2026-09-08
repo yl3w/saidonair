@@ -2,8 +2,10 @@
 
 **Implements:** `docs/specs/api-reference.md` (the spec) under the rules in `AGENTS.md`.
 **Written:** 2026-09-07, against commit `82a4557`.
-**Status:** proposed. Starts once the owner approves the three dependencies in spec §4. Plan decisions are marked
-**plan decision**; the owner can veto any of them before the step starts.
+**Status:** complete 2026-09-07, five commits on `feat/api-reference`, `pnpm check` green after each (21 test files,
+100 tests at the end). Plan decisions were marked **plan decision** and none were vetoed. Two edge-case changes worth
+knowing from Step 2: an empty `?limit=` or `?since=` is now a 400 (it used to read as absent), and `null` for an optional
+body field is now a 400 (it used to read as absent). Neither the web app nor any test sends those.
 **Shape:** five steps, each one commit, each ending with `pnpm check` green. Steps 1 and 2 change no HTTP behaviour
 except the error mapping in 2.3. Step 3 adds `/openapi.json`. Step 4 adds `/docs`. Step 5 is documentation. After
 any step the branch can be merged and left alone.
@@ -115,4 +117,23 @@ open `http://127.0.0.1:8787/docs`, enter an email in the auth field, run `GET /m
 
 ## Walkthrough record
 
-_Filled in at Step 4/5._
+`pnpm dev` (wrangler dev on 127.0.0.1:8787, the developer's `.dev.vars`), 2026-09-07, with `curl`:
+
+| Request | Result |
+|---|---|
+| `GET /health` (no header) | 200 `{"service":"api","status":"ok"}` |
+| `GET /docs` (no header) | 200 `text/html; charset=UTF-8`, `<title>Media Digest API</title>`, one `<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.68.0">`, zero occurrences of `proxy.scalar.com` |
+| `GET /openapi.json` (no header) | 200 `application/json`, 57 495 bytes, `openapi: 3.1.0`, 16 paths (`/catalog`, `/channel-requests`, `/channel-requests/{id}/approve`, `/channel-requests/{id}/reject`, `/channels`, `/channels/{id}`, `/channels/{id}/episodes`, `/channels/{id}/ingestion-runs`, `/channels/{id}/requests`, `/channels/{id}/restore`, `/channels/{id}/retry`, `/digest`, `/follows`, `/follows/{channelId}`, `/health`, `/me`), 24 component schemas, global `security: [{ userEmail: [] }]`, `/health` with `security: []`, `/docs` and `/openapi.json` absent, `POST /channels` responses 201/400/403/409 |
+| `POST /channel-requests` `{"channelId":"@veritasium"}` | 400 `INVALID_INPUT: not a channel id or /channel/UC… URL; paste the channel id: … Copy channel ID` |
+| `POST /channel-requests`, body `not json` | 400 `INVALID_INPUT: body must be JSON` |
+| `POST /channel-requests` `{}` | 400 `INVALID_INPUT: channelId Invalid input: expected string, received undefined` |
+| `GET /channels?scope=bogus` | 400 `INVALID_INPUT: scope Invalid input: expected "all"` |
+| `GET /digest?since=yesterday` | 400 `INVALID_INPUT: since must be an ISO 8601 timestamp` |
+| `GET /me` (no header) | 400 `X-User-Email header is missing or malformed` |
+
+Owner-only routes answered 403 `NOT_OWNER` to the probe email before validation ran, because the local `.dev.vars`
+owner is not the test email and `requireOwner` precedes `validate`, as planned.
+
+**Browser leg (owner):** open `http://127.0.0.1:8787/docs`, enter an email in the auth field, run `GET /me`,
+`GET /channels`, and `POST /channel-requests` with `@veritasium`; the network tab should show requests to
+`127.0.0.1:8787` only.

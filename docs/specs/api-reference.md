@@ -1,8 +1,9 @@
 # Feature spec — API reference and browser test client
 
 **Written:** 2026-09-07, against commit `82a4557`.
-**Status:** proposed. Waiting on the owner's approval of the dependencies in §4; the plan decisions are in
-`docs/specs/api-reference-plan.md` and can be vetoed before their step starts.
+**Status:** implemented 2026-09-07 on branch `feat/api-reference`, dependencies in §4 approved by the owner the same
+day. `pnpm check` green (21 test files, 100 tests). The `curl` leg of §9.6 is recorded in the plan; the browser leg is
+the owner's to run.
 **Owner decisions already made (2026-09-07):** code-first (the document is generated from the code, never
 hand-written), and the test client is served by the API itself as the one exception to "JSON everywhere, no API HTML".
 

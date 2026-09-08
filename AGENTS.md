@@ -55,7 +55,7 @@ Toolchain pinning:
 ├── CLAUDE.md                 # pointer to AGENTS.md
 ├── .cursor/rules/            # pointer to AGENTS.md
 ├── docs/PRD.md
-├── docs/specs/               # accepted feature specs; home-read-experience.md is the Home and Owner UX, -plan.md its two-phase implementation plan
+├── docs/specs/               # accepted feature specs with their -plan.md: home-read-experience (Home and Owner UX), api-reference (OpenAPI + Scalar)
 ├── package.json              # workspace root: volta.node, packageManager, turbo scripts
 ├── pnpm-workspace.yaml
 ├── .npmrc                    # engine-strict=true
@@ -68,8 +68,9 @@ Toolchain pinning:
 │   │   │   ├── env.ts / bindings.d.ts # Hono AppEnv + hand-maintained Cloudflare.Env (no generated types)
 │   │   │   ├── middleware/user.ts    # X-User-Email → registry + per-user DO stub on context
 │   │   │   ├── middleware/owner.ts   # requireOwner, applied per owner-only operation; the Registry re-checks the role too
-│   │   │   ├── middleware/errors.ts  # typed Registry errors → HTTP status
-│   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, channel-requests, chat, ...)
+│   │   │   ├── middleware/errors.ts  # typed Registry errors (and Hono's malformed-JSON 400) → HTTP status
+│   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, channel-requests, chat, ...);
+│   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page
 │   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
 │   │   │   ├── do/registry/          # Registry store modules: users, channels, requests, episodes, runs, catalog, types
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
@@ -82,7 +83,8 @@ Toolchain pinning:
 │   │   │   ├── lib/outcome.ts        # RequestOutcome + CatalogState derivation (pure)
 │   │   │   ├── lib/channel-view.ts   # the one projection from the Registry channel onto the shared Channel (+ management)
 │   │   │   ├── lib/episode-view.ts   # the one projection from the Registry episode onto the shared Episode
-│   │   │   ├── lib/body.ts           # request body / query narrowing; every failure is INVALID_INPUT
+│   │   │   ├── lib/validation.ts     # validate(target, schema): hono-openapi validator with the INVALID_INPUT 400 contract
+│   │   │   ├── lib/openapi.ts        # the document's fixed parts (info, tags, security) and describeRoute response helpers
 │   │   │   ├── lib/ingestion.ts      # ingestion start points (log-only until M3)
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
 │   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC
@@ -110,7 +112,8 @@ Toolchain pinning:
 │       ├── index.html
 │       └── vite.config.ts
 └── packages/
-    └── shared/               # types shared by api and web (API request/response shapes)
+    └── shared/               # Zod schemas for every API request/response shape (XSchema) and the types inferred
+                              # from them (X); api validates and documents with the schemas, web imports the types only
 ```
 
 If a file doesn't exist yet, create it at the path above rather than inventing a new location.
@@ -121,6 +124,7 @@ If a file doesn't exist yet, create it at the path above rather than inventing a
 |---|---|
 | Runtime | Cloudflare Workers, `compatibility_date` pinned in `wrangler.jsonc`, `nodejs_compat` enabled |
 | HTTP | Hono |
+| Validation and API document | Zod 4 schemas in `packages/shared` (types inferred from them); `hono-openapi` generates OpenAPI 3.1 at `GET /openapi.json`; Scalar test client at `GET /docs` (see `docs/specs/api-reference.md`) |
 | State | Durable Objects with SQLite storage (`new_sqlite_classes` migration) |
 | Orchestration | Cloudflare Workflows for ingestion; Cron Trigger in the same Worker |
 | LLM | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
@@ -352,7 +356,8 @@ gets fed to the LLM at query time, so keep it exact.
 ## API shape
 
 Hono app in `apps/api/src/index.ts`. Keep routes thin; logic lives in `do/` and `lib/`.
-Request/response types live in `packages/shared` and are imported by `apps/web`.
+Request/response shapes live in `packages/shared` as Zod schemas with their types inferred beside them; `apps/api`
+validates requests and documents responses with the schemas, `apps/web` imports the types only.
 
 Target resource contract (not a claim that these routes are implemented):
 
@@ -383,11 +388,18 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 | `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources, using current eligible follows |
 | `GET /preferences` / `PUT /preferences` | anyone (own) | User's chat rules |
 
-All routes except `/health` require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require
+All routes except `/health`, `/openapi.json`, and `/docs` require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require
 `role = 'owner'`: `requireOwner` from `middleware/owner.ts` is applied to those handlers and returns 403 early from
 `c.var.identity`, and the Registry DO re-checks it inside every owner-only method, so the middleware is a convenience,
 not the guard. Typed `DomainError`s map to HTTP in
-`middleware/errors.ts`: `INVALID_INPUT` 400, `NOT_OWNER` 403, `NOT_FOUND` 404, `INVALID_STATE` 409. Validate chat ownership in the caller's User DO. JSON everywhere, no API HTML.
+`middleware/errors.ts`: `INVALID_INPUT` 400, `NOT_OWNER` 403, `NOT_FOUND` 404, `INVALID_STATE` 409. Validate chat ownership in the caller's User DO. JSON everywhere, with one exception: `GET /docs` serves the Scalar
+test client as HTML (owner decision 2026-09-07, `docs/specs/api-reference.md`).
+
+The API documents itself. Every handler carries `describeRoute` (one entity tag, a summary, the success schema, and the
+error responses it can produce via `lib/openapi.ts`) and validates body, query, and params with `validate(...)` from
+`lib/validation.ts` and the shared schemas. `GET /openapi.json` is generated from those at request time; the coverage
+test in `test/openapi.test.ts` fails when a registered route is missing from it, so a new route cannot ship
+undocumented. Scalar's script is pinned to one version in `routes/docs.ts` and its request proxy is off.
 There are no chat deletion routes and no per-channel chats.
 
 ## Web UI (`apps/web`)
@@ -396,6 +408,8 @@ There are no chat deletion routes and no per-channel chats.
   when no `404.html` is deployed, so verify deep links and reloads under `wrangler pages dev`. Section navigation
   within a page uses anchors, not client-side tab state.
   Approved dependencies for `apps/web`: `preact`, `preact-iso`, `vite`, `@preact/preset-vite`. Anything else requires approval.
+  `zod` reaches the web only through `packages/shared`, and only as types: import from shared with `import type`, and
+  keep Zod out of the web bundle (`grep -ril zod apps/web/dist` after `pnpm build` must find nothing).
 - No UI component library, no CSS framework, no state library. One plain CSS file; `useState`/`useReducer` for state.
 - Import request/response types from `packages/shared`. `src/api.ts` is the only place `fetch` is called; it sets
   `X-User-Email` from `account.ts` and the API base URL from `import.meta.env.VITE_API_URL`.
@@ -483,6 +497,9 @@ Tests are focused, not exhaustive. Required coverage:
 - **Pure functions** — chunking (token caps, overlap, edge cases: empty, one segment, very long segment),
   RSS parsing, channel URL resolution, summary JSON validation.
 - **Migrations** — a fresh DO runs all migrations idempotently; running twice is a no-op.
+- **API document** — `GET /openapi.json` lists exactly the registered routes (`test/openapi.test.ts`), and each route
+  test parses one response per shared schema with `expectShape` from `test/helpers.ts`, so the document and the
+  Worker cannot disagree about a shape.
 
 Don't write tests for Hono plumbing, Preact components, or Workflow step ordering. `apps/web` has typecheck and lint only. Don't mock what you can run for real
 (DO storage, SQLite).
@@ -497,7 +514,8 @@ Wrangler still loads the file; other values are not explicitly overridden.
 
 - Biome defaults. Run `pnpm lint -- --write` before finishing.
 - Named exports only. No default exports except where Cloudflare requires them (Worker entry, DO/Workflow classes).
-- No `any`. Use `unknown` and narrow. Validate all external input (request bodies, RSS XML, AI JSON) at the boundary.
+- No `any`. Use `unknown` and narrow. Validate all external input at the boundary: request bodies, queries, and params
+  through `lib/validation.ts` and the shared schemas; RSS XML and AI JSON by hand.
 - Errors: throw typed errors in `lib/`, convert to HTTP responses only in routes/middleware.
 - Comments explain *why*, not *what*. Keep them short.
 - Logging: `console.log` with a JSON object `{ event, email?, videoId?, ... }`. Never log transcript text or chat content.
