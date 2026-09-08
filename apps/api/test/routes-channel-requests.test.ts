@@ -1,4 +1,9 @@
 import { SELF } from "cloudflare:test";
+import {
+  ApproveChannelRequestResponseSchema,
+  ChannelRequestResponseSchema,
+  ChannelRequestsResponseSchema,
+} from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
 import {
   ALICE,
@@ -8,6 +13,7 @@ import {
   CHANNEL_C,
   CHANNEL_D,
   CHANNEL_E,
+  expectShape,
   OWNER,
   registry,
   setChannelState,
@@ -76,6 +82,7 @@ describe("channel request routes", () => {
     const created = await call(ALICE, "POST", "/channel-requests", {
       channelId: ` ${url} `,
     });
+    expectShape(ChannelRequestResponseSchema, created.json);
     expect(created.status).toBe(201);
     expect(created.json.request).toMatchObject({
       userEmail: ALICE,
@@ -124,6 +131,7 @@ describe("channel request routes", () => {
       (await call(ALICE, "GET", "/channel-requests?scope=all")).status,
     ).toBe(403);
     const all = await call(OWNER, "GET", "/channel-requests?scope=all");
+    expectShape(ChannelRequestsResponseSchema, all.json);
     expect(
       (all.json.requests as Json[]).map((r) => r.userEmail).sort(),
     ).toEqual([ALICE, BOB]);
@@ -154,6 +162,7 @@ describe("channel request routes", () => {
       "POST",
       `/channel-requests/${firstId}/approve`,
     );
+    expectShape(ApproveChannelRequestResponseSchema, approved.json);
     expect(approved.status).toBe(200);
     expect(approved.json).toMatchObject({
       channelCreated: true,
@@ -200,6 +209,7 @@ describe("channel request routes", () => {
       `/channel-requests/${thirdId}/reject`,
       { explanation: "not now" },
     );
+    expectShape(ChannelRequestResponseSchema, rejected.json);
     expect(rejected.status).toBe(200);
     expect(rejected.json.request).toMatchObject({
       status: "rejected",

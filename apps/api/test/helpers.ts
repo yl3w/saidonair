@@ -1,6 +1,7 @@
 import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { expect } from "vitest";
+import { z } from "zod";
 import { getRegistry } from "../src/do/registry";
 import { getUserDO } from "../src/do/user";
 import { type DomainErrorCode, domainErrorCode } from "../src/lib/errors";
@@ -235,4 +236,13 @@ export async function seedRun(
     }
   });
   return runId;
+}
+
+/** Asserts a response body matches the shared schema that documents it, i.e. the API does what `/docs` says. */
+export function expectShape(schema: z.ZodType, value: unknown): void {
+  const result = schema.safeParse(value);
+  expect(
+    result.success,
+    result.success ? "" : z.prettifyError(result.error),
+  ).toBe(true);
 }

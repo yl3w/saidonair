@@ -1,8 +1,14 @@
-import { type DigestResponse, SinceQuerySchema } from "@media-digest/shared";
+import {
+  type DigestResponse,
+  DigestResponseSchema,
+  SinceQuerySchema,
+} from "@media-digest/shared";
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 import type { AppEnv } from "../env";
 import { eligibleChannels } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
+import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -16,6 +22,19 @@ const MAX_WINDOW_MS = 7 * DAY_MS;
  */
 export const digestRoutes = new Hono<AppEnv>().get(
   "/",
+  describeRoute({
+    tags: ["digest"],
+    summary: "The caller's digest",
+    description:
+      "Processed episodes with summaries from eligible follows (active follows on available, non-deleted channels), newest first. The window defaults to the last 24 hours and is clamped to 7 days. Returning a summary records the caller's read receipt; `wasUnread` says which items were new.",
+    responses: {
+      200: jsonResponse(
+        DigestResponseSchema,
+        "Episodes in the window, and the window start actually used.",
+      ),
+      ...errorResponses(),
+    },
+  }),
   validate("query", SinceQuerySchema),
   async (c) => {
     const now = Date.now();

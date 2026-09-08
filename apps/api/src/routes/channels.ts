@@ -2,15 +2,21 @@ import {
   type Channel,
   ChannelParamsSchema,
   type ChannelRequestsResponse,
+  ChannelRequestsResponseSchema,
   type ChannelResponse,
+  ChannelResponseSchema,
   type ChannelsResponse,
+  ChannelsResponseSchema,
   CreateChannelBodySchema,
   type EpisodesResponse,
+  EpisodesResponseSchema,
   type IngestionRunsResponse,
+  IngestionRunsResponseSchema,
   LimitQuerySchema,
   ScopeQuerySchema,
 } from "@media-digest/shared";
 import { type Context, Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 import type { CatalogChannel } from "../do/registry/types";
 import type { AppEnv } from "../env";
 import { isAvailable, toChannel } from "../lib/channel-view";
@@ -18,6 +24,7 @@ import { eligibleChannels } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
 import { DomainError } from "../lib/errors";
 import { requestIngestion } from "../lib/ingestion";
+import { errorResponses, jsonResponse } from "../lib/openapi";
 import { toChannelRequest } from "../lib/outcome";
 import { validate } from "../lib/validation";
 import { extractChannelId } from "../lib/youtube/ids";
@@ -32,40 +39,73 @@ type Ctx = Context<AppEnv>;
  * everyone with follower-dependent detail, ingestion runs and requests for the owner.
  */
 export const channelRoutes = new Hono<AppEnv>()
-  .get("/", validate("query", ScopeQuerySchema), async (c) => {
-    const { scope } = c.req.valid("query");
-    const following = new Set(await c.var.user.activeChannelIds());
+  .get(
+    "/",
+    describeRoute({
+      tags: ["channels"],
+      summary: "List channels",
+      description:
+        "Available, non-deleted channels with `following` and `processedCount`. With `?scope=all` (owner) every state including deleted, each with `management`.",
+      responses: {
+        200: jsonResponse(
+          ChannelsResponseSchema,
+          "Channels the caller may act on.",
+        ),
+        ...errorResponses({ owner: true }),
+      },
+    }),
+    validate("query", ScopeQuerySchema),
+    async (c) => {
+      const { scope } = c.req.valid("query");
+      const following = new Set(await c.var.user.activeChannelIds());
 
-    if (scope === "all") {
-      const email = assertOwner(c);
-      const rows = await c.var.registry.listChannelManagement(email);
+      if (scope === "all") {
+        const email = assertOwner(c);
+        const rows = await c.var.registry.listChannelManagement(email);
+        return c.json<ChannelsResponse>({
+          channels: rows.map((row) =>
+            toChannel(row.channel, {
+              following: following.has(row.channel.channelId),
+              processedCount: row.episodes.processed,
+              management: row,
+            }),
+          ),
+        });
+      }
+
+      const available = await c.var.registry.listAvailableChannels();
+      const counts = await c.var.registry.countEpisodesByChannel(
+        available.map((channel) => channel.channelId),
+      );
       return c.json<ChannelsResponse>({
-        channels: rows.map((row) =>
-          toChannel(row.channel, {
-            following: following.has(row.channel.channelId),
-            processedCount: row.episodes.processed,
-            management: row,
+        channels: available.map((channel) =>
+          toChannel(channel, {
+            following: following.has(channel.channelId),
+            processedCount: counts[channel.channelId]?.processed ?? 0,
           }),
         ),
       });
-    }
-
-    const available = await c.var.registry.listAvailableChannels();
-    const counts = await c.var.registry.countEpisodesByChannel(
-      available.map((channel) => channel.channelId),
-    );
-    return c.json<ChannelsResponse>({
-      channels: available.map((channel) =>
-        toChannel(channel, {
-          following: following.has(channel.channelId),
-          processedCount: counts[channel.channelId]?.processed ?? 0,
-        }),
-      ),
-    });
-  })
+    },
+  )
 
   .post(
     "/",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Add a channel (owner)",
+      description:
+        "Creates a pending channel and starts its initial import. The id is verified against its RSS feed; the feed title is used unless one is given.",
+      responses: {
+        201: jsonResponse(
+          ChannelResponseSchema,
+          "The new pending channel, with `management`.",
+        ),
+        ...errorResponses({
+          owner: true,
+          conflict: "The id is already in the catalog",
+        }),
+      },
+    }),
     requireOwner,
     validate("json", CreateChannelBodySchema),
     async (c) => {
@@ -102,26 +142,57 @@ export const channelRoutes = new Hono<AppEnv>()
     },
   )
 
-  .get("/:id", validate("param", ChannelParamsSchema), async (c) => {
-    const channel = await visibleChannel(c, c.req.valid("param").id);
-    if (isOwner(c)) {
+  .get(
+    "/:id",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Get a channel",
+      description:
+        "Readers see a channel only while it is available and not deleted; the owner sees any state, with `management`.",
+      responses: {
+        200: jsonResponse(ChannelResponseSchema, "The channel."),
+        ...errorResponses({ notFound: true }),
+      },
+    }),
+    validate("param", ChannelParamsSchema),
+    async (c) => {
+      const channel = await visibleChannel(c, c.req.valid("param").id);
+      if (isOwner(c)) {
+        return c.json<ChannelResponse>({
+          channel: await ownerChannel(c, channel.channelId),
+        });
+      }
+      const counts = await c.var.registry.countEpisodesByChannel([
+        channel.channelId,
+      ]);
       return c.json<ChannelResponse>({
-        channel: await ownerChannel(c, channel.channelId),
+        channel: toChannel(channel, {
+          following: await isFollowing(c, channel.channelId),
+          processedCount: counts[channel.channelId]?.processed ?? 0,
+        }),
       });
-    }
-    const counts = await c.var.registry.countEpisodesByChannel([
-      channel.channelId,
-    ]);
-    return c.json<ChannelResponse>({
-      channel: toChannel(channel, {
-        following: await isFollowing(c, channel.channelId),
-        processedCount: counts[channel.channelId]?.processed ?? 0,
-      }),
-    });
-  })
+    },
+  )
 
   .delete(
     "/:id",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Delete a channel (owner)",
+      description:
+        "Soft delete: stops ingestion and excludes the channel from every reader's digest and chat. Follows, read receipts, episodes, summaries, and vectors are kept for a later restore.",
+      responses: {
+        200: jsonResponse(
+          ChannelResponseSchema,
+          "The channel, now with `deletedAt` set.",
+        ),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict: "The channel is already deleted",
+        }),
+      },
+    }),
     requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {
@@ -137,6 +208,20 @@ export const channelRoutes = new Hono<AppEnv>()
 
   .post(
     "/:id/restore",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Restore a deleted channel (owner)",
+      description:
+        "Clears `deletedAt`. Earlier active follows resume; explicit unfollows stay unfollowed.",
+      responses: {
+        200: jsonResponse(ChannelResponseSchema, "The restored channel."),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict: "The channel is not deleted",
+        }),
+      },
+    }),
     requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {
@@ -152,6 +237,20 @@ export const channelRoutes = new Hono<AppEnv>()
 
   .post(
     "/:id/retry",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Retry a failed channel (owner)",
+      description:
+        "Resets a failed channel to pending and starts a retry run, which reuses completed work and may reattempt episodes that previously had no captions.",
+      responses: {
+        200: jsonResponse(ChannelResponseSchema, "The channel, pending again."),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict: "Only failed, non-deleted channels can be retried",
+        }),
+      },
+    }),
     requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {
@@ -168,6 +267,16 @@ export const channelRoutes = new Hono<AppEnv>()
 
   .get(
     "/:id/episodes",
+    describeRoute({
+      tags: ["episodes"],
+      summary: "List a channel's episodes",
+      description:
+        "Newest first. Followers and the owner receive `summary`, `related`, and `wasUnread`, and the returned summaries are marked read for the caller. Other callers receive the episodes without summaries. The owner also receives `processing`.",
+      responses: {
+        200: jsonResponse(EpisodesResponseSchema, "Episodes, newest first."),
+        ...errorResponses({ notFound: true }),
+      },
+    }),
     validate("param", ChannelParamsSchema),
     validate("query", LimitQuerySchema),
     async (c) => {
@@ -216,6 +325,15 @@ export const channelRoutes = new Hono<AppEnv>()
 
   .get(
     "/:id/ingestion-runs",
+    describeRoute({
+      tags: ["ingestion-runs"],
+      summary: "List a channel's ingestion runs (owner)",
+      description: "Runs newest first, each with its per-episode outcomes.",
+      responses: {
+        200: jsonResponse(IngestionRunsResponseSchema, "Runs, newest first."),
+        ...errorResponses({ owner: true, notFound: true }),
+      },
+    }),
     requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {
@@ -229,6 +347,19 @@ export const channelRoutes = new Hono<AppEnv>()
 
   .get(
     "/:id/requests",
+    describeRoute({
+      tags: ["channel-requests"],
+      summary: "List requests for a channel (owner)",
+      description:
+        "Every user's requests for this id, including ids that are not in the catalog yet.",
+      responses: {
+        200: jsonResponse(
+          ChannelRequestsResponseSchema,
+          "Requests for the channel.",
+        ),
+        ...errorResponses({ owner: true }),
+      },
+    }),
     requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {

@@ -1,4 +1,12 @@
 import { SELF } from "cloudflare:test";
+import {
+  CatalogResponseSchema,
+  ChannelRequestsResponseSchema,
+  ChannelResponseSchema,
+  ChannelsResponseSchema,
+  EpisodesResponseSchema,
+  IngestionRunsResponseSchema,
+} from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
 import {
   ALICE,
@@ -8,6 +16,7 @@ import {
   CHANNEL_C,
   CHANNEL_D,
   CHANNEL_E,
+  expectShape,
   OWNER,
   registry,
   seedEpisode,
@@ -82,6 +91,7 @@ describe("channel and catalog routes", () => {
     }
 
     const catalog = await call(OWNER, "GET", "/catalog");
+    expectShape(CatalogResponseSchema, catalog.json);
     expect(catalog.status).toBe(200);
     expect(catalog.json.catalog).toMatchObject({
       channels: { available: 1, pending: 1, deleted: 1, stuckPending: 1 },
@@ -98,6 +108,7 @@ describe("channel and catalog routes", () => {
     await userDO(ALICE).follow(CHANNEL_A);
 
     const alice = await call(ALICE, "GET", "/channels");
+    expectShape(ChannelsResponseSchema, alice.json);
     expect(alice.status).toBe(200);
     expect(alice.json.channels).toEqual([
       expect.objectContaining({
@@ -111,6 +122,7 @@ describe("channel and catalog routes", () => {
     expect((alice.json.channels as Json[])[0]).not.toHaveProperty("management");
 
     const owner = await call(OWNER, "GET", "/channels?scope=all");
+    expectShape(ChannelsResponseSchema, owner.json);
     const rows = owner.json.channels as Json[];
     expect(rows.map((row) => row.channelId).sort()).toEqual(
       [CHANNEL_A, CHANNEL_B, CHANNEL_C].sort(),
@@ -153,6 +165,7 @@ describe("channel and catalog routes", () => {
     expect(a.json.channel).not.toHaveProperty("management");
 
     const b = await call(OWNER, "GET", `/channels/${CHANNEL_B}`);
+    expectShape(ChannelResponseSchema, b.json);
     expect(b.status).toBe(200);
     expect(b.json.channel).toMatchObject({
       status: "pending",
@@ -272,6 +285,7 @@ describe("channel and catalog routes", () => {
     ]);
 
     const owner = await call(OWNER, "GET", `/channels/${CHANNEL_A}/episodes`);
+    expectShape(EpisodesResponseSchema, owner.json);
     const ownerEpisodes = owner.json.episodes as Json[];
     expect(ownerEpisodes[2]).toMatchObject({
       status: "failed",
@@ -357,6 +371,7 @@ describe("channel and catalog routes", () => {
       "GET",
       `/channels/${CHANNEL_A}/ingestion-runs`,
     );
+    expectShape(IngestionRunsResponseSchema, runs.json);
     expect(runs.status).toBe(200);
     expect(runs.json.runs).toEqual([
       expect.objectContaining({
@@ -371,6 +386,7 @@ describe("channel and catalog routes", () => {
     ).toBe(404);
 
     const forB = await call(OWNER, "GET", `/channels/${CHANNEL_B}/requests`);
+    expectShape(ChannelRequestsResponseSchema, forB.json);
     expect(forB.json.requests).toEqual([
       expect.objectContaining({
         userEmail: ALICE,

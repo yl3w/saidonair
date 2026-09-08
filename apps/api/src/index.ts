@@ -1,6 +1,11 @@
-import type { HealthResponse } from "@media-digest/shared";
+import {
+  type HealthResponse,
+  HealthResponseSchema,
+} from "@media-digest/shared";
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 import type { AppEnv } from "./env";
+import { jsonResponse, openApiDocument } from "./lib/openapi";
 import { onError } from "./middleware/errors";
 import { requireIdentity } from "./middleware/user";
 import { catalogRoutes } from "./routes/catalog";
@@ -19,9 +24,25 @@ const app = new Hono<AppEnv>();
 app.onError(onError);
 
 // Public. Registered before the identity middleware on purpose: Hono runs handlers in
-// registration order, so /health never touches the Registry.
-app.get("/health", (context) =>
-  context.json<HealthResponse>({ service: "api", status: "ok" }),
+// registration order, so these never touch the Registry.
+app.get(
+  "/health",
+  describeRoute({
+    tags: ["health"],
+    summary: "Liveness",
+    description: "Answers without touching any storage.",
+    security: [],
+    responses: {
+      200: jsonResponse(HealthResponseSchema, "The service is up."),
+    },
+  }),
+  (context) => context.json<HealthResponse>({ service: "api", status: "ok" }),
+);
+
+// The API describes itself from its route definitions (docs/specs/api-reference.md). Hidden from
+// its own document; generated once per isolate.
+app.get("/openapi.json", describeRoute({ hide: true }), async (context) =>
+  context.json(await openApiDocument(app)),
 );
 
 // Everything below requires X-User-Email. Routes are named after entities; owner-only

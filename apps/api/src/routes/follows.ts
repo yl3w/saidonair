@@ -2,14 +2,18 @@ import {
   type Follow,
   FollowParamsSchema,
   type FollowResponse,
+  FollowResponseSchema,
   type FollowsResponse,
+  FollowsResponseSchema,
 } from "@media-digest/shared";
 import { type Context, Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 import type { CatalogChannel } from "../do/registry/types";
 import type { ChannelFollow } from "../do/user/types";
 import type { AppEnv } from "../env";
 import { isAvailable, toChannel } from "../lib/channel-view";
 import { DomainError } from "../lib/errors";
+import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
 
 type Ctx = Context<AppEnv>;
@@ -20,64 +24,117 @@ type Ctx = Context<AppEnv>;
  * Unread = processed episodes the caller has no read receipt for.
  */
 export const followRoutes = new Hono<AppEnv>()
-  .get("/", async (c) => {
-    const follows = await c.var.user.listFollows();
-    if (follows.length === 0) return c.json<FollowsResponse>({ follows: [] });
+  .get(
+    "/",
+    describeRoute({
+      tags: ["follows"],
+      summary: "List the caller's follows",
+      description:
+        "Active follows, each embedding its channel and carrying `unreadCount`; most recent ingestion first. A followed channel the owner has deleted stays listed as unavailable and returns when restored.",
+      responses: {
+        200: jsonResponse(
+          FollowsResponseSchema,
+          "The caller's active follows.",
+        ),
+        ...errorResponses(),
+      },
+    }),
+    async (c) => {
+      const follows = await c.var.user.listFollows();
+      if (follows.length === 0) return c.json<FollowsResponse>({ follows: [] });
 
-    const ids = follows.map((follow) => follow.channelId);
-    const channels = new Map(
-      (await c.var.registry.listChannelsByIds(ids)).map((channel) => [
-        channel.channelId,
-        channel,
-      ]),
-    );
-    const counts = await c.var.registry.countEpisodesByChannel(ids);
-    const unread = await unreadByChannel(c, ids);
+      const ids = follows.map((follow) => follow.channelId);
+      const channels = new Map(
+        (await c.var.registry.listChannelsByIds(ids)).map((channel) => [
+          channel.channelId,
+          channel,
+        ]),
+      );
+      const counts = await c.var.registry.countEpisodesByChannel(ids);
+      const unread = await unreadByChannel(c, ids);
 
-    const rows: Follow[] = [];
-    for (const follow of follows) {
-      const channel = channels.get(follow.channelId);
-      if (!channel) continue; // a follow of an id the Registry never had; nothing to show
-      rows.push(
-        toFollow(follow, channel, {
-          processedCount: counts[follow.channelId]?.processed ?? 0,
-          unreadCount: unread[follow.channelId] ?? 0,
+      const rows: Follow[] = [];
+      for (const follow of follows) {
+        const channel = channels.get(follow.channelId);
+        if (!channel) continue; // a follow of an id the Registry never had; nothing to show
+        rows.push(
+          toFollow(follow, channel, {
+            processedCount: counts[follow.channelId]?.processed ?? 0,
+            unreadCount: unread[follow.channelId] ?? 0,
+          }),
+        );
+      }
+      rows.sort(
+        (a, b) =>
+          (b.channel.lastIngestedAt ?? -1) - (a.channel.lastIngestedAt ?? -1) ||
+          a.channel.title.localeCompare(b.channel.title),
+      );
+      return c.json<FollowsResponse>({ follows: rows });
+    },
+  )
+
+  .put(
+    "/:channelId",
+    describeRoute({
+      tags: ["follows"],
+      summary: "Follow a channel",
+      description:
+        "Follow, or refollow, an available channel. Clears an earlier unfollow. Existing summaries start unread.",
+      responses: {
+        200: jsonResponse(
+          FollowResponseSchema,
+          "The follow, with its channel.",
+        ),
+        ...errorResponses({
+          notFound: true,
+          conflict: "Only available, non-deleted channels can be followed",
         }),
-      );
-    }
-    rows.sort(
-      (a, b) =>
-        (b.channel.lastIngestedAt ?? -1) - (a.channel.lastIngestedAt ?? -1) ||
-        a.channel.title.localeCompare(b.channel.title),
-    );
-    return c.json<FollowsResponse>({ follows: rows });
-  })
+      },
+    }),
+    validate("param", FollowParamsSchema),
+    async (c) => {
+      const { channelId } = c.req.valid("param");
+      const channel = await c.var.registry.getChannel(channelId);
+      if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
+      if (!isAvailable(channel)) {
+        throw new DomainError(
+          "INVALID_STATE",
+          "only available channels can be followed",
+        );
+      }
+      const follow = await c.var.user.follow(channelId);
+      return c.json<FollowResponse>({
+        follow: await followView(c, follow, channel),
+      });
+    },
+  )
 
-  .put("/:channelId", validate("param", FollowParamsSchema), async (c) => {
-    const { channelId } = c.req.valid("param");
-    const channel = await c.var.registry.getChannel(channelId);
-    if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
-    if (!isAvailable(channel)) {
-      throw new DomainError(
-        "INVALID_STATE",
-        "only available channels can be followed",
-      );
-    }
-    const follow = await c.var.user.follow(channelId);
-    return c.json<FollowResponse>({
-      follow: await followView(c, follow, channel),
-    });
-  })
-
-  .delete("/:channelId", validate("param", FollowParamsSchema), async (c) => {
-    const { channelId } = c.req.valid("param");
-    const follow = await c.var.user.unfollow(channelId);
-    const channel = await c.var.registry.getChannel(channelId);
-    if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
-    return c.json<FollowResponse>({
-      follow: await followView(c, follow, channel),
-    });
-  });
+  .delete(
+    "/:channelId",
+    describeRoute({
+      tags: ["follows"],
+      summary: "Unfollow a channel",
+      description:
+        "Records an unfollow tombstone. The catalog channel and the caller's read receipts are untouched; an explicit unfollow is never reversed by an automatic follow.",
+      responses: {
+        200: jsonResponse(
+          FollowResponseSchema,
+          "The follow, now with `unfollowedAt` set.",
+        ),
+        ...errorResponses({ notFound: true }),
+      },
+    }),
+    validate("param", FollowParamsSchema),
+    async (c) => {
+      const { channelId } = c.req.valid("param");
+      const follow = await c.var.user.unfollow(channelId);
+      const channel = await c.var.registry.getChannel(channelId);
+      if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
+      return c.json<FollowResponse>({
+        follow: await followView(c, follow, channel),
+      });
+    },
+  );
 
 async function followView(
   c: Ctx,

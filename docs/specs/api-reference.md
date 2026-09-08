@@ -129,7 +129,8 @@ Telemetry: Scalar's open-source build sends nothing unless an analytics plugin i
    Hono app registers other than `/health`, `/openapi.json`, `/docs`, and middleware, `paths[path][method]` exists
    with a success response and the shared component schema. `components.securitySchemes.userEmail` describes the
    header. Component schemas include at least `Channel`, `Episode`, `Follow`, `ChannelRequest`, `Catalog`,
-   `IngestionRun`, `ErrorResponse`.
+   `IngestionRun`. (Zod extracts the schemas a body refers to and keeps the body's own root inline, so the
+   response envelopes and `ErrorResponse` are inline, not components.)
 2. `GET /docs` without a header returns 200 `text/html` containing the pinned CDN URL and `/openapi.json`.
 3. Every existing test passes unchanged. Validation failures return `{ error, code: "INVALID_INPUT" }` with 400,
    including a body that is not JSON.

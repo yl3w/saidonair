@@ -1,4 +1,9 @@
 import { SELF } from "cloudflare:test";
+import {
+  DigestResponseSchema,
+  FollowResponseSchema,
+  FollowsResponseSchema,
+} from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
 import {
   ALICE,
@@ -7,6 +12,7 @@ import {
   CHANNEL_B,
   CHANNEL_C,
   CHANNEL_D,
+  expectShape,
   OWNER,
   registry,
   seedEpisode,
@@ -76,6 +82,7 @@ describe("follow routes", () => {
     await seedCatalog(now);
 
     const followed = await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
+    expectShape(FollowResponseSchema, followed.json);
     expect(followed.status).toBe(200);
     expect(followed.json.follow).toMatchObject({
       channelId: CHANNEL_A,
@@ -97,6 +104,7 @@ describe("follow routes", () => {
 
     expect((await call(BOB, "GET", "/follows")).json.follows).toEqual([]);
     const list = await call(ALICE, "GET", "/follows");
+    expectShape(FollowsResponseSchema, list.json);
     expect((list.json.follows as Json[]).map((f) => f.channelId)).toEqual([
       CHANNEL_A,
     ]);
@@ -155,6 +163,7 @@ describe("digest route", () => {
     await call(BOB, "PUT", `/follows/${CHANNEL_A}`);
 
     const first = await call(ALICE, "GET", "/digest");
+    expectShape(DigestResponseSchema, first.json);
     expect(first.status).toBe(200);
     expect(first.json.since).toBeGreaterThan(now - DAY - 5_000);
     const episodes = first.json.episodes as Json[];

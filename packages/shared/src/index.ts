@@ -4,8 +4,9 @@ import { z } from "zod";
  * Every API request and response shape, as Zod schemas with the TypeScript types inferred beside
  * them (`XSchema` / `X`). `apps/api` validates requests and documents responses with the schemas;
  * `apps/web` imports the types only, so Zod never enters its bundle. `.meta({ id })` names a schema as
- * an OpenAPI component; `.describe()` is the text readers see in `/docs`. Schemas that carry an id
- * must not be re-described where they are used, or the registry would hold two schemas with one id.
+ * an OpenAPI component wherever another schema refers to it (a response envelope's own root stays
+ * inline); `.describe()` is the text readers see in `/docs`. Schemas that carry an id must not be
+ * re-described where they are used, or the registry would hold two schemas with one id.
  */
 
 /** Unix time in milliseconds, as every timestamp in the API. */

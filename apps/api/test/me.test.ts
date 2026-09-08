@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
+import { MeResponseSchema } from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
-import { ALICE, OWNER } from "./helpers";
+import { ALICE, expectShape, OWNER } from "./helpers";
 
 function me(email?: string) {
   const headers: Record<string, string> =
@@ -23,7 +24,9 @@ describe("identity middleware via GET /me", () => {
   it("auto-registers and returns the normalized identity", async () => {
     const response = await me("  Alice@Example.COM ");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ email: ALICE, role: "user" });
+    const body = await response.json();
+    expectShape(MeResponseSchema, body);
+    expect(body).toEqual({ email: ALICE, role: "user" });
   });
 
   it("reports the seeded owner", async () => {
