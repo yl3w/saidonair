@@ -102,10 +102,11 @@ Toolchain pinning:
 │       │   ├── api.ts                # typed fetch wrapper; sets X-User-Email
 │       │   ├── account.ts            # selected email + recent emails in localStorage
 │       │   ├── session.tsx           # GET /me once; role is for rendering only
-│       │   ├── lib/                  # time.ts (relative times), copy.ts (failure-code and outcome phrases)
+│       │   ├── lib/                  # time.ts (relative times), copy.ts (failure-code and outcome phrases),
+│       │   │                         # use-load.ts (per-section loading/error state)
 │       │   ├── screens/              # Account.tsx, Home.tsx, Channel.tsx, Owner.tsx, OwnerChannel.tsx
-│       │   └── components/           # Nav, OwnerCard, Digest, ChannelList, Requests, RequestQueue, CatalogHealth,
-│       │                             # CatalogTable, AddChannel, Chat (M4)
+│       │   └── components/           # Nav, Time, EpisodeItem, OwnerCard, Digest, ChannelList, Requests, RequestQueue,
+│       │                             # CatalogHealth, CatalogTable, AddChannel, Chat (M4)
 │       ├── index.html
 │       └── vite.config.ts
 └── packages/

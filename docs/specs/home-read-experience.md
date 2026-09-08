@@ -600,9 +600,10 @@ enums join the existing types in `packages/shared`. Every response wraps its ent
   before the web PR merges; if Pages does not serve `index.html` for unknown paths as expected, the
   fallback is hash mode, changed in one place.
 - **Files.** Per the `AGENTS.md` layout: `main.tsx`, `api.ts` (the only `fetch` caller), `account.ts`,
-  `session.tsx`, `lib/time.ts`, `lib/copy.ts`; screens `Account`, `Home`, `Channel`, `Owner`, `OwnerChannel`;
-  components `Nav`, `OwnerCard`, `Digest`, `ChannelList`, `Requests`, `RequestQueue`, `CatalogHealth`,
-  `CatalogTable`, `AddChannel`. `components/Chat.tsx` waits for M4. Small files over large ones.
+  `session.tsx`, `lib/time.ts`, `lib/copy.ts`, `lib/use-load.ts`; screens `Account`, `Home`, `Channel`,
+  `Owner`, `OwnerChannel`; components `Nav`, `Time`, `EpisodeItem`, `OwnerCard`, `Digest`, `ChannelList`,
+  `Requests`, `RequestQueue`, `CatalogHealth`, `CatalogTable`, `AddChannel`. `components/Chat.tsx` waits for
+  M4. Small files over large ones.
 
 ## 12. Out of scope for this slice
 

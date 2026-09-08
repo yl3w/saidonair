@@ -5,6 +5,9 @@
 Revised the same day after the owner's correction that the API must be modelled on entities, not roles (spec
 decision 11); Step 1.1 was reverted and restarts from this version.
 **Status:** Phase 1 complete on 2026-09-07 (20 test files, 96 tests, walkthrough recorded in the PR notes below).
+Phase 2 built the same day: every screen in spec §5–§8, `pnpm check` green, history-mode deep links verified under
+`wrangler pages dev`. The two-account browser walkthrough (step 2.8) is the owner's to run; the agent environment
+has no browser.
 **Shape:** two phases. Phase 1 delivers the complete API with the web app untouched. Phase 2 delivers the complete
 web app against that API. Each phase ends in a state that can be merged and left alone: nothing in Phase 1 depends
 on Phase 2 existing, and Phase 2 adds no API surface.
@@ -267,7 +270,7 @@ legitimate UX grouping. Only the API is entity-shaped.
 ### Step 2.1 — Foundation  (size: M)
 
 **Files:** `src/account.ts`, `src/api.ts`, `src/main.tsx`, `src/session.tsx`, `src/components/Nav.tsx`,
-`src/lib/time.ts`, `src/lib/copy.ts`, `src/styles.css`.
+`src/components/Time.tsx`, `src/lib/time.ts`, `src/lib/copy.ts`, `src/lib/use-load.ts`, `src/styles.css`.
 
 - `account.ts`: selected email and up to five recent emails in `localStorage`, normalized (trim, lowercase) and
   shape-checked before storing; every read and write in `try/catch`, so a blocked storage still renders.
