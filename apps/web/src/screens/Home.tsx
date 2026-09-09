@@ -45,17 +45,20 @@ function HomeScreen() {
   );
 
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
-  const reloadAll = useCallback(() => {
+  // After a follow or unfollow only the lists reload. The digest follows on its own: `listsReady`
+  // drops while they load and comes back once both are ready, and that flip is what starts its one
+  // request. Reloading the digest here as well would fire it in the same render, while the lists
+  // still read "ready", and every summary it returned would be marked read before being shown.
+  const reloadLists = useCallback(() => {
     reloadFollows();
     reloadChannels();
-    reloadDigest();
-  }, [reloadFollows, reloadChannels, reloadDigest]);
+  }, [reloadFollows, reloadChannels]);
 
   async function withBusy(channelId: string, work: () => Promise<unknown>) {
     setBusy((current) => new Set(current).add(channelId));
     try {
       await work();
-      reloadAll();
+      reloadLists();
     } finally {
       setBusy((current) => {
         const next = new Set(current);
