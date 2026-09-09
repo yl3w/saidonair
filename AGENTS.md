@@ -439,7 +439,10 @@ There are no chat deletion routes and no per-channel chats.
   keep Zod out of the web bundle (`grep -ril zod apps/web/dist` after `pnpm build` must find nothing).
 - No UI component library, no CSS framework, no state library. One plain CSS file; `useState`/`useReducer` for state.
 - Import request/response types from `packages/shared`. `src/api.ts` is the only place `fetch` is called; it sets
-  `X-User-Email` from `account.ts` and the API base URL from `import.meta.env.VITE_API_URL`. The API must list the
+  `X-User-Email` from the identity `session.tsx` binds into it and the API base URL from `import.meta.env.VITE_API_URL`.
+  `account.ts` (localStorage) is read once, when the session mounts, and written when an account is selected: it is the
+  remembered default for the next page load, not the source of truth for requests. A tab sends exactly the account it
+  displays; tabs do not synchronise, so two tabs may act as two people (decision 2026-09-08). The API must list the
   web's origin in `WEB_ORIGINS` (Identity model) or the browser blocks the calls.
 - Text only. No images, avatars, thumbnails, or rich embeds. Structured text (lists, headings) is fine.
 - Render assistant messages as plain text with newlines preserved. Linkify `youtube.com` URLs only; when a chat

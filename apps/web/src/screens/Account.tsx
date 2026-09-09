@@ -1,19 +1,22 @@
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
-import { recentEmails, selectedEmail } from "../account";
+import { recentEmails } from "../account";
 import { useSession } from "../session";
 
 /** "Who is this for?" — identity selection, never sign-in (AGENTS.md → Screens). */
 export function Account() {
-  const { select } = useSession();
+  const { state, select } = useSession();
   const { route } = useLocation();
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const recent = recentEmails();
 
+  // This tab already acts for someone: the session says so, not storage, which another tab may
+  // have changed since this one loaded.
+  const selected = state.status !== "none";
   useEffect(() => {
-    if (selectedEmail() !== null) route("/home", true);
-  }, [route]);
+    if (selected) route("/home", true);
+  }, [selected, route]);
 
   function choose(raw: string) {
     if (select(raw) === null) {

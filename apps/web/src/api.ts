@@ -1,6 +1,7 @@
-// The only place the web app calls fetch (AGENTS.md → Web UI). Sets X-User-Email from the selected
-// account and the base URL from VITE_API_URL (default: local wrangler dev). One typed function per
-// operation, named after the entity it touches; every shape comes from @media-digest/shared.
+// The only place the web app calls fetch (AGENTS.md → Web UI). Sets X-User-Email from the identity
+// the session has bound (never from storage, so a tab sends exactly the account it displays) and the
+// base URL from VITE_API_URL (default: local wrangler dev). One typed function per operation, named
+// after the entity it touches; every shape comes from @media-digest/shared.
 import type {
   ApproveChannelRequestBody,
   ApproveChannelRequestResponse,
@@ -19,7 +20,6 @@ import type {
   MeResponse,
   RejectChannelRequestBody,
 } from "@media-digest/shared";
-import { selectedEmail } from "./account";
 
 const BASE_URL = (
   import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8787"
@@ -39,15 +39,26 @@ export class ApiError extends Error {
   }
 }
 
-/** Thrown before any request when no account is selected; the session guard sends the user to `/`. */
+/** Thrown before any request when no account is bound; the session guard sends the user to `/`. */
 export const NO_ACCOUNT = "NO_ACCOUNT";
+
+/**
+ * The account every request acts for. Only `SessionProvider` sets it, in the same effect that
+ * moves the session state, so what a tab displays and what it sends cannot drift apart. Another
+ * tab changing the stored selection does not reach here; storage is read once, at startup.
+ */
+let identity: string | null = null;
+
+export function bindIdentity(email: string | null): void {
+  identity = email;
+}
 
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const email = selectedEmail();
+  const email = identity;
   if (email === null) throw new ApiError(0, "no account selected", NO_ACCOUNT);
 
   const headers: Record<string, string> = { "X-User-Email": email };
