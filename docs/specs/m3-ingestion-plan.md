@@ -25,12 +25,15 @@ bindings. Step 6 is the Workflow. Steps 7–9 wire the start points, the cron ha
 **Files:** `lib/transcripts/types.ts`, `lib/transcripts/vtt.ts`, `lib/transcripts/downsub.ts`,
 `lib/transcripts/index.ts`, `bindings.d.ts`, `.dev.vars.example`, `vitest.config.ts` (`TRANSCRIPTS_FAKE`), tests.
 
-- `types.ts`: `TranscriptSource`, `TranscriptSegment`, `TranscriptError` with the `TranscriptFailure` union, and
-  `chooseTrack(tracks)` implementing the English-first rule over `{ code, auto }` pairs.
+- `types.ts`: `TranscriptSource` returning `TranscriptResult = { segments | null, durationSec | null, isLive }`,
+  `TranscriptSegment`, `TranscriptError` with the `TranscriptFailure` union, and `chooseTrack(tracks)` implementing
+  the English-first rule over `{ code, auto }` pairs, returning `null` (→ `NON_ENGLISH`) when no English track exists.
 - `vtt.ts`: pure WebVTT/SRT cue parser (the spike's `parseCues`, hardened: tag stripping, `.`/`,` millis, blank
   cues skipped). Tests: fixtures for both formats, hours field, multi-line cues, tags.
 - `downsub.ts`: `downsubSource(env, fetchImpl)`; state mapping and HTTP mapping from spec §2; VTT preferred, SRT
-  fallback if a track lacks VTT; discards `translatedSubtitles`. Tests with fixtures taken from the probe:
+  fallback if a track lacks VTT; discards `translatedSubtitles`; reports `duration` and `metadata.isLiveContent`
+  (also on the `error` state) so selection can skip Shorts and wait for streams. `remainingCredits(env)` wraps
+  `/status` for the catalog. Tests with fixtures taken from the probe:
   found, no_subtitles, error, 401/403/429, malformed body; the probe's VTT for `jNQXAC9IVRw` parses to its known 6 cues.
 - `index.ts`: `transcriptSource(env)`: `TRANSCRIPTS_FAKE` → canned (`{ [videoId]: segments | null | { reason } }`);
   else the DownSub adapter, which throws `PROVIDER_AUTH` at first use when the key is missing. The fake mirrors
@@ -59,10 +62,15 @@ overlap, the 480-token ceiling, deterministic indices.
 
 **Prompt (for approval):**
 > You summarise one episode of a YouTube channel for a reader who has not watched it. Return only JSON with three
-> fields: `executiveSummary` (at most three sentences, plain prose, no hype), `takeaways` (three to five bullet
-> strings, each one concrete claim, example, or recommendation from the episode), `topicTags` (one to eight short
-> lowercase tags). Use only what the transcript supports; do not invent names or numbers. Transcript follows, with
-> `[mm:ss]` markers.
+> fields: `executiveSummary` (at most three sentences, plain prose, no hype), `takeaways` (three to five objects
+> `{ "text", "at" }`: `text` is one concrete claim, example, or recommendation from the episode; `at` is the `[mm:ss]`
+> marker nearest to where it is said, or null), `topicTags` (one to eight short lowercase tags). Use only what the
+> transcript supports; do not invent names, numbers, or timestamps. Transcript follows, with `[mm:ss]` markers.
+
+**Long episodes — owner's answer pending.** Two implementations are ready to write; the spec's §3.2 currently says
+single-pass sampling. If the owner picks map-reduce, `summarize` becomes: one call per ~45-minute section producing a
+section summary with timestamped takeaways, then one call over the section summaries producing the final shape,
+each its own step.
 
 **Done when:** `pnpm check` green; `summarize` and `embed` called once each under `wrangler dev` with `remote: true`
 against a real transcript, output shape verified, cost noted here.
@@ -72,11 +80,17 @@ against a real transcript, output shape verified, cost noted here.
 **Files:** `do/registry/runs.ts`, `episodes.ts`, `channels.ts`, `requests.ts`, `types.ts`, `do/registry.ts`, tests.
 
 - Runs: `createRun(channelId, kind, episodeLimit)` (refuses when the channel is deleted or failed for scheduled
-  runs; returns `null` when a run is queued or running), `startRun`, `recordSelection`, `finishRun`. Run id = Workflow
-  instance id, one ULID-style string.
-- Episodes: `upsertFromFeed`, `markTranscript`, `completeEpisode`, `failEpisode`, all taking `lifecycleVersion` and
-  throwing `INVALID_STATE` on a fence mismatch or a deleted channel; `completeEpisode` writes the summary row and the
-  episode in one transaction and flips a pending channel to `available` with `available_at`.
+  runs; returns `null` when a run is queued or running), `startRun`, `recordSelection`, `finishRun` (a
+  `PROVIDER_LIMIT` outcome ends the run `failed` with that code, leaves untouched episodes `pending`, and never fails
+  the channel). Run id = Workflow instance id, one ULID-style string.
+- Channels: `NON_ENGLISH` joins the failure codes chosen by `finishRun` when every attempted episode lacked an English
+  track.
+- Episodes: `upsertFromFeed`, `markTranscript` (outcomes: captions, `no_transcript`, **not-yet** which sets
+  `transcript_checked_at` without counting an attempt, `SKIPPED_SHORT`, `NON_ENGLISH`, `LIVE_OR_UPCOMING`, failure),
+  `completeEpisode`, `failEpisode`, all taking `lifecycleVersion` and throwing `INVALID_STATE` on a fence mismatch or
+  a deleted channel; `completeEpisode` writes the summary row (takeaways as `{ text, startSec }[]`) and the episode in
+  one transaction and flips a pending channel to `available` with `available_at`. Selection treats a `pending` episode
+  with `transcript_checked_at` newer than 48 h after `published_at` as "not yet", older as `no_transcript`.
 - Channels: `failChannel(channelId, fence, code, detail)` for the end of an initial or retry run without a processed
   episode; `touchChecked`.
 - Requests: `listPendingAutoFollows(channelId)`, `ackAutoFollow(requestId)`.
@@ -116,20 +130,24 @@ starting and `pnpm check` passing (Step 0's finding decides whether tests see th
 
 `requestIngestion(env, channelId, reason)` becomes `createRun` + `INGEST_WORKFLOW.create({ id: runId, params })`,
 returning the run or `null`. Approval of a request whose channel is already available runs the auto-follow sweep
-inline. Route tests assert a run row appears (and only one) after add, approve, retry.
+inline. `GET /catalog` gains `transcripts: { remainingCredits: number | null }` from the DownSub `/status` wrapper,
+cached for five minutes per isolate and `null` when the call fails. Route tests assert a run row appears (and only
+one) after add, approve, retry, and that the catalog carries the credits field (fake source → null).
 
 ### Step 8 — Cron handler  (size: S)
 
 **Files:** `index.ts` (`scheduled`), `lib/ingestion.ts` (`startScheduledRuns(env)`), tests.
 
 Selects available, non-deleted channels without an active run and starts a `scheduled` run for each. Verified
-with `wrangler dev --test-scheduled` and `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`. `triggers.crons`
-stays empty with the `TODO(owner)`.
+with `wrangler dev --test-scheduled` and `curl "http://127.0.0.1:8787/__scheduled?cron=0+*/6+*+*+*"`.
+`triggers.crons` becomes `["0 */6 * * *"]` (owner decision 2026-09-08).
 
 ### Step 9 — Walkthrough and docs  (size: S)
 
-`wrangler dev` end to end per spec §7.2 and §7.3, recorded below; `AGENTS.md` edits from spec §8 not already
-applied; web `lib/copy.ts` phrases for the new episode codes; spec and plan status set.
+`wrangler dev` end to end per spec §7, recorded below; `AGENTS.md` edits from spec §8 not already applied; web:
+`lib/copy.ts` phrases for the new codes (`SKIPPED_SHORT`, `LIVE_OR_UPCOMING`, `NON_ENGLISH`, `PROVIDER_*`), the
+`NON_ENGLISH` channel phrase, takeaway rendering with `youtu.be/<id>?t=<startSec>` links, and the credits figure on
+the catalog health strip; spec and plan status set.
 
 ## Walkthrough record
 

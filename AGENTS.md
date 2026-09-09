@@ -265,8 +265,9 @@ The agreed logical schema, keys, and indexes are in `docs/PRD.md` §5. Implement
 - Owner approval/configuration starts initial ingestion. One fully processed episode (complete vectors plus shared
   summary, including the accepted raw fallback) makes the channel available. Later episode failures do not revoke it.
 - Initial import defaults to five recent RSS episodes. If none is processed after attempts finish, mark the channel
-  failed with `NO_TRANSCRIPTS` when all attempted episodes lack captions, `NO_EPISODES` for an empty feed, or
-  `INITIAL_IMPORT_FAILED` for technical/mixed failures. Keep episode-level reasons distinct.
+  failed with `NO_TRANSCRIPTS` when all attempted episodes lack captions, `NO_EPISODES` for an empty feed,
+  `NON_ENGLISH` when none had an English track, or `INITIAL_IMPORT_FAILED` for technical/mixed failures. Keep
+  episode-level reasons distinct.
 - Failed channels are excluded from scheduling. Only an owner-triggered `failed → pending` transition enables retry.
 - Approval plus availability triggers automatic following for every requester, once. Deliver from persisted approved
   requests with `auto_follow_completed_at IS NULL`. In the User DO, insert only if no follow row exists; never overwrite
@@ -282,8 +283,15 @@ Owner approval/configuration or cron → Registry selects channel → one Workfl
 video: fetch transcript through `lib/transcripts/` → chunk → embed → upsert in `shared-catalog` → summarize → write shared summary and mark
 processed in the Registry DO. Following never launches per-user ingestion or duplicates vectors/summaries.
 
-- **Cron schedule:** `TODO(owner)` — not yet decided. Keep a placeholder in `wrangler.jsonc`; do not choose a cadence.
+- **Cron schedule:** every 6 hours, `0 */6 * * *` UTC (owner decision 2026-09-08), in `wrangler.jsonc` `triggers.crons`.
   Scheduled runs select available, non-deleted channels independently of follower count.
+- **Selection rules (owner decisions 2026-09-08):** a "no captions" answer for a video published within the last 48
+  hours is "not yet": the episode stays `pending` with `transcript_checked_at` set, no attempt counted, re-checked
+  each run; after 48 hours it is `no_transcript`. Videos under 180 seconds are `failed` with `SKIPPED_SHORT` and store
+  nothing. Live or upcoming videos wait the same 48 hours, then `LIVE_OR_UPCOMING`. An episode with no English track
+  is `failed` with `NON_ENGLISH`; a channel whose attempted episodes are all `NON_ENGLISH` is `failed` with that code.
+  DownSub credit exhaustion (`PROVIDER_LIMIT`) ends the run with that code, leaves the remaining episodes `pending`,
+  and never fails the channel; `GET /catalog` shows the remaining credits.
 - Persist `ingestion_runs` and the exact selected `ingestion_run_episodes`. Permit at most one queued/running run
   per channel. Owner retry selects the latest configured episode count, reuses completed work, and may reattempt
   unsuccessful episodes, including those previously without captions.
@@ -305,8 +313,10 @@ ingestion noticing. `apps/api/src/lib/transcripts/types.ts`:
 
 ```ts
 export type TranscriptSegment = { text: string; startSec: number; durationSec: number };
-export type TranscriptSource = { fetch(videoId: string): Promise<TranscriptSegment[] | null> };
-// null = the video plays but has no captions (not an error); anything else throws TranscriptError
+export type TranscriptResult = { segments: TranscriptSegment[] | null; durationSec: number | null; isLive: boolean };
+export type TranscriptSource = { fetch(videoId: string): Promise<TranscriptResult> };
+// segments null = the video plays but has no captions (not an error); duration and liveness drive the
+// selection rules (Ingestion pipeline); anything else throws TranscriptError
 export class TranscriptError extends Error { readonly reason: TranscriptFailure } // UNPLAYABLE | PROVIDER_AUTH |
 // PROVIDER_LIMIT | PROVIDER_RATE_LIMIT | PROVIDER_HTTP | PROVIDER_PARSE
 ```
@@ -352,8 +362,9 @@ gets fed to the LLM at query time, so keep it exact.
 - All Workers AI calls go through `lib/ai.ts`. Route code never calls `env.AI.run` directly.
 - Prompts live in `apps/api/src/prompts/` as exported template functions, not inline strings. Changing a prompt is
   non-trivial — ask first.
-- Per-video summary output: 3–5 bullet takeaways, ≤3-sentence executive summary, topic tags. Ask the model for
-  JSON and validate the shape before storing; on validation failure retry once, then store raw text with a flag.
+- Per-video summary output: 3–5 takeaways, each `{ text, startSec }` with the timestamp taken from the `[mm:ss]`
+  markers in the prompt (null when absent or out of range), a ≤3-sentence executive summary, topic tags. Ask the model
+  for JSON and validate the shape before storing; on validation failure retry once, then store raw text with a flag.
 - Summaries are shared once per episode. User preferences affect chat answers only.
 - RAG Q&A: read current follows → intersect with available, non-deleted catalog channels → embed question →
   query `shared-catalog` with `filter: { channelId: { $in: eligibleChannelIds } }`, `topK: 3`, all metadata → validate
@@ -550,7 +561,6 @@ management, rate limiting.
 
 ## Open decisions (owner)
 
-- Cron cadence and times — `TODO(owner)` in `wrangler.jsonc`.
 - **Transcript source — decided 2026-09-08: DownSub's API.** The InnerTube mechanism from 2026-09-07 was built and
   measured: it passes from a residential IP and is bot-checked from Cloudflare's egress in every client tested (30
   player calls: 21 `LOGIN_REQUIRED`, 4 hard 403s, 5 OKs on one video). The owner weighed a home relay behind a

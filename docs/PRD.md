@@ -132,11 +132,14 @@ Channel processing states are `pending`, `available`, and `failed`. `deleted_at`
 | `NO_TRANSCRIPTS` | Every attempted episode definitively lacked captions |
 | `NO_EPISODES` | No RSS episodes were available to attempt |
 | `INITIAL_IMPORT_FAILED` | Technical failures, including a mix of failures and missing captions |
+| `NON_ENGLISH` | No attempted episode had an English caption track (decided 2026-09-08; non-English channels are out of scope) |
 
 - Failed channels receive no scheduled ingestion. Only the owner can reset `failed → pending` to retry.
 - Owner retry selects the latest configured episode count, skips already processed episodes, and may reattempt
   unsuccessful episodes, including those previously lacking captions.
-- Cron selects available, non-deleted catalog channels independently of users and follower count. Cadence is undecided.
+- Cron selects available, non-deleted catalog channels independently of users and follower count, every 6 hours
+  (decided 2026-09-08). A captionless video published within 48 hours is re-checked each run before it counts as
+  "no transcript"; videos under 3 minutes are skipped; live or upcoming videos wait.
 - Persist each run and its exact episode selection/outcomes. At most one run per channel can be queued or running.
   Each RSS, transcript, AI, and Vectorize call has its own retryable Workflow step.
 - Transcripts come from DownSub's API (decided 2026-09-08; the InnerTube approach of 2026-09-07 was built, measured,
@@ -161,7 +164,8 @@ Channel processing states are `pending`, `available`, and `failed`. `deleted_at`
 
 ### 4.4 Shared summaries, digests, and unread state
 
-- Store one summary per episode: executive summary of at most three sentences, 3–5 takeaways, and topic tags.
+- Store one summary per episode: executive summary of at most three sentences, 3–5 takeaways each with the timestamp
+  of the moment it comes from when the model can place it, and topic tags.
   Validate model JSON; retry invalid output once, then retain raw text with a fallback flag.
 - User preferences affect chat answers only, not shared summaries.
 - Cross-references are shared related-video IDs computed in the shared namespace, excluding the current video.
