@@ -40,7 +40,7 @@ touched by a stale run. When a channel becomes available, its approved requester
 | Fencing | Every Registry write from a run carries `lifecycleVersion`; the Registry refuses with `INVALID_STATE` when the channel's version differs or the channel is deleted. The Workflow treats that refusal as "cancelled" and stops. | AGENTS.md → Ingestion pipeline; PRD §4.2. |
 | Publishing | An episode is `processed` only after `getByIds` returns every expected vector and the summary row exists, in one Registry write. | PRD §6: never publish on an accepted asynchronous upsert. |
 | Cron | **Every 6 hours**, `0 */6 * * *` UTC, in `triggers.crons`. The `scheduled` handler is exercised with `wrangler dev --test-scheduled`. | Owner decision 2026-09-08. A 24-hour digest window reads better when items trickle in than in one daily burst. |
-| Long episodes | **Pending the owner's answer** (see the plan's Step 3 note): single pass with even sampling, or map-reduce over sections when the transcript exceeds the model's window. | Depends on the channel mix; the owner asked for the trade-off. |
+| Long episodes | **Map-reduce over 45-minute sections.** Each section is summarised with its own timestamped takeaways; one final call condenses the section summaries into the episode's summary. An episode with a single section skips the reduce step, so short videos cost one call. | Owner decision 2026-09-08. The model reads 24,000 tokens per call, about 1 h 45 min of speech; sampling would leave long-episode takeaways pointing only at sampled minutes. Cents per long episode. |
 | Workers plan | Assumes **Workers Paid**. | Workflows on the free plan allow 10 ms CPU per step; parsing a 400 KB DownSub body and chunking an hour of speech may exceed it. `TODO(owner)`: confirm the plan. |
 | Embedding model id | `@cf/baai/bge-base-en-v1.5`, 768 dimensions. | AGENTS.md wrote `bge-base-en-v1`; the deployed model id carries `.5` (it is also Vectorize's preset name). Same model, corrected id. |
 
@@ -60,7 +60,8 @@ start point ──► Registry.createRun ──► INGEST_WORKFLOW.create({ runI
     embed[i]       ai.embed(chunk texts, batch of ≤ 20)                 → vectors (stay in this step's result)
     upsert[i]      vectors.upsert(ns, ids, vectors, metadata)
     verify         vectors.getByIds(ns, ids) → every id present, else FAILED(VECTORIZE_INCOMPLETE)
-    summarize      ai.summarize(prompt) → structured | raw_fallback     (invalid JSON: one retry, then fallback)
+    summarize[s]   ai.summarize(section s) per ≤45-minute section       (invalid JSON: one retry, then fallback)
+    reduce         ai.reduce(section summaries) when there is more than one section
     related        vectors.query(ns, centroid, topK 6, filter channelId ∉ own video) → ids of processed episodes
     publish        Registry.completeEpisode(videoId, fence, { chunkCount, summary, related }) → processed;
                    channel pending → available on the first one
@@ -87,11 +88,12 @@ always present.
 Model `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, JSON output requested, validated against
 `{ executiveSummary: string (≤ 3 sentences), takeaways: { text: string, at: "mm:ss" | null }[3..5], topicTags: string[1..8] }`,
 with `at` mapped to `startSec` against the episode's duration (null when absent or out of range). On invalid output
-retry once with a stricter instruction; on a second failure store `raw_fallback` with the model's text. Input budget:
-the transcript is sent whole when under 60,000 characters; otherwise chunks are sampled evenly across the whole
-transcript to fit the budget, so the summary still covers the end of a long episode (**plan decision**; an
-alternative is map-reduce, more calls). Prompt text is in the plan for approval; `prompt_version` is stored with
-each summary, and changing the prompt bumps it.
+retry once with a stricter instruction; on a second failure store `raw_fallback` with the model's text. Long
+episodes: the transcript is split into sections of at most 45 minutes on chunk boundaries; each section gets a
+"map" call producing the same shape with timestamps; when there is more than one section a "reduce" call condenses
+the section summaries into the final shape, keeping each takeaway's timestamp. Every call is its own Workflow step.
+The model has no JSON mode, so the JSON is requested in the prompt and validated. Prompt text is in the plan for
+approval; `prompt_version` is stored with each summary, and changing the prompt bumps it.
 
 ### 3.3 Failure codes
 
@@ -100,7 +102,7 @@ each summary, and changing the prompt bumps it.
 | Transcript | `UNPLAYABLE`, `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `PROVIDER_HTTP`, `PROVIDER_PARSE` | episode `failed`; run episode |
 | Selection | `SKIPPED_SHORT` (under 180 s), `LIVE_OR_UPCOMING` (still live after 48 h), `NON_ENGLISH` (no English track) | episode `failed` |
 | Not yet | none: `pending` with `transcript_checked_at` set, re-checked for 48 h | episode stays `pending` |
-| Embedding / summary | `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED` | episode `failed` |
+| Embedding / summary | `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED` (a map or reduce call failing after its retries) | episode `failed` |
 | Vectorize | `VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE` | episode `failed` |
 | No captions | none | episode `no_transcript` |
 | Run | `FEED_UNAVAILABLE`, `PROVIDER_LIMIT` (credits exhausted; episodes stay `pending`), `CANCELLED` (fenced) | run `failed` / `cancelled` |

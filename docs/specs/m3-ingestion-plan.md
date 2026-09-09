@@ -67,10 +67,18 @@ overlap, the 480-token ceiling, deterministic indices.
 > marker nearest to where it is said, or null), `topicTags` (one to eight short lowercase tags). Use only what the
 > transcript supports; do not invent names, numbers, or timestamps. Transcript follows, with `[mm:ss]` markers.
 
-**Long episodes — owner's answer pending.** Two implementations are ready to write; the spec's §3.2 currently says
-single-pass sampling. If the owner picks map-reduce, `summarize` becomes: one call per ~45-minute section producing a
-section summary with timestamped takeaways, then one call over the section summaries producing the final shape,
-each its own step.
+**Long episodes (owner decision 2026-09-08): map-reduce.** `lib/ai.ts` exposes `summarizeSection(section)` and
+`reduceSummaries(sections)`; the orchestration splits chunks into sections of at most 45 minutes, runs one step per
+section, and runs the reduce step only when there is more than one section. The reduce prompt (also for approval):
+
+> You are given summaries of consecutive sections of one YouTube episode, each with timestamped takeaways. Return only
+> JSON with the same three fields for the whole episode: `executiveSummary` (at most three sentences), `takeaways`
+> (three to five, chosen or merged from the sections, each keeping the `at` timestamp of the section takeaway it comes
+> from), `topicTags` (one to eight). Do not add anything the sections do not say.
+
+A raw fallback applies per call: if a section's map call fails validation twice, its raw text stands in as that
+section's summary; if the reduce call fails twice, the episode stores `raw_fallback` with the concatenated section
+summaries.
 
 **Done when:** `pnpm check` green; `summarize` and `embed` called once each under `wrangler dev` with `remote: true`
 against a real transcript, output shape verified, cost noted here.
