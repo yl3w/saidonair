@@ -13,6 +13,20 @@ import { z } from "zod";
 const UnixMs = z.number().int().describe("Unix time, milliseconds");
 const Count = z.number().int().nonnegative();
 
+/**
+ * Optional free text (`title`, `explanation`). Omit the field to mean "not provided"; a present
+ * value must be non-blank and is trimmed. Empty, whitespace-only, and null are `INVALID_INPUT`
+ * (owner decision 2026-09-08, `docs/specs/api-reference.md` §2): the API validates and clients
+ * normalise, so a blank never silently becomes a default. The web app strips blanks before sending.
+ */
+const optionalText = (description: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, "must be omitted or non-blank")
+    .describe(description)
+    .optional();
+
 export const HealthResponseSchema = z
   .object({ service: z.literal("api"), status: z.literal("ok") })
   .meta({ id: "HealthResponse", description: "`GET /health`" });
@@ -273,12 +287,9 @@ export const CreateChannelBodySchema = z
       .trim()
       .min(1)
       .describe("A bare `UC…` id or any URL containing `/channel/UC…`."),
-    title: z
-      .string()
-      .trim()
-      .min(1)
-      .describe("Overrides the title read from the channel's RSS feed.")
-      .optional(),
+    title: optionalText(
+      "Overrides the title read from the channel's RSS feed.",
+    ),
     initialImportCount: z
       .number()
       .int()
@@ -587,24 +598,14 @@ export type ChannelAlreadyAvailableResponse = z.infer<
 /** `POST /channel-requests/:id/approve` — title defaults to the request's stored title. */
 export const ApproveChannelRequestBodySchema = z
   .object({
-    title: z
-      .string()
-      .trim()
-      .min(1)
-      .describe("Overrides the title stored on the request.")
-      .optional(),
+    title: optionalText("Overrides the title stored on the request."),
     initialImportCount: z
       .number()
       .int()
       .positive()
       .describe("Recent episodes to import first; defaults to five.")
       .optional(),
-    explanation: z
-      .string()
-      .trim()
-      .min(1)
-      .describe("Shown to the requester.")
-      .optional(),
+    explanation: optionalText("Shown to the requester."),
   })
   .meta({
     id: "ApproveChannelRequestBody",
@@ -636,12 +637,7 @@ export type ApproveChannelRequestResponse = z.infer<
 /** `POST /channel-requests/:id/reject` */
 export const RejectChannelRequestBodySchema = z
   .object({
-    explanation: z
-      .string()
-      .trim()
-      .min(1)
-      .describe("Shown to the requester.")
-      .optional(),
+    explanation: optionalText("Shown to the requester."),
   })
   .meta({
     id: "RejectChannelRequestBody",

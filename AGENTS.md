@@ -422,7 +422,9 @@ test client as HTML (owner decision 2026-09-07, `docs/specs/api-reference.md`).
 
 The API documents itself. Every handler carries `describeRoute` (one entity tag, a summary, the success schema, and the
 error responses it can produce via `lib/openapi.ts`) and validates body, query, and params with `validate(...)` from
-`lib/validation.ts` and the shared schemas. `GET /openapi.json` is generated from those at request time; the coverage
+`lib/validation.ts` and the shared schemas. Optional text (`title`, `explanation`) is omitted or non-blank: `""`,
+whitespace-only, and `null` are `INVALID_INPUT` via the shared `optionalText` helper, never a silent default (owner
+decision 2026-09-08, `docs/specs/api-reference.md` §2); the web app strips blanks before sending. `GET /openapi.json` is generated from those at request time; the coverage
 test in `test/openapi.test.ts` fails when a registered route is missing from it, so a new route cannot ship
 undocumented. Scalar's script is pinned to one version in `routes/docs.ts` and its request proxy is off.
 There are no chat deletion routes and no per-channel chats.

@@ -203,6 +203,22 @@ describe("channel and catalog routes", () => {
     });
     expect(duplicate.status).toBe(409);
 
+    // Optional text is omitted or non-blank; a blank never falls back to the feed title (owner decision 2026-09-08).
+    const blank = await call(OWNER, "POST", "/channels", {
+      channelId: CHANNEL_B,
+      title: "",
+    });
+    expect(blank.status).toBe(400);
+    expect(String(blank.json.error)).toContain(
+      "title must be omitted or non-blank",
+    );
+    const nulled = await call(OWNER, "POST", "/channels", {
+      channelId: CHANNEL_B,
+      title: null,
+    });
+    expect(nulled.status).toBe(400);
+    expect(String(nulled.json.error)).toContain("title");
+
     const titled = await call(OWNER, "POST", "/channels", {
       channelId: CHANNEL_B,
       title: "  Given  ",

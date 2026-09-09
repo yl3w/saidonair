@@ -32,6 +32,7 @@ accepts is what the API checks.
 | Third-party script | Accepted for this developer page. The alternative, self-hosting the 3.5 MB bundle through Workers Static Assets with a copy step, is recorded in §8 and can replace the CDN later without touching anything else. | Hard rule 2 governs what the Worker calls. The browser loading a pinned, open-source script for a dev tool is a smaller footprint than a new asset pipeline. |
 | Identity in the document | `X-User-Email` is declared as an `apiKey`-in-header **security scheme** named `userEmail`, applied globally. `/health`, `/openapi.json`, `/docs` declare `security: []`. | Scalar renders security schemes as an auth field and sends the header on every try-it call. It is still not authentication. |
 | Validation errors | **Unchanged contract:** 400 `{ error, code: "INVALID_INPUT" }` with a message naming the field. A single hook turns schema issues into `DomainError`; malformed JSON is mapped to the same shape. | The web app's `ApiError` and every existing test rely on that shape. |
+| Blank optional text (owner decision 2026-09-08) | **Strict.** `title` and `explanation` are omitted or non-blank; `""`, whitespace-only, and `null` are 400 `INVALID_INPUT` ("must be omitted or non-blank"). One shared helper, `optionalText`, carries the rule; route tests pin it. | The generated document already advertised `minLength: 1`, and the web app already strips blanks before sending. Matching the rest of the API (`initialImportCount: 0` is a 400, not a default) means the API never guesses at intent, and a client bug surfaces as a named 400 instead of a silent fallback to a stored or feed title. |
 | Chat, preferences (M4) | Not documented until they exist. **Rule:** a route without `describeRoute` fails the coverage test, so M4 cannot ship undocumented routes. | Same reason the route table in `AGENTS.md` exists. |
 
 ## 3. Contract
@@ -74,7 +75,9 @@ directly; `hono-openapi` re-exports the validator we use.
 - Enum types become `z.enum([...])`; `EpisodeSummary` becomes `z.discriminatedUnion("format", [...])`;
   `T | null` becomes `.nullable()`; optional fields `.optional()`.
 - Body schemas encode the current `lib/body.ts` rules: `channelId: z.string().trim().min(1)`;
-  `title`/`explanation`: `z.string().trim().min(1).optional()` (empty string is treated as absent, as today);
+  `title`/`explanation`: `optionalText(description)`, i.e. `z.string().trim().min(1).optional()` with a clear message.
+  **Omit the field to mean "not provided"**; empty, whitespace-only, and null are `INVALID_INPUT` (owner decision
+  2026-09-08, §2). The old `lib/body.ts` parser read blanks as absent; that leniency was dropped on purpose;
   `initialImportCount: z.number().int().positive().optional()`.
 - Query schemas: `scope: z.enum(["all"]).optional()`; `limit: z.coerce.number().int()` (range checks stay in the
   callee, as today); `since`: a string that `Date.parse` accepts, documented as `date-time`.

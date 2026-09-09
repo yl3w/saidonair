@@ -203,6 +203,30 @@ describe("channel request routes", () => {
       channelId: CHANNEL_B,
     });
     const thirdId = (third.json.request as Json).requestId;
+
+    // Optional text is omitted or non-blank; a blank is never a silent default (owner decision 2026-09-08).
+    const blankExplanation = await call(
+      OWNER,
+      "POST",
+      `/channel-requests/${thirdId}/reject`,
+      { explanation: "" },
+    );
+    expect(blankExplanation.status).toBe(400);
+    expect(blankExplanation.json).toMatchObject({ code: "INVALID_INPUT" });
+    expect(String(blankExplanation.json.error)).toContain(
+      "explanation must be omitted or non-blank",
+    );
+    const blankTitle = await call(
+      OWNER,
+      "POST",
+      `/channel-requests/${thirdId}/approve`,
+      { title: "   " },
+    );
+    expect(blankTitle.status).toBe(400);
+    expect(String(blankTitle.json.error)).toContain(
+      "title must be omitted or non-blank",
+    );
+
     const rejected = await call(
       OWNER,
       "POST",
