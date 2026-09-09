@@ -16,25 +16,21 @@ describe("registry catalog (owner-only mutations)", () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
 
-    await expectDomainError(stub.configureChannel(ALICE, INPUT_A), "NOT_OWNER");
+    await expectDomainError(stub.createChannel(ALICE, INPUT_A), "NOT_OWNER");
     await expectDomainError(stub.retryChannel(ALICE, CHANNEL_A), "NOT_OWNER");
     await expectDomainError(stub.deleteChannel(ALICE, CHANNEL_A), "NOT_OWNER");
     await expectDomainError(stub.restoreChannel(ALICE, CHANNEL_A), "NOT_OWNER");
     await expectDomainError(stub.listChannels(ALICE), "NOT_OWNER");
     // An email nobody has registered is not an owner either.
     await expectDomainError(
-      stub.configureChannel("ghost@example.com", INPUT_A),
+      stub.createChannel("ghost@example.com", INPUT_A),
       "NOT_OWNER",
     );
   });
 
-  it("configure creates a pending channel with defaults", async () => {
-    const { channel, created } = await registry().configureChannel(
-      OWNER,
-      INPUT_A,
-    );
+  it("create makes a pending channel with defaults", async () => {
+    const channel = await registry().createChannel(OWNER, INPUT_A);
 
-    expect(created).toBe(true);
     expect(channel).toMatchObject({
       channelId: CHANNEL_A,
       title: "Channel A",
@@ -47,24 +43,26 @@ describe("registry catalog (owner-only mutations)", () => {
     });
   });
 
-  it("configure updates an existing channel's settings without touching its state", async () => {
+  it("create refuses a duplicate id and leaves the existing channel untouched", async () => {
     const stub = registry();
-    await stub.configureChannel(OWNER, INPUT_A);
+    await stub.createChannel(OWNER, { ...INPUT_A, initialImportCount: 3 });
     await setChannelState(CHANNEL_A, {
       status: "available",
       availableAt: 1_000,
     });
 
-    const { channel, created } = await stub.configureChannel(OWNER, {
-      channelId: CHANNEL_A,
-      title: "Renamed",
-      initialImportCount: 10,
-    });
+    await expectDomainError(
+      stub.createChannel(OWNER, {
+        channelId: CHANNEL_A,
+        title: "Renamed",
+        initialImportCount: 10,
+      }),
+      "INVALID_STATE",
+    );
 
-    expect(created).toBe(false);
-    expect(channel).toMatchObject({
-      title: "Renamed",
-      initialImportCount: 10,
+    expect(await stub.getChannel(CHANNEL_A)).toMatchObject({
+      title: "Channel A",
+      initialImportCount: 3,
       status: "available",
       availableAt: 1_000,
       lifecycleVersion: 1,
@@ -74,15 +72,15 @@ describe("registry catalog (owner-only mutations)", () => {
   it("validates configuration input", async () => {
     const stub = registry();
     await expectDomainError(
-      stub.configureChannel(OWNER, { channelId: "not-a-channel", title: "x" }),
+      stub.createChannel(OWNER, { channelId: "not-a-channel", title: "x" }),
       "INVALID_INPUT",
     );
     await expectDomainError(
-      stub.configureChannel(OWNER, { channelId: CHANNEL_A, title: "   " }),
+      stub.createChannel(OWNER, { channelId: CHANNEL_A, title: "   " }),
       "INVALID_INPUT",
     );
     await expectDomainError(
-      stub.configureChannel(OWNER, { ...INPUT_A, initialImportCount: 0 }),
+      stub.createChannel(OWNER, { ...INPUT_A, initialImportCount: 0 }),
       "INVALID_INPUT",
     );
     await expectDomainError(stub.deleteChannel(OWNER, CHANNEL_B), "NOT_FOUND");
@@ -90,7 +88,7 @@ describe("registry catalog (owner-only mutations)", () => {
 
   it("retry only applies to failed channels and fences stale runs", async () => {
     const stub = registry();
-    await stub.configureChannel(OWNER, INPUT_A);
+    await stub.createChannel(OWNER, INPUT_A);
     await expectDomainError(
       stub.retryChannel(OWNER, CHANNEL_A),
       "INVALID_STATE",
@@ -116,7 +114,7 @@ describe("registry catalog (owner-only mutations)", () => {
 
   it("soft-deletes idempotently and restores without changing processing state", async () => {
     const stub = registry();
-    await stub.configureChannel(OWNER, INPUT_A);
+    await stub.createChannel(OWNER, INPUT_A);
     await setChannelState(CHANNEL_A, {
       status: "available",
       availableAt: 1_000,
@@ -150,8 +148,8 @@ describe("registry catalog (owner-only mutations)", () => {
 
   it("lists only available, non-deleted channels publicly; owner sees everything", async () => {
     const stub = registry();
-    await stub.configureChannel(OWNER, INPUT_A);
-    await stub.configureChannel(OWNER, {
+    await stub.createChannel(OWNER, INPUT_A);
+    await stub.createChannel(OWNER, {
       channelId: CHANNEL_B,
       title: "Channel B",
     });

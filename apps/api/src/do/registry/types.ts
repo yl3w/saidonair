@@ -55,7 +55,7 @@ export type ChannelRequest = {
 };
 
 /** Callers resolve URLs to a canonical `UC…` id and fetch the title before calling the DO. */
-export type ConfigureChannelInput = {
+export type CreateChannelInput = {
   channelId: string;
   title: string;
   initialImportCount?: number;

@@ -16,7 +16,7 @@ import type {
   CatalogChannel,
   ChannelManagementRecord,
   ChannelRequest,
-  ConfigureChannelInput,
+  CreateChannelInput,
   EpisodeRecord,
   IngestionRunRecord,
   ListEpisodesOptions,
@@ -91,14 +91,11 @@ export class RegistryDO extends DurableObject<Env> {
     return channels.listChannels(this.#sql);
   }
 
-  /** Owner: create a pending channel or update an existing one's configuration. */
-  configureChannel(
-    actorEmail: string,
-    input: ConfigureChannelInput,
-  ): { channel: CatalogChannel; created: boolean } {
+  /** Owner: create a pending channel; `INVALID_STATE` when the id is already in the catalog. */
+  createChannel(actorEmail: string, input: CreateChannelInput): CatalogChannel {
     this.#assertOwner(actorEmail);
     return this.#transaction(() =>
-      channels.configureChannel(this.#sql, input, Date.now()),
+      channels.createChannel(this.#sql, input, Date.now()),
     );
   }
 

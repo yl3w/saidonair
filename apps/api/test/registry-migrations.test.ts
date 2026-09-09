@@ -68,7 +68,7 @@ describe("registry migrations", () => {
 
   it("requires a positive chunk count only when an episode is processed", async () => {
     const stub = registry();
-    await stub.configureChannel(OWNER, { channelId: CHANNEL_A, title: "Test" });
+    await stub.createChannel(OWNER, { channelId: CHANNEL_A, title: "Test" });
 
     await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;

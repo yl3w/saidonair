@@ -16,8 +16,8 @@ import {
 
 async function twoChannels() {
   const stub = registry();
-  await stub.configureChannel(OWNER, { channelId: CHANNEL_A, title: "A" });
-  await stub.configureChannel(OWNER, { channelId: CHANNEL_B, title: "B" });
+  await stub.createChannel(OWNER, { channelId: CHANNEL_A, title: "A" });
+  await stub.createChannel(OWNER, { channelId: CHANNEL_B, title: "B" });
   return stub;
 }
 

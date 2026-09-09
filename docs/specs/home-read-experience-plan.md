@@ -172,7 +172,7 @@ test ever reaches YouTube. The pool's `fetchMock` no longer exists in the pinned
 - `GET /channels`: default `listAvailableChannels` + the caller's follows + processed counts. `?scope=all` (owner;
   403 otherwise) → `listChannelManagement` → every channel with `management`. Any other `scope` value → 400.
 - `POST /channels` (owner): `extractChannelId` → `getChannel` exists → 409 `INVALID_STATE` "already in the catalog"
-  → `fetchChannelFeed` (`null` → `INVALID_INPUT`; title defaults to the feed title) → `configureChannel` → 201
+  → `fetchChannelFeed` (`null` → `INVALID_INPUT`; title defaults to the feed title) → `createChannel` → 201
   `{ channel }`. Log `{ event: "ingestion.start_requested", channelId }`: the Workflow is M3.
 - `GET /channels/:id`: readers get 404 unless available and non-deleted; the owner gets any state with `management`
   (one `listChannelManagement(actor, [id])` call). `following` and `processedCount` for everyone.

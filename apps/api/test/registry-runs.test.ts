@@ -15,8 +15,8 @@ import {
 describe("registry ingestion runs", () => {
   it("lists a channel's runs newest first with their per-episode outcomes, owner only", async () => {
     const stub = registry();
-    await stub.configureChannel(OWNER, { channelId: CHANNEL_A, title: "A" });
-    await stub.configureChannel(OWNER, { channelId: CHANNEL_B, title: "B" });
+    await stub.createChannel(OWNER, { channelId: CHANNEL_A, title: "A" });
+    await stub.createChannel(OWNER, { channelId: CHANNEL_B, title: "B" });
     await seedEpisode(VIDEO_A, CHANNEL_A);
     await seedEpisode(VIDEO_B, CHANNEL_A, { status: "no_transcript" });
 

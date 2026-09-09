@@ -2,7 +2,7 @@ import type { ChannelFailureCode, ChannelStatus } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
 import { chunk, placeholders } from "../../lib/sql";
 import { requireChannelId } from "../../lib/youtube/ids";
-import type { CatalogChannel, ConfigureChannelInput } from "./types";
+import type { CatalogChannel, CreateChannelInput } from "./types";
 
 type ChannelRow = {
   channel_id: string;
@@ -86,13 +86,22 @@ export function listAvailableChannels(sql: SqlStorage): CatalogChannel[] {
     .map(toChannel);
 }
 
-/** Creates a `pending` channel. Callers decide whether to start initial ingestion. */
+/**
+ * Creates a `pending` channel; `INVALID_STATE` when the id is already in the catalog, deleted
+ * or not. Create-only on purpose: editing a channel after creation is out of scope, and a
+ * create-or-update here would let two overlapping adds silently overwrite each other. The
+ * check and the insert run inside one synchronous DO call, so nothing can interleave. Callers
+ * decide whether to start initial ingestion.
+ */
 export function createChannel(
   sql: SqlStorage,
-  input: ConfigureChannelInput,
+  input: CreateChannelInput,
   now: number,
 ): CatalogChannel {
   const channelId = requireChannelId(input.channelId);
+  if (getChannel(sql, channelId)) {
+    throw new DomainError("INVALID_STATE", "channel is already in the catalog");
+  }
   const title = requireTitle(input.title);
   const importCount = optionalImportCount(input.initialImportCount);
   return toChannel(
@@ -111,38 +120,6 @@ export function createChannel(
       )
       .one(),
   );
-}
-
-/**
- * Owner configuration: create the channel, or update the owner-configurable fields of an
- * existing one without touching its processing state or deletion.
- */
-export function configureChannel(
-  sql: SqlStorage,
-  input: ConfigureChannelInput,
-  now: number,
-): { channel: CatalogChannel; created: boolean } {
-  const channelId = requireChannelId(input.channelId);
-  if (!getChannel(sql, channelId)) {
-    return { channel: createChannel(sql, input, now), created: true };
-  }
-  const title = requireTitle(input.title);
-  const importCount = optionalImportCount(input.initialImportCount);
-  const channel = toChannel(
-    sql
-      .exec<ChannelRow>(
-        `UPDATE channels
-         SET title = ?, initial_import_count = COALESCE(?, initial_import_count), updated_at = ?
-         WHERE channel_id = ?
-         RETURNING ${CHANNEL_COLUMNS}`,
-        title,
-        importCount,
-        now,
-        channelId,
-      )
-      .one(),
-  );
-  return { channel, created: false };
 }
 
 /**

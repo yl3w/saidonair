@@ -112,6 +112,9 @@ export const channelRoutes = new Hono<AppEnv>()
       const body = c.req.valid("json");
       const channelId = extractChannelId(body.channelId);
 
+      // Fast path only: skips the YouTube round trip for a known id. The Registry's
+      // createChannel is the authoritative check; a channel added while the feed is in
+      // flight still ends in the same 409, never in an overwrite.
       if (await c.var.registry.getChannel(channelId)) {
         throw new DomainError(
           "INVALID_STATE",
@@ -126,15 +129,12 @@ export const channelRoutes = new Hono<AppEnv>()
         );
       }
 
-      const { channel, created } = await c.var.registry.configureChannel(
-        c.var.identity.email,
-        {
-          channelId,
-          title: body.title ?? feed.title,
-          initialImportCount: body.initialImportCount,
-        },
-      );
-      if (created) requestIngestion(channel.channelId, "channel_created");
+      const channel = await c.var.registry.createChannel(c.var.identity.email, {
+        channelId,
+        title: body.title ?? feed.title,
+        initialImportCount: body.initialImportCount,
+      });
+      requestIngestion(channel.channelId, "channel_created");
       return c.json<ChannelResponse>(
         { channel: await ownerChannel(c, channel.channelId) },
         201,

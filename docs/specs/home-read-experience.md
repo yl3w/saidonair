@@ -408,7 +408,7 @@ fill in without UI changes.
 | Reject | `rejectRequest` | — | Exists. |
 | Retry | `retryChannel` | — | Exists; starting the run is M3. |
 | Delete, restore | `deleteChannel`, `restoreChannel` | — | Exist. |
-| Add channel | `configureChannel` | — | Exists; RSS verification of the id and the feed-title default are new. |
+| Add channel | `createChannel` | — | Exists; RSS verification of the id and the feed-title default are new. Create-only: a duplicate id is `INVALID_STATE` inside the Registry. |
 
 **Automatic follows stay with M3.** `AGENTS.md` delivers automatic follows "once the channel is
 available" through a durable handoff: approved requests with `auto_follow_completed_at IS NULL` whose

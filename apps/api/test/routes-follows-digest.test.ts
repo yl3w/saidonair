@@ -54,7 +54,7 @@ async function seedCatalog(now: number) {
     [CHANNEL_C, "C"],
     [CHANNEL_D, "D"],
   ] as const) {
-    await stub.configureChannel(OWNER, { channelId: id, title });
+    await stub.createChannel(OWNER, { channelId: id, title });
   }
   for (const id of [CHANNEL_A, CHANNEL_B, CHANNEL_D]) {
     await setChannelState(id, { status: "available", availableAt: 10 });

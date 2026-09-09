@@ -43,9 +43,9 @@ async function call(
 /** A: available; B: pending; C: deleted (was available). D and E are not in the catalog. */
 async function seedCatalog() {
   const stub = registry();
-  await stub.configureChannel(OWNER, { channelId: CHANNEL_A, title: "A" });
-  await stub.configureChannel(OWNER, { channelId: CHANNEL_B, title: "B" });
-  await stub.configureChannel(OWNER, { channelId: CHANNEL_C, title: "C" });
+  await stub.createChannel(OWNER, { channelId: CHANNEL_A, title: "A" });
+  await stub.createChannel(OWNER, { channelId: CHANNEL_B, title: "B" });
+  await stub.createChannel(OWNER, { channelId: CHANNEL_C, title: "C" });
   await setChannelState(CHANNEL_A, { status: "available", availableAt: 10 });
   await setChannelState(CHANNEL_C, { status: "available", availableAt: 10 });
   await stub.deleteChannel(OWNER, CHANNEL_C);
