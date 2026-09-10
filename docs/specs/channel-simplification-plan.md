@@ -1729,3 +1729,44 @@ git commit -m "docs: carry the channel state simplification into AGENTS.md and t
 ```
 
 Then hand the branch to the owner for review and the M3 plan revision (spec §12), which is a separate piece of work.
+
+## Walkthrough record
+
+Run on 2026-09-10 against `feat/channel-simplification` at `23a8da5`, in a fresh worktree with no local Durable
+Object state to wipe, under `pnpm --filter api exec wrangler dev --port 8787` with
+`apps/api/.dev.vars` copied from `.dev.vars.example` (`OWNER_EMAIL=owner@example.com`, gitignored, uncommitted).
+Every call is `curl` against `http://127.0.0.1:8787` with an `X-User-Email` header; the only outbound traffic is
+the Worker's own fetch of YouTube's public RSS feed (hard rule 2). The channels are `UCBJycsmduvYEL83R_U4JriQ`
+(Marques Brownlee) and `UCsBjURrPoezykLs9EqgamOA` (Fireship); only their feeds are read.
+
+| # | Call | Status | Checked |
+|---|---|---|---|
+| 1 | `POST /channels {channelId}` as alice | 201 | `status: "requested"`, `title: "Marques Brownlee"` from the feed, `following: true`, `followerCount: 1`, `approvedAt: null`, `paused: false`, all `episodes` counts 0 |
+| 2 | `GET /channels` as bob | 200 | The requested channel is listed to a non-follower with `following: false`, `followerCount: 1`, and no `management` block |
+| 3 | `POST /channels/:id/approve {explanation}` as owner | 200 | `status: "approved"`, `approvedAt` and `reviewedAt` set, `reviewNote` is the owner's text, `management.reviewedByEmail: "owner@example.com"`, `lifecycleVersion: 1`, `neverStarted: true`. The wrangler log printed `{ event: 'ingestion.start_requested', channelId: 'UCBJycsmduvYEL83R_U4JriQ', reason: 'channel_approved' }` |
+| 4 | `DELETE /follows/:id` as alice | 200 | The follow keeps `unfollowedAt`; the embedded channel and a fresh `GET /channels/:id` both read `paused: true`, `pausedBy: "system"`, `management.pausedAt` set, `followerCount: 0` |
+| 5 | `PUT /follows/:id` as bob | 200 | `paused: false`, `pausedBy: null`, `following: true`, `followerCount: 1` — the follow lifted the system pause |
+| 6 | `POST /channels/:id/decline {explanation}` as owner | 200 | `status: "declined"`, `management.lifecycleVersion: 2` (the fence bumped from approved), pause cleared, `approvedAt` unchanged so copy reads "Withdrawn", `reviewNote` is the owner's text |
+| 7 | `GET /follows` as bob | 200 | The declined channel is still bob's row, carrying `status: "declined"`, its `reviewNote`, and a non-null `approvedAt`. `GET /channels` as bob returns `[]`; `?scope=all` as owner returns it with `management` |
+| 8 | `POST /channels {same id}` as alice | 409 | `ChannelDeclinedResponse`: `code: "INVALID_STATE"`, `status: "declined"`, `channelId`, `reviewNote`, `reviewedAt`, message "channel was declined by the owner; request it again". `PUT /follows/:id` as alice gave the same 409 body |
+| 9 | `POST /channels/:id/request` as alice | 200 | `status: "requested"`, review fields kept so the queue can show "previously declined", `following: true`, `followerCount: 2`. `GET /channels/:id/followers` as owner lists bob then alice with their `followedAt` |
+| 10 | `POST /channels/:id/approve {explanation}` as owner | 200 | `status: "approved"`, `approvedAt` unchanged at its first-approval value, `reviewNote` replaced by the new note, `lifecycleVersion` still 2, and the wrangler log still holds exactly **one** `ingestion.start_requested` line — no second initial import |
+| 11 | `GET /catalog` as owner | 200 | `channels { requested: 0, approved: 1, paused: 0, declined: 0 }`, all `episodes` counts 0, `runs.active: 0`, `attention { failedEpisodes: 0, neverStarted: 1, requested: 0 }`, `lastSuccessfulIngestionAt: null` |
+| 12 | `POST /channels {/channel/UC… URL}` as owner | 201 | The owner's own add creates `status: "approved"` with `approvedAt` set **and follows the owner** (`following: true`, `followerCount: 1`, so it is not system-paused), and logs a second `ingestion.start_requested` |
+| 13 | `DELETE /channels/:id`, `POST /channels/:id/restore`, `POST /channels/:id/retry`, `GET`/`POST /channel-requests`, `GET /channels/:id/requests` | 404 each | The removed routes are gone from the Worker |
+| 14 | `POST /channels {"channelId":"@mkbhd"}` and an id with no feed | 400 each | `INVALID_INPUT` with the copy-the-id instructions, and "no YouTube channel has that id" |
+| 15 | `GET /channels/:id/episodes` and `GET /digest` as bob | 200 each | `{"episodes":[]}` and an empty digest — nothing has been ingested |
+
+**Not exercised, and why.** The episode half of spec criterion 15 — an episode becoming `available`, one `skipped`,
+one `failed`, and the owner's Retry and Skip on them — cannot be driven through the API on this branch. Ingestion is
+still log-only (`lib/ingestion.ts`), so no run ever writes an episode row, and this task does not seed rows by SQL.
+The episode routes and their transitions are covered by the API tests, which seed the Registry directly; they should
+be walked through under `wrangler dev` when M3 makes an episode reach `available` for real. For the same reason no
+`ingestion_runs` row exists, so `GET /channels/:id/ingestion-runs` and a pause interacting with a run in flight were
+not observable either.
+
+**Still owed by the owner: the visual pass in a browser.** Nothing on the web side was rendered in this run — the
+walkthrough was API-only. Home (Followed, Catalog, and the Add-a-channel box, including the declined-id note with
+Request again), Channel at each of the three statuses, Owner (Queue, Needs attention, All channels, health strip),
+and Owner channel detail all still need the owner to look at them under `pnpm dev` and say whether the copy reads
+right.

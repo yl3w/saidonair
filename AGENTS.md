@@ -5,7 +5,8 @@ Single source of truth for every coding agent working in this repo (Claude Code,
 
 ## What this is
 
-A personal, multi-user tool with an owner-managed global YouTube channel catalog. It ingests and summarizes
+A personal, multi-user tool with a shared global YouTube channel catalog: anyone puts a channel in it by pasting
+the channel id, and the owner approves or declines it. It ingests and summarizes
 each episode once with Workers AI, stores shared transcript embeddings in Vectorize, and exposes a text-only
 UI for per-user follows, digests, and multiple chats. Runs entirely on Cloudflare; cron cadence is undecided.
 
@@ -30,8 +31,8 @@ The full PRD lives at `docs/PRD.md`; this file overrides the PRD where they disa
    other YouTube endpoint: no InnerTube calls, no watch-page scraping, no YouTube Data API or API keys. No OpenAI, no
    Anthropic, no other scraping services, no analytics SDKs, no proxies.
 3. **Never query, upsert, or delete in Vectorize without an explicit namespace scope.** Shared episode vectors use
-   `shared-catalog`, never a user's email. Chat retrieval must filter to the user's current followed, available,
-   non-deleted channels and validate processed episodes before using results. Never fall back to an unfiltered query.
+   `shared-catalog`, never a user's email. Chat retrieval must filter to the user's current followed, approved
+   channels and validate available episodes before using results. Never fall back to an unfiltered query.
    For ID-based operations, enforce namespace ownership in `lib/vectorize.ts`; do not assume the underlying API
    accepts a namespace argument for every operation.
 4. **Never run destructive commands**: no `DROP`, `DELETE FROM` without a `WHERE` on user data, no
@@ -56,7 +57,7 @@ Toolchain pinning:
 ├── CLAUDE.md                 # pointer to AGENTS.md
 ├── .cursor/rules/            # pointer to AGENTS.md
 ├── docs/PRD.md
-├── docs/specs/               # accepted feature specs with their -plan.md: home-read-experience (Home and Owner UX), api-reference (OpenAPI + Scalar), m3-ingestion
+├── docs/specs/               # accepted feature specs with their -plan.md: home-read-experience (Home and Owner UX), api-reference (OpenAPI + Scalar), m3-ingestion, channel-simplification (channel statuses, follows, episode states)
 ├── package.json              # workspace root: volta.node, packageManager, turbo scripts
 ├── pnpm-workspace.yaml
 ├── .npmrc                    # engine-strict=true
@@ -70,18 +71,17 @@ Toolchain pinning:
 │   │   │   ├── middleware/user.ts    # X-User-Email → registry + per-user DO stub on context
 │   │   │   ├── middleware/owner.ts   # requireOwner, applied per owner-only operation; the Registry re-checks the role too
 │   │   │   ├── middleware/errors.ts  # typed Registry errors (and Hono's malformed-JSON 400) → HTTP status
-│   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, channel-requests, chat, ...);
+│   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, chat, ...);
 │   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page
 │   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
-│   │   │   ├── do/registry/          # Registry store modules: users, channels, requests, episodes, runs, catalog, types
+│   │   │   ├── do/registry/          # Registry store modules: users, channels, followers, episodes, runs, catalog, types
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
 │   │   │   ├── do/user.ts            # Per-user Durable Object (RPC facade)
 │   │   │   ├── do/user/              # User store modules: follows, reads, chats, preferences, types
 │   │   │   ├── workflows/ingest.ts   # channel ingestion Workflow
 │   │   │   ├── lib/youtube/          # ids.ts (id validation, /channel/UC… extraction), rss.ts (feed verification,
 │   │   │   │                         # title, episodes); nothing else in the codebase talks to YouTube
-│   │   │   ├── lib/eligibility.ts    # active follows ∩ available, non-deleted channels (digest, follows, episodes, chat)
-│   │   │   ├── lib/outcome.ts        # RequestOutcome + CatalogState derivation (pure)
+│   │   │   ├── lib/eligibility.ts    # active follows ∩ approved channels (digest, follows, episodes, chat)
 │   │   │   ├── lib/channel-view.ts   # the one projection from the Registry channel onto the shared Channel (+ management)
 │   │   │   ├── lib/episode-view.ts   # the one projection from the Registry episode onto the shared Episode
 │   │   │   ├── lib/validation.ts     # validate(target, schema): hono-openapi validator with the INVALID_INPUT 400 contract
@@ -108,10 +108,10 @@ Toolchain pinning:
 │       │   ├── api.ts                # typed fetch wrapper; sets X-User-Email
 │       │   ├── account.ts            # selected email + recent emails in localStorage
 │       │   ├── session.tsx           # GET /me once; role is for rendering only
-│       │   ├── lib/                  # time.ts (relative times), copy.ts (failure-code and outcome phrases),
+│       │   ├── lib/                  # time.ts (relative times), copy.ts (channel status, episode, skip and wait phrases),
 │       │   │                         # use-load.ts (per-section loading/error state)
 │       │   ├── screens/              # Account.tsx, Home.tsx, Channel.tsx, Owner.tsx, OwnerChannel.tsx
-│       │   └── components/           # Nav, Time, EpisodeItem, OwnerCard, Digest, ChannelList, Requests, RequestQueue,
+│       │   └── components/           # Nav, Time, EpisodeItem, OwnerCard, Digest, ChannelList, RequestQueue, AttentionList,
 │       │                             # CatalogHealth, CatalogTable, AddChannel, Chat (M4)
 │       ├── index.html
 │       └── vite.config.ts
@@ -205,10 +205,13 @@ Workers runtime behavior must have been exercised under `wrangler dev`, not only
 - Middleware normalizes the email (trim, lowercase), **auto-registers unknown emails** in the Global Registry DO,
   and attaches the per-user DO stub (`env.USER_DO.idFromName(email)`) to Hono context as `c.var.user`.
 - Registration creates an identity, not an ingestion subscription. Cron iterates shared catalog channels, not users.
-- Private follows, read status, preferences, chats, messages, and citations live in the user's DO. Global identities,
-  catalog approval requests, channels, episodes, and shared summaries live in the Registry DO. Requesters see only
-  their own requests; the owner can review all requests. Never expose another user's private DO data.
-- Only the owner can configure/approve, delete/restore, or retry catalog channels. Users can request and follow them.
+- Private read status, preferences, chats, messages, and citations live in the user's DO. Global identities, channels,
+  episodes, and shared summaries live in the Registry DO. Follow membership is recorded in both (decided 2026-09-10):
+  the User DO's `channel_follows` is what the user's own list shows, and the Registry's `channel_followers` lets it
+  count a channel's followers, list who is waiting on a requested one, and pause a channel nobody follows. Every
+  channel in the catalog, requested or approved, is visible to everyone. Never expose another user's private DO data.
+- Only the owner can approve, decline, pause, and resume a channel, or retry and skip an episode. Anyone can add a
+  channel to the catalog, request a declined one again, and follow any requested or approved channel.
 - The owner is whoever has `role = 'owner'` in `global_users`. The deployment seeds that role from the `OWNER_EMAIL`
   secret (`apps/api/.dev.vars` locally, copied from `.dev.vars.example`; `wrangler secret put OWNER_EMAIL` when deployed)
   every time the Registry DO starts. Seeding promotes and never demotes, so more owners can be granted later. Owner-only
@@ -224,9 +227,11 @@ The agreed logical schema, keys, and indexes are in `docs/PRD.md` §5. Implement
 - Each DO runs pending migrations on first access in `blockConcurrencyWhile`, tracked in a `_migrations` table.
 - Migrations are **additive only**: `CREATE TABLE`, `ALTER TABLE ... ADD COLUMN`, `CREATE INDEX`.
   Never drop, rename, or change a column type in a migration without owner approval. Deprecate instead.
-- Never edit a migration file that has been committed. Add a new one.
+- Never edit a migration file that has been committed. Add a new one. The initial migrations were rewritten once, on
+  2026-09-10 before first deployment, with owner approval (`docs/specs/channel-simplification.md` §6); from then on
+  the additive-only and frozen-file rules apply without exception.
 - `snake_case` for tables and columns. Every table has `created_at INTEGER` (unix ms). Use `TEXT` for ids.
-- The single Registry DO owns `global_users`, `channels`, `channel_requests`, `episodes`, `episode_summaries`,
+- The single Registry DO owns `global_users`, `channels`, `channel_followers`, `episodes`, `episode_summaries`,
   `ingestion_runs`, and `ingestion_run_episodes`. One User DO per normalized email owns `channel_follows`,
   `summary_reads`, `chats`, `chat_messages`, `chat_message_sources`, and `user_preferences`.
 - Enforce local foreign keys and transactions. References across DOs are validated through DO methods; there are
@@ -239,69 +244,107 @@ The agreed logical schema, keys, and indexes are in `docs/PRD.md` §5. Implement
   there is no chat-to-channel membership table. Retain the nullable `chat_messages.channel_id` as null for global chat.
 - A summary is unread until actually returned by `GET /digest` or viewed on its channel screen. Store read receipts
   in the User DO's `summary_reads`; absence means unread. Existing summaries start unread on first follow.
-  Preserve read receipts through unfollow and channel deletion/restoration.
-- Retain chats, messages, requests, follow tombstones, episodes, summaries, and vectors. Deletion is soft.
+  Preserve read receipts through unfollow, decline, and re-approval.
+- Retain chats, messages, follow tombstones, episodes, summaries, and vectors. Deletion is soft; channels are never
+  deleted at all, softly or otherwise — declining is a status and keeps everything the channel produced (see Catalog).
 
-## Catalog, requests, and follows
+## Catalog, approval, and follows
+
+The model is `docs/specs/channel-simplification.md` §3, decided 2026-09-10.
 
 - Users supply the channel id: a bare `UC…` id or any URL containing `/channel/UC…` (on YouTube: channel page → About →
   Share channel → Copy channel ID). `@handle` and `/c/…` URLs are rejected with `INVALID_INPUT` and those instructions;
-  there is no handle resolution (decided 2026-09-07). Before recording a request, fetch the id's RSS feed: 404 means no
-  such channel (`INVALID_INPUT`); success supplies the channel title, stored on the request (`channel_title`) so every
-  request list shows a name. Requests retain requester, submitted input, channel id, title, approval/rejection status,
-  and optional owner explanation. One request per `(user_email, youtube_channel_id)`; multiple requesters share one
-  approved channel and ingestion pipeline. Requests do not configure catalog channels before approval.
-- A request for a channel that is already available and not deleted is refused with `INVALID_STATE` and the channel
-  id, so the UI can offer Follow instead. No request row is created; nobody should request what they can already
-  follow. Pending, failed, and deleted channels can still be requested.
-- Approving a request whose channel is deleted is refused with `INVALID_STATE` ("restore it first"), the rule retry
-  already follows. `approveRequest` enforces it in the Registry; the UI only reflects it. (Changed 2026-09-07 from
-  silently reusing the deleted channel.)
-- Creating a channel needs a title: approval uses the title stored on the request; owner add verifies the id against
-  its RSS feed and uses the feed title. The owner may override either. If the feed fetch fails and none was given,
-  reject with `INVALID_INPUT` so the UI can ask for it.
-- Channel states: `pending | available | failed`. Only available, non-deleted channels can be followed.
-  Deletion is a separate `deleted_at`, preserving the underlying processing state and all follow records.
-- Owner approval/configuration starts initial ingestion. One fully processed episode (complete vectors plus shared
-  summary, including the accepted raw fallback) makes the channel available. Later episode failures do not revoke it.
-- Initial import defaults to five recent RSS episodes. If none is processed after attempts finish, mark the channel
-  failed with `NO_TRANSCRIPTS` when all attempted episodes lack captions, `NO_EPISODES` for an empty feed,
-  `NON_ENGLISH` when none had an English track, or `INITIAL_IMPORT_FAILED` for technical/mixed failures. Keep
-  episode-level reasons distinct.
-- Failed channels are excluded from scheduling. Only an owner-triggered `failed → pending` transition enables retry.
-- Approval plus availability triggers automatic following for every requester, once. Deliver from persisted approved
-  requests with `auto_follow_completed_at IS NULL`. In the User DO, insert only if no follow row exists; never overwrite
-  an active follow or an unfollow tombstone. Acknowledge completion in the Registry after the User DO succeeds.
-  Retrying this handoff must never reverse an explicit unfollow.
-- Unfollow sets `unfollowed_at`; it does not delete the catalog channel. Explicit manual refollow can clear it.
-  Owner channel deletion stops ingestion and excludes future retrieval. Restoration preserves previous active follows;
-  access resumes when the channel is available. An explicit unfollow stays unfollowed.
+  there is no handle resolution (decided 2026-09-07). `POST /channels` validates the id offline and then fetches its
+  RSS feed: 404 means no such channel (`INVALID_INPUT`); success supplies the channel title, which the owner may
+  override with `title`.
+- **Channel statuses are `requested | approved | declined`.** The status is the owner's answer about catalog
+  membership; import outcomes live on episodes only. There is no `deleted_at`, no channel failure code, no channel
+  waiting code, no channel retry, and no restore. Every channel in the catalog is visible to everyone, and a channel
+  whose episodes all skip is simply an approved channel with `episodes.available = 0`.
+- **Anyone adds a channel.** `POST /channels` creates it and follows the caller. A user's add creates `requested`; the
+  owner's add creates `approved` with `approved_at` and the review fields, starts the initial import, and follows the
+  owner too. `createChannel` in the Registry is create-only (`db26c74`), so when the id already exists the route
+  follows rather than failing: 200 for a `requested` or `approved` channel, and 409 `INVALID_STATE` for a `declined`
+  one carrying `channelId`, `status`, `reviewNote`, and `reviewedAt` so the UI can show the note and offer
+  **Request again**.
+- **Request again.** `POST /channels/:id/request`, anyone, `declined` only: back to `requested`, keeping the review
+  fields so the queue can show "previously declined", and following the caller. This is the only way out of
+  `declined` for a user, and the client confirms it once after showing the owner's note and date.
+- **Approve.** `POST /channels/:id/approve { title?, initialImportCount?, explanation? }`, owner, from `requested` or
+  `declined`. Sets `approved`, the review fields, and `approved_at` when it was null. The initial import starts only
+  on that first approval, whether or not anyone follows yet; a re-approved channel waits for the next scheduled run
+  and `approved_at` does not move. Approving recomputes pause from the follower count, so a channel nobody follows is
+  paused by the system straight away while its one initial import still runs.
+- **Decline.** `POST /channels/:id/decline { explanation? }`, owner, from `requested` or `approved`. Sets `declined`
+  and the review fields, clears any pause, and from `approved` bumps `lifecycle_version` so a run in flight is fenced
+  out. Episodes, summaries, vectors, follows, and read receipts are kept. Copy reads "Declined" when `approved_at` is
+  null and "Withdrawn" when it is not; declining an approved channel confirms once, naming the follower count.
+- **Pause and resume.** `POST /channels/:id/pause` and `POST /channels/:id/resume`, owner, `approved` only.
+  `paused_by` is `owner` or `system`, always with `paused_at`. Pause stops new run selection only: a running run
+  finishes, and summaries stay readable in digest, channel history, and chat.
+- Initial import defaults to the five most recent RSS entries; `initial_import_count` is a positive count set when the
+  channel is added or approved.
+- **Follows.** `PUT /follows/:channelId` takes any `requested` or `approved` channel and answers 409 with the note for
+  a `declined` one; it writes the User DO first, then `registry.recordFollow`. `DELETE /follows/:channelId` mirrors it
+  with `recordUnfollow` and works on any status. Both writes are idempotent, and a pair left inconsistent by a failure
+  is corrected by the next follow or unfollow of that pair. The User DO stays the source of truth for the user's own
+  list, the Registry for counts and the owner queue. `POST /channels` and `POST /channels/:id/request` perform the
+  same two writes.
+- **Automatic pause.** `recordUnfollow` counts the channel's active followers inside the same Registry call; at zero
+  on an `approved` channel it sets `paused_by = 'system'` unless the owner has paused it. `recordFollow` clears a
+  `system` pause and never an `owner` one; owner resume clears either. A `requested` or `declined` channel is never
+  paused.
+- **Eligibility** (`lib/eligibility.ts`, hard rule 3): active follows ∩ `status = 'approved'`. Paused channels stay
+  eligible, so their existing summaries remain readable and searchable. Requested channels have no content yet;
+  a declined channel is excluded by status, and its followers keep the row and see episode titles with no summaries.
+- Unfollow sets `unfollowed_at`; it never removes the catalog channel, and an explicit refollow clears it. There is no
+  automatic follow: requesters follow at the moment they request, so `UserDO.autoFollow`, the approval sweep, and the
+  `channel_requests` table are gone.
 
 ## Ingestion pipeline
 
-Owner approval/configuration or cron → Registry selects channel → one Workflow per channel run → per unprocessed
-video: fetch transcript through `lib/transcripts/` → chunk → embed → upsert in `shared-catalog` → summarize → write shared summary and mark
-processed in the Registry DO. Following never launches per-user ingestion or duplicates vectors/summaries.
+First approval, owner episode retry, or cron → Registry selects channel → one Workflow per channel run → per episode
+still to do: fetch transcript through `lib/transcripts/` → chunk → embed → upsert in `shared-catalog` → summarize → write shared summary and mark the
+episode `available` in the Registry DO. Following never launches per-user ingestion or duplicates vectors/summaries.
+The Workflow and the cron are M3; until then `lib/ingestion.ts` records each start point as a
+`{ event: "ingestion.start_requested", channelId, reason }` log line, with reasons `channel_approved` and
+`episode_retry`, so the call sites are already in place and visible under `wrangler dev`.
 
 - **Cron schedule:** every 6 hours, `0 */6 * * *` UTC (owner decision 2026-09-08), in `wrangler.jsonc` `triggers.crons`.
-  Scheduled runs select available, non-deleted channels independently of follower count.
-- **Selection rules (owner decisions 2026-09-08):** a "no captions" answer for a video published within the last 48
-  hours is "not yet": the episode stays `pending` with `transcript_checked_at` set, no attempt counted, re-checked
-  each run; after 48 hours it is `no_transcript`. Videos under 180 seconds are `failed` with `SKIPPED_SHORT` and store
-  nothing. Live or upcoming videos wait the same 48 hours, then `LIVE_OR_UPCOMING`. An episode with no English track
-  is `failed` with `NON_ENGLISH`; a channel whose attempted episodes are all `NON_ENGLISH` is `failed` with that code.
-  DownSub credit exhaustion (`PROVIDER_LIMIT`) ends the run with that code, leaves the remaining episodes `pending`,
-  and never fails the channel; `GET /catalog` shows the remaining credits.
-- Persist `ingestion_runs` and the exact selected `ingestion_run_episodes`. Permit at most one queued/running run
-  per channel. Owner retry selects the latest configured episode count, reuses completed work, and may reattempt
-  unsuccessful episodes, including those previously without captions.
-- Episode states: `pending | processing | processed | no_transcript | failed`. Record attempts, reason codes,
-  transcript checks, vector completion, and processing timestamps; distinguish no captions from network/parse failure.
+  Scheduled runs select channels with `status = 'approved'`, `paused_by IS NULL`, and no queued or running run — so
+  follower count reaches selection only through pause. A paused channel is skipped, not failed; a declined one is
+  excluded by status. Per channel: new feed entries plus every `pending` episode, waiting or below three attempts.
+- **Episode states: `pending | available | failed | skipped`.** `pending` carries an optional `waiting_code`
+  (`CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT`), cleared on the next attempt; `failed` carries the last technical
+  `failure_code`; `skipped` carries a `skip_reason` (`SHORT`, `NON_ENGLISH`, `NO_CAPTIONS`, `LIVE_OR_UPCOMING`,
+  `UNPLAYABLE`, `OWNER`) with `skipped_at` and, for an owner skip, `skipped_by_email`. There is no channel-level
+  failure code and no channel waiting code.
+- **Selection rules (owner decisions 2026-09-08, carried onto the new statuses):** a "no captions" answer for a video
+  published within the last 48 hours is "not yet": the episode stays `pending` with `waiting_code = CAPTIONS` and
+  `transcript_checked_at` set, no attempt counted, re-checked each run; at or after 48 hours it is `skipped
+  NO_CAPTIONS`. Videos under 180 seconds are `skipped SHORT` and store nothing. Live or upcoming videos wait the same
+  48 hours with `waiting_code = LIVE_OR_UPCOMING`, then `skipped LIVE_OR_UPCOMING`. An episode with captions but no
+  English track is `skipped NON_ENGLISH`; an `UNPLAYABLE` answer is `skipped UNPLAYABLE`. DownSub credit exhaustion
+  (`PROVIDER_LIMIT`) ends the run, leaves the remaining selected episodes `pending` with that waiting code, and counts
+  no attempt; `GET /catalog` shows the remaining credits.
+- **Three technical attempts.** `PROVIDER_AUTH`, `PROVIDER_HTTP`, `PROVIDER_RATE_LIMIT`, `PROVIDER_PARSE`,
+  `VECTORIZE_INCOMPLETE`, and summary failures after the raw-text fallback increment `attempt_count` and record the
+  reason; below three the episode stays `pending` and the next scheduled run reattempts it, and the third makes it
+  `failed`. Waiting never counts as an attempt. Only `failed` episodes reach the owner.
+- **Owner episode actions**, both requiring an approved channel with no queued or running run, else 409:
+  `POST /channels/:id/episodes/:videoId/retry` takes `failed` or `skipped` back to `pending`, clearing attempts and
+  skip fields, and `POST /channels/:id/episodes/:videoId/skip` takes `failed` to `skipped OWNER`. Siblings and their
+  summaries are untouched. There is no channel-level retry.
+- Persist `ingestion_runs` and the exact selected `ingestion_run_episodes` (`selected`, `available`, `failed`,
+  `skipped`, `waiting`, `not_attempted`). Permit at most one queued/running run per channel. A queued or running run
+  whose Workflow is missing or failed is closed and fenced, its episodes keeping their attempt counts; an approved
+  channel with no run row at all appears under Needs attention as "approved, never started".
 - Workflows: each external call (RSS, transcript, AI, Vectorize) is its own `step.do()` for granular retries.
-  Check persisted episode progress and use deterministic vector IDs. Publish `processed` only after the full vector
+  Check persisted episode progress and use deterministic vector IDs. Publish `available` only after the full vector
   set is ready for retrieval and a summary is stored; never expose partial ingestion as completed content.
-- Channel deletion and owner retry increment `lifecycle_version`; run writes must match that version. Cancel/fence
-  stale runs so they cannot change catalog state after deletion/restart. Retained partial vectors remain ineligible.
+  `processed_at` is the summary's availability time and is never reset.
+- Declining an approved channel increments `lifecycle_version`; run writes must match that version. Cancel/fence
+  stale runs so they cannot change catalog state after a withdrawal. Retained partial vectors remain ineligible.
 - Channel identity is the canonical `UC…` id; the feed is `https://www.youtube.com/feeds/videos.xml?channel_id=UC…`.
   Ids and `/channel/UC…` URLs validate offline in `lib/youtube/ids.ts`. There is no resolution of `@handle` or
   `/c/…` URLs: the feed does not accept them, and users copy the id from the channel's About dialog instead.
@@ -366,14 +409,14 @@ gets fed to the LLM at query time, so keep it exact.
   markers in the prompt (null when absent or out of range), a ≤3-sentence executive summary, topic tags. Ask the model
   for JSON and validate the shape before storing; on validation failure retry once, then store raw text with a flag.
 - Summaries are shared once per episode. User preferences affect chat answers only.
-- RAG Q&A: read current follows → intersect with available, non-deleted catalog channels → embed question →
+- RAG Q&A: read current follows → intersect with approved catalog channels → embed question →
   query `shared-catalog` with `filter: { channelId: { $in: eligibleChannelIds } }`, `topK: 3`, all metadata → validate
-  matched episodes are processed and channels still eligible → build context → include preferences and this chat's
+  matched episodes are available and channels still eligible → build context → include preferences and this chat's
   recent history → Llama 3.3. Cite `videoId` + `startSec`. Split oversized filters and merge results by score; never
   drop the channel filter to accommodate limits. Refill candidates as needed when rejecting incomplete episodes.
-- With no eligible channels, store a normal assistant reply: "Chat requires following at least one available channel."
+- With no eligible channels, store a normal assistant reply: "Chat requires following at least one approved channel."
   Skip AI and Vectorize calls. Chat creation, history, and message submission remain accessible.
-- Following/unfollowing or deleting/restoring channels changes future retrieval for every existing chat. Earlier
+- Following or unfollowing, and declining or re-approving a channel, changes future retrieval for every existing chat. Earlier
   messages and citations remain visible and may still be used as conversation context; do not scrub history.
 - Shared summary cross-references query the same namespace, excluding the video's own ID. Retain related video IDs
   and filter referenced titles to the reader's eligible channels when displaying them.
@@ -393,25 +436,30 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 | Route | Who | Purpose |
 |---|---|---|
 | `GET /me` | anyone | The caller's normalized email and `role` (`owner` or `user`); the UI uses it to show owner controls |
-| `GET /catalog` | owner | The catalog's aggregate state: channels by state, stuck pending (pending, not deleted, no queued/running run), episodes processed/tracked, active runs, pending requests, last successful ingestion |
-| `GET /channels` | anyone | Available, non-deleted channels with `following` and `processedCount`; `?scope=all` (owner) every state including deleted, each with `management` |
-| `POST /channels` `{ channelId, title?, initialImportCount? }` | owner | Create a pending channel; the id is verified against its RSS feed and the feed title used unless given; 409 if already in the catalog |
-| `GET /channels/:id` | anyone | One channel: readers only while available and non-deleted (404 otherwise); the owner any state, with `management` |
-| `DELETE /channels/:id` / `POST /channels/:id/restore` | owner | Soft-delete / restore the shared channel |
-| `POST /channels/:id/retry` | owner | Reset failed channel to pending and start retry |
-| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; followers and the owner get `summary`, `related`, `wasUnread`, and returned summaries are marked read for the caller; non-followers get episodes without summaries; the owner also gets `processing` |
+| `GET /catalog` | owner | The catalog's aggregate state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, waiting, failed, skipped }`, `runs { active }`, `attention { failedEpisodes, neverStarted, requested }`, `lastSuccessfulIngestionAt` |
+| `GET /channels` | anyone | `requested` and `approved` channels, each with `status`, `paused`, `following`, `followerCount`, `episodes` counts and `lastIngestedAt`; `?scope=all` (owner) adds `declined` ones and a `management` block |
+| `POST /channels` `{ channelId, title?, initialImportCount? }` | anyone | A user's call creates a `requested` channel and follows them (201); the owner's creates it `approved`, starts the initial import, and follows the owner (201). An existing `requested` or `approved` id is followed and returned (200); a `declined` id is 409 `ChannelDeclinedResponse`. A handle or an id with no feed is 400 |
+| `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; the owner also gets `management` |
+| `POST /channels/:id/request` | anyone | `declined → requested`, keeping the review fields, and follows the caller |
+| `POST /channels/:id/approve` `{ title?, initialImportCount?, explanation? }` | owner | `requested → approved` with the one initial import, or `declined → approved` without one; recomputes pause from the follower count |
+| `POST /channels/:id/decline` `{ explanation? }` | owner | `requested → declined`, or `approved → declined` with a `lifecycle_version` bump and the pause cleared |
+| `POST /channels/:id/pause` / `POST /channels/:id/resume` | owner | Owner pause; resume clears either kind of pause. `approved` only |
+| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; the owner and followers of an approved channel get `summary`, `related`, `wasUnread`, and returned summaries are marked read for the caller; everyone else gets titles without summaries; the owner also gets `processing` (attempts, `failureCode`, `waitingCode`, `skipReason`) |
+| `POST /channels/:id/episodes/:videoId/retry` | owner | `failed` or `skipped → pending`, attempts and skip fields cleared, one-episode run |
+| `POST /channels/:id/episodes/:videoId/skip` | owner | `failed → skipped OWNER` |
 | `GET /channels/:id/ingestion-runs` | owner | Runs newest first with per-episode outcomes |
-| `GET /channels/:id/requests` | owner | Every user's requests for this channel |
-| `GET /follows` | anyone (own) | Active follows, each embedding its `channel` and carrying `unreadCount` |
-| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Explicit follow/refollow of an available channel / retained unfollow tombstone |
+| `GET /channels/:id/followers` | owner | Emails and `followedAt` of the channel's active followers |
+| `GET /follows` | anyone (own) | Active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
+| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` otherwise) / retained unfollow tombstone; both also write the Registry follower record |
 | `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel episodes with summaries, newest first; default last 24h, clamped to 7 days; mark returned items read; `wasUnread` per item |
-| `GET /channel-requests` | anyone (own); `?scope=all` owner | Requests with a derived `outcome` and the channel's current `state`; own by default, everyone's with `?scope=all` |
-| `POST /channel-requests` `{ channelId }` | anyone | Request a channel by `UC…` id or `/channel/UC…` URL (400 `INVALID_INPUT` for handles, other URLs, or an id with no RSS feed; 409 `INVALID_STATE` + `channelId` when already available; records the feed title) |
-| `POST /channel-requests/:id/approve` or `/reject` | owner | Owner review with optional explanation; approve creates the channel with the request's stored title unless one is given, and is refused with `INVALID_STATE` while the channel is deleted |
 | `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list the user's chats |
 | `GET /chats/:id/messages?limit=50` | anyone (own) | That chat's messages and citation snapshots |
 | `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources, using current eligible follows |
 | `GET /preferences` / `PUT /preferences` | anyone (own) | User's chat rules |
+
+`/channel-requests/*`, `DELETE /channels/:id`, `POST /channels/:id/restore`, and `POST /channels/:id/retry` do not
+exist: requests are channels, channels are never deleted, and retry is per episode (2026-09-10). There is no route
+that starts a run on demand either; the Start action for an approved channel that never began belongs to M3.
 
 All routes except `/health`, `/openapi.json`, and `/docs` require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require
 `role = 'owner'`: `requireOwner` from `middleware/owner.ts` is applied to those handlers and returns 403 early from
@@ -457,52 +505,58 @@ straight to `/home`. A "switch account" link is visible on every other screen.
 
 **`/home` — Home.** One page for everyone, with section jump links. The header shows the email, the word `owner`
 when applicable, and "Switch account"; the nav shows **Home** and, for owners, **Owner (n)** where `n` is the attention
-count. Owners also see an attention card first ("2 requests waiting for review · 1 channel failed", from
-`GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the count is zero. Then:
-1. **Today's digest** — eligible followed channels only (active follows ∩ available, non-deleted); last 24h, newest
+count. Owners also see an attention card first ("2 channels waiting for review · 1 episode failed · 1 channel approved
+but never started", from `GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the
+count is zero. Then:
+1. **Today's digest** — eligible followed channels only (active follows ∩ approved); last 24h, newest
    first, flat list with the channel as byline; shared summary, takeaways, tags, related titles filtered to eligible
    channels, and `youtu.be` links. Items with no read receipt at fetch time are marked NEW; returning them records the
    receipt. "Show last 7 days" widens `since`. Two empty states: with no active follows, "Follow a channel to start
-   your digest." with the available catalog and follow controls rendered inline; otherwise "Nothing new since
+   your digest." with the catalog and its follow controls rendered inline; otherwise "Nothing new since
    yesterday." Load `/follows` and `/channels` before `/digest` so unread counts and NEW markers agree.
-2. **Channels** — three subsections. **Followed** (`GET /follows`): processed count, unread count, last ingestion,
-   Unfollow; a followed channel that is deleted stays listed as unavailable and drops out of the digest.
-   **Available** (`GET /channels` minus follows): processed count, Follow. **Your requests** (`GET /channel-requests`):
-   channel title, id, one phrase from the derived `outcome`, owner explanation, and a "Request channel" input for a
-   `UC…` id or `/channel/UC…` URL with one line saying where to copy it. An id that is already available gets
-   "Already in the catalog" and a Follow button, not a request.
-   Poll about every 15s only while a request is awaiting review, importing, or awaiting its automatic follow.
+2. **Channels** — two subsections and one input. **Followed** (`GET /follows`): approved rows show summarised count,
+   unread count and last ingestion and link to the channel; requested rows read "Awaiting owner approval"; paused rows
+   add "paused"; declined rows read "Declined" or "Withdrawn" with the owner's note and date and a **Request again**
+   button that confirms once. Unfollow on every row, and a followed channel that is declined stays listed but drops
+   out of the digest. **Catalog** (`GET /channels` minus follows): approved channels with summarised counts and
+   Follow; requested channels with "awaiting approval · N following" and Follow. Below both, one **Add a channel**
+   input for a `UC…` id or `/channel/UC…` URL with the line saying where to copy it: a new id creates and follows, an
+   existing id follows, and a declined id shows "Declined on <date>: '<note>'" with Request again.
+   Poll about every 15s only while a followed channel is still awaiting the owner's decision.
 3. **Chats** — joins Home in M4; no placeholder before then. List/create/select independent conversations. Preserve
    each chat's messages and source links. Never disable chat controls for lack of follows; use the fixed
    follow-required response above.
 
-**`/channel/:id` — Channel.** Available channel header, with shared summaries newest first for followers; viewing
-marks returned summaries read for this user. Non-followers can follow an available channel. No chat input here;
-conversations live on Home. Back link to `/home`.
+**`/channel/:id` — Channel.** Any status. A requested channel shows the header, "Awaiting owner approval", and Follow
+or Unfollow, with no episodes. An approved one shows shared summaries newest first for followers, and `pending`,
+`skipped` and `failed` episodes by title with their phrase; viewing marks returned summaries read for this user.
+A declined one shows the note, the date, and Request again, with episode titles and no summaries when it had been
+approved. No chat input here; conversations live on Home. Back link to `/home`.
 
 **`/owner` — Owner.** Owner only: users are sent back to `/home` with a note, and the API returns 403 regardless. One
-page, sections **Requests** and **Catalog**, jump links `#requests`, `#catalog`, `#attention`.
-- **Requests.** Pending oldest first: requester, channel title, id linked to its YouTube page, that id's catalog state (not in catalog,
-  pending, available, failed, deleted), "also requested by N", Approve and Reject with an optional explanation. Approve
-  is refused for a deleted channel ("restore it first"). Reviewed requests are collapsed, with reviewer, time,
-  explanation, and whether the automatic follow was delivered.
-- **Catalog.** Health strip from `GET /catalog`. **Needs attention**: failed non-deleted channels with a
-  humanized failure code, detail, latest run, and Retry; and pending non-deleted channels with no queued or running
-  run, at any age, with how long they have waited. **All channels**: state, processed/tracked episodes with no-caption
-  and failed counts, last ingested, latest run, requester count, and Retry/Delete/Restore (Delete confirms once). An
-  "Add a channel" form calls `POST /channels`. Requester count stands in for follower count, which lives only in
-  User DOs and is not shown.
+page, sections **Queue**, **Catalog**, and **Needs attention**, jump links `#requests`, `#catalog`, `#attention`.
+- **Queue.** Requested channels oldest first: title, id linked to its YouTube page, active followers by email,
+  "nobody is waiting" when there are none, "previously declined on <date>: '<note>'" when re-requested, and Approve
+  (title, import count, note) and Decline (note) forms. Reviewed history is collapsed: reviewer, time, note.
+- **Needs attention.** `failed` episodes grouped by channel with reason, attempts, Retry and Skip; then approved
+  channels with no run row at all, listed as information — there is no Start button until M3 adds a route that starts
+  a run. "Never started" means approved and no run, with no age window.
+- **Catalog.** Health strip from `GET /catalog`. **All channels**: status, paused, `available / tracked` with skipped
+  and failed counts, follower count, last ingested, latest run, and the actions the status allows — Approve or
+  Decline, Pause or Resume. Declining an approved channel confirms once, naming its follower count. Follower counts
+  are real, from the Registry's follower record; the emails behind them are shown only in the queue.
 
 **`/owner/channels/:id` — Owner channel detail.** From `GET /channels/:id` (with `management`), `/episodes`,
-`/ingestion-runs`, and `/requests`: header with state, failure code and
-detail, `available_at`, lifecycle version, import count, and actions; episodes with status, attempts, failure code,
-chunk count, processed time, and summary format; runs with per-episode outcomes; requests with auto-follow state.
-Never shows any user's read or chat activity.
+`/ingestion-runs`, and `/followers`: header with status, pause, approval and review fields, lifecycle version, import
+count, and follower count; episodes with status, wait reason, attempts, failure or skip reason, summary format, and
+Retry and Skip; runs with per-episode outcomes; followers by email. Never shows any user's read or chat activity.
 
 Owner catalog management is required, but a general admin dashboard is not: `/owner` shows only what supports approve,
-reject, retry, delete, and restore. Render owner controls only when `GET /me` returns `role: "owner"`; the client's role
-is for rendering, and authorization happens per request in the Registry. Humanized copy for failure codes and request
-outcomes, wireframes, load order, and acceptance criteria are in `docs/specs/home-read-experience.md`.
+decline, pause, resume, and per-episode retry and skip. Render owner controls only when `GET /me` returns
+`role: "owner"`; the client's role is for rendering, and authorization happens per request in the Registry. The
+user-facing phrases for channel statuses, skip reasons and wait reasons live in one place, `apps/web/src/lib/copy.ts`;
+wireframes, load order, and acceptance criteria are in `docs/specs/home-read-experience.md` and
+`docs/specs/channel-simplification.md` §7.
 
 ## Testing
 
@@ -517,18 +571,24 @@ Worker loads for `SELF` requests, so env-selected fakes are the only seam that w
 Tests are focused, not exhaustive. Required coverage:
 
 - **Isolation and retrieval scope** — two emails with overlapping and disjoint follows; private chats, preferences,
-  requests, and read receipts remain isolated. Shared ingestion produces one canonical episode/vector set. Every
-  Vectorize call uses `shared-catalog`; chat queries carry only eligible channel IDs. Prove changes to follows and
-  deletion/restoration affect existing chats, history remains intact, and zero eligible channels skip AI/Vectorize.
-- **Lifecycle and retry** — approval and first processed episode unlock availability; no-caption and technical failures
-  remain distinct; failed channels require owner retry; stale run writes are rejected. Automatic-follow retries never
-  reverse an unfollow. Restore preserves follows/read receipts. Test owner-only mutations and own-request visibility.
-  A request for an already-available channel is refused and creates no row; handles and ids with no feed are
-  rejected. Owner overview and channel-health counts match SQL-seeded episodes and runs. Add or extend these tests
-  whenever a route or data path is introduced.
+  and read receipts remain isolated. Shared ingestion produces one canonical episode/vector set. Every
+  Vectorize call uses `shared-catalog`; chat queries carry only eligible channel IDs. Prove changes to follows and to
+  decline/re-approval affect existing chats, history remains intact, and zero eligible channels skip AI/Vectorize.
+- **Lifecycle and retry** — adding an existing channel follows the caller and creates nothing; a declined id is 409
+  with the note, and `POST /channels/:id/request` makes it requested again and follows the caller. First approval
+  starts exactly one import and later approvals start none, leaving `approved_at` alone. Declining an approved channel
+  bumps `lifecycle_version` so stale run writes are rejected, and its summaries leave digest and chat and come back on
+  re-approval. Unfollowing to zero followers pauses an approved channel by the system, the next follow lifts it, an
+  owner pause survives a follow, and a requested channel is never paused; `followerCount` matches the Registry
+  follower record. Episode attempts stay `pending` below three and turn `failed` on the third; system skips carry
+  their reason, owner retry clears attempts and skip fields, and owner skip needs a `failed` episode. Test owner-only
+  mutations, and that handles and ids with no feed are rejected. Owner overview and channel-health counts match
+  SQL-seeded episodes and runs. Add or extend these tests whenever a route or data path is introduced.
 - **Pure functions** — chunking (token caps, overlap, edge cases: empty, one segment, very long segment),
   RSS parsing, channel URL resolution, summary JSON validation.
-- **Migrations** — a fresh DO runs all migrations idempotently; running twice is a no-op.
+- **Migrations** — a fresh DO runs all migrations idempotently; running twice is a no-op. The check constraints
+  reject what they are meant to reject: an approved channel with no `approved_at`, a paused channel that is not
+  approved, a skipped episode with no reason, and an owner skip with no email.
 - **API document** — `GET /openapi.json` lists exactly the registered routes (`test/openapi.test.ts`), and each route
   test parses one response per shared schema with `expectShape` from `test/helpers.ts`, so the document and the
   Worker cannot disagree about a shape.

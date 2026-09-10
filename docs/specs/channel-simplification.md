@@ -6,8 +6,8 @@
 deleted. Second: the application has no production data, so the initial migrations are rewritten rather than
 extended, the two data questions are closed, and the initial import runs at first approval regardless of followers
 (§2, second table, last three rows; §6).
-**Status:** proposed. Drafted from the group PM review of the channel-state proposal and the review decisions of
-2026-09-10 (§2). Nothing here is implemented; an implementation plan follows acceptance.
+**Status:** implemented on `feat/channel-simplification` (2026-09-10); web screens await the owner's browser
+walkthrough; the M3 plan revision (§12) is separate work.
 **Supersedes, once accepted:** the catalog, request, follow, and deletion rules in `AGENTS.md` and PRD §4.1–4.3;
 `docs/specs/home-read-experience.md` §6.4, §7, §9.3, and the request routes in §10; `docs/specs/m3-ingestion.md` §2
 (channel failure rows), §3.3, §3.4, and the approval path in §3; `docs/specs/m3-ingestion-plan.md` Steps 4, 7, 8, 9
