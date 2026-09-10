@@ -1,31 +1,81 @@
 import type { Channel } from "@media-digest/shared";
-import { CHANNEL_STATUS_COPY } from "../lib/copy";
+import { useState } from "preact/hooks";
+import { api } from "../api";
+import { channelStateCopy } from "../lib/copy";
+import { type Act, AttentionList } from "./AttentionList";
 import type { CatalogFilter } from "./CatalogHealth";
 import { Time } from "./Time";
 
 /**
- * The all-channels table (spec §7.4) from GET /channels?scope=all, whose rows carry the
- * owner-only `management` block. Task 10 rebuilds the attention list and the row actions on the
- * new approve, decline, pause, and resume operations.
+ * The owner's needs-attention list and the all-channels table (spec §7): failed episodes grouped
+ * by channel with Retry and Skip, approved channels never started as information, and the table
+ * of every channel with the actions its status allows.
  */
 export function CatalogTable({
   channels,
   filter,
+  onChanged,
 }: {
   channels: Channel[];
   filter: CatalogFilter;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const act: Act = async (channelId, work) => {
+    setBusy((b) => ({ ...b, [channelId]: true }));
+    setErrors((e) => ({ ...e, [channelId]: "" }));
+    try {
+      await work();
+      onChanged();
+    } catch (caught) {
+      setErrors((e) => ({
+        ...e,
+        [channelId]: caught instanceof Error ? caught.message : String(caught),
+      }));
+    } finally {
+      setBusy((b) => ({ ...b, [channelId]: false }));
+    }
+  };
+
+  return (
+    <>
+      <AttentionList
+        channels={channels}
+        busy={busy}
+        errors={errors}
+        act={act}
+      />
+      <AllChannelsTable
+        channels={channels}
+        filter={filter}
+        busy={busy}
+        errors={errors}
+        act={act}
+      />
+    </>
+  );
+}
+
+/** **All channels** (spec §7): every channel, with the actions its status allows. */
+function AllChannelsTable({
+  channels,
+  filter,
+  busy,
+  errors,
+  act,
+}: {
+  channels: Channel[];
+  filter: CatalogFilter;
+  busy: Record<string, boolean>;
+  errors: Record<string, string>;
+  act: Act;
 }) {
   const shown = channels.filter((c) => {
-    switch (filter) {
-      case "all":
-        return true;
-      case "paused":
-        return c.paused;
-      case "approved":
-        return c.status === "approved" && !c.paused;
-      default:
-        return c.status === filter;
-    }
+    if (filter === "all") return true;
+    if (filter === "paused") return c.status === "approved" && c.paused;
+    return c.status === filter;
   });
 
   return (
@@ -43,6 +93,8 @@ export function CatalogTable({
               <th>Episodes</th>
               <th>Last ingested</th>
               <th>Latest run</th>
+              <th>Followers</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -53,14 +105,11 @@ export function CatalogTable({
                   <td class="wrap">
                     <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
                   </td>
-                  <td>
-                    {CHANNEL_STATUS_COPY[c.status]}
-                    {c.paused && " · paused"}
-                  </td>
+                  <td>{channelStateCopy(c)}</td>
                   <td>
                     {c.episodes.available} / {c.episodes.tracked}
-                    {c.episodes.waiting > 0 && (
-                      <span class="muted"> · {c.episodes.waiting} waiting</span>
+                    {c.episodes.skipped > 0 && (
+                      <span class="muted"> · {c.episodes.skipped} skipped</span>
                     )}
                     {c.episodes.failed > 0 && (
                       <span class="muted"> · {c.episodes.failed} failed</span>
@@ -74,6 +123,17 @@ export function CatalogTable({
                       ? `${m.latestRun.kind} · ${m.latestRun.status}`
                       : "—"}
                   </td>
+                  <td>{c.followerCount}</td>
+                  <td>
+                    <RowActions
+                      channel={c}
+                      busy={busy[c.channelId] ?? false}
+                      act={act}
+                    />
+                    {errors[c.channelId] && (
+                      <p class="error">{errors[c.channelId]}</p>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -81,5 +141,94 @@ export function CatalogTable({
         </table>
       </div>
     </>
+  );
+}
+
+/** The actions a table row offers, by status (spec §7): requested, approved (paused or not), declined. */
+function RowActions({
+  channel: c,
+  busy,
+  act,
+}: {
+  channel: Channel;
+  busy: boolean;
+  act: Act;
+}) {
+  if (c.status === "requested") {
+    return (
+      <div class="actions">
+        <button
+          id={`approve-${c.channelId}`}
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            act(c.channelId, () => api.approveChannel(c.channelId, {}))
+          }
+        >
+          Approve
+        </button>
+        <button
+          id={`decline-${c.channelId}`}
+          type="button"
+          class="danger"
+          disabled={busy}
+          onClick={() =>
+            act(c.channelId, () => api.declineChannel(c.channelId, {}))
+          }
+        >
+          Decline
+        </button>
+      </div>
+    );
+  }
+  if (c.status === "approved") {
+    return (
+      <div class="actions">
+        <button
+          id={c.paused ? `resume-${c.channelId}` : `pause-${c.channelId}`}
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            act(c.channelId, () =>
+              c.paused
+                ? api.resumeChannel(c.channelId)
+                : api.pauseChannel(c.channelId),
+            )
+          }
+        >
+          {c.paused ? "Resume" : "Pause"}
+        </button>
+        <button
+          id={`decline-${c.channelId}`}
+          type="button"
+          class="danger"
+          disabled={busy}
+          onClick={() => {
+            const confirmed = window.confirm(
+              `Withdraw ${c.title}? ${c.followerCount} follower${c.followerCount === 1 ? "" : "s"} will lose access to its summaries until it is approved again.`,
+            );
+            if (confirmed) {
+              act(c.channelId, () => api.declineChannel(c.channelId, {}));
+            }
+          }}
+        >
+          Decline
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div class="actions">
+      <button
+        id={`approve-${c.channelId}`}
+        type="button"
+        disabled={busy}
+        onClick={() =>
+          act(c.channelId, () => api.approveChannel(c.channelId, {}))
+        }
+      >
+        Approve
+      </button>
+    </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
 import { useSession } from "../session";
+import { attentionCount } from "./CatalogHealth";
 
 /**
  * Site header and primary nav. Owners see "Owner (n)", where n is the attention count from
@@ -21,9 +22,8 @@ export function Nav() {
     }
     let cancelled = false;
     api.getCatalog().then(
-      () => {
-        // Task 10: the attention count becomes the review queue plus the paused channels.
-        if (!cancelled) setAttention(0);
+      ({ catalog }) => {
+        if (!cancelled) setAttention(attentionCount(catalog));
       },
       () => {
         if (!cancelled) setAttention(null);

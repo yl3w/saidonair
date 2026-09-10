@@ -5,6 +5,7 @@ import { AddChannel } from "../components/AddChannel";
 import { type CatalogFilter, CatalogHealth } from "../components/CatalogHealth";
 import { CatalogTable } from "../components/CatalogTable";
 import { Nav } from "../components/Nav";
+import { RequestQueue } from "../components/RequestQueue";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
@@ -16,7 +17,7 @@ export function Owner() {
   );
 }
 
-/** The owner's job in one page (spec §7): catalog health and the table. */
+/** The owner's job in one page (spec §7): the review queue, catalog health and table, attention list. */
 function OwnerScreen() {
   const { url } = useLocation();
   const [catalog, reloadCatalog] = useLoad(() => api.getCatalog(), []);
@@ -41,8 +42,23 @@ function OwnerScreen() {
     <main class="wide">
       <Nav />
       <nav class="sections" aria-label="Sections">
+        <a href="#requests">Queue</a>
         <a href="#catalog">Catalog</a>
+        <a href="#attention">Needs attention</a>
       </nav>
+
+      {channels.status === "loading" && <p>Loading channels…</p>}
+      {channels.status === "error" && (
+        <p class="error">
+          Couldn't load channels: {channels.error.message}.{" "}
+          <button type="button" onClick={reloadChannels}>
+            Retry
+          </button>
+        </p>
+      )}
+      {channels.status === "ready" && (
+        <RequestQueue channels={channels.data.channels} onChanged={reloadAll} />
+      )}
 
       <section id="catalog">
         <h2>Catalog</h2>
@@ -58,17 +74,12 @@ function OwnerScreen() {
         {catalog.status === "ready" && (
           <CatalogHealth catalog={catalog.data.catalog} onFilter={setFilter} />
         )}
-        {channels.status === "loading" && <p>Loading channels…</p>}
-        {channels.status === "error" && (
-          <p class="error">
-            Couldn't load channels: {channels.error.message}.{" "}
-            <button type="button" onClick={reloadChannels}>
-              Retry
-            </button>
-          </p>
-        )}
         {channels.status === "ready" && (
-          <CatalogTable channels={channels.data.channels} filter={filter} />
+          <CatalogTable
+            channels={channels.data.channels}
+            filter={filter}
+            onChanged={reloadAll}
+          />
         )}
         <AddChannel onChanged={reloadAll} />
       </section>

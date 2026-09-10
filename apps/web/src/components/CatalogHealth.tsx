@@ -18,9 +18,12 @@ export function CatalogHealth({
 }) {
   const c = catalog.channels;
   const e = catalog.episodes;
-  const tracked = e.available + e.pending + e.waiting + e.failed + e.skipped;
   const count = (label: string, n: number, filter: CatalogFilter) => (
-    <button type="button" onClick={() => onFilter(filter)}>
+    <button
+      id={`filter-${filter}`}
+      type="button"
+      onClick={() => onFilter(filter)}
+    >
       {label} {n}
     </button>
   );
@@ -31,7 +34,8 @@ export function CatalogHealth({
       {count("Paused", c.paused, "paused")}
       {count("Declined", c.declined, "declined")}
       <span>
-        Episodes {e.available} available / {tracked} tracked
+        Episodes {e.available} summarised · {e.pending} pending ({e.waiting}{" "}
+        waiting) · {e.failed} failed · {e.skipped} skipped
       </span>
       <span>Runs active {catalog.runs.active}</span>
       <span>
@@ -39,5 +43,14 @@ export function CatalogHealth({
         <Time at={catalog.lastSuccessfulIngestionAt} fallback="never" />
       </span>
     </div>
+  );
+}
+
+/** The nav badge and the owner card share this: requested review, failed episodes, never started. */
+export function attentionCount(catalog: Catalog): number {
+  return (
+    catalog.attention.requested +
+    catalog.attention.failedEpisodes +
+    catalog.attention.neverStarted
   );
 }
