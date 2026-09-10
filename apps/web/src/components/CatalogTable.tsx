@@ -1,9 +1,9 @@
 import type { Channel } from "@media-digest/shared";
 import { useState } from "preact/hooks";
-import { api } from "../api";
 import { channelStateCopy } from "../lib/copy";
 import { type Act, AttentionList } from "./AttentionList";
 import type { CatalogFilter } from "./CatalogHealth";
+import { ChannelStatusActions } from "./ChannelStatusActions";
 import { Time } from "./Time";
 
 /**
@@ -125,10 +125,11 @@ function AllChannelsTable({
                   </td>
                   <td>{c.followerCount}</td>
                   <td>
-                    <RowActions
+                    <ChannelStatusActions
                       channel={c}
                       busy={busy[c.channelId] ?? false}
-                      act={act}
+                      idPrefix=""
+                      act={(work) => act(c.channelId, work)}
                     />
                     {errors[c.channelId] && (
                       <p class="error">{errors[c.channelId]}</p>
@@ -141,94 +142,5 @@ function AllChannelsTable({
         </table>
       </div>
     </>
-  );
-}
-
-/** The actions a table row offers, by status (spec §7): requested, approved (paused or not), declined. */
-function RowActions({
-  channel: c,
-  busy,
-  act,
-}: {
-  channel: Channel;
-  busy: boolean;
-  act: Act;
-}) {
-  if (c.status === "requested") {
-    return (
-      <div class="actions">
-        <button
-          id={`approve-${c.channelId}`}
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            act(c.channelId, () => api.approveChannel(c.channelId, {}))
-          }
-        >
-          Approve
-        </button>
-        <button
-          id={`decline-${c.channelId}`}
-          type="button"
-          class="danger"
-          disabled={busy}
-          onClick={() =>
-            act(c.channelId, () => api.declineChannel(c.channelId, {}))
-          }
-        >
-          Decline
-        </button>
-      </div>
-    );
-  }
-  if (c.status === "approved") {
-    return (
-      <div class="actions">
-        <button
-          id={c.paused ? `resume-${c.channelId}` : `pause-${c.channelId}`}
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            act(c.channelId, () =>
-              c.paused
-                ? api.resumeChannel(c.channelId)
-                : api.pauseChannel(c.channelId),
-            )
-          }
-        >
-          {c.paused ? "Resume" : "Pause"}
-        </button>
-        <button
-          id={`decline-${c.channelId}`}
-          type="button"
-          class="danger"
-          disabled={busy}
-          onClick={() => {
-            const confirmed = window.confirm(
-              `Withdraw ${c.title}? ${c.followerCount} follower${c.followerCount === 1 ? "" : "s"} will lose access to its summaries until it is approved again.`,
-            );
-            if (confirmed) {
-              act(c.channelId, () => api.declineChannel(c.channelId, {}));
-            }
-          }}
-        >
-          Decline
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div class="actions">
-      <button
-        id={`approve-${c.channelId}`}
-        type="button"
-        disabled={busy}
-        onClick={() =>
-          act(c.channelId, () => api.approveChannel(c.channelId, {}))
-        }
-      >
-        Approve
-      </button>
-    </div>
   );
 }

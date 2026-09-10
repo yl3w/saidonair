@@ -3,7 +3,10 @@ import { useEffect, useState } from "preact/hooks";
 import { api } from "../api";
 import { Time } from "./Time";
 
-export type Act = (channelId: string, work: () => Promise<unknown>) => void;
+export type Act = (
+  channelId: string,
+  work: () => Promise<unknown>,
+) => Promise<void>;
 
 /** **Needs attention** (spec §7): failed episodes grouped by channel, then channels never started. */
 export function AttentionList({
@@ -29,9 +32,11 @@ export function AttentionList({
   const [episodesByChannel, setEpisodesByChannel] = useState<
     Record<string, Episode[]>
   >({});
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     if (failedChannelIds.length === 0) {
       setEpisodesByChannel({});
       return;
@@ -45,16 +50,21 @@ export function AttentionList({
               [id, r.episodes.filter((e) => e.status === "failed")] as const,
           ),
       ),
-    ).then((pairs) => {
-      if (cancelled) return;
-      const next: Record<string, Episode[]> = {};
-      for (const [id, list] of pairs) next[id] = list;
-      setEpisodesByChannel(next);
-    });
+    )
+      .then((pairs) => {
+        if (cancelled) return;
+        const next: Record<string, Episode[]> = {};
+        for (const [id, list] of pairs) next[id] = list;
+        setEpisodesByChannel(next);
+      })
+      .catch((caught: unknown) => {
+        if (cancelled) return;
+        setLoadError(caught instanceof Error ? caught.message : String(caught));
+        setEpisodesByChannel({});
+      });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [failedChannelIdsKey]);
 
   return (
@@ -62,6 +72,9 @@ export function AttentionList({
       <h2>Needs attention</h2>
       <h3>Failed episodes</h3>
       {failedChannels.length === 0 && <p class="muted">No failed episodes.</p>}
+      {loadError !== null && (
+        <p class="error">Couldn't load failed episodes: {loadError}.</p>
+      )}
       {failedChannels.map((c) => {
         const episodes = episodesByChannel[c.channelId];
         return (
@@ -69,7 +82,9 @@ export function AttentionList({
             <p>
               <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
             </p>
-            {episodes === undefined && <p class="muted">Loading…</p>}
+            {episodes === undefined && loadError === null && (
+              <p class="muted">Loading…</p>
+            )}
             {episodes?.map((e) => (
               <div class="row" key={e.videoId}>
                 <div class="grow">

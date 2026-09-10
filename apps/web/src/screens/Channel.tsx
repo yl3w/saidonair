@@ -31,15 +31,18 @@ function ChannelScreen() {
     () => api.getChannel(channelId),
     [channelId],
   );
-  // A requested channel has no episodes at all, so its episodes load never fires; the load starts
-  // once the channel is known and is not requested.
+  // A requested channel has no episodes at all, and a declined one that was never approved has
+  // none either, so neither load fires; the condition matches `showEpisodes` below so the screen
+  // never asks for episodes it will not render.
   const [episodes, reloadEpisodes] = useLoad(
     () => api.listEpisodes(channelId),
     [channelId],
     {
       enabled:
         channel.status === "ready" &&
-        channel.data.channel.status !== "requested",
+        channel.data.channel.status !== "requested" &&
+        (channel.data.channel.status !== "declined" ||
+          channel.data.channel.approvedAt !== null),
     },
   );
   const [busy, setBusy] = useState(false);

@@ -2,6 +2,10 @@ import type { Channel, Episode } from "@media-digest/shared";
 import { useState } from "preact/hooks";
 import { useRoute } from "preact-iso";
 import { api } from "../api";
+import {
+  type ChannelAct,
+  ChannelStatusActions,
+} from "../components/ChannelStatusActions";
 import { Nav } from "../components/Nav";
 import { Time } from "../components/Time";
 import {
@@ -20,9 +24,6 @@ export function OwnerChannel() {
     </Guard>
   );
 }
-
-/** One action against this channel or one of its episodes; every button shares this and reloads after. */
-type Act = (work: () => Promise<unknown>) => void;
 
 /** One channel for the owner (spec §8): management header, episodes, runs, followers. */
 function OwnerChannelScreen() {
@@ -52,7 +53,8 @@ function OwnerChannelScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const act: Act = async (work) => {
+  // One action against this channel or one of its episodes; every button reloads through this.
+  const act: ChannelAct = async (work) => {
     setBusy(true);
     setError(null);
     try {
@@ -180,7 +182,7 @@ function Header({
   channel: Channel;
   busy: boolean;
   error: string | null;
-  act: Act;
+  act: ChannelAct;
 }) {
   const m = c.management;
   return (
@@ -211,94 +213,14 @@ function Header({
           </>
         )}
       </p>
-      <ChannelActions channel={c} busy={busy} act={act} />
+      <ChannelStatusActions
+        channel={c}
+        busy={busy}
+        idPrefix="detail-"
+        act={act}
+      />
       {error && <p class="error">{error}</p>}
     </>
-  );
-}
-
-/** Approve, decline, pause, or resume, by status (spec §7) — the same actions and withdraw confirmation as the catalog table. */
-function ChannelActions({
-  channel: c,
-  busy,
-  act,
-}: {
-  channel: Channel;
-  busy: boolean;
-  act: Act;
-}) {
-  if (c.status === "requested") {
-    return (
-      <div class="actions">
-        <button
-          id={`detail-approve-${c.channelId}`}
-          type="button"
-          disabled={busy}
-          onClick={() => act(() => api.approveChannel(c.channelId, {}))}
-        >
-          Approve
-        </button>
-        <button
-          id={`detail-decline-${c.channelId}`}
-          type="button"
-          class="danger"
-          disabled={busy}
-          onClick={() => act(() => api.declineChannel(c.channelId, {}))}
-        >
-          Decline
-        </button>
-      </div>
-    );
-  }
-  if (c.status === "approved") {
-    return (
-      <div class="actions">
-        <button
-          id={
-            c.paused
-              ? `detail-resume-${c.channelId}`
-              : `detail-pause-${c.channelId}`
-          }
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            act(() =>
-              c.paused
-                ? api.resumeChannel(c.channelId)
-                : api.pauseChannel(c.channelId),
-            )
-          }
-        >
-          {c.paused ? "Resume" : "Pause"}
-        </button>
-        <button
-          id={`detail-decline-${c.channelId}`}
-          type="button"
-          class="danger"
-          disabled={busy}
-          onClick={() => {
-            const confirmed = window.confirm(
-              `Withdraw ${c.title}? ${c.followerCount} follower${c.followerCount === 1 ? "" : "s"} will lose access to its summaries until it is approved again.`,
-            );
-            if (confirmed) act(() => api.declineChannel(c.channelId, {}));
-          }}
-        >
-          Decline
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div class="actions">
-      <button
-        id={`detail-approve-${c.channelId}`}
-        type="button"
-        disabled={busy}
-        onClick={() => act(() => api.approveChannel(c.channelId, {}))}
-      >
-        Approve
-      </button>
-    </div>
   );
 }
 
@@ -312,7 +234,7 @@ function EpisodesTable({
   episodes: Episode[];
   channelApproved: boolean;
   busy: boolean;
-  act: Act;
+  act: ChannelAct;
 }) {
   return (
     <div class="table-wrap">
@@ -384,7 +306,7 @@ function EpisodeActions({
   episode: Episode;
   channelApproved: boolean;
   busy: boolean;
-  act: Act;
+  act: ChannelAct;
 }) {
   if (!channelApproved) return null;
   const canRetry = e.status === "failed" || e.status === "skipped";
