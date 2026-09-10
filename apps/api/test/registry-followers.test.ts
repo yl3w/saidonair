@@ -1,4 +1,9 @@
+import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import {
+  recordFollow as storeRecordFollow,
+  recordUnfollow as storeRecordUnfollow,
+} from "../src/do/registry/followers";
 import {
   ALICE,
   BOB,
@@ -81,5 +86,35 @@ describe("registry followers", () => {
     expect(approved.channel.pausedBy).toBe("system");
     const followed = await stub.recordFollow(ALICE, CHANNEL_B);
     expect(followed.pausedBy).toBeNull();
+  });
+
+  it("adopts the later followedAt when the same user refollows after unfollowing, and resumes the pause", async () => {
+    const stub = registry();
+    await stub.createChannel(OWNER, {
+      channelId: CHANNEL_A,
+      title: "A",
+      status: "approved",
+    });
+    await stub.ensureUser(ALICE);
+
+    // Drives the store directly with explicit timestamps so the ON CONFLICT DO UPDATE's
+    // refollow branch (adopt excluded.followed_at) is pinned, not just its idempotent-follow branch.
+    await runInDurableObject(stub, (_, state) =>
+      storeRecordFollow(state.storage.sql, CHANNEL_A, ALICE, 1_000),
+    );
+    await runInDurableObject(stub, (_, state) =>
+      storeRecordUnfollow(state.storage.sql, CHANNEL_A, ALICE, 2_000),
+    );
+    expect((await stub.getChannel(CHANNEL_A))?.pausedBy).toBe("system");
+
+    await runInDurableObject(stub, (_, state) =>
+      storeRecordFollow(state.storage.sql, CHANNEL_A, ALICE, 3_000),
+    );
+
+    expect(await stub.countFollowers([CHANNEL_A])).toEqual({ [CHANNEL_A]: 1 });
+    expect((await stub.getChannel(CHANNEL_A))?.pausedBy).toBeNull();
+    expect(await stub.listFollowers(OWNER, CHANNEL_A)).toEqual([
+      { email: ALICE, followedAt: 3_000 },
+    ]);
   });
 });

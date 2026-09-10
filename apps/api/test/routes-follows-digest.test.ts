@@ -112,7 +112,10 @@ describe("follow routes", () => {
     expect(soleUnfollow.json.follow).toMatchObject({
       channel: { paused: true, pausedBy: "system", followerCount: 0 },
     });
-    await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
+    const soleRefollow = await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
+    expect(soleRefollow.json.follow).toMatchObject({
+      channel: { paused: false, pausedBy: null, followerCount: 1 },
+    });
 
     const declinedFollow = await call(ALICE, "PUT", `/follows/${CHANNEL_D}`);
     expect(declinedFollow.status).toBe(409);
