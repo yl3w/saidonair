@@ -21,7 +21,6 @@ import {
   seedEpisode,
   seedRun,
   seedSummary,
-  setChannelState,
   userDO,
   VIDEO_A,
   VIDEO_B,
@@ -50,15 +49,25 @@ async function call(
 // Feeds come from the YOUTUBE_FEEDS_FAKE binding in vitest.config.ts: CHANNEL_A…D have titles
 // "Feed A"…"Feed D"; CHANNEL_E answers 404 like an unknown id. Nothing here reaches YouTube.
 
-/** A: available with two processed episodes and one failed; B: pending; C: deleted (was available). */
+/** A: approved with two processed episodes and one failed; B: requested; C: declined (was approved). */
 async function seedCatalog() {
   const stub = registry();
-  await stub.createChannel(OWNER, { channelId: CHANNEL_A, title: "A" });
-  await stub.createChannel(OWNER, { channelId: CHANNEL_B, title: "B" });
-  await stub.createChannel(OWNER, { channelId: CHANNEL_C, title: "C" });
-  await setChannelState(CHANNEL_A, { status: "available", availableAt: 10 });
-  await setChannelState(CHANNEL_C, { status: "available", availableAt: 10 });
-  await stub.deleteChannel(OWNER, CHANNEL_C);
+  await stub.createChannel(OWNER, {
+    channelId: CHANNEL_A,
+    title: "A",
+    status: "approved",
+  });
+  await stub.createChannel(ALICE, {
+    channelId: CHANNEL_B,
+    title: "B",
+    status: "requested",
+  });
+  await stub.createChannel(OWNER, {
+    channelId: CHANNEL_C,
+    title: "C",
+    status: "approved",
+  });
+  await stub.declineChannel(OWNER, CHANNEL_C);
   await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: 3_000 });
   await seedSummary(VIDEO_A, { relatedVideoIds: [VIDEO_B] });
   await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: 2_000 });
@@ -76,9 +85,6 @@ describe("channel and catalog routes", () => {
     const ownerOnly: [string, string, unknown?][] = [
       ["GET", "/catalog"],
       ["GET", "/channels?scope=all"],
-      ["POST", "/channels", { channelId: CHANNEL_D }],
-      ["DELETE", `/channels/${CHANNEL_A}`],
-      ["POST", `/channels/${CHANNEL_C}/restore`],
       ["GET", `/channels/${CHANNEL_A}/ingestion-runs`],
     ];
     for (const [method, path, body] of ownerOnly) {
@@ -91,7 +97,7 @@ describe("channel and catalog routes", () => {
     expectShape(CatalogResponseSchema, catalog.json);
     expect(catalog.status).toBe(200);
     expect(catalog.json.catalog).toMatchObject({
-      channels: { available: 1, pending: 1, deleted: 1, stuckPending: 1 },
+      channels: { requested: 1, approved: 1, paused: 0, declined: 1 },
       episodes: { processed: 2, tracked: 3 },
     });
 
@@ -100,23 +106,27 @@ describe("channel and catalog routes", () => {
     );
   });
 
-  it("lists available channels for readers and every state with management for the owner", async () => {
+  it("lists requested and approved channels for readers and every status with management for the owner", async () => {
     await seedCatalog();
     await userDO(ALICE).follow(CHANNEL_A);
 
     const alice = await call(ALICE, "GET", "/channels");
     expectShape(ChannelsResponseSchema, alice.json);
     expect(alice.status).toBe(200);
-    expect(alice.json.channels).toEqual([
-      expect.objectContaining({
-        channelId: CHANNEL_A,
-        title: "A",
-        available: true,
-        following: true,
-        processedCount: 2,
-      }),
+    const aliceRows = alice.json.channels as Json[];
+    expect(aliceRows.map((row) => row.channelId)).toEqual([
+      CHANNEL_A,
+      CHANNEL_B,
     ]);
-    expect((alice.json.channels as Json[])[0]).not.toHaveProperty("management");
+    expect(aliceRows[0]).toMatchObject({
+      channelId: CHANNEL_A,
+      title: "A",
+      status: "approved",
+      paused: false,
+      following: true,
+      processedCount: 2,
+    });
+    expect(aliceRows[0]).not.toHaveProperty("management");
 
     const owner = await call(OWNER, "GET", "/channels?scope=all");
     expectShape(ChannelsResponseSchema, owner.json);
@@ -126,27 +136,32 @@ describe("channel and catalog routes", () => {
     );
     const b = rows.find((row) => row.channelId === CHANNEL_B);
     expect(b).toMatchObject({
-      status: "pending",
-      available: false,
+      status: "requested",
+      approvedAt: null,
       following: false,
-      management: { stuckPending: true, latestRun: null },
+      management: { neverStarted: false, latestRun: null },
     });
     const cRow = rows.find((row) => row.channelId === CHANNEL_C);
     expect(cRow).toMatchObject({
-      available: false,
-      deletedAt: expect.any(Number),
+      status: "declined",
+      approvedAt: expect.any(Number),
+      management: { reviewedByEmail: OWNER },
     });
   });
 
-  it("shows one channel to readers only while available, and to the owner in any state", async () => {
+  it("shows one channel to every caller in any status, and adds management for the owner", async () => {
     await seedCatalog();
 
-    expect((await call(ALICE, "GET", `/channels/${CHANNEL_B}`)).status).toBe(
-      404,
-    );
-    expect((await call(ALICE, "GET", `/channels/${CHANNEL_C}`)).status).toBe(
-      404,
-    );
+    const requested = await call(ALICE, "GET", `/channels/${CHANNEL_B}`);
+    expect(requested.status).toBe(200);
+    expect(requested.json.channel).toMatchObject({ status: "requested" });
+    expect(requested.json.channel).not.toHaveProperty("management");
+    expect(
+      (
+        (await call(ALICE, "GET", `/channels/${CHANNEL_C}`)).json
+          .channel as Json
+      ).status,
+    ).toBe("declined");
     expect((await call(ALICE, "GET", `/channels/${CHANNEL_D}`)).status).toBe(
       404,
     );
@@ -165,8 +180,8 @@ describe("channel and catalog routes", () => {
     expectShape(ChannelResponseSchema, b.json);
     expect(b.status).toBe(200);
     expect(b.json.channel).toMatchObject({
-      status: "pending",
-      management: { stuckPending: true, initialImportCount: 5 },
+      status: "requested",
+      management: { neverStarted: false, initialImportCount: 5 },
     });
   });
 
@@ -191,9 +206,24 @@ describe("channel and catalog routes", () => {
     expect(created.json.channel).toMatchObject({
       channelId: CHANNEL_D,
       title: "Feed D",
-      status: "pending",
-      management: { initialImportCount: 3, stuckPending: true },
+      status: "approved",
+      management: { initialImportCount: 3, neverStarted: true },
     });
+
+    // Anyone else's add is a request awaiting review, without the owner's block.
+    const requested = await call(ALICE, "POST", "/channels", {
+      channelId: CHANNEL_A,
+    });
+    expect(requested.status).toBe(201);
+    expectShape(ChannelResponseSchema, requested.json);
+    expect(requested.json.channel).toMatchObject({
+      channelId: CHANNEL_A,
+      title: "Feed A",
+      status: "requested",
+      following: false,
+      processedCount: 0,
+    });
+    expect(requested.json.channel).not.toHaveProperty("management");
 
     const duplicate = await call(OWNER, "POST", "/channels", {
       channelId: CHANNEL_D,
@@ -239,7 +269,7 @@ describe("channel and catalog routes", () => {
     expect(
       (
         await call(OWNER, "POST", "/channels", {
-          channelId: CHANNEL_A,
+          channelId: CHANNEL_C,
           initialImportCount: 0,
         })
       ).status,
@@ -316,36 +346,33 @@ describe("channel and catalog routes", () => {
       (await call(ALICE, "GET", `/channels/${CHANNEL_A}/episodes?limit=x`))
         .status,
     ).toBe(400);
-    expect(
-      (await call(ALICE, "GET", `/channels/${CHANNEL_B}/episodes`)).status,
-    ).toBe(404);
+    // A requested channel simply has no episodes to show yet.
+    const requested = await call(
+      ALICE,
+      "GET",
+      `/channels/${CHANNEL_B}/episodes`,
+    );
+    expect(requested.status).toBe(200);
+    expect(requested.json.episodes).toEqual([]);
     expect(
       (await call(OWNER, "GET", `/channels/${CHANNEL_B}/episodes`)).status,
     ).toBe(200);
+    expect(
+      (await call(ALICE, "GET", `/channels/${CHANNEL_D}/episodes`)).status,
+    ).toBe(404);
   });
 
-  it("deletes and restores through the channel entity", async () => {
-    await seedCatalog();
+  it("gives a follower of a declined channel titles only", async () => {
+    const stub = await seedCatalog();
+    await userDO(ALICE).follow(CHANNEL_A);
+    await stub.declineChannel(OWNER, CHANNEL_A, { explanation: "withdrawn" });
 
-    const deleted = await call(OWNER, "DELETE", `/channels/${CHANNEL_A}`);
-    expect(deleted.status).toBe(200);
-    expect((deleted.json.channel as Json).available).toBe(false);
-    expect((await call(ALICE, "GET", `/channels/${CHANNEL_A}`)).status).toBe(
-      404,
-    );
-
-    const restored = await call(
-      OWNER,
-      "POST",
-      `/channels/${CHANNEL_A}/restore`,
-    );
-    expect((restored.json.channel as Json).available).toBe(true);
-    expect((await call(ALICE, "GET", `/channels/${CHANNEL_A}`)).status).toBe(
-      200,
-    );
-    expect((await call(OWNER, "DELETE", `/channels/${CHANNEL_D}`)).status).toBe(
-      404,
-    );
+    const alice = await call(ALICE, "GET", `/channels/${CHANNEL_A}/episodes`);
+    expect(alice.status).toBe(200);
+    for (const episode of alice.json.episodes as Json[]) {
+      expect(episode.summary).toBeNull();
+      expect(episode).not.toHaveProperty("wasUnread");
+    }
   });
 
   it("exposes ingestion runs as a channel sub-resource for the owner", async () => {

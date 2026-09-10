@@ -66,18 +66,20 @@ export type MeResponse = z.infer<typeof MeResponseSchema>;
 // --- enums (mirror the CHECK constraints in the Registry schema) -----------------------------------
 
 export const ChannelStatusSchema = z
-  .enum(["pending", "available", "failed"])
-  .meta({ id: "ChannelStatus" });
+  .enum(["requested", "approved", "declined"])
+  .meta({
+    id: "ChannelStatus",
+    description:
+      "The owner's answer. `requested` awaits review; `approved` is ingested and readable; `declined` is hidden from the catalog list, keeps everything, and can be approved or requested again.",
+  });
 export type ChannelStatus = z.infer<typeof ChannelStatusSchema>;
 
-export const ChannelFailureCodeSchema = z
-  .enum(["NO_TRANSCRIPTS", "NO_EPISODES", "INITIAL_IMPORT_FAILED"])
-  .meta({
-    id: "ChannelFailureCode",
-    description:
-      "Why initial import failed: every attempted episode lacked captions, the feed was empty, or a technical/mixed failure.",
-  });
-export type ChannelFailureCode = z.infer<typeof ChannelFailureCodeSchema>;
+export const PausedBySchema = z.enum(["owner", "system"]).meta({
+  id: "PausedBy",
+  description:
+    "`system` when no one follows the channel; `owner` when the owner paused it.",
+});
+export type PausedBy = z.infer<typeof PausedBySchema>;
 
 const EPISODE_STATUSES = [
   "pending",
@@ -118,13 +120,6 @@ export const IngestionRunEpisodeStatusSchema = z
 export type IngestionRunEpisodeStatus = z.infer<
   typeof IngestionRunEpisodeStatusSchema
 >;
-
-export const FollowOriginSchema = z.enum(["manual", "request"]).meta({
-  id: "FollowOrigin",
-  description:
-    "`manual` for an explicit follow; `request` for the automatic follow after an approved request.",
-});
-export type FollowOrigin = z.infer<typeof FollowOriginSchema>;
 
 export const ChatRoleSchema = z
   .enum(["user", "assistant"])
@@ -172,19 +167,17 @@ export type IngestionRunSummary = z.infer<typeof IngestionRunSummarySchema>;
 export const ChannelManagementSchema = z
   .object({
     initialImportCount: z.number().int(),
-    failureDetail: z.string().nullable(),
-    availableAt: UnixMs.nullable(),
+    reviewedByEmail: z.string().nullable(),
+    pausedAt: UnixMs.nullable(),
     lastCheckedAt: UnixMs.nullable(),
     lifecycleVersion: z.number().int(),
     createdAt: UnixMs,
     updatedAt: UnixMs,
     episodes: EpisodeCountsSchema,
     latestRun: IngestionRunSummarySchema.nullable(),
-    stuckPending: z
+    neverStarted: z
       .boolean()
-      .describe(
-        "Pending, not deleted, and no queued or running run, at any age.",
-      ),
+      .describe("Approved, yet no ingestion run has ever been recorded."),
   })
   .meta({
     id: "ChannelManagement",
@@ -194,7 +187,7 @@ export type ChannelManagement = z.infer<typeof ChannelManagementSchema>;
 
 /**
  * A catalog channel as any caller sees it. `following` is about the caller; `management` is present
- * only when the caller is the owner. Everything else is identical for everyone.
+ * only for the owner.
  */
 export const ChannelSchema = z
   .object({
@@ -202,12 +195,17 @@ export const ChannelSchema = z
     title: z.string(),
     canonicalUrl: z.string(),
     status: ChannelStatusSchema,
-    failureCode: ChannelFailureCodeSchema.nullable(),
-    deletedAt: UnixMs.nullable(),
-    available: z
+    paused: z
       .boolean()
+      .describe("No new ingestion runs while true. Approved channels only."),
+    pausedBy: PausedBySchema.nullable(),
+    approvedAt: UnixMs.nullable().describe("First approval; never reset."),
+    reviewedAt: UnixMs.nullable(),
+    reviewNote: z
+      .string()
+      .nullable()
       .describe(
-        '`status === "available"` and not deleted; the only state that can be followed or read.',
+        "The owner's latest note, shown to followers of a declined channel.",
       ),
     lastIngestedAt: UnixMs.nullable(),
     processedCount: Count,
@@ -217,25 +215,25 @@ export const ChannelSchema = z
   .meta({
     id: "Channel",
     description:
-      "A catalog channel as any caller sees it. `following` is about the caller; `management` is present only when the caller is the owner. Everything else is identical for everyone.",
+      "A catalog channel as any caller sees it. `following` is about the caller; `management` is present only for the owner.",
   });
 export type Channel = z.infer<typeof ChannelSchema>;
 
-/** `GET /channels` — available channels by default; `?scope=all` (owner) every state, each with `management`. */
+/** `GET /channels` — requested and approved channels; `?scope=all` (owner) adds declined ones, each with `management`. */
 export const ChannelsResponseSchema = z
   .object({ channels: z.array(ChannelSchema) })
   .meta({
     id: "ChannelsResponse",
     description:
-      "`GET /channels` — available channels by default; `?scope=all` (owner) every state, each with `management`.",
+      "`GET /channels` — requested and approved channels; `?scope=all` (owner) adds declined ones, each with `management`.",
   });
 export type ChannelsResponse = z.infer<typeof ChannelsResponseSchema>;
 
-/** `GET /channels/:id`, `POST /channels`, `DELETE /channels/:id`, `POST /channels/:id/restore` */
+/** `GET /channels/:id`, `POST /channels`, and the channel actions. */
 export const ChannelResponseSchema = z.object({ channel: ChannelSchema }).meta({
   id: "ChannelResponse",
   description:
-    "`GET /channels/:id`, `POST /channels`, `DELETE /channels/:id`, `POST /channels/:id/restore`",
+    "`GET /channels/:id`, `POST /channels`, and the channel actions.",
 });
 export type ChannelResponse = z.infer<typeof ChannelResponseSchema>;
 
@@ -426,7 +424,6 @@ export const FollowSchema = z
     unfollowedAt: UnixMs.nullable().describe(
       "Set on unfollow and retained as a tombstone; null while the follow is active.",
     ),
-    origin: FollowOriginSchema,
     channel: ChannelSchema,
     unreadCount: Count.describe(
       "Processed episodes the caller has no read receipt for.",
@@ -435,7 +432,7 @@ export const FollowSchema = z
   .meta({
     id: "Follow",
     description:
-      "One of the caller's follows, with its channel embedded. `channel.available` is false while the owner has the channel deleted; the follow row stays.",
+      "One of the caller's follows, with its channel embedded. A follow of a declined channel stays listed; the follow row is never removed.",
   });
 export type Follow = z.infer<typeof FollowSchema>;
 
@@ -462,13 +459,10 @@ export type FollowResponse = z.infer<typeof FollowResponseSchema>;
 export const CatalogSchema = z
   .object({
     channels: z.object({
-      available: Count,
-      pending: Count,
-      failed: Count,
-      deleted: Count,
-      stuckPending: Count.describe(
-        "Pending, not deleted, and no queued or running run.",
-      ),
+      requested: Count,
+      approved: Count,
+      paused: Count,
+      declined: Count,
     }),
     episodes: z.object({
       processed: Count,

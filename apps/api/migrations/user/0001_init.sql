@@ -1,20 +1,17 @@
 -- Per-user DO — initial schema (docs/PRD.md §5.2, §5.3).
 -- One object per normalized email; the email is implicit and never stored here.
--- Committed migrations are frozen: never edit this file, add 0002_*.sql instead.
+-- Rewritten 2026-09-10 before first deployment, with owner approval; from here on this file is frozen and
+-- schema changes are additive 0002_*.sql files (AGENTS.md → Data & schema conventions).
 -- All timestamps are Unix milliseconds. Every table carries created_at.
 
--- Follow state. A retained row with unfollowed_at set is the tombstone that stops
--- automatic-follow replay; an active follow is unfollowed_at IS NULL.
+-- Follow state. A retained row with unfollowed_at set records the unfollow; an active follow is
+-- unfollowed_at IS NULL. The Registry's channel_followers mirrors this for counts and the owner queue.
 CREATE TABLE channel_follows (
   channel_id TEXT PRIMARY KEY,
   followed_at INTEGER NOT NULL CHECK (followed_at >= 0),
   unfollowed_at INTEGER CHECK (unfollowed_at IS NULL OR unfollowed_at >= 0),
-  origin TEXT NOT NULL CHECK (origin IN ('manual', 'request')),
-  origin_request_id TEXT,
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
-  created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  -- A request-originated follow always records which request delivered it.
-  CHECK (origin <> 'request' OR origin_request_id IS NOT NULL)
+  created_at INTEGER NOT NULL CHECK (created_at >= 0)
 );
 
 CREATE INDEX channel_follows_unfollowed_at ON channel_follows (unfollowed_at);

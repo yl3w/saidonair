@@ -16,12 +16,7 @@ describe("user follows", () => {
     const first = await stub.follow(CHANNEL_A);
     const again = await stub.follow(CHANNEL_A);
 
-    expect(first).toMatchObject({
-      channelId: CHANNEL_A,
-      unfollowedAt: null,
-      origin: "manual",
-      originRequestId: null,
-    });
+    expect(first).toMatchObject({ channelId: CHANNEL_A, unfollowedAt: null });
     expect(again).toEqual(first);
     expect(await stub.activeChannelIds()).toEqual([CHANNEL_A]);
   });
@@ -45,17 +40,13 @@ describe("user follows", () => {
     await expectDomainError(stub.unfollow(CHANNEL_B), "NOT_FOUND");
   });
 
-  it("an explicit refollow clears the tombstone and becomes manual", async () => {
+  it("an explicit refollow clears the tombstone", async () => {
     const stub = userDO(ALICE);
     const first = await stub.follow(CHANNEL_A);
     await stub.unfollow(CHANNEL_A);
 
     const refollowed = await stub.follow(CHANNEL_A);
-    expect(refollowed).toMatchObject({
-      unfollowedAt: null,
-      origin: "manual",
-      originRequestId: null,
-    });
+    expect(refollowed.unfollowedAt).toBeNull();
     expect(refollowed.followedAt).toBeGreaterThanOrEqual(first.followedAt);
   });
 

@@ -92,7 +92,7 @@ const documentation: GenerateSpecOptions["documentation"] = {
     {
       name: "channels",
       description:
-        "Catalog channels: everyone reads the available ones; the owner reads every state and changes them.",
+        "Catalog channels: everyone reads the requested and approved ones; the owner reads every status and reviews them.",
     },
     {
       name: "episodes",

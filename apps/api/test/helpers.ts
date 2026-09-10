@@ -63,24 +63,27 @@ export async function expectDomainError(
 }
 
 type ChannelState = {
-  status: "pending" | "available" | "failed";
-  failureCode?: string;
-  availableAt?: number;
+  status: "requested" | "approved" | "declined";
+  approvedAt?: number;
+  pausedBy?: "owner" | "system";
 };
 
-/** Ingestion is not implemented yet, so tests drive processing state with real SQL. */
+/** Drives channel status directly; the facade methods are exercised in registry-channels.test.ts. */
 export async function setChannelState(
   channelId: string,
   state: ChannelState,
 ): Promise<void> {
+  const approved =
+    state.status === "approved" || state.approvedAt !== undefined;
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
-      `UPDATE channels
-       SET status = ?, failure_code = ?, available_at = COALESCE(?, available_at)
-       WHERE channel_id = ?`,
+      `UPDATE channels SET status = ?, approved_at = ?, reviewed_at = COALESCE(reviewed_at, 1),
+         reviewed_by_email = COALESCE(reviewed_by_email, 'owner@example.com'),
+         paused_by = ?, paused_at = ? WHERE channel_id = ?`,
       state.status,
-      state.failureCode ?? null,
-      state.availableAt ?? null,
+      approved ? (state.approvedAt ?? 1) : null,
+      state.pausedBy ?? null,
+      state.pausedBy ? 1 : null,
       channelId,
     );
   });

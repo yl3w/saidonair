@@ -1,5 +1,6 @@
--- Global Registry DO — initial schema (docs/PRD.md §5.1, §5.3).
--- Committed migrations are frozen: never edit this file, add 0002_*.sql instead.
+-- Global Registry DO — initial schema (docs/PRD.md §5.1, §5.3; docs/specs/channel-simplification.md §3, §6).
+-- Rewritten 2026-09-10 before first deployment, with owner approval; from here on this file is frozen and
+-- schema changes are additive 0002_*.sql files (AGENTS.md → Data & schema conventions).
 -- All timestamps are Unix milliseconds. Every table carries created_at.
 
 -- Identities. `role` is the owner mechanism decided in AGENTS.md → Identity model:
@@ -11,57 +12,54 @@ CREATE TABLE global_users (
   created_at INTEGER NOT NULL CHECK (created_at >= 0)
 );
 
--- Shared catalog. `status` is processing state; `deleted_at` is independent soft deletion.
+-- Shared catalog. `status` is the owner's answer; import outcomes live on episodes. Nothing is deleted:
+-- a declined channel keeps every episode, summary, vector, follow, and read receipt, and can be approved again.
 CREATE TABLE channels (
   channel_id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   canonical_url TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'available', 'failed')),
+  status TEXT NOT NULL CHECK (status IN ('requested', 'approved', 'declined')),
   initial_import_count INTEGER NOT NULL DEFAULT 5 CHECK (initial_import_count > 0),
-  failure_code TEXT,
-  failure_detail TEXT,
-  available_at INTEGER CHECK (available_at IS NULL OR available_at >= 0),
+  -- Set at the first approval, never reset. Decides whether a later approval starts an initial import
+  -- and whether a declined channel reads "Declined" or "Withdrawn".
+  approved_at INTEGER CHECK (approved_at IS NULL OR approved_at >= 0),
+  -- Latest review only: approve, decline, and owner add write these. Kept when a declined channel is re-requested.
+  reviewed_at INTEGER CHECK (reviewed_at IS NULL OR reviewed_at >= 0),
+  reviewed_by_email TEXT REFERENCES global_users (email),
+  review_note TEXT,
+  -- Pause stops new runs on an approved channel. `system` = no active followers; `owner` = explicit and
+  -- cleared only by the owner.
+  paused_by TEXT CHECK (paused_by IS NULL OR paused_by IN ('owner', 'system')),
+  paused_at INTEGER CHECK (paused_at IS NULL OR paused_at >= 0),
   last_checked_at INTEGER CHECK (last_checked_at IS NULL OR last_checked_at >= 0),
   last_ingested_at INTEGER CHECK (last_ingested_at IS NULL OR last_ingested_at >= 0),
-  deleted_at INTEGER CHECK (deleted_at IS NULL OR deleted_at >= 0),
+  -- Fence for run writes; bumped when an approved channel is declined.
   lifecycle_version INTEGER NOT NULL DEFAULT 1 CHECK (lifecycle_version > 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  -- A failed channel always carries a reason code.
-  CHECK (status <> 'failed' OR failure_code IS NOT NULL)
+  CHECK (status <> 'approved' OR approved_at IS NOT NULL),
+  CHECK (status = 'requested' OR (reviewed_at IS NOT NULL AND reviewed_by_email IS NOT NULL)),
+  CHECK ((paused_by IS NULL) = (paused_at IS NULL)),
+  CHECK (paused_by IS NULL OR status = 'approved')
 );
 
-CREATE INDEX channels_status_deleted_at ON channels (status, deleted_at);
+-- Cron selection: approved and not paused.
+CREATE INDEX channels_status_paused_by ON channels (status, paused_by);
 
--- Approval requests. youtube_channel_id is deliberately not a foreign key: the channel
--- may not exist until approval. approved_channel_id is set to the same id on approval.
-CREATE TABLE channel_requests (
-  request_id TEXT PRIMARY KEY,
+-- Who follows what, shared so the Registry can list requesters, count followers, and pause a channel nobody
+-- follows. The User DO's channel_follows stays the source of truth for the user's own list; this record is kept
+-- in step by the follow routes (docs/specs/channel-simplification.md §3.2). An active follow is unfollowed_at IS NULL.
+CREATE TABLE channel_followers (
+  channel_id TEXT NOT NULL REFERENCES channels (channel_id),
   user_email TEXT NOT NULL REFERENCES global_users (email),
-  youtube_channel_id TEXT NOT NULL,
-  submitted_url TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
-  reviewed_at INTEGER CHECK (reviewed_at IS NULL OR reviewed_at >= 0),
-  reviewed_by_email TEXT REFERENCES global_users (email),
-  owner_explanation TEXT,
-  approved_channel_id TEXT REFERENCES channels (channel_id),
-  auto_follow_completed_at INTEGER CHECK (auto_follow_completed_at IS NULL OR auto_follow_completed_at >= 0),
+  followed_at INTEGER NOT NULL CHECK (followed_at >= 0),
+  unfollowed_at INTEGER CHECK (unfollowed_at IS NULL OR unfollowed_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  UNIQUE (user_email, youtube_channel_id),
-  -- Pending has no review outcome; approval needs channel + review; rejection needs review.
-  CHECK (
-    (status = 'pending' AND reviewed_at IS NULL AND reviewed_by_email IS NULL AND approved_channel_id IS NULL)
-    OR (status = 'approved' AND reviewed_at IS NOT NULL AND reviewed_by_email IS NOT NULL AND approved_channel_id IS NOT NULL)
-    OR (status = 'rejected' AND reviewed_at IS NOT NULL AND reviewed_by_email IS NOT NULL AND approved_channel_id IS NULL)
-  ),
-  -- Automatic-follow completion only makes sense for approved requests.
-  CHECK (auto_follow_completed_at IS NULL OR status = 'approved')
+  PRIMARY KEY (channel_id, user_email)
 );
 
-CREATE INDEX channel_requests_user_email_created_at ON channel_requests (user_email, created_at);
-CREATE INDEX channel_requests_auto_follow
-  ON channel_requests (approved_channel_id, status, auto_follow_completed_at);
+CREATE INDEX channel_followers_channel_id_unfollowed_at ON channel_followers (channel_id, unfollowed_at);
 
 CREATE TABLE episodes (
   video_id TEXT PRIMARY KEY,

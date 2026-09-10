@@ -5,16 +5,13 @@ import { applyMigrations } from "../src/do/migrations";
 import { ALICE, CHANNEL_A, OWNER, registry } from "./helpers";
 
 describe("registry migrations", () => {
-  it("creates every Registry table on first access and records the version", async () => {
+  it("creates every Registry table on first access and records the one version", async () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
-
     const { tables, versions } = await runInDurableObject(stub, (_, state) => ({
       tables: state.storage.sql
         .exec<{ name: string }>(
-          `SELECT name FROM sqlite_master
-           WHERE type = 'table' AND substr(name, 1, 4) <> '_cf_'
-           ORDER BY name`,
+          `SELECT name FROM sqlite_master WHERE type = 'table' AND substr(name, 1, 4) <> '_cf_' ORDER BY name`,
         )
         .toArray()
         .map((row) => row.name),
@@ -25,10 +22,9 @@ describe("registry migrations", () => {
         .toArray()
         .map((row) => row.version),
     }));
-
     expect(tables).toEqual([
       "_migrations",
-      "channel_requests",
+      "channel_followers",
       "channels",
       "episode_summaries",
       "episodes",
@@ -36,23 +32,31 @@ describe("registry migrations", () => {
       "ingestion_run_episodes",
       "ingestion_runs",
     ]);
-    expect(versions).toEqual(["0001_init", "0002_channel_request_title"]);
+    expect(versions).toEqual(["0001_init"]);
   });
 
-  it("adds a nullable channel_requests.channel_title in 0002", async () => {
+  it("ties channel columns to status", async () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
-
-    const column = await runInDurableObject(stub, (_, state) =>
-      state.storage.sql
-        .exec<{ name: string; type: string; notnull: number }>(
-          "PRAGMA table_info(channel_requests)",
-        )
-        .toArray()
-        .find((row) => row.name === "channel_title"),
-    );
-
-    expect(column).toMatchObject({ type: "TEXT", notnull: 0 });
+    await runInDurableObject(stub, (_, state) => {
+      const sql = state.storage.sql;
+      const insert = (cols: string, vals: string) =>
+        sql.exec(
+          `INSERT INTO channels (channel_id, title, canonical_url, ${cols}, updated_at, created_at) VALUES ('UCx', 't', 'u', ${vals}, 1, 1)`,
+        );
+      expect(() => insert("status", "'approved'")).toThrow(/CHECK/i);
+      expect(() => insert("status", "'declined'")).toThrow(/CHECK/i);
+      expect(() =>
+        insert("status, paused_by, paused_at", "'requested', 'system', 1"),
+      ).toThrow(/CHECK/i);
+      expect(() => insert("status", "'pending'")).toThrow(/CHECK/i);
+      insert("status", "'requested'");
+      expect(() =>
+        sql.exec(
+          "UPDATE channels SET paused_by = 'owner' WHERE channel_id = 'UCx'",
+        ),
+      ).toThrow(/CHECK/i);
+    });
   });
 
   it("is a no-op when run a second time", async () => {
@@ -68,7 +72,11 @@ describe("registry migrations", () => {
 
   it("requires a positive chunk count only when an episode is processed", async () => {
     const stub = registry();
-    await stub.createChannel(OWNER, { channelId: CHANNEL_A, title: "Test" });
+    await stub.createChannel(OWNER, {
+      channelId: CHANNEL_A,
+      title: "Test",
+      status: "approved",
+    });
 
     await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;
@@ -125,9 +133,9 @@ describe("registry migrations", () => {
       const sql = state.storage.sql;
       expect(() =>
         sql.exec(
-          `INSERT INTO channel_requests
-             (request_id, user_email, youtube_channel_id, submitted_url, status, created_at, updated_at)
-           VALUES ('r1', 'ghost@example.com', ?, 'u', 'pending', 0, 0)`,
+          `INSERT INTO channel_followers
+             (channel_id, user_email, followed_at, created_at, updated_at)
+           VALUES (?, 'ghost@example.com', 1, 1, 1)`,
           CHANNEL_A,
         ),
       ).toThrow(/FOREIGN KEY/i);

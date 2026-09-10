@@ -106,10 +106,6 @@ export const api = {
     request<ChannelResponse>("POST", "/channels", body),
   getChannel: (channelId: string) =>
     request<ChannelResponse>("GET", `/channels/${enc(channelId)}`),
-  deleteChannel: (channelId: string) =>
-    request<ChannelResponse>("DELETE", `/channels/${enc(channelId)}`),
-  restoreChannel: (channelId: string) =>
-    request<ChannelResponse>("POST", `/channels/${enc(channelId)}/restore`),
   listEpisodes: (channelId: string, limit?: number) =>
     request<EpisodesResponse>(
       "GET",

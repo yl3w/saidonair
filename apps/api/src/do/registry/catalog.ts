@@ -1,38 +1,22 @@
 import type { Catalog } from "@media-digest/shared";
 import { countByChannel, zeroCounts } from "./episodes";
-import {
-  channelIdsWithActiveRun,
-  countActive,
-  lastCompletedFinishedAt,
-  latestByChannel,
-} from "./runs";
+import { countActive, lastCompletedFinishedAt, latestByChannel } from "./runs";
 import type { CatalogChannel, ChannelManagementRecord } from "./types";
 
 /**
- * The catalog's aggregate state for the owner's attention card and health strip. Deleted
- * channels count only as deleted, whatever their processing status.
+ * The catalog's aggregate state for the owner's attention card and health strip. An approved
+ * channel counts as `paused` rather than `approved` while a pause is set.
  */
 export function summarize(sql: SqlStorage): Catalog {
-  const channels = { available: 0, pending: 0, failed: 0, deleted: 0 };
-  for (const row of sql.exec<{ status: string; deleted: number; n: number }>(
-    `SELECT status, (deleted_at IS NOT NULL) AS deleted, COUNT(*) AS n
-     FROM channels GROUP BY status, deleted`,
+  const channels = { requested: 0, approved: 0, paused: 0, declined: 0 };
+  for (const row of sql.exec<{ status: string; paused: number; n: number }>(
+    `SELECT status, (paused_by IS NOT NULL) AS paused, COUNT(*) AS n FROM channels GROUP BY status, paused`,
   )) {
-    if (row.deleted) channels.deleted += row.n;
-    else if (row.status === "available") channels.available += row.n;
-    else if (row.status === "pending") channels.pending += row.n;
-    else if (row.status === "failed") channels.failed += row.n;
+    if (row.status === "requested") channels.requested += row.n;
+    else if (row.status === "declined") channels.declined += row.n;
+    else if (row.paused) channels.paused += row.n;
+    else channels.approved += row.n;
   }
-
-  const stuckPending = sql
-    .exec<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM channels
-       WHERE status = 'pending' AND deleted_at IS NULL
-         AND channel_id NOT IN (
-           SELECT channel_id FROM ingestion_runs WHERE status IN ('queued', 'running')
-         )`,
-    )
-    .one().n;
 
   const episodes = sql
     .exec<{ processed: number; tracked: number }>(
@@ -42,7 +26,7 @@ export function summarize(sql: SqlStorage): Catalog {
     .one();
 
   return {
-    channels: { ...channels, stuckPending },
+    channels,
     episodes: { processed: episodes.processed, tracked: episodes.tracked },
     runs: { active: countActive(sql) },
     lastSuccessfulIngestionAt: lastCompletedFinishedAt(sql),
@@ -57,14 +41,11 @@ export function withManagement(
   const ids = channels.map((channel) => channel.channelId);
   const counts = countByChannel(sql, ids);
   const latest = latestByChannel(sql, ids);
-  const active = new Set(channelIdsWithActiveRun(sql));
   return channels.map((channel) => ({
     channel,
     episodes: counts[channel.channelId] ?? zeroCounts(),
     latestRun: latest[channel.channelId] ?? null,
-    stuckPending:
-      channel.status === "pending" &&
-      channel.deletedAt === null &&
-      !active.has(channel.channelId),
+    neverStarted:
+      channel.status === "approved" && !(channel.channelId in latest),
   }));
 }

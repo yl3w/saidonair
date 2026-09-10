@@ -16,8 +16,9 @@ export function Channel() {
 }
 
 /**
- * One available channel (AGENTS.md → Screens). Followers see summaries newest first, and the API
- * records their read receipts; non-followers see titles and a Follow control. No chat input here.
+ * One channel (AGENTS.md → Screens). Followers of an approved channel see summaries newest first,
+ * and the API records their read receipts; everyone else sees titles and a Follow control. No chat
+ * input here.
  */
 function ChannelScreen() {
   const { params } = useRoute();
@@ -53,7 +54,7 @@ function ChannelScreen() {
       {channel.status === "loading" && <p>Loading…</p>}
       {channel.status === "error" &&
         (channel.error instanceof ApiError && channel.error.status === 404 ? (
-          <p>This channel is not available.</p>
+          <p>This channel is not in the catalog.</p>
         ) : (
           <p class="error">
             Couldn't load the channel: {channel.error.message}.{" "}

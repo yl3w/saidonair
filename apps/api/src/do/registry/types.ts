@@ -1,5 +1,4 @@
 import type {
-  ChannelFailureCode,
   ChannelStatus,
   EpisodeCounts,
   EpisodeStatus,
@@ -8,6 +7,7 @@ import type {
   IngestionRunKind,
   IngestionRunStatus,
   IngestionRunSummary,
+  PausedBy,
   RelatedEpisode,
   UserRole,
 } from "@media-digest/shared";
@@ -25,12 +25,14 @@ export type CatalogChannel = {
   canonicalUrl: string;
   status: ChannelStatus;
   initialImportCount: number;
-  failureCode: ChannelFailureCode | null;
-  failureDetail: string | null;
-  availableAt: number | null;
+  approvedAt: number | null;
+  reviewedAt: number | null;
+  reviewedByEmail: string | null;
+  reviewNote: string | null;
+  pausedBy: PausedBy | null;
+  pausedAt: number | null;
   lastCheckedAt: number | null;
   lastIngestedAt: number | null;
-  deletedAt: number | null;
   lifecycleVersion: number;
   createdAt: number;
   updatedAt: number;
@@ -41,6 +43,16 @@ export type CreateChannelInput = {
   channelId: string;
   title: string;
   initialImportCount?: number;
+  /** `approved` only for the owner's add; the facade checks the role. */
+  status: "requested" | "approved";
+  /** Required with `approved`: the owner, recorded as reviewer. */
+  reviewer?: string;
+};
+
+export type ReviewInput = {
+  title?: string;
+  initialImportCount?: number;
+  explanation?: string;
 };
 
 /** Owner-only processing detail of an episode; routes drop it for readers. */
@@ -107,6 +119,6 @@ export type ChannelManagementRecord = {
   channel: CatalogChannel;
   episodes: EpisodeCounts;
   latestRun: IngestionRunSummary | null;
-  /** Pending, not deleted, and no queued or running run. */
-  stuckPending: boolean;
+  /** Approved and no run row exists at all. */
+  neverStarted: boolean;
 };

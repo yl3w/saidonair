@@ -18,9 +18,9 @@ import {
 } from "./helpers";
 
 /**
- * A: available, two processed and one failed episode, a completed run.
- * B: pending with a queued run (not stuck). C: pending with no run (stuck).
- * D: failed. E: available but deleted (counts only as deleted).
+ * A: approved, two processed and one failed episode, a completed run.
+ * B: approved with a queued run. C: approved with no run (never started). D: requested.
+ * E: approved but paused by the owner (counts only as paused).
  */
 async function seedCatalog() {
   const stub = registry();
@@ -31,15 +31,14 @@ async function seedCatalog() {
     [CHANNEL_D, "D"],
     [CHANNEL_E, "E"],
   ] as const) {
-    await stub.createChannel(OWNER, { channelId, title });
+    await stub.createChannel(OWNER, {
+      channelId,
+      title,
+      status: "approved",
+    });
   }
-  await setChannelState(CHANNEL_A, { status: "available", availableAt: 10 });
-  await setChannelState(CHANNEL_D, {
-    status: "failed",
-    failureCode: "NO_EPISODES",
-  });
-  await setChannelState(CHANNEL_E, { status: "available", availableAt: 10 });
-  await stub.deleteChannel(OWNER, CHANNEL_E);
+  await setChannelState(CHANNEL_D, { status: "requested" });
+  await stub.pauseChannel(OWNER, CHANNEL_E);
 
   await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: 2 });
   await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: 3 });
@@ -66,13 +65,7 @@ describe("registry catalog summary and management", () => {
     const stub = await seedCatalog();
 
     expect(await stub.getCatalogSummary(OWNER)).toEqual({
-      channels: {
-        available: 1,
-        pending: 2,
-        failed: 1,
-        deleted: 1,
-        stuckPending: 1,
-      },
+      channels: { requested: 1, approved: 3, paused: 1, declined: 0 },
       episodes: { processed: 2, tracked: 3 },
       runs: { active: 1 },
       lastSuccessfulIngestionAt: 150,
@@ -82,13 +75,7 @@ describe("registry catalog summary and management", () => {
 
   it("is empty-safe before anything exists", async () => {
     expect(await registry().getCatalogSummary(OWNER)).toEqual({
-      channels: {
-        available: 0,
-        pending: 0,
-        failed: 0,
-        deleted: 0,
-        stuckPending: 0,
-      },
+      channels: { requested: 0, approved: 0, paused: 0, declined: 0 },
       episodes: { processed: 0, tracked: 0 },
       runs: { active: 0 },
       lastSuccessfulIngestionAt: null,
@@ -105,21 +92,26 @@ describe("registry catalog summary and management", () => {
     expect(byId.get(CHANNEL_A)).toMatchObject({
       episodes: { processed: 2, failed: 1, pending: 0 },
       latestRun: { kind: "scheduled", status: "completed", finishedAt: 150 },
-      stuckPending: false,
+      neverStarted: false,
     });
     expect(byId.get(CHANNEL_B)).toMatchObject({
       latestRun: { status: "queued" },
-      stuckPending: false,
+      neverStarted: false,
     });
+    // Approved with no run row at all.
     expect(byId.get(CHANNEL_C)).toMatchObject({
       episodes: { processed: 0 },
       latestRun: null,
-      stuckPending: true,
+      neverStarted: true,
     });
-    // A deleted channel is never "stuck".
+    // A channel that is not approved is never "never started".
+    expect(byId.get(CHANNEL_D)).toMatchObject({
+      channel: { status: "requested" },
+      latestRun: null,
+      neverStarted: false,
+    });
     expect(byId.get(CHANNEL_E)).toMatchObject({
-      channel: { deletedAt: expect.any(Number) },
-      stuckPending: false,
+      channel: { pausedBy: "owner", pausedAt: expect.any(Number) },
     });
 
     const some = await stub.listChannelManagement(OWNER, [
@@ -132,7 +124,7 @@ describe("registry catalog summary and management", () => {
     await expectDomainError(stub.listChannelManagement(ALICE), "NOT_OWNER");
   });
 
-  it("lists channels by id in any state and ignores unknown ids", async () => {
+  it("lists channels by id in any status and ignores unknown ids", async () => {
     const stub = await seedCatalog();
     const found = await stub.listChannelsByIds([
       CHANNEL_E,
@@ -140,7 +132,7 @@ describe("registry catalog summary and management", () => {
       "UCZZZZZZZZZZZZZZZZZZZZZZ",
     ]);
     expect(found.map((c) => c.channelId)).toEqual([CHANNEL_A, CHANNEL_E]);
-    expect(found[1]?.deletedAt).not.toBeNull();
+    expect(found[1]?.pausedBy).toBe("owner");
     await expectDomainError(stub.listChannelsByIds(["bad"]), "INVALID_INPUT");
   });
 });

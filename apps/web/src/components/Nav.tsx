@@ -21,10 +21,9 @@ export function Nav() {
     }
     let cancelled = false;
     api.getCatalog().then(
-      ({ catalog }) => {
-        if (!cancelled) {
-          setAttention(catalog.channels.failed + catalog.channels.stuckPending);
-        }
+      () => {
+        // Task 10: the attention count becomes the review queue plus the paused channels.
+        if (!cancelled) setAttention(0);
       },
       () => {
         if (!cancelled) setAttention(null);

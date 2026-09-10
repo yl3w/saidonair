@@ -26,7 +26,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
     tags: ["digest"],
     summary: "The caller's digest",
     description:
-      "Processed episodes with summaries from eligible follows (active follows on available, non-deleted channels), newest first. The window defaults to the last 24 hours and is clamped to 7 days. Returning a summary records the caller's read receipt; `wasUnread` says which items were new.",
+      "Processed episodes with summaries from eligible follows (active follows on approved channels), newest first. The window defaults to the last 24 hours and is clamped to 7 days. Returning a summary records the caller's read receipt; `wasUnread` says which items were new.",
     responses: {
       200: jsonResponse(
         DigestResponseSchema,

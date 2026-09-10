@@ -2,29 +2,36 @@ import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { userMigrations } from "../migrations/user";
 import { applyMigrations } from "../src/do/migrations";
-import { ALICE, CHANNEL_A, userDO } from "./helpers";
+import { ALICE, userDO } from "./helpers";
 
 describe("user migrations", () => {
   it("creates every per-user table on first access and records the version", async () => {
     const stub = userDO(ALICE);
     await stub.getPreferences();
 
-    const { tables, versions } = await runInDurableObject(stub, (_, state) => ({
-      tables: state.storage.sql
-        .exec<{ name: string }>(
-          `SELECT name FROM sqlite_master
+    const { tables, versions, follows } = await runInDurableObject(
+      stub,
+      (_, state) => ({
+        tables: state.storage.sql
+          .exec<{ name: string }>(
+            `SELECT name FROM sqlite_master
            WHERE type = 'table' AND substr(name, 1, 4) <> '_cf_'
            ORDER BY name`,
-        )
-        .toArray()
-        .map((row) => row.name),
-      versions: state.storage.sql
-        .exec<{ version: string }>(
-          "SELECT version FROM _migrations ORDER BY version",
-        )
-        .toArray()
-        .map((row) => row.version),
-    }));
+          )
+          .toArray()
+          .map((row) => row.name),
+        versions: state.storage.sql
+          .exec<{ version: string }>(
+            "SELECT version FROM _migrations ORDER BY version",
+          )
+          .toArray()
+          .map((row) => row.version),
+        follows: state.storage.sql
+          .exec<{ name: string }>("PRAGMA table_info(channel_follows)")
+          .toArray()
+          .map((row) => row.name),
+      }),
+    );
 
     expect(tables).toEqual([
       "_migrations",
@@ -36,6 +43,13 @@ describe("user migrations", () => {
       "user_preferences",
     ]);
     expect(versions).toEqual(["0001_init"]);
+    expect(follows).toEqual([
+      "channel_id",
+      "followed_at",
+      "unfollowed_at",
+      "updated_at",
+      "created_at",
+    ]);
   });
 
   it("is a no-op when run a second time", async () => {
@@ -101,16 +115,6 @@ describe("user migrations", () => {
       expect(() =>
         sql.exec(
           "UPDATE chat_messages SET status = 'failed' WHERE message_id = 'm2'",
-        ),
-      ).toThrow(/CHECK/i);
-
-      // Request-originated follows record the request.
-      expect(() =>
-        sql.exec(
-          `INSERT INTO channel_follows
-             (channel_id, followed_at, origin, origin_request_id, created_at, updated_at)
-           VALUES (?, 1, 'request', NULL, 1, 1)`,
-          CHANNEL_A,
         ),
       ).toThrow(/CHECK/i);
 

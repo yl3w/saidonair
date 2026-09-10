@@ -1,8 +1,8 @@
 import type { Channel, Follow } from "@media-digest/shared";
-import { UNAVAILABLE_FOLLOW_COPY } from "../lib/copy";
+import { CHANNEL_STATUS_COPY } from "../lib/copy";
 import { Time } from "./Time";
 
-/** Followed channels (spec §6.4). A follow whose channel is deleted stays listed, muted, unlinked. */
+/** Followed channels (spec §6.4). A follow whose channel is not approved stays listed, muted, unlinked. */
 export function FollowedList({
   follows,
   busy,
@@ -20,19 +20,19 @@ export function FollowedList({
       {follows.map(({ channel, unreadCount }) => (
         <div class="row" key={channel.channelId}>
           <div class="grow">
-            {channel.available ? (
+            {channel.status === "approved" ? (
               <a href={`/channel/${channel.channelId}`}>{channel.title}</a>
             ) : (
               <span class="unavailable">{channel.title}</span>
             )}
             <div class="meta">
-              {channel.available ? (
+              {channel.status === "approved" ? (
                 <>
                   {channel.processedCount} processed · {unreadCount} unread ·
                   ingested <Time at={channel.lastIngestedAt} fallback="never" />
                 </>
               ) : (
-                UNAVAILABLE_FOLLOW_COPY
+                CHANNEL_STATUS_COPY[channel.status]
               )}
             </div>
           </div>

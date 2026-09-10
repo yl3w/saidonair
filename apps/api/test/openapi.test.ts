@@ -51,7 +51,7 @@ describe("GET /openapi.json", () => {
       ),
     );
     expect([...documented].sort()).toEqual([...registered].sort());
-    expect(registered.size).toBeGreaterThan(12);
+    expect(registered.size).toBeGreaterThan(10);
   });
 
   it("gives every operation one tag, a success response, and the identity requirement", async () => {

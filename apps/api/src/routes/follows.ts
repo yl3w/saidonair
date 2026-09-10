@@ -11,7 +11,7 @@ import { describeRoute } from "hono-openapi";
 import type { CatalogChannel } from "../do/registry/types";
 import type { ChannelFollow } from "../do/user/types";
 import type { AppEnv } from "../env";
-import { isAvailable, toChannel } from "../lib/channel-view";
+import { toChannel } from "../lib/channel-view";
 import { DomainError } from "../lib/errors";
 import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
@@ -19,8 +19,8 @@ import { validate } from "../lib/validation";
 type Ctx = Context<AppEnv>;
 
 /**
- * The caller's follows. Each embeds its channel, so a follow whose channel the owner has deleted
- * still lists, marked unavailable, and comes back when the channel is restored (AGENTS.md).
+ * The caller's follows. Each embeds its channel, so a follow whose channel the owner has declined
+ * still lists, with its status, and reads again once the channel is approved (AGENTS.md).
  * Unread = processed episodes the caller has no read receipt for.
  */
 export const followRoutes = new Hono<AppEnv>()
@@ -30,7 +30,7 @@ export const followRoutes = new Hono<AppEnv>()
       tags: ["follows"],
       summary: "List the caller's follows",
       description:
-        "Active follows, each embedding its channel and carrying `unreadCount`; most recent ingestion first. A followed channel the owner has deleted stays listed as unavailable and returns when restored.",
+        "Active follows, each embedding its channel and carrying `unreadCount`; most recent ingestion first. A followed channel the owner has declined stays listed, with its status, and reads again once it is approved.",
       responses: {
         200: jsonResponse(
           FollowsResponseSchema,
@@ -79,7 +79,7 @@ export const followRoutes = new Hono<AppEnv>()
       tags: ["follows"],
       summary: "Follow a channel",
       description:
-        "Follow, or refollow, an available channel. Clears an earlier unfollow. Existing summaries start unread.",
+        "Follow, or refollow, a requested or approved channel. Clears an earlier unfollow. Existing summaries start unread.",
       responses: {
         200: jsonResponse(
           FollowResponseSchema,
@@ -87,7 +87,7 @@ export const followRoutes = new Hono<AppEnv>()
         ),
         ...errorResponses({
           notFound: true,
-          conflict: "Only available, non-deleted channels can be followed",
+          conflict: "Only requested or approved channels can be followed",
         }),
       },
     }),
@@ -96,10 +96,10 @@ export const followRoutes = new Hono<AppEnv>()
       const { channelId } = c.req.valid("param");
       const channel = await c.var.registry.getChannel(channelId);
       if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
-      if (!isAvailable(channel)) {
+      if (channel.status === "declined") {
         throw new DomainError(
           "INVALID_STATE",
-          "only available channels can be followed",
+          "only requested or approved channels can be followed",
         );
       }
       const follow = await c.var.user.follow(channelId);
@@ -115,7 +115,7 @@ export const followRoutes = new Hono<AppEnv>()
       tags: ["follows"],
       summary: "Unfollow a channel",
       description:
-        "Records an unfollow tombstone. The catalog channel and the caller's read receipts are untouched; an explicit unfollow is never reversed by an automatic follow.",
+        "Records an unfollow tombstone. The catalog channel and the caller's read receipts are untouched.",
       responses: {
         200: jsonResponse(
           FollowResponseSchema,
@@ -177,7 +177,6 @@ function toFollow(
     channelId: follow.channelId,
     followedAt: follow.followedAt,
     unfollowedAt: follow.unfollowedAt,
-    origin: follow.origin,
     channel: toChannel(channel, {
       following: follow.unfollowedAt === null,
       processedCount: view.processedCount,

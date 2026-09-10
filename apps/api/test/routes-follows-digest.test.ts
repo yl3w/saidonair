@@ -17,7 +17,6 @@ import {
   registry,
   seedEpisode,
   seedSummary,
-  setChannelState,
   VIDEO_A,
   VIDEO_B,
   VIDEO_C,
@@ -43,23 +42,28 @@ const VIDEO_D = "ddddddddddd";
 const VIDEO_OLD = "olderolderx";
 
 /**
- * A: available, VIDEO_A (1h ago), VIDEO_B (3d ago), VIDEO_OLD (10d ago) processed with summaries,
- * VIDEO_C failed. B: available, VIDEO_D (2h ago). C: pending. D: deleted (was available).
+ * A: approved, VIDEO_A (1h ago), VIDEO_B (3d ago), VIDEO_OLD (10d ago) processed with summaries,
+ * VIDEO_C failed. B: approved, VIDEO_D (2h ago). C: requested. D: declined (was approved).
  */
 async function seedCatalog(now: number) {
   const stub = registry();
   for (const [id, title] of [
     [CHANNEL_A, "A"],
     [CHANNEL_B, "B"],
-    [CHANNEL_C, "C"],
     [CHANNEL_D, "D"],
   ] as const) {
-    await stub.createChannel(OWNER, { channelId: id, title });
+    await stub.createChannel(OWNER, {
+      channelId: id,
+      title,
+      status: "approved",
+    });
   }
-  for (const id of [CHANNEL_A, CHANNEL_B, CHANNEL_D]) {
-    await setChannelState(id, { status: "available", availableAt: 10 });
-  }
-  await stub.deleteChannel(OWNER, CHANNEL_D);
+  await stub.createChannel(ALICE, {
+    channelId: CHANNEL_C,
+    title: "C",
+    status: "requested",
+  });
+  await stub.declineChannel(OWNER, CHANNEL_D);
 
   await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: now - HOUR });
   await seedSummary(VIDEO_A, { relatedVideoIds: [VIDEO_D, VIDEO_B] });
@@ -77,9 +81,9 @@ async function seedCatalog(now: number) {
 }
 
 describe("follow routes", () => {
-  it("follows only available channels and lists follows with counts, unread, and availability", async () => {
+  it("refuses only declined channels and lists follows with counts, unread, and status", async () => {
     const now = Date.now();
-    await seedCatalog(now);
+    const stub = await seedCatalog(now);
 
     const followed = await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
     expectShape(FollowResponseSchema, followed.json);
@@ -87,13 +91,9 @@ describe("follow routes", () => {
     expect(followed.json.follow).toMatchObject({
       channelId: CHANNEL_A,
       unfollowedAt: null,
-      origin: "manual",
       unreadCount: 3,
-      channel: { following: true, available: true, processedCount: 3 },
+      channel: { following: true, status: "approved", processedCount: 3 },
     });
-    expect((await call(ALICE, "PUT", `/follows/${CHANNEL_C}`)).status).toBe(
-      409,
-    );
     expect((await call(ALICE, "PUT", `/follows/${CHANNEL_D}`)).status).toBe(
       409,
     );
@@ -121,17 +121,17 @@ describe("follow routes", () => {
         ?.unreadCount,
     ).toBe(3);
 
-    // Deletion keeps the follow row and marks the channel unavailable; restoration brings it back.
-    await call(OWNER, "DELETE", `/channels/${CHANNEL_A}`);
-    const deleted = await call(ALICE, "GET", "/follows");
-    expect((deleted.json.follows as Json[])[0]).toMatchObject({
+    // Declining keeps the follow row and shows the note; approving again brings the reads back.
+    await stub.declineChannel(OWNER, CHANNEL_A, { explanation: "withdrawn" });
+    const declined = await call(ALICE, "GET", "/follows");
+    expect((declined.json.follows as Json[])[0]).toMatchObject({
       channelId: CHANNEL_A,
-      channel: { available: false, deletedAt: expect.any(Number) },
+      channel: { status: "declined", reviewNote: "withdrawn" },
     });
-    await call(OWNER, "POST", `/channels/${CHANNEL_A}/restore`);
+    await stub.approveChannel(OWNER, CHANNEL_A);
     const restored = await call(ALICE, "GET", "/follows");
     expect((restored.json.follows as Json[])[0]).toMatchObject({
-      channel: { available: true },
+      channel: { status: "approved" },
     });
 
     const unfollowed = await call(ALICE, "DELETE", `/follows/${CHANNEL_A}`);
@@ -148,6 +148,10 @@ describe("follow routes", () => {
     );
     expect((await call(ALICE, "DELETE", `/follows/${CHANNEL_B}`)).status).toBe(
       404,
+    );
+    // A channel awaiting review can be followed too; only a declined one is refused.
+    expect((await call(ALICE, "PUT", `/follows/${CHANNEL_C}`)).status).toBe(
+      200,
     );
     // Bob's follow is untouched by any of Alice's changes.
     expect((await call(BOB, "GET", "/follows")).json.follows).toHaveLength(1);
@@ -197,9 +201,9 @@ describe("digest route", () => {
     });
   });
 
-  it("widens with ?since up to seven days, rejects garbage, and excludes deleted channels", async () => {
+  it("widens with ?since up to seven days, rejects garbage, and excludes declined channels", async () => {
     const now = Date.now();
-    await seedCatalog(now);
+    const stub = await seedCatalog(now);
     await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
 
     const fourDays = new Date(now - 4 * DAY).toISOString();
@@ -222,7 +226,7 @@ describe("digest route", () => {
       400,
     );
 
-    await call(OWNER, "DELETE", `/channels/${CHANNEL_A}`);
+    await stub.declineChannel(OWNER, CHANNEL_A);
     expect((await call(ALICE, "GET", "/digest")).json.episodes).toEqual([]);
     expect((await call(BOB, "GET", "/digest")).json).toMatchObject({
       episodes: [],

@@ -1,10 +1,9 @@
 import type { Channel } from "@media-digest/shared";
-import { useState } from "preact/hooks";
 import { useRoute } from "preact-iso";
 import { api } from "../api";
 import { Nav } from "../components/Nav";
 import { Time } from "../components/Time";
-import { CHANNEL_STATUS_COPY, failureCopy } from "../lib/copy";
+import { CHANNEL_STATUS_COPY } from "../lib/copy";
 import { type Load, useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
@@ -32,24 +31,6 @@ function OwnerChannelScreen() {
     () => api.listIngestionRuns(channelId),
     [channelId],
   );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function act(work: () => Promise<unknown>) {
-    setBusy(true);
-    setError(null);
-    try {
-      await work();
-      reloadChannel();
-      reloadEpisodes();
-      reloadRuns();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <main class="wide">
       <Nav />
@@ -57,9 +38,8 @@ function OwnerChannelScreen() {
         <a href="/owner">← Owner</a>
       </p>
       <Section load={channel} label="the channel" reload={reloadChannel}>
-        {({ channel: c }) => <Header channel={c} busy={busy} act={act} />}
+        {({ channel: c }) => <Header channel={c} />}
       </Section>
-      {error && <p class="error">{error}</p>}
 
       <h2>Episodes</h2>
       <Section load={episodes} label="episodes" reload={reloadEpisodes}>
@@ -150,57 +130,22 @@ function OwnerChannelScreen() {
   );
 }
 
-function Header({
-  channel: c,
-  busy,
-  act,
-}: {
-  channel: Channel;
-  busy: boolean;
-  act: (work: () => Promise<unknown>) => Promise<void>;
-}) {
+/** Display only for now; Task 10 adds approve, decline, pause, and resume here. */
+function Header({ channel: c }: { channel: Channel }) {
   const m = c.management;
   return (
     <>
       <h1>{c.title}</h1>
       <p class="muted">
         <a href={c.canonicalUrl}>{c.channelId}</a> ·{" "}
-        {c.deletedAt !== null ? "Deleted" : CHANNEL_STATUS_COPY[c.status]}
-        {c.status === "failed" && ` · ${failureCopy(c.failureCode)}`}
-        {m?.failureDetail && ` (${m.failureDetail})`}
-        {m && ` · available since `}
-        {m && <Time at={m.availableAt} fallback="never" />}
+        {CHANNEL_STATUS_COPY[c.status]}
+        {c.paused && ` · paused${c.pausedBy ? ` by ${c.pausedBy}` : ""}`}
+        {c.reviewNote && ` · ${c.reviewNote}`}
+        {" · approved since "}
+        <Time at={c.approvedAt} fallback="never" />
         {m &&
           ` · lifecycle v${m.lifecycleVersion} · import count ${m.initialImportCount}`}
       </p>
-      <div class="actions">
-        {c.deletedAt === null ? (
-          <button
-            type="button"
-            class="danger"
-            disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Remove ${c.title} from the catalog? Follows and content are kept.`,
-                )
-              ) {
-                act(() => api.deleteChannel(c.channelId));
-              }
-            }}
-          >
-            Delete
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => act(() => api.restoreChannel(c.channelId))}
-          >
-            Restore
-          </button>
-        )}
-      </div>
     </>
   );
 }

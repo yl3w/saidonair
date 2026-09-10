@@ -1,23 +1,10 @@
 import type { Catalog } from "@media-digest/shared";
 
-/** One line, the facts that need the owner, one link (spec §6.2). Renders nothing when quiet. */
-export function OwnerCard({ catalog }: { catalog: Catalog }) {
-  const parts: string[] = [];
-  const failed = catalog.channels.failed;
-  if (failed > 0) {
-    parts.push(`${failed} channel${failed === 1 ? "" : "s"} failed`);
-  }
-  const stuck = catalog.channels.stuckPending;
-  if (stuck > 0) {
-    parts.push(`${stuck} channel${stuck === 1 ? "" : "s"} pending with no run`);
-  }
-  if (parts.length === 0) return null;
-  return (
-    <aside class="card" aria-label="Owner attention">
-      <span>
-        <strong>Owner</strong> · {parts.join(" · ")}
-      </span>
-      <a href="/owner#attention">Review →</a>
-    </aside>
-  );
+/**
+ * One line, the facts that need the owner, one link (spec §6.2). Renders nothing when quiet.
+ * Task 10 rebuilds the attention count on the review queue and the paused channels; until then
+ * the count is 0 and the card never shows.
+ */
+export function OwnerCard(_props: { catalog: Catalog }) {
+  return null;
 }

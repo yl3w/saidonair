@@ -42,7 +42,6 @@ function OwnerScreen() {
       <Nav />
       <nav class="sections" aria-label="Sections">
         <a href="#catalog">Catalog</a>
-        <a href="#attention">Needs attention</a>
       </nav>
 
       <section id="catalog">
@@ -69,11 +68,7 @@ function OwnerScreen() {
           </p>
         )}
         {channels.status === "ready" && (
-          <CatalogTable
-            channels={channels.data.channels}
-            filter={filter}
-            onChanged={reloadAll}
-          />
+          <CatalogTable channels={channels.data.channels} filter={filter} />
         )}
         <AddChannel onChanged={reloadAll} />
       </section>

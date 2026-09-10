@@ -1,11 +1,11 @@
 import type { RegistryDO } from "../do/registry";
 import type { CatalogChannel } from "../do/registry/types";
 import type { UserDO } from "../do/user";
-import { isAvailable } from "./channel-view";
+import { isApproved } from "./channel-view";
 
 /**
- * The channels a caller may read from: active follows ∩ available, non-deleted catalog. The digest,
- * follows, episodes, and later chat retrieval all use this one definition (AGENTS.md → AI usage).
+ * The channels a caller may read from: active follows ∩ approved catalog. The digest, follows,
+ * episodes, and later chat retrieval all use this one definition (AGENTS.md → AI usage).
  */
 export async function eligibleChannels(
   registry: DurableObjectStub<RegistryDO>,
@@ -14,5 +14,5 @@ export async function eligibleChannels(
   const followed = await user.activeChannelIds();
   if (followed.length === 0) return [];
   const channels = await registry.listChannelsByIds(followed);
-  return channels.filter(isAvailable);
+  return channels.filter(isApproved);
 }

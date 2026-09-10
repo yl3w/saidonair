@@ -1,4 +1,3 @@
-import type { FollowOrigin } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
 import { requireChannelId } from "../../lib/youtube/ids";
 import type { ChannelFollow, ListFollowsOptions } from "./types";
@@ -7,19 +6,16 @@ type FollowRow = {
   channel_id: string;
   followed_at: number;
   unfollowed_at: number | null;
-  origin: string;
-  origin_request_id: string | null;
   created_at: number;
   updated_at: number;
 };
 
-const FOLLOW_COLUMNS = `channel_id, followed_at, unfollowed_at, origin, origin_request_id,
-  created_at, updated_at`;
+const FOLLOW_COLUMNS = `channel_id, followed_at, unfollowed_at, created_at, updated_at`;
 
 /**
- * Explicit follow or refollow. Eligibility (available, non-deleted channel) is the caller's
- * responsibility via the Registry; this only owns the row semantics. Idempotent on an
- * active follow; a tombstone is cleared and the follow becomes manual.
+ * Explicit follow or refollow. Eligibility (the channel's status) is the caller's responsibility
+ * via the Registry; this only owns the row semantics. Idempotent on an active follow; a tombstone
+ * is cleared.
  */
 export function follow(
   sql: SqlStorage,
@@ -33,9 +29,8 @@ export function follow(
     return toFollow(
       sql
         .exec<FollowRow>(
-          `INSERT INTO channel_follows
-             (channel_id, followed_at, origin, origin_request_id, created_at, updated_at)
-           VALUES (?, ?, 'manual', NULL, ?, ?)
+          `INSERT INTO channel_follows (channel_id, followed_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?)
            RETURNING ${FOLLOW_COLUMNS}`,
           id,
           now,
@@ -49,8 +44,7 @@ export function follow(
     sql
       .exec<FollowRow>(
         `UPDATE channel_follows
-         SET followed_at = ?, unfollowed_at = NULL, origin = 'manual', origin_request_id = NULL,
-             updated_at = ?
+         SET followed_at = ?, unfollowed_at = NULL, updated_at = ?
          WHERE channel_id = ?
          RETURNING ${FOLLOW_COLUMNS}`,
         now,
@@ -128,14 +122,7 @@ function toFollow(row: FollowRow): ChannelFollow {
     channelId: row.channel_id,
     followedAt: row.followed_at,
     unfollowedAt: row.unfollowed_at,
-    origin: toOrigin(row.origin),
-    originRequestId: row.origin_request_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-function toOrigin(value: string): FollowOrigin {
-  if (value === "manual" || value === "request") return value;
-  throw new Error(`unexpected channel_follows.origin: ${value}`);
 }

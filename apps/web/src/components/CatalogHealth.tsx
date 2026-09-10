@@ -3,10 +3,10 @@ import { Time } from "./Time";
 
 export type CatalogFilter =
   | "all"
-  | "available"
-  | "pending"
-  | "failed"
-  | "deleted";
+  | "requested"
+  | "approved"
+  | "paused"
+  | "declined";
 
 /** The health strip (spec §7.2). Each count is a filter for the table below. */
 export function CatalogHealth({
@@ -24,10 +24,10 @@ export function CatalogHealth({
   );
   return (
     <div class="strip">
-      {count("Available", c.available, "available")}
-      {count("Pending", c.pending, "pending")}
-      {count("Failed", c.failed, "failed")}
-      {count("Deleted", c.deleted, "deleted")}
+      {count("Requested", c.requested, "requested")}
+      {count("Approved", c.approved, "approved")}
+      {count("Paused", c.paused, "paused")}
+      {count("Declined", c.declined, "declined")}
       <span>
         Episodes {catalog.episodes.processed} processed /{" "}
         {catalog.episodes.tracked} tracked

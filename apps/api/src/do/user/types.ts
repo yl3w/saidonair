@@ -1,16 +1,10 @@
-import type {
-  ChatMessageStatus,
-  ChatRole,
-  FollowOrigin,
-} from "@media-digest/shared";
+import type { ChatMessageStatus, ChatRole } from "@media-digest/shared";
 
 export type ChannelFollow = {
   channelId: string;
   followedAt: number;
   /** Set on unfollow and retained as a tombstone; null while the follow is active. */
   unfollowedAt: number | null;
-  origin: FollowOrigin;
-  originRequestId: string | null;
   createdAt: number;
   updatedAt: number;
 };

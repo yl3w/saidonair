@@ -1,8 +1,8 @@
-import type { ChannelFailureCode, ChannelStatus } from "@media-digest/shared";
+import type { ChannelStatus, PausedBy } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
 import { chunk, placeholders } from "../../lib/sql";
 import { requireChannelId } from "../../lib/youtube/ids";
-import type { CatalogChannel, CreateChannelInput } from "./types";
+import type { CatalogChannel, CreateChannelInput, ReviewInput } from "./types";
 
 type ChannelRow = {
   channel_id: string;
@@ -10,20 +10,22 @@ type ChannelRow = {
   canonical_url: string;
   status: string;
   initial_import_count: number;
-  failure_code: string | null;
-  failure_detail: string | null;
-  available_at: number | null;
+  approved_at: number | null;
+  reviewed_at: number | null;
+  reviewed_by_email: string | null;
+  review_note: string | null;
+  paused_by: string | null;
+  paused_at: number | null;
   last_checked_at: number | null;
   last_ingested_at: number | null;
-  deleted_at: number | null;
   lifecycle_version: number;
   created_at: number;
   updated_at: number;
 };
 
-const CHANNEL_COLUMNS = `channel_id, title, canonical_url, status, initial_import_count,
-  failure_code, failure_detail, available_at, last_checked_at, last_ingested_at, deleted_at,
-  lifecycle_version, created_at, updated_at`;
+const CHANNEL_COLUMNS = `channel_id, title, canonical_url, status, initial_import_count, approved_at,
+  reviewed_at, reviewed_by_email, review_note, paused_by, paused_at, last_checked_at,
+  last_ingested_at, lifecycle_version, created_at, updated_at`;
 
 export function canonicalChannelUrl(channelId: string): string {
   return `https://www.youtube.com/channel/${channelId}`;
@@ -42,7 +44,7 @@ export function getChannel(
   return row ? toChannel(row) : null;
 }
 
-/** Owner view: every state, including deleted, newest first. */
+/** Owner view: every status, newest first. */
 export function listChannels(sql: SqlStorage): CatalogChannel[] {
   return sql
     .exec<ChannelRow>(
@@ -52,7 +54,7 @@ export function listChannels(sql: SqlStorage): CatalogChannel[] {
     .map(toChannel);
 }
 
-/** Channels by id in any state, including deleted; ids that do not exist are simply absent. */
+/** Channels by id in any status, including declined; ids that do not exist are simply absent. */
 export function listChannelsByIds(
   sql: SqlStorage,
   channelIds: readonly string[],
@@ -74,12 +76,12 @@ export function listChannelsByIds(
   );
 }
 
-/** The followable catalog: available and not deleted. */
-export function listAvailableChannels(sql: SqlStorage): CatalogChannel[] {
+/** The browsable catalog: requested and approved, title order. Declined channels are reachable by id only. */
+export function listCatalogChannels(sql: SqlStorage): CatalogChannel[] {
   return sql
     .exec<ChannelRow>(
       `SELECT ${CHANNEL_COLUMNS} FROM channels
-       WHERE status = 'available' AND deleted_at IS NULL
+       WHERE status IN ('requested', 'approved')
        ORDER BY title COLLATE NOCASE, channel_id`,
     )
     .toArray()
@@ -87,11 +89,8 @@ export function listAvailableChannels(sql: SqlStorage): CatalogChannel[] {
 }
 
 /**
- * Creates a `pending` channel; `INVALID_STATE` when the id is already in the catalog, deleted
- * or not. Create-only on purpose: editing a channel after creation is out of scope, and a
- * create-or-update here would let two overlapping adds silently overwrite each other. The
- * check and the insert run inside one synchronous DO call, so nothing can interleave. Callers
- * decide whether to start initial ingestion.
+ * Creates a channel; `INVALID_STATE` when the id exists in any status. Create-only on purpose
+ * (db26c74): the route treats that refusal as "exists" and follows or reopens instead.
  */
 export function createChannel(
   sql: SqlStorage,
@@ -102,19 +101,28 @@ export function createChannel(
   if (getChannel(sql, channelId)) {
     throw new DomainError("INVALID_STATE", "channel is already in the catalog");
   }
-  const title = requireTitle(input.title);
-  const importCount = optionalImportCount(input.initialImportCount);
+  const approved = input.status === "approved";
+  if (approved && !input.reviewer) {
+    throw new DomainError(
+      "INVALID_INPUT",
+      "an approved channel needs a reviewer",
+    );
+  }
   return toChannel(
     sql
       .exec<ChannelRow>(
         `INSERT INTO channels (channel_id, title, canonical_url, status, initial_import_count,
-           lifecycle_version, created_at, updated_at)
-         VALUES (?, ?, ?, 'pending', COALESCE(?, 5), 1, ?, ?)
+           approved_at, reviewed_at, reviewed_by_email, lifecycle_version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, COALESCE(?, 5), ?, ?, ?, 1, ?, ?)
          RETURNING ${CHANNEL_COLUMNS}`,
         channelId,
-        title,
+        requireTitle(input.title),
         canonicalChannelUrl(channelId),
-        importCount,
+        input.status,
+        optionalImportCount(input.initialImportCount),
+        approved ? now : null,
+        approved ? now : null,
+        approved ? (input.reviewer ?? null) : null,
         now,
         now,
       )
@@ -122,22 +130,34 @@ export function createChannel(
   );
 }
 
-/** Soft delete. Idempotent: deleting a deleted channel changes nothing (no extra fence bump). */
-export function deleteChannel(
+/** `requested | declined → approved`. Sets approved_at once; the caller starts the import only when it was null. */
+export function approveChannel(
   sql: SqlStorage,
   channelId: string,
+  reviewer: string,
+  input: ReviewInput,
   now: number,
 ): CatalogChannel {
   const channel = requireChannel(sql, channelId);
-  if (channel.deletedAt !== null) return channel;
+  if (channel.status === "approved") {
+    throw new DomainError("INVALID_STATE", "channel is already approved");
+  }
   return toChannel(
     sql
       .exec<ChannelRow>(
         `UPDATE channels
-         SET deleted_at = ?, lifecycle_version = lifecycle_version + 1, updated_at = ?
+         SET status = 'approved', title = COALESCE(?, title),
+             initial_import_count = COALESCE(?, initial_import_count),
+             approved_at = COALESCE(approved_at, ?), reviewed_at = ?, reviewed_by_email = ?,
+             review_note = ?, paused_by = NULL, paused_at = NULL, updated_at = ?
          WHERE channel_id = ?
          RETURNING ${CHANNEL_COLUMNS}`,
+        optionalTitle(input.title),
+        optionalImportCount(input.initialImportCount),
         now,
+        now,
+        reviewer,
+        optionalNote(input.explanation),
         now,
         channel.channelId,
       )
@@ -145,20 +165,55 @@ export function deleteChannel(
   );
 }
 
-/** Clears deletion only. Processing state, available_at, and failure are preserved. */
-export function restoreChannel(
+/** `requested | approved → declined`. From approved, bumps the fence so a run in flight publishes nothing. */
+export function declineChannel(
+  sql: SqlStorage,
+  channelId: string,
+  reviewer: string,
+  input: ReviewInput,
+  now: number,
+): CatalogChannel {
+  const channel = requireChannel(sql, channelId);
+  if (channel.status === "declined") {
+    throw new DomainError("INVALID_STATE", "channel is already declined");
+  }
+  const bump = channel.status === "approved" ? 1 : 0;
+  return toChannel(
+    sql
+      .exec<ChannelRow>(
+        `UPDATE channels
+         SET status = 'declined', reviewed_at = ?, reviewed_by_email = ?, review_note = ?,
+             paused_by = NULL, paused_at = NULL, lifecycle_version = lifecycle_version + ?, updated_at = ?
+         WHERE channel_id = ?
+         RETURNING ${CHANNEL_COLUMNS}`,
+        now,
+        reviewer,
+        optionalNote(input.explanation),
+        bump,
+        now,
+        channel.channelId,
+      )
+      .one(),
+  );
+}
+
+/** `declined → requested`, keeping the review fields so the queue can show them. */
+export function requestChannel(
   sql: SqlStorage,
   channelId: string,
   now: number,
 ): CatalogChannel {
   const channel = requireChannel(sql, channelId);
-  if (channel.deletedAt === null) return channel;
+  if (channel.status !== "declined") {
+    throw new DomainError(
+      "INVALID_STATE",
+      `only a declined channel can be requested again (status: ${channel.status})`,
+    );
+  }
   return toChannel(
     sql
       .exec<ChannelRow>(
-        `UPDATE channels SET deleted_at = NULL, updated_at = ?
-         WHERE channel_id = ?
-         RETURNING ${CHANNEL_COLUMNS}`,
+        `UPDATE channels SET status = 'requested', updated_at = ? WHERE channel_id = ? RETURNING ${CHANNEL_COLUMNS}`,
         now,
         channel.channelId,
       )
@@ -166,7 +221,38 @@ export function restoreChannel(
   );
 }
 
-function requireChannel(sql: SqlStorage, channelId: string): CatalogChannel {
+/** Sets or clears the pause on an approved channel. Idempotent. */
+export function setPause(
+  sql: SqlStorage,
+  channelId: string,
+  pausedBy: PausedBy | null,
+  now: number,
+): CatalogChannel {
+  const channel = requireChannel(sql, channelId);
+  if (channel.status !== "approved") {
+    throw new DomainError(
+      "INVALID_STATE",
+      "only approved channels can be paused or resumed",
+    );
+  }
+  if (channel.pausedBy === pausedBy) return channel;
+  return toChannel(
+    sql
+      .exec<ChannelRow>(
+        `UPDATE channels SET paused_by = ?, paused_at = ?, updated_at = ? WHERE channel_id = ? RETURNING ${CHANNEL_COLUMNS}`,
+        pausedBy,
+        pausedBy === null ? null : now,
+        now,
+        channel.channelId,
+      )
+      .one(),
+  );
+}
+
+export function requireChannel(
+  sql: SqlStorage,
+  channelId: string,
+): CatalogChannel {
   const channel = getChannel(sql, requireChannelId(channelId));
   if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
   return channel;
@@ -191,6 +277,16 @@ function optionalImportCount(value: number | undefined): number | null {
   return value;
 }
 
+function optionalTitle(value: string | undefined): string | null {
+  const title = value?.trim();
+  return title ? title : null;
+}
+
+function optionalNote(value: string | undefined): string | null {
+  const note = value?.trim();
+  return note ? note : null;
+}
+
 function toChannel(row: ChannelRow): CatalogChannel {
   return {
     channelId: row.channel_id,
@@ -198,12 +294,14 @@ function toChannel(row: ChannelRow): CatalogChannel {
     canonicalUrl: row.canonical_url,
     status: toStatus(row.status),
     initialImportCount: row.initial_import_count,
-    failureCode: toFailureCode(row.failure_code),
-    failureDetail: row.failure_detail,
-    availableAt: row.available_at,
+    approvedAt: row.approved_at,
+    reviewedAt: row.reviewed_at,
+    reviewedByEmail: row.reviewed_by_email,
+    reviewNote: row.review_note,
+    pausedBy: toPausedBy(row.paused_by),
+    pausedAt: row.paused_at,
     lastCheckedAt: row.last_checked_at,
     lastIngestedAt: row.last_ingested_at,
-    deletedAt: row.deleted_at,
     lifecycleVersion: row.lifecycle_version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -211,20 +309,13 @@ function toChannel(row: ChannelRow): CatalogChannel {
 }
 
 function toStatus(value: string): ChannelStatus {
-  if (value === "pending" || value === "available" || value === "failed") {
+  if (value === "requested" || value === "approved" || value === "declined") {
     return value;
   }
   throw new Error(`unexpected channels.status: ${value}`);
 }
 
-function toFailureCode(value: string | null): ChannelFailureCode | null {
-  if (value === null) return null;
-  if (
-    value === "NO_TRANSCRIPTS" ||
-    value === "NO_EPISODES" ||
-    value === "INITIAL_IMPORT_FAILED"
-  ) {
-    return value;
-  }
-  throw new Error(`unexpected channels.failure_code: ${value}`);
+function toPausedBy(value: string | null): PausedBy | null {
+  if (value === null || value === "owner" || value === "system") return value;
+  throw new Error(`unexpected channels.paused_by: ${value}`);
 }

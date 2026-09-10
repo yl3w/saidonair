@@ -4,9 +4,9 @@ import type {
   ChannelManagementRecord,
 } from "../do/registry/types";
 
-/** The only state a channel can be followed or read in. */
-export function isAvailable(channel: CatalogChannel): boolean {
-  return channel.status === "available" && channel.deletedAt === null;
+/** The only status whose episodes are ingested and readable. */
+export function isApproved(channel: CatalogChannel): boolean {
+  return channel.status === "approved";
 }
 
 export type ChannelView = {
@@ -26,9 +26,11 @@ export function toChannel(channel: CatalogChannel, view: ChannelView): Channel {
     title: channel.title,
     canonicalUrl: channel.canonicalUrl,
     status: channel.status,
-    failureCode: channel.failureCode,
-    deletedAt: channel.deletedAt,
-    available: isAvailable(channel),
+    paused: channel.pausedBy !== null,
+    pausedBy: channel.pausedBy,
+    approvedAt: channel.approvedAt,
+    reviewedAt: channel.reviewedAt,
+    reviewNote: channel.reviewNote,
     lastIngestedAt: channel.lastIngestedAt,
     processedCount: view.processedCount,
     following: view.following,
@@ -44,14 +46,14 @@ export function toManagement(
   const { channel } = record;
   return {
     initialImportCount: channel.initialImportCount,
-    failureDetail: channel.failureDetail,
-    availableAt: channel.availableAt,
+    reviewedByEmail: channel.reviewedByEmail,
+    pausedAt: channel.pausedAt,
     lastCheckedAt: channel.lastCheckedAt,
     lifecycleVersion: channel.lifecycleVersion,
     createdAt: channel.createdAt,
     updatedAt: channel.updatedAt,
     episodes: record.episodes,
     latestRun: record.latestRun,
-    stuckPending: record.stuckPending,
+    neverStarted: record.neverStarted,
   };
 }

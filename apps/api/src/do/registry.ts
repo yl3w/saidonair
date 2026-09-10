@@ -18,6 +18,7 @@ import type {
   IngestionRunRecord,
   ListEpisodesOptions,
   RegistryUser,
+  ReviewInput,
 } from "./registry/types";
 import * as users from "./registry/users";
 
@@ -67,11 +68,12 @@ export class RegistryDO extends DurableObject<Env> {
 
   // --- catalog --------------------------------------------------------------
 
-  listAvailableChannels(): CatalogChannel[] {
-    return channels.listAvailableChannels(this.#sql);
+  /** The browsable catalog: requested and approved channels. */
+  listCatalogChannels(): CatalogChannel[] {
+    return channels.listCatalogChannels(this.#sql);
   }
 
-  /** Any state, including deleted; used for follows and channel views. */
+  /** Any status, including declined; used for follows and channel views. */
   listChannelsByIds(channelIds: string[]): CatalogChannel[] {
     return channels.listChannelsByIds(this.#sql, requireChannelIds(channelIds));
   }
@@ -80,30 +82,85 @@ export class RegistryDO extends DurableObject<Env> {
     return channels.getChannel(this.#sql, requireChannelId(channelId));
   }
 
-  /** Owner: every channel in every state, including deleted. */
+  /** Owner: every channel in every status. */
   listChannels(actorEmail: string): CatalogChannel[] {
     this.#assertOwner(actorEmail);
     return channels.listChannels(this.#sql);
   }
 
-  /** Owner: create a pending channel; `INVALID_STATE` when the id is already in the catalog. */
-  createChannel(actorEmail: string, input: CreateChannelInput): CatalogChannel {
-    this.#assertOwner(actorEmail);
+  /**
+   * Anyone creates a `requested` channel; only the owner creates an `approved` one. Create-only:
+   * `INVALID_STATE` when the id exists, which the route turns into follow or request-again.
+   */
+  createChannel(email: string, input: CreateChannelInput): CatalogChannel {
+    const actor = users.requireEmail(email);
+    if (input.status === "approved") this.#assertOwner(actor);
     return this.#transaction(() =>
-      channels.createChannel(this.#sql, input, Date.now()),
+      channels.createChannel(
+        this.#sql,
+        {
+          ...input,
+          reviewer: input.status === "approved" ? actor : undefined,
+        },
+        Date.now(),
+      ),
     );
   }
 
-  /** Owner: soft delete; follows, episodes, summaries, and vectors are all retained. */
-  deleteChannel(actorEmail: string, channelId: string): CatalogChannel {
-    this.#assertOwner(actorEmail);
-    return channels.deleteChannel(this.#sql, channelId, Date.now());
+  /** Owner: `requested | declined → approved`. `importStarts` is true when approved_at was null before. */
+  approveChannel(
+    actorEmail: string,
+    channelId: string,
+    input: ReviewInput = {},
+  ): { channel: CatalogChannel; importStarts: boolean } {
+    const reviewer = this.#assertOwner(actorEmail);
+    return this.#transaction(() => {
+      const before = channels.requireChannel(
+        this.#sql,
+        requireChannelId(channelId),
+      );
+      const channel = channels.approveChannel(
+        this.#sql,
+        before.channelId,
+        reviewer,
+        input,
+        Date.now(),
+      );
+      return { channel, importStarts: before.approvedAt === null };
+    });
   }
 
-  /** Owner: undo soft delete without changing processing state. */
-  restoreChannel(actorEmail: string, channelId: string): CatalogChannel {
+  /** Owner: `requested | approved → declined`; from approved the fence is bumped. */
+  declineChannel(
+    actorEmail: string,
+    channelId: string,
+    input: ReviewInput = {},
+  ): CatalogChannel {
+    const reviewer = this.#assertOwner(actorEmail);
+    return channels.declineChannel(
+      this.#sql,
+      channelId,
+      reviewer,
+      input,
+      Date.now(),
+    );
+  }
+
+  /** Anyone: `declined → requested`. The route follows the caller afterwards. */
+  requestChannel(email: string, channelId: string): CatalogChannel {
+    users.requireEmail(email);
+    return channels.requestChannel(this.#sql, channelId, Date.now());
+  }
+
+  pauseChannel(actorEmail: string, channelId: string): CatalogChannel {
     this.#assertOwner(actorEmail);
-    return channels.restoreChannel(this.#sql, channelId, Date.now());
+    return channels.setPause(this.#sql, channelId, "owner", Date.now());
+  }
+
+  /** Owner resume clears either kind of pause. */
+  resumeChannel(actorEmail: string, channelId: string): CatalogChannel {
+    this.#assertOwner(actorEmail);
+    return channels.setPause(this.#sql, channelId, null, Date.now());
   }
 
   /** Owner: the catalog's aggregate state for the attention card and health strip. */
@@ -113,8 +170,8 @@ export class RegistryDO extends DurableObject<Env> {
   }
 
   /**
-   * Owner: channels with their management facts (episode counts, latest run, stuck flag). All
-   * channels in every state by default, or just the given ids.
+   * Owner: channels with their management facts (episode counts, latest run, never-started flag).
+   * All channels in every status by default, or just the given ids.
    */
   listChannelManagement(
     actorEmail: string,
