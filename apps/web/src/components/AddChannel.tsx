@@ -15,7 +15,7 @@ export function AddChannel({ onChanged }: { onChanged: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api.createChannel({
+      await api.addChannel({
         channelId,
         title: title.trim() || undefined,
         initialImportCount: Number.parseInt(importCount, 10) || undefined,

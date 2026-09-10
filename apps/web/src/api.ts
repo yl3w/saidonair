@@ -3,12 +3,16 @@
 // base URL from VITE_API_URL (default: local wrangler dev). One typed function per operation, named
 // after the entity it touches; every shape comes from @media-digest/shared.
 import type {
+  ApproveChannelBody,
   CatalogResponse,
   ChannelResponse,
   ChannelsResponse,
   CreateChannelBody,
+  DeclineChannelBody,
   DigestResponse,
+  EpisodeResponse,
   EpisodesResponse,
+  FollowersResponse,
   FollowResponse,
   FollowsResponse,
   IngestionRunsResponse,
@@ -102,20 +106,50 @@ export const api = {
       "GET",
       options.scope === "all" ? "/channels?scope=all" : "/channels",
     ),
-  createChannel: (body: CreateChannelBody) =>
+  addChannel: (body: CreateChannelBody) =>
     request<ChannelResponse>("POST", "/channels", body),
   getChannel: (channelId: string) =>
     request<ChannelResponse>("GET", `/channels/${enc(channelId)}`),
+  requestChannel: (channelId: string) =>
+    request<ChannelResponse>("POST", `/channels/${enc(channelId)}/request`),
+  approveChannel: (channelId: string, body: ApproveChannelBody) =>
+    request<ChannelResponse>(
+      "POST",
+      `/channels/${enc(channelId)}/approve`,
+      body,
+    ),
+  declineChannel: (channelId: string, body: DeclineChannelBody) =>
+    request<ChannelResponse>(
+      "POST",
+      `/channels/${enc(channelId)}/decline`,
+      body,
+    ),
+  pauseChannel: (channelId: string) =>
+    request<ChannelResponse>("POST", `/channels/${enc(channelId)}/pause`),
+  resumeChannel: (channelId: string) =>
+    request<ChannelResponse>("POST", `/channels/${enc(channelId)}/resume`),
   listEpisodes: (channelId: string, limit?: number) =>
     request<EpisodesResponse>(
       "GET",
       `/channels/${enc(channelId)}/episodes${limit === undefined ? "" : `?limit=${limit}`}`,
+    ),
+  retryEpisode: (channelId: string, videoId: string) =>
+    request<EpisodeResponse>(
+      "POST",
+      `/channels/${enc(channelId)}/episodes/${enc(videoId)}/retry`,
+    ),
+  skipEpisode: (channelId: string, videoId: string) =>
+    request<EpisodeResponse>(
+      "POST",
+      `/channels/${enc(channelId)}/episodes/${enc(videoId)}/skip`,
     ),
   listIngestionRuns: (channelId: string) =>
     request<IngestionRunsResponse>(
       "GET",
       `/channels/${enc(channelId)}/ingestion-runs`,
     ),
+  listFollowers: (channelId: string) =>
+    request<FollowersResponse>("GET", `/channels/${enc(channelId)}/followers`),
 
   // follows
   listFollows: () => request<FollowsResponse>("GET", "/follows"),
