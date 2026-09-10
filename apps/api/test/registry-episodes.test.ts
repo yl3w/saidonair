@@ -137,11 +137,20 @@ describe("registry episodes", () => {
     });
     await seedEpisode(VIDEO_C, CHANNEL_B, { publishedAt: 1_000 });
     await seedSummary(VIDEO_C);
+    await seedEpisode("skipowner01", CHANNEL_A, {
+      publishedAt: 500,
+      status: "skipped",
+      skipReason: "OWNER",
+    });
 
     const all = await stub.listEpisodes(CHANNEL_A, {
       relatedScope: [CHANNEL_B],
     });
-    expect(all.map((e) => e.videoId)).toEqual([VIDEO_A, VIDEO_B]);
+    expect(all.map((e) => e.videoId)).toEqual([
+      VIDEO_A,
+      VIDEO_B,
+      "skipowner01",
+    ]);
     expect(all[0]).toMatchObject({
       summary: { format: "structured" },
       related: [{ videoId: VIDEO_C }],
@@ -156,6 +165,11 @@ describe("registry episodes", () => {
         attemptCount: 3,
         chunkCount: null,
       },
+    });
+    // An owner-skip records the reason and, by the CHECK's own contract, the owner's email.
+    expect(all[2]).toMatchObject({
+      status: "skipped",
+      processing: { skipReason: "OWNER", skippedByEmail: OWNER },
     });
 
     // Related titles outside the scope are dropped, not exposed.

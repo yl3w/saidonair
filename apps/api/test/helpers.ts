@@ -100,6 +100,7 @@ type EpisodeSeed = {
     | "LIVE_OR_UPCOMING"
     | "UNPLAYABLE"
     | "OWNER";
+  skippedByEmail?: string;
   attemptCount?: number;
   failureCode?: string;
   chunkCount?: number;
@@ -115,26 +116,28 @@ export async function seedEpisode(
   const available = status === "available";
   const failed = status === "failed";
   const skipped = status === "skipped";
+  const skipReason = skipped ? (seed.skipReason ?? "SHORT") : null;
   const at = seed.processedAt ?? seed.publishedAt ?? 1;
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episodes
          (video_id, channel_id, title, published_at, status, waiting_code, attempt_count,
-          failure_code, skip_reason, skipped_at, transcript_checked_at, chunk_count,
-          vectorized_at, processed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          failure_code, skip_reason, skipped_at, skipped_by_email, transcript_checked_at,
+          chunk_count, vectorized_at, processed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       videoId,
       channelId,
       seed.title ?? `Episode ${videoId}`,
       seed.publishedAt ?? 1,
       status,
-      seed.waitingCode ?? null,
+      status === "pending" ? (seed.waitingCode ?? null) : null,
       seed.attemptCount ?? (status === "pending" ? 0 : 1),
       failed
         ? (seed.failureCode ?? "PROVIDER_HTTP")
         : (seed.failureCode ?? null),
-      skipped ? (seed.skipReason ?? "SHORT") : null,
+      skipReason,
       skipped ? at : null,
+      skipReason === "OWNER" ? (seed.skippedByEmail ?? OWNER) : null,
       status === "pending" ? null : at,
       available ? (seed.chunkCount ?? 3) : null,
       available ? at : null,
