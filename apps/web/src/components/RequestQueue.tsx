@@ -179,7 +179,7 @@ function WaitingRow({
       </div>
       <div class="actions">
         <button
-          id={`approve-${c.channelId}`}
+          id={`queue-approve-${c.channelId}`}
           type="button"
           disabled={busy}
           onClick={() => setMode(mode === "approve" ? "closed" : "approve")}
@@ -187,7 +187,7 @@ function WaitingRow({
           Approve
         </button>
         <button
-          id={`decline-${c.channelId}`}
+          id={`queue-decline-${c.channelId}`}
           type="button"
           class="danger"
           disabled={busy}
