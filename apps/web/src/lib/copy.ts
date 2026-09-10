@@ -31,7 +31,7 @@ export function channelStateCopy(channel: Channel): string {
 export function reviewCopy(channel: Channel): string | null {
   if (channel.status !== "declined" || channel.reviewedAt === null) return null;
   const verb = channel.approvedAt === null ? "Declined" : "Withdrawn";
-  const note = channel.reviewNote ? `: "${channel.reviewNote}"` : "";
+  const note = channel.reviewNote ? `: “${channel.reviewNote}”` : "";
   return `${verb} on ${absoluteTime(channel.reviewedAt)}${note}`;
 }
 
