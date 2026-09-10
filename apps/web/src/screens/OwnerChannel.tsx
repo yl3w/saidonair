@@ -1,9 +1,15 @@
-import type { Channel } from "@media-digest/shared";
+import type { Channel, Episode } from "@media-digest/shared";
+import { useState } from "preact/hooks";
 import { useRoute } from "preact-iso";
 import { api } from "../api";
 import { Nav } from "../components/Nav";
 import { Time } from "../components/Time";
-import { CHANNEL_STATUS_COPY } from "../lib/copy";
+import {
+  channelStateCopy,
+  EPISODE_STATUS_COPY,
+  SKIP_REASON_COPY,
+  WAITING_CODE_COPY,
+} from "../lib/copy";
 import { type Load, useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
@@ -15,7 +21,10 @@ export function OwnerChannel() {
   );
 }
 
-/** One channel for the owner (spec §8): management header, episodes, runs. */
+/** One action against this channel or one of its episodes; every button shares this and reloads after. */
+type Act = (work: () => Promise<unknown>) => void;
+
+/** One channel for the owner (spec §8): management header, episodes, runs, followers. */
 function OwnerChannelScreen() {
   const { params } = useRoute();
   const channelId = params.id ?? "";
@@ -31,6 +40,36 @@ function OwnerChannelScreen() {
     () => api.listIngestionRuns(channelId),
     [channelId],
   );
+  // Followers are only fetched for a requested channel (spec §7); any other status shows a count.
+  const showFollowers =
+    channel.status === "ready" && channel.data.channel.status === "requested";
+  const [followers, reloadFollowers] = useLoad(
+    () => api.listFollowers(channelId),
+    [channelId],
+    { enabled: showFollowers },
+  );
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const act: Act = async (work) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+      reloadChannel();
+      reloadEpisodes();
+      reloadRuns();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const channelApproved =
+    channel.status === "ready" && channel.data.channel.status === "approved";
+
   return (
     <main class="wide">
       <Nav />
@@ -38,7 +77,9 @@ function OwnerChannelScreen() {
         <a href="/owner">← Owner</a>
       </p>
       <Section load={channel} label="the channel" reload={reloadChannel}>
-        {({ channel: c }) => <Header channel={c} />}
+        {({ channel: c }) => (
+          <Header channel={c} busy={busy} error={error} act={act} />
+        )}
       </Section>
 
       <h2>Episodes</h2>
@@ -47,46 +88,12 @@ function OwnerChannelScreen() {
           list.length === 0 ? (
             <p class="muted">No episodes yet.</p>
           ) : (
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Published</th>
-                    <th>Status</th>
-                    <th>Attempts</th>
-                    <th>Failure</th>
-                    <th>Chunks</th>
-                    <th>Summary</th>
-                    <th>Processed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.map((e) => (
-                    <tr key={e.videoId}>
-                      <td class="wrap">
-                        <a href={`https://youtu.be/${e.videoId}`}>{e.title}</a>
-                      </td>
-                      <td>
-                        <Time at={e.publishedAt} />
-                      </td>
-                      <td>{e.status.replace("_", " ")}</td>
-                      <td>{e.processing?.attemptCount ?? "—"}</td>
-                      <td>
-                        {e.processing?.skipReason ??
-                          e.processing?.failureCode ??
-                          "—"}
-                      </td>
-                      <td>{e.processing?.chunkCount ?? "—"}</td>
-                      <td>{e.summary?.format ?? "—"}</td>
-                      <td>
-                        <Time at={e.processing?.processedAt ?? null} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <EpisodesTable
+              episodes={list}
+              channelApproved={channelApproved}
+              busy={busy}
+              act={act}
+            />
           )
         }
       </Section>
@@ -130,28 +137,287 @@ function OwnerChannelScreen() {
           )
         }
       </Section>
+
+      <h2>Followers</h2>
+      <Section load={channel} label="the channel" reload={reloadChannel}>
+        {({ channel: c }) =>
+          c.status === "requested" ? (
+            <Section
+              load={followers}
+              label="followers"
+              reload={reloadFollowers}
+            >
+              {({ followers: list }) =>
+                list.length === 0 ? (
+                  <p class="muted">Nobody is waiting.</p>
+                ) : (
+                  <ul>
+                    {list.map((f) => (
+                      <li key={f.email}>
+                        {f.email} · followed <Time at={f.followedAt} />
+                      </li>
+                    ))}
+                  </ul>
+                )
+              }
+            </Section>
+          ) : (
+            <p>{followerLabel(c.followerCount)}</p>
+          )
+        }
+      </Section>
     </main>
   );
 }
 
-/** Display only for now; Task 10 adds approve, decline, pause, and resume here. */
-function Header({ channel: c }: { channel: Channel }) {
+/** State copy, review history, pause state, lifecycle and import counts, and the actions the status allows. */
+function Header({
+  channel: c,
+  busy,
+  error,
+  act,
+}: {
+  channel: Channel;
+  busy: boolean;
+  error: string | null;
+  act: Act;
+}) {
   const m = c.management;
   return (
     <>
       <h1>{c.title}</h1>
       <p class="muted">
-        <a href={c.canonicalUrl}>{c.channelId}</a> ·{" "}
-        {CHANNEL_STATUS_COPY[c.status]}
-        {c.paused && ` · paused${c.pausedBy ? ` by ${c.pausedBy}` : ""}`}
-        {c.reviewNote && ` · ${c.reviewNote}`}
+        <a href={c.canonicalUrl}>{c.channelId}</a> · {channelStateCopy(c)}
         {" · approved since "}
         <Time at={c.approvedAt} fallback="never" />
-        {m &&
-          ` · lifecycle v${m.lifecycleVersion} · import count ${m.initialImportCount}`}
+        {c.reviewedAt !== null && (
+          <>
+            {" · reviewed "}
+            <Time at={c.reviewedAt} />
+            {m?.reviewedByEmail && ` by ${m.reviewedByEmail}`}
+            {c.reviewNote && ` “${c.reviewNote}”`}
+          </>
+        )}
+        {c.paused && (
+          <>
+            {" · paused since "}
+            <Time at={m?.pausedAt ?? null} />
+          </>
+        )}
+        {m && (
+          <>
+            {` · lifecycle v${m.lifecycleVersion} · import count ${m.initialImportCount} · `}
+            {followerLabel(c.followerCount)}
+          </>
+        )}
       </p>
+      <ChannelActions channel={c} busy={busy} act={act} />
+      {error && <p class="error">{error}</p>}
     </>
   );
+}
+
+/** Approve, decline, pause, or resume, by status (spec §7) — the same actions and withdraw confirmation as the catalog table. */
+function ChannelActions({
+  channel: c,
+  busy,
+  act,
+}: {
+  channel: Channel;
+  busy: boolean;
+  act: Act;
+}) {
+  if (c.status === "requested") {
+    return (
+      <div class="actions">
+        <button
+          id={`detail-approve-${c.channelId}`}
+          type="button"
+          disabled={busy}
+          onClick={() => act(() => api.approveChannel(c.channelId, {}))}
+        >
+          Approve
+        </button>
+        <button
+          id={`detail-decline-${c.channelId}`}
+          type="button"
+          class="danger"
+          disabled={busy}
+          onClick={() => act(() => api.declineChannel(c.channelId, {}))}
+        >
+          Decline
+        </button>
+      </div>
+    );
+  }
+  if (c.status === "approved") {
+    return (
+      <div class="actions">
+        <button
+          id={
+            c.paused
+              ? `detail-resume-${c.channelId}`
+              : `detail-pause-${c.channelId}`
+          }
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            act(() =>
+              c.paused
+                ? api.resumeChannel(c.channelId)
+                : api.pauseChannel(c.channelId),
+            )
+          }
+        >
+          {c.paused ? "Resume" : "Pause"}
+        </button>
+        <button
+          id={`detail-decline-${c.channelId}`}
+          type="button"
+          class="danger"
+          disabled={busy}
+          onClick={() => {
+            const confirmed = window.confirm(
+              `Withdraw ${c.title}? ${c.followerCount} follower${c.followerCount === 1 ? "" : "s"} will lose access to its summaries until it is approved again.`,
+            );
+            if (confirmed) act(() => api.declineChannel(c.channelId, {}));
+          }}
+        >
+          Decline
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div class="actions">
+      <button
+        id={`detail-approve-${c.channelId}`}
+        type="button"
+        disabled={busy}
+        onClick={() => act(() => api.approveChannel(c.channelId, {}))}
+      >
+        Approve
+      </button>
+    </div>
+  );
+}
+
+/** Every episode of the channel, with retry and skip where the channel's status allows them. */
+function EpisodesTable({
+  episodes: list,
+  channelApproved,
+  busy,
+  act,
+}: {
+  episodes: Episode[];
+  channelApproved: boolean;
+  busy: boolean;
+  act: Act;
+}) {
+  return (
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Published</th>
+            <th>Status</th>
+            <th>Waiting</th>
+            <th>Attempts</th>
+            <th>Reason</th>
+            <th>Chunks</th>
+            <th>Summary</th>
+            <th>Processed</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((e) => {
+            const p = e.processing;
+            return (
+              <tr key={e.videoId}>
+                <td class="wrap">
+                  <a href={`https://youtu.be/${e.videoId}`}>{e.title}</a>
+                </td>
+                <td>
+                  <Time at={e.publishedAt} />
+                </td>
+                <td>{EPISODE_STATUS_COPY[e.status]}</td>
+                <td>
+                  {p?.waitingCode ? WAITING_CODE_COPY[p.waitingCode] : "—"}
+                </td>
+                <td>{p?.attemptCount ?? "—"}</td>
+                <td>
+                  {p?.skipReason
+                    ? SKIP_REASON_COPY[p.skipReason]
+                    : (p?.failureCode ?? "—")}
+                </td>
+                <td>{p?.chunkCount ?? "—"}</td>
+                <td>{e.summary?.format ?? "—"}</td>
+                <td>
+                  <Time at={p?.processedAt ?? null} />
+                </td>
+                <td>
+                  <EpisodeActions
+                    episode={e}
+                    channelApproved={channelApproved}
+                    busy={busy}
+                    act={act}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Retry (failed, skipped) and Skip (failed), only on an approved channel (spec §7). */
+function EpisodeActions({
+  episode: e,
+  channelApproved,
+  busy,
+  act,
+}: {
+  episode: Episode;
+  channelApproved: boolean;
+  busy: boolean;
+  act: Act;
+}) {
+  if (!channelApproved) return null;
+  const canRetry = e.status === "failed" || e.status === "skipped";
+  const canSkip = e.status === "failed";
+  if (!canRetry && !canSkip) return null;
+  return (
+    <div class="actions">
+      {canRetry && (
+        <button
+          id={`detail-retry-${e.videoId}`}
+          type="button"
+          disabled={busy}
+          onClick={() => act(() => api.retryEpisode(e.channelId, e.videoId))}
+        >
+          Retry
+        </button>
+      )}
+      {canSkip && (
+        <button
+          id={`detail-skip-${e.videoId}`}
+          type="button"
+          disabled={busy}
+          onClick={() => act(() => api.skipEpisode(e.channelId, e.videoId))}
+        >
+          Skip
+        </button>
+      )}
+    </div>
+  );
+}
+
+function followerLabel(count: number): string {
+  return `${count} follower${count === 1 ? "" : "s"}`;
 }
 
 /** Loading and error handling for one section; children render only with data (spec §11). */
