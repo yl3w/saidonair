@@ -8,6 +8,8 @@ import type {
 } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
 import { chunk, MAX_BOUND_PARAMS, placeholders } from "../../lib/sql";
+import { requireChannel } from "./channels";
+import { hasActiveRun } from "./runs";
 import type { EpisodeRecord, ListEpisodesOptions } from "./types";
 
 type EpisodeRow = {
@@ -145,6 +147,93 @@ export function listByChannel(
     )
     .toArray();
   return attachRelated(sql, rows, options.relatedScope);
+}
+
+/** One episode of one channel, with processing detail but no related titles. */
+export function getEpisode(
+  sql: SqlStorage,
+  channelId: string,
+  videoId: string,
+): EpisodeRecord | null {
+  const row = sql
+    .exec<EpisodeRow>(
+      `${EPISODE_SELECT} WHERE e.channel_id = ? AND e.video_id = ?`,
+      channelId,
+      videoId,
+    )
+    .toArray()[0];
+  return row ? toRecord(row, []) : null;
+}
+
+/** Owner: `failed | skipped → pending`, attempts and skip fields cleared. The caller starts the one-episode run. */
+export function retryEpisode(
+  sql: SqlStorage,
+  channelId: string,
+  videoId: string,
+  now: number,
+): EpisodeRecord {
+  const episode = requireOwnerActionable(sql, channelId, videoId);
+  if (episode.status !== "failed" && episode.status !== "skipped") {
+    throw new DomainError(
+      "INVALID_STATE",
+      `only failed or skipped episodes can be retried (status: ${episode.status})`,
+    );
+  }
+  sql.exec(
+    `UPDATE episodes SET status = 'pending', attempt_count = 0, failure_code = NULL, failure_detail = NULL,
+       skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL, waiting_code = NULL, updated_at = ?
+     WHERE video_id = ?`,
+    now,
+    videoId,
+  );
+  return getEpisode(sql, channelId, videoId) ?? episode;
+}
+
+/** Owner: `failed → skipped OWNER`. */
+export function skipEpisode(
+  sql: SqlStorage,
+  channelId: string,
+  videoId: string,
+  ownerEmail: string,
+  now: number,
+): EpisodeRecord {
+  const episode = requireOwnerActionable(sql, channelId, videoId);
+  if (episode.status !== "failed") {
+    throw new DomainError(
+      "INVALID_STATE",
+      `only failed episodes can be skipped (status: ${episode.status})`,
+    );
+  }
+  sql.exec(
+    `UPDATE episodes SET status = 'skipped', skip_reason = 'OWNER', skipped_at = ?, skipped_by_email = ?,
+       failure_code = NULL, failure_detail = NULL, updated_at = ? WHERE video_id = ?`,
+    now,
+    ownerEmail,
+    now,
+    videoId,
+  );
+  return getEpisode(sql, channelId, videoId) ?? episode;
+}
+
+/** An approved channel, no active run, and an episode that belongs to it. */
+function requireOwnerActionable(
+  sql: SqlStorage,
+  channelId: string,
+  videoId: string,
+): EpisodeRecord {
+  const channel = requireChannel(sql, channelId);
+  if (channel.status !== "approved") {
+    throw new DomainError(
+      "INVALID_STATE",
+      "episode actions need an approved channel",
+    );
+  }
+  if (hasActiveRun(sql, channelId)) {
+    throw new DomainError("INVALID_STATE", "a run is active on this channel");
+  }
+  const episode = getEpisode(sql, channelId, videoId);
+  if (!episode) throw new DomainError("NOT_FOUND", "episode not found");
+  return episode;
 }
 
 export function zeroCounts(): EpisodeCounts {

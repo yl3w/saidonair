@@ -409,6 +409,13 @@ export const EpisodeSchema = z
   });
 export type Episode = z.infer<typeof EpisodeSchema>;
 
+/** `POST /channels/:id/episodes/:videoId/retry|skip` (owner). */
+export const EpisodeResponseSchema = z.object({ episode: EpisodeSchema }).meta({
+  id: "EpisodeResponse",
+  description: "`POST /channels/:id/episodes/:videoId/retry|skip`",
+});
+export type EpisodeResponse = z.infer<typeof EpisodeResponseSchema>;
+
 /** `GET /channels/:id/episodes?limit=` — newest first. */
 export const EpisodesResponseSchema = z
   .object({ episodes: z.array(EpisodeSchema) })
@@ -576,6 +583,13 @@ export const CatalogSchema = z
     }),
     runs: z.object({ active: Count }),
     lastSuccessfulIngestionAt: UnixMs.nullable(),
+    attention: z.object({
+      failedEpisodes: Count,
+      neverStarted: Count.describe(
+        "Approved channels with no ingestion run row at all.",
+      ),
+      requested: Count,
+    }),
   })
   .meta({ id: "Catalog", description: "The catalog's aggregate state." });
 export type Catalog = z.infer<typeof CatalogSchema>;
@@ -630,6 +644,13 @@ export const ChannelParamsSchema = z.object({
   id: z.string().min(1).describe("Canonical `UC…` channel id."),
 });
 export type ChannelParams = z.infer<typeof ChannelParamsSchema>;
+
+/** `/channels/:id/episodes/:videoId/retry|skip`. */
+export const EpisodeParamsSchema = z.object({
+  id: z.string().min(1).describe("Canonical `UC…` channel id."),
+  videoId: z.string().min(1).describe("YouTube video id."),
+});
+export type EpisodeParams = z.infer<typeof EpisodeParamsSchema>;
 
 /** `/follows/:channelId`. */
 export const FollowParamsSchema = z.object({

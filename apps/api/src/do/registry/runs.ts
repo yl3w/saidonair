@@ -102,6 +102,18 @@ export function countActive(sql: SqlStorage): number {
     .one().n;
 }
 
+/** Whether a channel has a run in flight; owner episode actions refuse while one is active. */
+export function hasActiveRun(sql: SqlStorage, channelId: string): boolean {
+  return (
+    sql
+      .exec<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM ingestion_runs WHERE channel_id = ? AND status IN ('queued', 'running')",
+        channelId,
+      )
+      .one().n > 0
+  );
+}
+
 export function channelIdsWithActiveRun(sql: SqlStorage): string[] {
   return sql
     .exec<{ channel_id: string }>(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALICE,
   CHANNEL_A,
   CHANNEL_B,
   channelIds,
@@ -7,6 +8,7 @@ import {
   OWNER,
   registry,
   seedEpisode,
+  seedRun,
   seedSummary,
   VIDEO_A,
   VIDEO_B,
@@ -193,5 +195,71 @@ describe("registry episodes", () => {
     expect(
       await stub.listEpisodes(CHANNEL_B, { relatedScope: [] }),
     ).toHaveLength(1);
+  });
+
+  it("owner retry reopens a failed or skipped episode; owner skip closes a failed one; both refuse an active run", async () => {
+    const stub = registry();
+    await stub.createChannel(OWNER, {
+      channelId: CHANNEL_A,
+      title: "A",
+      status: "approved",
+    });
+    await seedEpisode(VIDEO_A, CHANNEL_A, {
+      status: "failed",
+      attemptCount: 3,
+      failureCode: "PROVIDER_HTTP",
+    });
+    await seedEpisode(VIDEO_B, CHANNEL_A, {
+      status: "skipped",
+      skipReason: "SHORT",
+    });
+    await seedEpisode(VIDEO_C, CHANNEL_A, { status: "available" });
+
+    const skipped = await stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_A);
+    expect(skipped.status).toBe("skipped");
+    expect(skipped.processing).toMatchObject({
+      skipReason: "OWNER",
+      skippedByEmail: OWNER,
+    });
+    const retried = await stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_A);
+    expect(retried.status).toBe("pending");
+    expect(retried.processing).toMatchObject({
+      attemptCount: 0,
+      failureCode: null,
+      skipReason: null,
+      skippedAt: null,
+      skippedByEmail: null,
+    });
+    expect((await stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_B)).status).toBe(
+      "pending",
+    );
+    await expectDomainError(
+      stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_C),
+      "INVALID_STATE",
+    );
+    await expectDomainError(
+      stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_C),
+      "INVALID_STATE",
+    );
+    await expectDomainError(
+      stub.retryEpisode(ALICE, CHANNEL_A, VIDEO_A),
+      "NOT_OWNER",
+    );
+    await expectDomainError(
+      stub.retryEpisode(OWNER, CHANNEL_B, VIDEO_A),
+      "NOT_FOUND",
+    );
+
+    await seedEpisode("ddddddddddd", CHANNEL_A, { status: "failed" });
+    await seedRun(CHANNEL_A, { status: "running" });
+    await expectDomainError(
+      stub.retryEpisode(OWNER, CHANNEL_A, "ddddddddddd"),
+      "INVALID_STATE",
+    );
+    await stub.declineChannel(OWNER, CHANNEL_A);
+    await expectDomainError(
+      stub.skipEpisode(OWNER, CHANNEL_A, "ddddddddddd"),
+      "INVALID_STATE",
+    );
   });
 });

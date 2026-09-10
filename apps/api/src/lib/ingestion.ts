@@ -1,7 +1,7 @@
-export type IngestionReason = "channel_approved" | "owner_retry";
+export type IngestionReason = "channel_approved" | "episode_retry";
 
 /**
- * The places ingestion should start: approval and owner retry. The Workflow is M3; until then
+ * The places ingestion should start: approval and an owner retry of one episode. The Workflow is M3; until then
  * each start point is recorded as a structured log line so the behaviour is visible under
  * `wrangler dev` and the call sites are already in place.
  */

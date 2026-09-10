@@ -69,6 +69,9 @@ describe("registry catalog summary and management", () => {
       episodes: { available: 2, pending: 0, waiting: 0, failed: 1, skipped: 0 },
       runs: { active: 1 },
       lastSuccessfulIngestionAt: 150,
+      // One failed episode (VIDEO_C on A). Approved with no run row: C, and E (paused channels
+      // keep channels.status = 'approved'). `requested` reuses the `channels.requested` total.
+      attention: { failedEpisodes: 1, neverStarted: 2, requested: 1 },
     });
     await expectDomainError(stub.getCatalogSummary(ALICE), "NOT_OWNER");
   });
@@ -79,6 +82,7 @@ describe("registry catalog summary and management", () => {
       episodes: { available: 0, pending: 0, waiting: 0, failed: 0, skipped: 0 },
       runs: { active: 0 },
       lastSuccessfulIngestionAt: null,
+      attention: { failedEpisodes: 0, neverStarted: 0, requested: 0 },
     });
   });
 

@@ -10,6 +10,9 @@ import {
   ChannelsResponseSchema,
   CreateChannelBodySchema,
   DeclineChannelBodySchema,
+  EpisodeParamsSchema,
+  type EpisodeResponse,
+  EpisodeResponseSchema,
   type EpisodesResponse,
   EpisodesResponseSchema,
   type FollowersResponse,
@@ -414,6 +417,77 @@ export const channelRoutes = new Hono<AppEnv>()
                 : undefined,
           }),
         ),
+      });
+    },
+  )
+
+  .post(
+    "/:id/episodes/:videoId/retry",
+    describeRoute({
+      tags: ["episodes"],
+      summary: "Retry a failed or skipped episode (owner)",
+      description:
+        "Back to `pending` with attempts reset; starts a one-episode run. Refused while a run is active on the channel or the channel is not approved.",
+      responses: {
+        200: jsonResponse(EpisodeResponseSchema, "The episode, pending again."),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict:
+            "The episode is not failed or skipped, the channel is not approved, or a run is active",
+        }),
+      },
+    }),
+    requireOwner,
+    validate("param", EpisodeParamsSchema),
+    async (c) => {
+      const { id, videoId } = c.req.valid("param");
+      const record = await c.var.registry.retryEpisode(
+        c.var.identity.email,
+        id,
+        videoId,
+      );
+      requestIngestion(id, "episode_retry");
+      return c.json<EpisodeResponse>({
+        episode: toEpisode(record, {
+          includeSummary: true,
+          includeProcessing: true,
+        }),
+      });
+    },
+  )
+
+  .post(
+    "/:id/episodes/:videoId/skip",
+    describeRoute({
+      tags: ["episodes"],
+      summary: "Skip a failed episode (owner)",
+      description:
+        "`failed → skipped`, recorded with skip reason `OWNER`. Refused while a run is active on the channel or the channel is not approved.",
+      responses: {
+        200: jsonResponse(EpisodeResponseSchema, "The episode, now skipped."),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict:
+            "The episode is not failed, the channel is not approved, or a run is active",
+        }),
+      },
+    }),
+    requireOwner,
+    validate("param", EpisodeParamsSchema),
+    async (c) => {
+      const { id, videoId } = c.req.valid("param");
+      const record = await c.var.registry.skipEpisode(
+        c.var.identity.email,
+        id,
+        videoId,
+      );
+      return c.json<EpisodeResponse>({
+        episode: toEpisode(record, {
+          includeSummary: true,
+          includeProcessing: true,
+        }),
       });
     },
   )

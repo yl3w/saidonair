@@ -4,7 +4,11 @@ import { registryMigrations } from "../../migrations/registry";
 import type { Env } from "../env";
 import { normalizeEmail } from "../lib/email";
 import { DomainError } from "../lib/errors";
-import { requireChannelId, requireChannelIds } from "../lib/youtube/ids";
+import {
+  requireChannelId,
+  requireChannelIds,
+  requireVideoId,
+} from "../lib/youtube/ids";
 import { applyMigrations } from "./migrations";
 import * as catalog from "./registry/catalog";
 import * as channels from "./registry/channels";
@@ -239,6 +243,34 @@ export class RegistryDO extends DurableObject<Env> {
       limit: options.limit,
       relatedScope: requireChannelIds(options.relatedScope),
     });
+  }
+
+  /** Owner: back to `pending` with attempts reset; the route starts a one-episode run. */
+  retryEpisode(
+    actorEmail: string,
+    channelId: string,
+    videoId: string,
+  ): EpisodeRecord {
+    this.#assertOwner(actorEmail);
+    const id = requireChannelId(channelId);
+    const video = requireVideoId(videoId);
+    return this.#transaction(() =>
+      episodes.retryEpisode(this.#sql, id, video, Date.now()),
+    );
+  }
+
+  /** Owner: `failed → skipped OWNER`. */
+  skipEpisode(
+    actorEmail: string,
+    channelId: string,
+    videoId: string,
+  ): EpisodeRecord {
+    const email = this.#assertOwner(actorEmail);
+    const id = requireChannelId(channelId);
+    const video = requireVideoId(videoId);
+    return this.#transaction(() =>
+      episodes.skipEpisode(this.#sql, id, video, email, Date.now()),
+    );
   }
 
   // --- ingestion runs -------------------------------------------------------

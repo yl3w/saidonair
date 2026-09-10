@@ -4,6 +4,7 @@ import {
   ChannelDeclinedResponseSchema,
   ChannelResponseSchema,
   ChannelsResponseSchema,
+  EpisodeResponseSchema,
   EpisodesResponseSchema,
   FollowersResponseSchema,
   IngestionRunsResponseSchema,
@@ -89,6 +90,8 @@ describe("channel and catalog routes", () => {
       ["GET", "/channels?scope=all"],
       ["GET", `/channels/${CHANNEL_A}/ingestion-runs`],
       ["GET", `/channels/${CHANNEL_A}/followers`],
+      ["POST", `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`],
+      ["POST", `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/skip`],
     ];
     for (const [method, path, body] of ownerOnly) {
       const { status, json } = await call(ALICE, method, path, body);
@@ -111,6 +114,7 @@ describe("channel and catalog routes", () => {
     expect(catalog.json.catalog).toMatchObject({
       channels: { requested: 1, approved: 1, paused: 0, declined: 1 },
       episodes: { available: 2, pending: 0, waiting: 0, failed: 1, skipped: 0 },
+      attention: { failedEpisodes: 1, neverStarted: 1, requested: 1 },
     });
 
     expect((await call(ALICE, "GET", "/channels?scope=bogus")).status).toBe(
@@ -415,6 +419,40 @@ describe("channel and catalog routes", () => {
       (await call(OWNER, "GET", `/channels/${CHANNEL_D}/ingestion-runs`))
         .status,
     ).toBe(404);
+  });
+
+  it("the owner skips a failed episode, then retries it back to pending, and a run in flight refuses the retry", async () => {
+    await seedCatalog();
+
+    const skip = await call(
+      OWNER,
+      "POST",
+      `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/skip`,
+    );
+    expect(skip.status).toBe(200);
+    expectShape(EpisodeResponseSchema, skip.json);
+    const skipped = skip.json.episode as Json;
+    expect(skipped.status).toBe("skipped");
+    expect((skipped.processing as Json).skipReason).toBe("OWNER");
+
+    const retry = await call(
+      OWNER,
+      "POST",
+      `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`,
+    );
+    expect(retry.status).toBe(200);
+    expectShape(EpisodeResponseSchema, retry.json);
+    const retried = retry.json.episode as Json;
+    expect(retried.status).toBe("pending");
+    expect((retried.processing as Json).attemptCount).toBe(0);
+
+    await seedRun(CHANNEL_A, { status: "queued" });
+    const blocked = await call(
+      OWNER,
+      "POST",
+      `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`,
+    );
+    expect(blocked.status).toBe(409);
   });
 
   it("a user's add creates a requested channel and follows them; an existing one is followed; a declined one is 409 with the note", async () => {

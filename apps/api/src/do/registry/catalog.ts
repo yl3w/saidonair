@@ -40,6 +40,20 @@ export function summarize(sql: SqlStorage): Catalog {
     episodes,
     runs: { active: countActive(sql) },
     lastSuccessfulIngestionAt: lastCompletedFinishedAt(sql),
+    attention: {
+      failedEpisodes: sql
+        .exec<{ n: number }>(
+          "SELECT COUNT(*) AS n FROM episodes WHERE status = 'failed'",
+        )
+        .one().n,
+      neverStarted: sql
+        .exec<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM channels WHERE status = 'approved'
+             AND channel_id NOT IN (SELECT channel_id FROM ingestion_runs)`,
+        )
+        .one().n,
+      requested: channels.requested,
+    },
   };
 }
 
