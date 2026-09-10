@@ -1,11 +1,11 @@
 import type { Channel, DigestResponse } from "@media-digest/shared";
 import type { Load } from "../lib/use-load";
-import { AvailableList } from "./ChannelList";
+import { CatalogList } from "./ChannelList";
 import { EpisodeItem } from "./EpisodeItem";
 import { Time } from "./Time";
 
 /**
- * Today's digest (spec §6.3). Two empty states: no active follows shows the available catalog
+ * Today's digest (spec §6.3). Two empty states: no active follows shows the catalog
  * inline with follow controls; follows but nothing new shows the fixed sentence.
  */
 export function Digest({
@@ -17,7 +17,6 @@ export function Digest({
   showingWeek,
   onToggleWeek,
   onRetry,
-  isOwner,
 }: {
   load: Load<DigestResponse>;
   hasFollows: boolean;
@@ -27,7 +26,6 @@ export function Digest({
   showingWeek: boolean;
   onToggleWeek: () => void;
   onRetry: () => void;
-  isOwner: boolean;
 }) {
   return (
     <section id="digest">
@@ -35,12 +33,7 @@ export function Digest({
       {!hasFollows && (
         <>
           <p>Follow a channel to start your digest.</p>
-          <AvailableList
-            channels={available}
-            busy={busy}
-            onFollow={onFollow}
-            isOwner={isOwner}
-          />
+          <CatalogList channels={available} busy={busy} onFollow={onFollow} />
         </>
       )}
       {hasFollows && load.status === "loading" && <p>Loading…</p>}

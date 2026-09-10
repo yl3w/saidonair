@@ -1,7 +1,8 @@
-import { useCallback, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
-import { AvailableList, FollowedList } from "../components/ChannelList";
+import { AddChannel } from "../components/AddChannel";
+import { CatalogList, FollowedList } from "../components/ChannelList";
 import { Digest } from "../components/Digest";
 import { Nav } from "../components/Nav";
 import { OwnerCard } from "../components/OwnerCard";
@@ -66,12 +67,25 @@ function HomeScreen() {
     withBusy(channelId, () => api.follow(channelId));
   const unfollow = (channelId: string) =>
     withBusy(channelId, () => api.unfollow(channelId));
+  const requestAgain = (channelId: string) =>
+    withBusy(channelId, () => api.requestChannel(channelId));
 
   const followList = follows.status === "ready" ? follows.data.follows : [];
   const available =
     channels.status === "ready"
       ? channels.data.channels.filter((c) => !c.following)
       : [];
+
+  // While a followed channel is awaiting the owner's decision, poll the lists so an approval or
+  // decline shows up without a manual reload; stop as soon as nothing is left pending.
+  const hasRequestedFollow = followList.some(
+    (f) => f.channel.status === "requested",
+  );
+  useEffect(() => {
+    if (!hasRequestedFollow) return;
+    const id = setInterval(reloadLists, 15_000);
+    return () => clearInterval(id);
+  }, [hasRequestedFollow, reloadLists]);
 
   return (
     <main>
@@ -96,7 +110,6 @@ function HomeScreen() {
         showingWeek={showingWeek}
         onToggleWeek={() => setShowingWeek((w) => !w)}
         onRetry={reloadDigest}
-        isOwner={isOwner}
       />
 
       <section id="channels">
@@ -116,10 +129,11 @@ function HomeScreen() {
             follows={followList}
             busy={busy}
             onUnfollow={unfollow}
+            onRequestAgain={requestAgain}
           />
         )}
 
-        <h3>Available ({available.length})</h3>
+        <h3>Catalog ({available.length})</h3>
         {channels.status === "loading" && <p>Loading…</p>}
         {channels.status === "error" && (
           <p class="error">
@@ -130,13 +144,10 @@ function HomeScreen() {
           </p>
         )}
         {channels.status === "ready" && (
-          <AvailableList
-            channels={available}
-            busy={busy}
-            onFollow={follow}
-            isOwner={isOwner}
-          />
+          <CatalogList channels={available} busy={busy} onFollow={follow} />
         )}
+
+        <AddChannel onChanged={reloadLists} />
       </section>
     </main>
   );

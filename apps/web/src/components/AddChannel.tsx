@@ -1,75 +1,82 @@
 import { useState } from "preact/hooks";
 import { api } from "../api";
-import { CHANNEL_ID_HELP } from "../lib/copy";
+import { CHANNEL_ID_HELP, isDeclinedResponse } from "../lib/copy";
+import { absoluteTime } from "../lib/time";
 
-/** Owner add (spec §7.4): id verified against its feed by the API, feed title unless given. */
+/**
+ * One box for everyone (spec §7). A new id creates a requested channel (approved, for the owner) and
+ * follows the caller; an existing id follows; a declined id shows the owner's note and offers Request again.
+ */
 export function AddChannel({ onChanged }: { onChanged: () => void }) {
-  const [channelId, setChannelId] = useState("");
-  const [title, setTitle] = useState("");
-  const [importCount, setImportCount] = useState("5");
+  const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [declined, setDeclined] = useState<{
+    channelId: string;
+    note: string;
+  } | null>(null);
 
-  async function submit(event: Event) {
-    event.preventDefault();
+  async function run(work: () => Promise<unknown>) {
     setBusy(true);
-    setError(null);
+    setMessage(null);
+    setDeclined(null);
     try {
-      await api.addChannel({
-        channelId,
-        title: title.trim() || undefined,
-        initialImportCount: Number.parseInt(importCount, 10) || undefined,
-      });
-      setChannelId("");
-      setTitle("");
-      setImportCount("5");
+      await work();
+      setValue("");
       onChanged();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+    } catch (error) {
+      if (isDeclinedResponse(error)) {
+        const { channelId, reviewNote, reviewedAt } = error.body;
+        const when =
+          reviewedAt === null ? "" : ` on ${absoluteTime(reviewedAt)}`;
+        setDeclined({
+          channelId,
+          note: `Declined${when}${reviewNote ? `: “${reviewNote}”` : ""}`,
+        });
+      } else {
+        setMessage(error instanceof Error ? error.message : String(error));
+      }
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <>
-      <h3>Add a channel</h3>
-      <form class="inline" onSubmit={submit}>
-        <label>
-          channel id{" "}
-          <input
-            type="text"
-            value={channelId}
-            placeholder="UC… id or /channel/UC… URL"
-            onInput={(e) => setChannelId(e.currentTarget.value)}
+    <form
+      class="inline"
+      onSubmit={(e) => {
+        e.preventDefault();
+        run(() => api.addChannel({ channelId: value }));
+      }}
+    >
+      <label>
+        Add a channel{" "}
+        <input
+          id="add-channel-id"
+          type="text"
+          value={value}
+          placeholder="UC… id or /channel/UC… URL"
+          onInput={(e) => setValue(e.currentTarget.value)}
+          disabled={busy}
+        />
+      </label>
+      <button type="submit" disabled={busy || value.trim().length === 0}>
+        Add
+      </button>
+      <span class="help">{CHANNEL_ID_HELP}</span>
+      {message && <span class="error">{message}</span>}
+      {declined && (
+        <span>
+          {declined.note}.{" "}
+          <button
+            type="button"
             disabled={busy}
-          />
-        </label>
-        <label>
-          title (from the feed if empty){" "}
-          <input
-            type="text"
-            value={title}
-            onInput={(e) => setTitle(e.currentTarget.value)}
-            disabled={busy}
-          />
-        </label>
-        <label>
-          import count{" "}
-          <input
-            type="number"
-            min="1"
-            value={importCount}
-            onInput={(e) => setImportCount(e.currentTarget.value)}
-            disabled={busy}
-          />
-        </label>
-        <button type="submit" disabled={busy || channelId.trim().length === 0}>
-          Add
-        </button>
-        <span class="help">{CHANNEL_ID_HELP}</span>
-      </form>
-      {error && <p class="error">{error}</p>}
-    </>
+            onClick={() => run(() => api.requestChannel(declined.channelId))}
+          >
+            Request again
+          </button>
+        </span>
+      )}
+    </form>
   );
 }
