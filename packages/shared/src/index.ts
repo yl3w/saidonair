@@ -196,6 +196,7 @@ export const ChannelManagementSchema = z
   .object({
     initialImportCount: z.number().int(),
     reviewedByEmail: z.string().nullable(),
+    pausedBy: PausedBySchema.nullable(),
     pausedAt: UnixMs.nullable(),
     lastCheckedAt: UnixMs.nullable(),
     lifecycleVersion: z.number().int(),
@@ -226,7 +227,6 @@ export const ChannelSchema = z
     paused: z
       .boolean()
       .describe("No new ingestion runs while true. Approved channels only."),
-    pausedBy: PausedBySchema.nullable(),
     approvedAt: UnixMs.nullable().describe("First approval; never reset."),
     reviewedAt: UnixMs.nullable(),
     reviewNote: z
@@ -390,6 +390,9 @@ export const EpisodeSchema = z
     title: z.string(),
     publishedAt: UnixMs,
     status: EpisodeStatusSchema,
+    skipReason: EpisodeSkipReasonSchema.nullable().describe(
+      "Why there is no summary, when the episode was skipped.",
+    ),
     summary: EpisodeSummarySchema.nullable(),
     related: z
       .array(RelatedEpisodeSchema)

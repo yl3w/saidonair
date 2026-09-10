@@ -43,7 +43,6 @@ export function toChannel(channel: CatalogChannel, view: ChannelView): Channel {
     canonicalUrl: channel.canonicalUrl,
     status: channel.status,
     paused: channel.pausedBy !== null,
-    pausedBy: channel.pausedBy,
     approvedAt: channel.approvedAt,
     reviewedAt: channel.reviewedAt,
     reviewNote: channel.reviewNote,
@@ -64,6 +63,7 @@ export function toManagement(
   return {
     initialImportCount: channel.initialImportCount,
     reviewedByEmail: channel.reviewedByEmail,
+    pausedBy: channel.pausedBy,
     pausedAt: channel.pausedAt,
     lastCheckedAt: channel.lastCheckedAt,
     lifecycleVersion: channel.lifecycleVersion,

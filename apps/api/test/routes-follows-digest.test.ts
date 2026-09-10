@@ -108,13 +108,17 @@ describe("follow routes", () => {
     ).toMatchObject({ followerCount: 1 });
 
     // Alice is the only follower; unfollowing pauses the channel, and refollowing resumes it.
+    // A reader sees the `paused` boolean only; `pausedBy` is owner-only management (R14).
     const soleUnfollow = await call(ALICE, "DELETE", `/follows/${CHANNEL_A}`);
     expect(soleUnfollow.json.follow).toMatchObject({
-      channel: { paused: true, pausedBy: "system", followerCount: 0 },
+      channel: { paused: true, followerCount: 0 },
     });
+    expect((soleUnfollow.json.follow as Json).channel).not.toHaveProperty(
+      "pausedBy",
+    );
     const soleRefollow = await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
     expect(soleRefollow.json.follow).toMatchObject({
-      channel: { paused: false, pausedBy: null, followerCount: 1 },
+      channel: { paused: false, followerCount: 1 },
     });
 
     const declinedFollow = await call(ALICE, "PUT", `/follows/${CHANNEL_D}`);
@@ -151,7 +155,18 @@ describe("follow routes", () => {
       channelId: CHANNEL_A,
       channel: { status: "declined", reviewNote: "withdrawn" },
     });
+    // Unread counts eligible episodes only, so Bob's three unread summaries read zero while the
+    // channel is declined, and count again once it is approved (spec §4).
+    const declinedForBob = await call(BOB, "GET", "/follows");
+    expect((declinedForBob.json.follows as Json[])[0]).toMatchObject({
+      channelId: CHANNEL_A,
+      unreadCount: 0,
+    });
     await stub.approveChannel(OWNER, CHANNEL_A);
+    expect(
+      ((await call(BOB, "GET", "/follows")).json.follows as Json[])[0]
+        ?.unreadCount,
+    ).toBe(3);
     const restored = await call(ALICE, "GET", "/follows");
     expect((restored.json.follows as Json[])[0]).toMatchObject({
       channel: { status: "approved" },
@@ -221,6 +236,16 @@ describe("digest route", () => {
     expect((bob.json.episodes as Json[])[0]).toMatchObject({
       wasUnread: true,
       related: [{ videoId: VIDEO_B }],
+    });
+
+    // A paused channel is still eligible: its existing summaries stay readable (spec §3.2).
+    await registry().pauseChannel(OWNER, CHANNEL_A);
+    const paused = await call(BOB, "GET", "/digest");
+    expect((paused.json.episodes as Json[]).map((e) => e.videoId)).toEqual([
+      VIDEO_A,
+    ]);
+    expect((paused.json.episodes as Json[])[0]).toMatchObject({
+      summary: { format: "structured" },
     });
   });
 

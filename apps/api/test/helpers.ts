@@ -66,7 +66,11 @@ type ChannelState = {
   status: "requested" | "approved" | "declined";
 };
 
-/** Drives channel status directly; the facade methods are exercised in registry-channels.test.ts. */
+/**
+ * Drives channel status directly; the facade methods are exercised in registry-channels.test.ts.
+ * Leaving `approved` clears any pause, as the facade's decline does, so the schema's
+ * `paused_by IS NULL OR status = 'approved'` check always holds.
+ */
 export async function setChannelState(
   channelId: string,
   state: ChannelState,
@@ -75,10 +79,14 @@ export async function setChannelState(
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `UPDATE channels SET status = ?, approved_at = ?, reviewed_at = COALESCE(reviewed_at, 1),
-         reviewed_by_email = COALESCE(reviewed_by_email, 'owner@example.com')
+         reviewed_by_email = COALESCE(reviewed_by_email, 'owner@example.com'),
+         paused_by = CASE WHEN ? THEN paused_by ELSE NULL END,
+         paused_at = CASE WHEN ? THEN paused_at ELSE NULL END
        WHERE channel_id = ?`,
       state.status,
       approved ? 1 : null,
+      approved ? 1 : 0,
+      approved ? 1 : 0,
       channelId,
     );
   });

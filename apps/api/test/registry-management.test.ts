@@ -37,6 +37,10 @@ async function seedCatalog() {
       status: "approved",
     });
   }
+  // The owner's add pauses a channel nobody follows yet (Ruling R4); only E stays paused here.
+  for (const channelId of [CHANNEL_A, CHANNEL_B, CHANNEL_C, CHANNEL_D]) {
+    await stub.resumeChannel(OWNER, channelId);
+  }
   await setChannelState(CHANNEL_D, { status: "requested" });
   await stub.pauseChannel(OWNER, CHANNEL_E);
 

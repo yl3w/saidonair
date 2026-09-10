@@ -63,7 +63,7 @@ export function episodePhrase(episode: Episode): string | null {
   const waiting = episode.processing?.waitingCode;
   if (episode.status === "pending" && waiting)
     return WAITING_CODE_COPY[waiting];
-  const reason = episode.processing?.skipReason;
+  const reason = episode.skipReason;
   if (episode.status === "skipped" && reason)
     return `No summary: ${SKIP_REASON_COPY[reason]}`;
   return EPISODE_STATUS_COPY[episode.status];

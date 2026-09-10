@@ -32,6 +32,9 @@ import {
 
 type Json = Record<string, unknown>;
 
+/** An extra 11-character video id, for the skipped episode seeded mid-test. */
+const VIDEO_SKIPPED = "sssssssssss";
+
 async function call(
   email: string,
   method: string,
@@ -71,6 +74,8 @@ async function seedCatalog() {
     status: "approved",
   });
   await stub.declineChannel(OWNER, CHANNEL_C);
+  // The owner's add pauses a channel nobody follows yet (Ruling R4); these fixtures want A running.
+  await stub.resumeChannel(OWNER, CHANNEL_A);
   await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: 3_000 });
   await seedSummary(VIDEO_A, { relatedVideoIds: [VIDEO_B] });
   await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: 2_000 });
@@ -356,6 +361,27 @@ describe("channel and catalog routes", () => {
     // Related titles follow the caller's eligible channels; the owner follows nothing.
     expect(ownerEpisodes[0]?.related).toEqual([]);
 
+    // A skipped episode tells every reader why there is no summary, while the rest of the
+    // processing detail stays owner-only (Ruling R15).
+    await seedEpisode(VIDEO_SKIPPED, CHANNEL_A, {
+      publishedAt: 500,
+      status: "skipped",
+      skipReason: "NO_CAPTIONS",
+    });
+    const withSkipped = await call(
+      ALICE,
+      "GET",
+      `/channels/${CHANNEL_A}/episodes`,
+    );
+    const skippedEpisode = (withSkipped.json.episodes as Json[]).at(-1);
+    expect(skippedEpisode).toMatchObject({
+      videoId: VIDEO_SKIPPED,
+      status: "skipped",
+      skipReason: "NO_CAPTIONS",
+      summary: null,
+    });
+    expect(skippedEpisode).not.toHaveProperty("processing");
+
     expect(
       (await call(ALICE, "GET", `/channels/${CHANNEL_A}/episodes?limit=0`))
         .status,
@@ -535,14 +561,15 @@ describe("channel and catalog routes", () => {
       reviewNote: "welcome",
       paused: false,
     });
+    // `pausedBy` is owner-only: readers get the `paused` boolean, the owner the reason (R14).
     expect(
       (await call(OWNER, "POST", `/channels/${CHANNEL_A}/pause`, {})).json
         .channel,
-    ).toMatchObject({ paused: true, pausedBy: "owner" });
+    ).toMatchObject({ paused: true, management: { pausedBy: "owner" } });
     expect(
       (await call(OWNER, "POST", `/channels/${CHANNEL_A}/resume`, {})).json
         .channel,
-    ).toMatchObject({ paused: false });
+    ).toMatchObject({ paused: false, management: { pausedBy: null } });
     const declined = await call(
       OWNER,
       "POST",

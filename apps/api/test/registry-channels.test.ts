@@ -38,9 +38,12 @@ describe("registry channels", () => {
       title: "B",
       status: "approved",
     });
+    // Nobody follows it yet, so the system pause applies at once, as approval does (Ruling R4);
+    // the owner's route follows immediately afterwards, which lifts it.
     expect(approved).toMatchObject({
       status: "approved",
       reviewedByEmail: OWNER,
+      pausedBy: "system",
     });
     expect(approved.approvedAt).not.toBeNull();
     await expectDomainError(

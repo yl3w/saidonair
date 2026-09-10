@@ -96,21 +96,30 @@ export class RegistryDO extends DurableObject<Env> {
 
   /**
    * Anyone creates a `requested` channel; only the owner creates an `approved` one. Create-only:
-   * `INVALID_STATE` when the id exists, which the route turns into follow or request-again.
+   * `INVALID_STATE` when the id exists, which the route turns into follow or request-again. An
+   * approved channel nobody follows yet is paused by the system at once, exactly as approval does
+   * (Ruling R4); the owner's route follows immediately afterwards, which lifts that pause.
    */
   createChannel(email: string, input: CreateChannelInput): CatalogChannel {
     const actor = users.requireEmail(email);
     if (input.status === "approved") this.#assertOwner(actor);
-    return this.#transaction(() =>
-      channels.createChannel(
+    return this.#transaction(() => {
+      const now = Date.now();
+      const channel = channels.createChannel(
         this.#sql,
         {
           ...input,
           reviewer: input.status === "approved" ? actor : undefined,
         },
-        Date.now(),
-      ),
-    );
+        now,
+      );
+      if (channel.status !== "approved") return channel;
+      const active = followers.countActiveByChannel(this.#sql, [
+        channel.channelId,
+      ])[channel.channelId];
+      if ((active ?? 0) > 0) return channel;
+      return channels.setPause(this.#sql, channel.channelId, "system", now);
+    });
   }
 
   /**

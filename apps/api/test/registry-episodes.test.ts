@@ -214,6 +214,7 @@ describe("registry episodes", () => {
       skipReason: "SHORT",
     });
     await seedEpisode(VIDEO_C, CHANNEL_A, { status: "available" });
+    await seedSummary(VIDEO_C);
 
     const skipped = await stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_A);
     expect(skipped.status).toBe("skipped");
@@ -233,6 +234,15 @@ describe("registry episodes", () => {
     expect((await stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_B)).status).toBe(
       "pending",
     );
+    // A retry touches one episode: the siblings keep their status and their summaries (spec §3.3).
+    const siblings = await stub.listEpisodes(CHANNEL_A, { relatedScope: [] });
+    expect(siblings.find((e) => e.videoId === VIDEO_C)).toMatchObject({
+      status: "available",
+      summary: {
+        format: "structured",
+        executiveSummary: `Summary of ${VIDEO_C}`,
+      },
+    });
     await expectDomainError(
       stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_C),
       "INVALID_STATE",

@@ -10,7 +10,11 @@ export type EpisodeView = {
   wasUnread?: boolean;
 };
 
-/** The one projection from the Registry's episode onto the shared `Episode`. */
+/**
+ * The one projection from the Registry's episode onto the shared `Episode`. `skipReason` is
+ * reader-safe (Ruling R15): every caller sees why an episode was skipped, while the rest of
+ * `processing` stays owner-only.
+ */
 export function toEpisode(record: EpisodeRecord, view: EpisodeView): Episode {
   const episode: Episode = {
     videoId: record.videoId,
@@ -19,6 +23,7 @@ export function toEpisode(record: EpisodeRecord, view: EpisodeView): Episode {
     title: record.title,
     publishedAt: record.publishedAt,
     status: record.status,
+    skipReason: record.processing.skipReason,
     summary: view.includeSummary ? record.summary : null,
     related: view.includeSummary ? record.related : [],
   };

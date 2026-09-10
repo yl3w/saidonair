@@ -14,7 +14,7 @@ import { describeRoute } from "hono-openapi";
 import type { CatalogChannel } from "../do/registry/types";
 import type { ChannelFollow } from "../do/user/types";
 import type { AppEnv } from "../env";
-import { toChannel, zeroEpisodeCounts } from "../lib/channel-view";
+import { isApproved, toChannel, zeroEpisodeCounts } from "../lib/channel-view";
 import { DomainError } from "../lib/errors";
 import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
@@ -55,7 +55,15 @@ export const followRoutes = new Hono<AppEnv>()
       );
       const counts = await c.var.registry.countEpisodesByChannel(ids);
       const followers = await c.var.registry.countFollowers(ids);
-      const unread = await unreadByChannel(c, ids);
+      // Unread counts only ever cover eligible channels, so a followed channel the owner has
+      // declined reads zero unread until it is approved again (spec §4).
+      const unread = await unreadByChannel(
+        c,
+        ids.filter((id) => {
+          const channel = channels.get(id);
+          return channel !== undefined && isApproved(channel);
+        }),
+      );
 
       const rows: Follow[] = [];
       for (const follow of follows) {
@@ -164,7 +172,10 @@ async function followView(
     channel.channelId,
   ]);
   const followers = await c.var.registry.countFollowers([channel.channelId]);
-  const unread = await unreadByChannel(c, [channel.channelId]);
+  const unread = await unreadByChannel(
+    c,
+    isApproved(channel) ? [channel.channelId] : [],
+  );
   return toFollow(follow, channel, {
     episodes: counts[channel.channelId] ?? zeroEpisodeCounts(),
     followerCount: followers[channel.channelId] ?? 0,
@@ -172,11 +183,15 @@ async function followView(
   });
 }
 
-/** Available episodes minus the caller's read receipts, per channel. Absent means zero. */
+/**
+ * Available episodes minus the caller's read receipts, per channel. Absent means zero. Callers pass
+ * approved channel ids only: episodes of any other status are not readable (`lib/eligibility.ts`).
+ */
 async function unreadByChannel(
   c: Ctx,
   channelIds: string[],
 ): Promise<Record<string, number>> {
+  if (channelIds.length === 0) return {};
   const processed = await c.var.registry.listAvailableVideoIds(channelIds);
   if (processed.length === 0) return {};
   const read = new Set(
