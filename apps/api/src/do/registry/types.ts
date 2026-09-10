@@ -1,6 +1,5 @@
 import type {
   ChannelFailureCode,
-  ChannelRequestStatus,
   ChannelStatus,
   EpisodeCounts,
   EpisodeStatus,
@@ -37,42 +36,11 @@ export type CatalogChannel = {
   updatedAt: number;
 };
 
-export type ChannelRequest = {
-  requestId: string;
-  userEmail: string;
-  youtubeChannelId: string;
-  submittedUrl: string;
-  /** Feed title captured at submission; null for rows created before migration 0002. */
-  channelTitle: string | null;
-  status: ChannelRequestStatus;
-  reviewedAt: number | null;
-  reviewedByEmail: string | null;
-  ownerExplanation: string | null;
-  approvedChannelId: string | null;
-  autoFollowCompletedAt: number | null;
-  createdAt: number;
-  updatedAt: number;
-};
-
 /** Callers resolve URLs to a canonical `UC…` id and fetch the title before calling the DO. */
 export type CreateChannelInput = {
   channelId: string;
   title: string;
   initialImportCount?: number;
-};
-
-export type SubmitRequestInput = {
-  youtubeChannelId: string;
-  submittedUrl: string;
-  /** The channel's RSS feed title, fetched by the route to verify the id. Stored trimmed; empty means none. */
-  channelTitle?: string;
-};
-
-export type ApproveRequestInput = {
-  /** Used only when approval has to create the channel; defaults to the request's stored title. */
-  title?: string;
-  initialImportCount?: number;
-  explanation?: string;
 };
 
 /** Owner-only processing detail of an episode; routes drop it for readers. */
@@ -139,12 +107,6 @@ export type ChannelManagementRecord = {
   channel: CatalogChannel;
   episodes: EpisodeCounts;
   latestRun: IngestionRunSummary | null;
-  /** Pending or approved requests for this id; stands in for follower count. */
-  requesterCount: number;
   /** Pending, not deleted, and no queued or running run. */
   stuckPending: boolean;
-};
-
-export type RejectRequestInput = {
-  explanation?: string;
 };

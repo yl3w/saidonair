@@ -56,17 +56,9 @@ export class UserDO extends DurableObject<Env> {
     return follows.follow(this.#sql, channelId, Date.now());
   }
 
-  /** Retains a tombstone that blocks automatic-follow replay. */
+  /** Retains a tombstone. */
   unfollow(channelId: string): ChannelFollow {
     return follows.unfollow(this.#sql, channelId, Date.now());
-  }
-
-  /** Automatic follow for an approved request; inserts only when no row exists. */
-  autoFollow(
-    channelId: string,
-    requestId: string,
-  ): { follow: ChannelFollow; inserted: boolean } {
-    return follows.autoFollow(this.#sql, channelId, requestId, Date.now());
   }
 
   listFollows(options: ListFollowsOptions = {}): ChannelFollow[] {

@@ -1,7 +1,6 @@
 import { SELF } from "cloudflare:test";
 import {
   CatalogResponseSchema,
-  ChannelRequestsResponseSchema,
   ChannelResponseSchema,
   ChannelsResponseSchema,
   EpisodesResponseSchema,
@@ -80,9 +79,7 @@ describe("channel and catalog routes", () => {
       ["POST", "/channels", { channelId: CHANNEL_D }],
       ["DELETE", `/channels/${CHANNEL_A}`],
       ["POST", `/channels/${CHANNEL_C}/restore`],
-      ["POST", `/channels/${CHANNEL_A}/retry`],
       ["GET", `/channels/${CHANNEL_A}/ingestion-runs`],
-      ["GET", `/channels/${CHANNEL_A}/requests`],
     ];
     for (const [method, path, body] of ownerOnly) {
       const { status, json } = await call(ALICE, method, path, body);
@@ -132,7 +129,7 @@ describe("channel and catalog routes", () => {
       status: "pending",
       available: false,
       following: false,
-      management: { stuckPending: true, requesterCount: 0, latestRun: null },
+      management: { stuckPending: true, latestRun: null },
     });
     const cRow = rows.find((row) => row.channelId === CHANNEL_C);
     expect(cRow).toMatchObject({
@@ -327,22 +324,8 @@ describe("channel and catalog routes", () => {
     ).toBe(200);
   });
 
-  it("retries, deletes, and restores through the channel entity", async () => {
+  it("deletes and restores through the channel entity", async () => {
     await seedCatalog();
-    await setChannelState(CHANNEL_B, {
-      status: "failed",
-      failureCode: "NO_EPISODES",
-    });
-
-    const retried = await call(OWNER, "POST", `/channels/${CHANNEL_B}/retry`);
-    expect(retried.status).toBe(200);
-    expect(retried.json.channel).toMatchObject({
-      status: "pending",
-      failureCode: null,
-    });
-    expect(
-      (await call(OWNER, "POST", `/channels/${CHANNEL_B}/retry`)).status,
-    ).toBe(409);
 
     const deleted = await call(OWNER, "DELETE", `/channels/${CHANNEL_A}`);
     expect(deleted.status).toBe(200);
@@ -365,21 +348,12 @@ describe("channel and catalog routes", () => {
     );
   });
 
-  it("exposes ingestion runs and requests as channel sub-resources for the owner", async () => {
-    const stub = await seedCatalog();
+  it("exposes ingestion runs as a channel sub-resource for the owner", async () => {
+    await seedCatalog();
     await seedRun(CHANNEL_A, {
       kind: "scheduled",
       status: "completed",
       finishedAt: 5,
-    });
-    await stub.submitRequest(ALICE, {
-      youtubeChannelId: CHANNEL_B,
-      submittedUrl: "u",
-      channelTitle: "B by feed",
-    });
-    await stub.submitRequest(BOB, {
-      youtubeChannelId: CHANNEL_D,
-      submittedUrl: "u",
     });
 
     const runs = await call(
@@ -400,23 +374,5 @@ describe("channel and catalog routes", () => {
       (await call(OWNER, "GET", `/channels/${CHANNEL_D}/ingestion-runs`))
         .status,
     ).toBe(404);
-
-    const forB = await call(OWNER, "GET", `/channels/${CHANNEL_B}/requests`);
-    expectShape(ChannelRequestsResponseSchema, forB.json);
-    expect(forB.json.requests).toEqual([
-      expect.objectContaining({
-        userEmail: ALICE,
-        channelId: CHANNEL_B,
-        channelTitle: "B by feed",
-        outcome: "awaiting_review",
-        channel: { state: "pending", failureCode: null },
-      }),
-    ]);
-    // Requests can exist for an id that is not in the catalog yet.
-    const forD = await call(OWNER, "GET", `/channels/${CHANNEL_D}/requests`);
-    expect(forD.status).toBe(200);
-    expect((forD.json.requests as Json[])[0]).toMatchObject({
-      channel: { state: "not_in_catalog" },
-    });
   });
 });

@@ -3,22 +3,16 @@
 // base URL from VITE_API_URL (default: local wrangler dev). One typed function per operation, named
 // after the entity it touches; every shape comes from @media-digest/shared.
 import type {
-  ApproveChannelRequestBody,
-  ApproveChannelRequestResponse,
   CatalogResponse,
-  ChannelRequestResponse,
-  ChannelRequestsResponse,
   ChannelResponse,
   ChannelsResponse,
   CreateChannelBody,
-  CreateChannelRequestBody,
   DigestResponse,
   EpisodesResponse,
   FollowResponse,
   FollowsResponse,
   IngestionRunsResponse,
   MeResponse,
-  RejectChannelRequestBody,
 } from "@media-digest/shared";
 
 const BASE_URL = (
@@ -116,8 +110,6 @@ export const api = {
     request<ChannelResponse>("DELETE", `/channels/${enc(channelId)}`),
   restoreChannel: (channelId: string) =>
     request<ChannelResponse>("POST", `/channels/${enc(channelId)}/restore`),
-  retryChannel: (channelId: string) =>
-    request<ChannelResponse>("POST", `/channels/${enc(channelId)}/retry`),
   listEpisodes: (channelId: string, limit?: number) =>
     request<EpisodesResponse>(
       "GET",
@@ -127,34 +119,6 @@ export const api = {
     request<IngestionRunsResponse>(
       "GET",
       `/channels/${enc(channelId)}/ingestion-runs`,
-    ),
-  listChannelRequestsFor: (channelId: string) =>
-    request<ChannelRequestsResponse>(
-      "GET",
-      `/channels/${enc(channelId)}/requests`,
-    ),
-
-  // channel requests
-  listChannelRequests: (options: { scope?: "all" } = {}) =>
-    request<ChannelRequestsResponse>(
-      "GET",
-      options.scope === "all"
-        ? "/channel-requests?scope=all"
-        : "/channel-requests",
-    ),
-  createChannelRequest: (body: CreateChannelRequestBody) =>
-    request<ChannelRequestResponse>("POST", "/channel-requests", body),
-  approveChannelRequest: (requestId: string, body: ApproveChannelRequestBody) =>
-    request<ApproveChannelRequestResponse>(
-      "POST",
-      `/channel-requests/${enc(requestId)}/approve`,
-      body,
-    ),
-  rejectChannelRequest: (requestId: string, body: RejectChannelRequestBody) =>
-    request<ChannelRequestResponse>(
-      "POST",
-      `/channel-requests/${enc(requestId)}/reject`,
-      body,
     ),
 
   // follows

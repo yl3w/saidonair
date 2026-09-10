@@ -79,11 +79,6 @@ export const ChannelFailureCodeSchema = z
   });
 export type ChannelFailureCode = z.infer<typeof ChannelFailureCodeSchema>;
 
-export const ChannelRequestStatusSchema = z
-  .enum(["pending", "approved", "rejected"])
-  .meta({ id: "ChannelRequestStatus" });
-export type ChannelRequestStatus = z.infer<typeof ChannelRequestStatusSchema>;
-
 const EPISODE_STATUSES = [
   "pending",
   "processing",
@@ -141,38 +136,6 @@ export const ChatMessageStatusSchema = z
   .meta({ id: "ChatMessageStatus" });
 export type ChatMessageStatus = z.infer<typeof ChatMessageStatusSchema>;
 
-// --- derived states ---------------------------------------------------------------------------------
-
-/** Where a requested channel id stands in the catalog. */
-export const CatalogStateSchema = z
-  .enum(["not_in_catalog", "pending", "available", "failed", "deleted"])
-  .meta({
-    id: "CatalogState",
-    description: "Where a requested channel id stands in the catalog.",
-  });
-export type CatalogState = z.infer<typeof CatalogStateSchema>;
-
-/**
- * A request in one phrase: request status combined with the channel's processing and deletion
- * state. Computed server-side so the UI and tests agree.
- */
-export const RequestOutcomeSchema = z
-  .enum([
-    "awaiting_review",
-    "rejected",
-    "importing",
-    "import_failed",
-    "following",
-    "approved_pending_follow",
-    "channel_removed",
-  ])
-  .meta({
-    id: "RequestOutcome",
-    description:
-      "A request in one phrase: its status combined with the channel's processing and deletion state. Computed server-side so the UI and tests agree.",
-  });
-export type RequestOutcome = z.infer<typeof RequestOutcomeSchema>;
-
 // --- channels ---------------------------------------------------------------------------------------
 
 export const EpisodeCountsSchema = z
@@ -217,9 +180,6 @@ export const ChannelManagementSchema = z
     updatedAt: UnixMs,
     episodes: EpisodeCountsSchema,
     latestRun: IngestionRunSummarySchema.nullable(),
-    requesterCount: Count.describe(
-      "Pending or approved requests for this id. Stands in for follower count, which the Registry cannot know.",
-    ),
     stuckPending: z
       .boolean()
       .describe(
@@ -271,11 +231,11 @@ export const ChannelsResponseSchema = z
   });
 export type ChannelsResponse = z.infer<typeof ChannelsResponseSchema>;
 
-/** `GET /channels/:id`, `POST /channels`, `DELETE /channels/:id`, `POST /channels/:id/restore|retry` */
+/** `GET /channels/:id`, `POST /channels`, `DELETE /channels/:id`, `POST /channels/:id/restore` */
 export const ChannelResponseSchema = z.object({ channel: ChannelSchema }).meta({
   id: "ChannelResponse",
   description:
-    "`GET /channels/:id`, `POST /channels`, `DELETE /channels/:id`, `POST /channels/:id/restore|retry`",
+    "`GET /channels/:id`, `POST /channels`, `DELETE /channels/:id`, `POST /channels/:id/restore`",
 });
 export type ChannelResponse = z.infer<typeof ChannelResponseSchema>;
 
@@ -496,157 +456,6 @@ export const FollowResponseSchema = z.object({ follow: FollowSchema }).meta({
 });
 export type FollowResponse = z.infer<typeof FollowResponseSchema>;
 
-// --- channel requests -------------------------------------------------------------------------------
-
-/**
- * A request for a channel to join the catalog, as both the requester and the owner see it. `outcome`
- * is the requester's one-phrase view; `channel` carries the owner's decision inputs.
- */
-export const ChannelRequestSchema = z
-  .object({
-    requestId: z.string(),
-    userEmail: z.string(),
-    channelId: z.string(),
-    channelTitle: z
-      .string()
-      .nullable()
-      .describe(
-        "Feed title captured at submission; null for rows created before the column existed.",
-      ),
-    submittedUrl: z.string().describe("Exactly what the requester typed."),
-    status: ChannelRequestStatusSchema,
-    reviewedAt: UnixMs.nullable(),
-    reviewedByEmail: z.string().nullable(),
-    ownerExplanation: z.string().nullable(),
-    autoFollowCompletedAt: UnixMs.nullable(),
-    createdAt: UnixMs,
-    outcome: RequestOutcomeSchema,
-    channel: z
-      .object({
-        state: CatalogStateSchema,
-        failureCode: ChannelFailureCodeSchema.nullable(),
-      })
-      .describe("Where the requested id stands in the catalog right now."),
-  })
-  .meta({
-    id: "ChannelRequest",
-    description:
-      "A request for a channel to join the catalog, as both the requester and the owner see it. `outcome` is the requester's one-phrase view; `channel` carries the owner's decision inputs.",
-  });
-export type ChannelRequest = z.infer<typeof ChannelRequestSchema>;
-
-/** `GET /channel-requests` — the caller's own by default; `?scope=all` (owner) everyone's. Also `GET /channels/:id/requests` (owner). */
-export const ChannelRequestsResponseSchema = z
-  .object({ requests: z.array(ChannelRequestSchema) })
-  .meta({
-    id: "ChannelRequestsResponse",
-    description:
-      "`GET /channel-requests` — the caller's own by default; `?scope=all` (owner) everyone's. Also `GET /channels/:id/requests` (owner).",
-  });
-export type ChannelRequestsResponse = z.infer<
-  typeof ChannelRequestsResponseSchema
->;
-
-/** `POST /channel-requests`, `POST /channel-requests/:id/reject` */
-export const ChannelRequestResponseSchema = z
-  .object({ request: ChannelRequestSchema })
-  .meta({
-    id: "ChannelRequestResponse",
-    description:
-      "`POST /channel-requests`, `POST /channel-requests/:id/reject`",
-  });
-export type ChannelRequestResponse = z.infer<
-  typeof ChannelRequestResponseSchema
->;
-
-/** `POST /channel-requests` — a bare `UC…` id or a URL containing `/channel/UC…`. */
-export const CreateChannelRequestBodySchema = z
-  .object({
-    channelId: z
-      .string()
-      .trim()
-      .min(1)
-      .describe(
-        "A bare `UC…` id or any URL containing `/channel/UC…`. Handles and other URLs are rejected.",
-      ),
-  })
-  .meta({
-    id: "CreateChannelRequestBody",
-    description:
-      "`POST /channel-requests` — a bare `UC…` id or a URL containing `/channel/UC…`.",
-  });
-export type CreateChannelRequestBody = z.infer<
-  typeof CreateChannelRequestBodySchema
->;
-
-/** 409 body when the requested channel is already available; the UI offers Follow instead. */
-export const ChannelAlreadyAvailableResponseSchema = z
-  .object({
-    error: z.string(),
-    code: z.literal("INVALID_STATE"),
-    channelId: z.string().describe("The canonical id, ready to follow."),
-  })
-  .meta({
-    id: "ChannelAlreadyAvailableResponse",
-    description:
-      "409 body when the requested channel is already available; the UI offers Follow instead.",
-  });
-export type ChannelAlreadyAvailableResponse = z.infer<
-  typeof ChannelAlreadyAvailableResponseSchema
->;
-
-/** `POST /channel-requests/:id/approve` — title defaults to the request's stored title. */
-export const ApproveChannelRequestBodySchema = z
-  .object({
-    title: optionalText("Overrides the title stored on the request."),
-    initialImportCount: z
-      .number()
-      .int()
-      .positive()
-      .describe("Recent episodes to import first; defaults to five.")
-      .optional(),
-    explanation: optionalText("Shown to the requester."),
-  })
-  .meta({
-    id: "ApproveChannelRequestBody",
-    description:
-      "`POST /channel-requests/:id/approve` — every field optional; the title defaults to the request's stored title.",
-  });
-export type ApproveChannelRequestBody = z.infer<
-  typeof ApproveChannelRequestBodySchema
->;
-
-export const ApproveChannelRequestResponseSchema = z
-  .object({
-    request: ChannelRequestSchema,
-    channel: ChannelSchema,
-    channelCreated: z
-      .boolean()
-      .describe(
-        "True when approval created the channel; initial ingestion should start.",
-      ),
-  })
-  .meta({
-    id: "ApproveChannelRequestResponse",
-    description: "`POST /channel-requests/:id/approve`",
-  });
-export type ApproveChannelRequestResponse = z.infer<
-  typeof ApproveChannelRequestResponseSchema
->;
-
-/** `POST /channel-requests/:id/reject` */
-export const RejectChannelRequestBodySchema = z
-  .object({
-    explanation: optionalText("Shown to the requester."),
-  })
-  .meta({
-    id: "RejectChannelRequestBody",
-    description: "`POST /channel-requests/:id/reject`",
-  });
-export type RejectChannelRequestBody = z.infer<
-  typeof RejectChannelRequestBodySchema
->;
-
 // --- catalog ----------------------------------------------------------------------------------------
 
 /** The catalog's aggregate state. */
@@ -666,7 +475,6 @@ export const CatalogSchema = z
       tracked: Count,
     }),
     runs: z.object({ active: Count }),
-    requests: z.object({ pending: Count }),
     lastSuccessfulIngestionAt: UnixMs.nullable(),
   })
   .meta({ id: "Catalog", description: "The catalog's aggregate state." });
@@ -728,9 +536,3 @@ export const FollowParamsSchema = z.object({
   channelId: z.string().min(1).describe("Canonical `UC…` channel id."),
 });
 export type FollowParams = z.infer<typeof FollowParamsSchema>;
-
-/** `/channel-requests/:id`. */
-export const ChannelRequestParamsSchema = z.object({
-  id: z.string().min(1).describe("Channel request id."),
-});
-export type ChannelRequestParams = z.infer<typeof ChannelRequestParamsSchema>;

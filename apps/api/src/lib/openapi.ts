@@ -109,11 +109,6 @@ const documentation: GenerateSpecOptions["documentation"] = {
       description:
         "The caller's digest of new summaries from eligible follows.",
     },
-    {
-      name: "channel-requests",
-      description:
-        "Requests for channels to join the catalog, and the owner's review of them.",
-    },
   ],
   components: {
     securitySchemes: {

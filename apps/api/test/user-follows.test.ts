@@ -47,8 +47,7 @@ describe("user follows", () => {
 
   it("an explicit refollow clears the tombstone and becomes manual", async () => {
     const stub = userDO(ALICE);
-    const auto = await stub.autoFollow(CHANNEL_A, "req-1");
-    expect(auto.inserted).toBe(true);
+    const first = await stub.follow(CHANNEL_A);
     await stub.unfollow(CHANNEL_A);
 
     const refollowed = await stub.follow(CHANNEL_A);
@@ -57,47 +56,7 @@ describe("user follows", () => {
       origin: "manual",
       originRequestId: null,
     });
-    expect(refollowed.followedAt).toBeGreaterThanOrEqual(
-      auto.follow.followedAt,
-    );
-  });
-
-  it("autoFollow inserts only when no row exists", async () => {
-    const stub = userDO(ALICE);
-
-    const first = await stub.autoFollow(CHANNEL_A, "req-1");
-    expect(first.inserted).toBe(true);
-    expect(first.follow).toMatchObject({
-      origin: "request",
-      originRequestId: "req-1",
-      unfollowedAt: null,
-    });
-
-    // Redelivery after a crash between User DO insert and Registry acknowledgement.
-    const redelivered = await stub.autoFollow(CHANNEL_A, "req-1");
-    expect(redelivered.inserted).toBe(false);
-    expect(redelivered.follow).toEqual(first.follow);
-
-    // An existing manual follow is never rewritten as request-originated.
-    await stub.follow(CHANNEL_B);
-    const overManual = await stub.autoFollow(CHANNEL_B, "req-2");
-    expect(overManual.inserted).toBe(false);
-    expect(overManual.follow).toMatchObject({
-      origin: "manual",
-      originRequestId: null,
-    });
-  });
-
-  it("autoFollow never reverses an explicit unfollow", async () => {
-    const stub = userDO(ALICE);
-    await stub.autoFollow(CHANNEL_A, "req-1");
-    const tombstone = await stub.unfollow(CHANNEL_A);
-
-    const retried = await stub.autoFollow(CHANNEL_A, "req-1");
-
-    expect(retried.inserted).toBe(false);
-    expect(retried.follow).toEqual(tombstone);
-    expect(await stub.activeChannelIds()).toEqual([]);
+    expect(refollowed.followedAt).toBeGreaterThanOrEqual(first.followedAt);
   });
 
   it("lists active follows newest first", async () => {
@@ -118,7 +77,6 @@ describe("user follows", () => {
   it("validates input", async () => {
     const stub = userDO(ALICE);
     await expectDomainError(stub.follow("@handle"), "INVALID_INPUT");
-    await expectDomainError(stub.autoFollow(CHANNEL_A, "  "), "INVALID_INPUT");
   });
 
   it("keeps each user's follows in their own object", async () => {

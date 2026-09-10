@@ -3,12 +3,6 @@ import type { Catalog } from "@media-digest/shared";
 /** One line, the facts that need the owner, one link (spec §6.2). Renders nothing when quiet. */
 export function OwnerCard({ catalog }: { catalog: Catalog }) {
   const parts: string[] = [];
-  const pending = catalog.requests.pending;
-  if (pending > 0) {
-    parts.push(
-      `${pending} request${pending === 1 ? "" : "s"} waiting for review`,
-    );
-  }
   const failed = catalog.channels.failed;
   if (failed > 0) {
     parts.push(`${failed} channel${failed === 1 ? "" : "s"} failed`);

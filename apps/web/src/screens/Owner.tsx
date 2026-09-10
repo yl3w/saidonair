@@ -5,7 +5,6 @@ import { AddChannel } from "../components/AddChannel";
 import { type CatalogFilter, CatalogHealth } from "../components/CatalogHealth";
 import { CatalogTable } from "../components/CatalogTable";
 import { Nav } from "../components/Nav";
-import { RequestQueue } from "../components/RequestQueue";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
@@ -17,13 +16,9 @@ export function Owner() {
   );
 }
 
-/** The owner's job in one page (spec §7): the review queue, then catalog health and the table. */
+/** The owner's job in one page (spec §7): catalog health and the table. */
 function OwnerScreen() {
   const { url } = useLocation();
-  const [requests, reloadRequests] = useLoad(
-    () => api.listChannelRequests({ scope: "all" }),
-    [],
-  );
   const [catalog, reloadCatalog] = useLoad(() => api.getCatalog(), []);
   const [channels, reloadChannels] = useLoad(
     () => api.listChannels({ scope: "all" }),
@@ -32,7 +27,6 @@ function OwnerScreen() {
   const [filter, setFilter] = useState<CatalogFilter>("all");
 
   function reloadAll() {
-    reloadRequests();
     reloadCatalog();
     reloadChannels();
   }
@@ -41,29 +35,15 @@ function OwnerScreen() {
   useEffect(() => {
     const hash = window.location.hash.slice(1);
     if (hash) document.getElementById(hash)?.scrollIntoView();
-  }, [url, requests.status, channels.status]);
+  }, [url, channels.status]);
 
   return (
     <main class="wide">
       <Nav />
       <nav class="sections" aria-label="Sections">
-        <a href="#requests">Requests</a>
         <a href="#catalog">Catalog</a>
         <a href="#attention">Needs attention</a>
       </nav>
-
-      {requests.status === "loading" && <p>Loading requests…</p>}
-      {requests.status === "error" && (
-        <p class="error">
-          Couldn't load requests: {requests.error.message}.{" "}
-          <button type="button" onClick={reloadRequests}>
-            Retry
-          </button>
-        </p>
-      )}
-      {requests.status === "ready" && (
-        <RequestQueue requests={requests.data.requests} onChanged={reloadAll} />
-      )}
 
       <section id="catalog">
         <h2>Catalog</h2>

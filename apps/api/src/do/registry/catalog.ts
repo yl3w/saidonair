@@ -1,6 +1,5 @@
 import type { Catalog } from "@media-digest/shared";
 import { countByChannel, zeroCounts } from "./episodes";
-import { countRequestersByChannel } from "./requests";
 import {
   channelIdsWithActiveRun,
   countActive,
@@ -42,17 +41,10 @@ export function summarize(sql: SqlStorage): Catalog {
     )
     .one();
 
-  const pendingRequests = sql
-    .exec<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM channel_requests WHERE status = 'pending'",
-    )
-    .one().n;
-
   return {
     channels: { ...channels, stuckPending },
     episodes: { processed: episodes.processed, tracked: episodes.tracked },
     runs: { active: countActive(sql) },
-    requests: { pending: pendingRequests },
     lastSuccessfulIngestionAt: lastCompletedFinishedAt(sql),
   };
 }
@@ -65,13 +57,11 @@ export function withManagement(
   const ids = channels.map((channel) => channel.channelId);
   const counts = countByChannel(sql, ids);
   const latest = latestByChannel(sql, ids);
-  const requesters = countRequestersByChannel(sql, ids);
   const active = new Set(channelIdsWithActiveRun(sql));
   return channels.map((channel) => ({
     channel,
     episodes: counts[channel.channelId] ?? zeroCounts(),
     latestRun: latest[channel.channelId] ?? null,
-    requesterCount: requesters[channel.channelId] ?? 0,
     stuckPending:
       channel.status === "pending" &&
       channel.deletedAt === null &&

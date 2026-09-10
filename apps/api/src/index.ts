@@ -10,7 +10,6 @@ import { jsonResponse, openApiDocument } from "./lib/openapi";
 import { onError } from "./middleware/errors";
 import { requireIdentity } from "./middleware/user";
 import { catalogRoutes } from "./routes/catalog";
-import { channelRequestRoutes } from "./routes/channel-requests";
 import { channelRoutes } from "./routes/channels";
 import { digestRoutes } from "./routes/digest";
 import { docsPage } from "./routes/docs";
@@ -61,7 +60,6 @@ app.use("*", requireIdentity);
 app.route("/me", meRoutes);
 app.route("/catalog", catalogRoutes);
 app.route("/channels", channelRoutes);
-app.route("/channel-requests", channelRequestRoutes);
 app.route("/follows", followRoutes);
 app.route("/digest", digestRoutes);
 

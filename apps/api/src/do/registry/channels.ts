@@ -122,43 +122,6 @@ export function createChannel(
   );
 }
 
-/**
- * `failed → pending` for an owner retry. Clears the current failure (history stays in
- * ingestion_runs) and bumps lifecycle_version so stale runs are fenced out.
- */
-export function retryChannel(
-  sql: SqlStorage,
-  channelId: string,
-  now: number,
-): CatalogChannel {
-  const channel = requireChannel(sql, channelId);
-  if (channel.deletedAt !== null) {
-    throw new DomainError(
-      "INVALID_STATE",
-      "channel is deleted; restore it first",
-    );
-  }
-  if (channel.status !== "failed") {
-    throw new DomainError(
-      "INVALID_STATE",
-      `only failed channels can be retried (status: ${channel.status})`,
-    );
-  }
-  return toChannel(
-    sql
-      .exec<ChannelRow>(
-        `UPDATE channels
-         SET status = 'pending', failure_code = NULL, failure_detail = NULL,
-             lifecycle_version = lifecycle_version + 1, updated_at = ?
-         WHERE channel_id = ?
-         RETURNING ${CHANNEL_COLUMNS}`,
-        now,
-        channel.channelId,
-      )
-      .one(),
-  );
-}
-
 /** Soft delete. Idempotent: deleting a deleted channel changes nothing (no extra fence bump). */
 export function deleteChannel(
   sql: SqlStorage,

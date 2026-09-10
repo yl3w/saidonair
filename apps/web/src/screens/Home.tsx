@@ -5,7 +5,6 @@ import { AvailableList, FollowedList } from "../components/ChannelList";
 import { Digest } from "../components/Digest";
 import { Nav } from "../components/Nav";
 import { OwnerCard } from "../components/OwnerCard";
-import { Requests } from "../components/Requests";
 import { useLoad } from "../lib/use-load";
 import { Guard, useReadySession } from "../session";
 
@@ -30,10 +29,6 @@ function HomeScreen() {
 
   const [follows, reloadFollows] = useLoad(() => api.listFollows(), []);
   const [channels, reloadChannels] = useLoad(() => api.listChannels(), []);
-  const [requests, reloadRequests] = useLoad(
-    () => api.listChannelRequests(),
-    [],
-  );
   const [catalog] = useLoad(() => api.getCatalog(), [], { enabled: isOwner });
 
   const listsReady = follows.status === "ready" && channels.status === "ready";
@@ -142,8 +137,6 @@ function HomeScreen() {
             isOwner={isOwner}
           />
         )}
-
-        <Requests load={requests} reload={reloadRequests} onFollow={follow} />
       </section>
     </main>
   );

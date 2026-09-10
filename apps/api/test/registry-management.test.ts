@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ALICE,
-  BOB,
   CHANNEL_A,
   CHANNEL_B,
   CHANNEL_C,
@@ -22,7 +21,6 @@ import {
  * A: available, two processed and one failed episode, a completed run.
  * B: pending with a queued run (not stuck). C: pending with no run (stuck).
  * D: failed. E: available but deleted (counts only as deleted).
- * Requests: two pending for C, one approved for A, one rejected for D.
  */
 async function seedCatalog() {
   const stub = registry();
@@ -60,25 +58,6 @@ async function seedCatalog() {
   });
   await seedRun(CHANNEL_B, { status: "queued", createdAt: 200 });
 
-  const url = (id: string) => `https://www.youtube.com/channel/${id}`;
-  await stub.submitRequest(ALICE, {
-    youtubeChannelId: CHANNEL_C,
-    submittedUrl: url(CHANNEL_C),
-  });
-  await stub.submitRequest(BOB, {
-    youtubeChannelId: CHANNEL_C,
-    submittedUrl: url(CHANNEL_C),
-  });
-  const forA = await stub.submitRequest(ALICE, {
-    youtubeChannelId: CHANNEL_A,
-    submittedUrl: url(CHANNEL_A),
-  });
-  await stub.approveRequest(OWNER, forA.requestId);
-  const forD = await stub.submitRequest(BOB, {
-    youtubeChannelId: CHANNEL_D,
-    submittedUrl: url(CHANNEL_D),
-  });
-  await stub.rejectRequest(OWNER, forD.requestId);
   return stub;
 }
 
@@ -96,7 +75,6 @@ describe("registry catalog summary and management", () => {
       },
       episodes: { processed: 2, tracked: 3 },
       runs: { active: 1 },
-      requests: { pending: 2 },
       lastSuccessfulIngestionAt: 150,
     });
     await expectDomainError(stub.getCatalogSummary(ALICE), "NOT_OWNER");
@@ -113,7 +91,6 @@ describe("registry catalog summary and management", () => {
       },
       episodes: { processed: 0, tracked: 0 },
       runs: { active: 0 },
-      requests: { pending: 0 },
       lastSuccessfulIngestionAt: null,
     });
   });
@@ -128,22 +105,18 @@ describe("registry catalog summary and management", () => {
     expect(byId.get(CHANNEL_A)).toMatchObject({
       episodes: { processed: 2, failed: 1, pending: 0 },
       latestRun: { kind: "scheduled", status: "completed", finishedAt: 150 },
-      requesterCount: 1,
       stuckPending: false,
     });
     expect(byId.get(CHANNEL_B)).toMatchObject({
       latestRun: { status: "queued" },
-      requesterCount: 0,
       stuckPending: false,
     });
     expect(byId.get(CHANNEL_C)).toMatchObject({
       episodes: { processed: 0 },
       latestRun: null,
-      requesterCount: 2,
       stuckPending: true,
     });
-    // A rejected request is not a requester; a deleted channel is never "stuck".
-    expect(byId.get(CHANNEL_D)?.requesterCount).toBe(0);
+    // A deleted channel is never "stuck".
     expect(byId.get(CHANNEL_E)).toMatchObject({
       channel: { deletedAt: expect.any(Number) },
       stuckPending: false,

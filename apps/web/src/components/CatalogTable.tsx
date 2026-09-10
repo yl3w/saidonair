@@ -55,16 +55,6 @@ export function CatalogTable({
     }
   });
 
-  const retryButton = (c: Channel) => (
-    <button
-      type="button"
-      disabled={busy.has(c.channelId)}
-      onClick={() => act(c.channelId, () => api.retryChannel(c.channelId))}
-    >
-      Retry
-    </button>
-  );
-
   return (
     <>
       <h3 id="attention">Needs attention ({failed.length + stuck.length})</h3>
@@ -84,7 +74,6 @@ export function CatalogTable({
                 ` · last run: ${c.management.latestRun.kind}, ${c.management.latestRun.status}`}
             </div>
           </div>
-          <div class="actions">{retryButton(c)}</div>
         </div>
       ))}
       {stuck.map((c) => (
@@ -113,7 +102,6 @@ export function CatalogTable({
               <th>Episodes</th>
               <th>Last ingested</th>
               <th>Latest run</th>
-              <th>Requesters</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -160,12 +148,8 @@ export function CatalogTable({
                       ? `${m.latestRun.kind} · ${m.latestRun.status}`
                       : "—"}
                   </td>
-                  <td>{m?.requesterCount ?? 0}</td>
                   <td>
                     <div class="actions">
-                      {c.status === "failed" &&
-                        c.deletedAt === null &&
-                        retryButton(c)}
                       {c.deletedAt === null ? (
                         <button
                           type="button"

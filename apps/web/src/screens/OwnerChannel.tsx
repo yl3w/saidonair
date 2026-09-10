@@ -4,11 +4,7 @@ import { useRoute } from "preact-iso";
 import { api } from "../api";
 import { Nav } from "../components/Nav";
 import { Time } from "../components/Time";
-import {
-  CATALOG_STATE_COPY,
-  CHANNEL_STATUS_COPY,
-  failureCopy,
-} from "../lib/copy";
+import { CHANNEL_STATUS_COPY, failureCopy } from "../lib/copy";
 import { type Load, useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
@@ -20,7 +16,7 @@ export function OwnerChannel() {
   );
 }
 
-/** One channel for the owner (spec §8): management header, episodes, runs, requests. */
+/** One channel for the owner (spec §8): management header, episodes, runs. */
 function OwnerChannelScreen() {
   const { params } = useRoute();
   const channelId = params.id ?? "";
@@ -36,10 +32,6 @@ function OwnerChannelScreen() {
     () => api.listIngestionRuns(channelId),
     [channelId],
   );
-  const [requests, reloadRequests] = useLoad(
-    () => api.listChannelRequestsFor(channelId),
-    [channelId],
-  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +43,6 @@ function OwnerChannelScreen() {
       reloadChannel();
       reloadEpisodes();
       reloadRuns();
-      reloadRequests();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -155,41 +146,6 @@ function OwnerChannelScreen() {
           )
         }
       </Section>
-
-      <h2>Requests</h2>
-      <Section load={requests} label="requests" reload={reloadRequests}>
-        {({ requests: list }) =>
-          list.length === 0 ? (
-            <p class="muted">Nobody has requested this channel.</p>
-          ) : (
-            <div>
-              {list.map((r) => (
-                <div class="row" key={r.requestId}>
-                  <div class="grow">
-                    {r.userEmail} · {r.status}
-                    <div class="meta">
-                      requested <Time at={r.createdAt} />
-                      {r.reviewedAt !== null && (
-                        <>
-                          {" "}
-                          · reviewed <Time at={r.reviewedAt} /> by{" "}
-                          {r.reviewedByEmail}
-                        </>
-                      )}
-                      {r.ownerExplanation && ` — "${r.ownerExplanation}"`}
-                      {r.status === "approved" &&
-                        (r.autoFollowCompletedAt !== null
-                          ? " · followed automatically"
-                          : " · follow not yet delivered")}
-                      {` · ${CATALOG_STATE_COPY[r.channel.state]}`}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-        }
-      </Section>
     </main>
   );
 }
@@ -216,19 +172,8 @@ function Header({
         {m && <Time at={m.availableAt} fallback="never" />}
         {m &&
           ` · lifecycle v${m.lifecycleVersion} · import count ${m.initialImportCount}`}
-        {m &&
-          ` · ${m.requesterCount} requester${m.requesterCount === 1 ? "" : "s"}`}
       </p>
       <div class="actions">
-        {c.status === "failed" && c.deletedAt === null && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => act(() => api.retryChannel(c.channelId))}
-          >
-            Retry
-          </button>
-        )}
         {c.deletedAt === null ? (
           <button
             type="button"

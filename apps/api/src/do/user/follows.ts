@@ -85,42 +85,6 @@ export function unfollow(
   );
 }
 
-/**
- * Automatic follow delivered for an approved request. Inserts only when no row exists:
- * an active follow and an unfollow tombstone are both left untouched, so a retried
- * handoff can never reverse an explicit unfollow.
- */
-export function autoFollow(
-  sql: SqlStorage,
-  channelId: string,
-  requestId: string,
-  now: number,
-): { follow: ChannelFollow; inserted: boolean } {
-  const id = requireChannelId(channelId);
-  const request = requestId.trim();
-  if (request.length === 0) {
-    throw new DomainError("INVALID_INPUT", "requestId is required");
-  }
-  // RETURNING yields a row only when the insert actually happened.
-  const inserted =
-    sql
-      .exec(
-        `INSERT OR IGNORE INTO channel_follows
-           (channel_id, followed_at, origin, origin_request_id, created_at, updated_at)
-         VALUES (?, ?, 'request', ?, ?, ?)
-         RETURNING channel_id`,
-        id,
-        now,
-        request,
-        now,
-        now,
-      )
-      .toArray().length > 0;
-  const current = getFollow(sql, id);
-  if (!current) throw new Error("channel_follows row vanished after insert");
-  return { follow: current, inserted };
-}
-
 export function getFollow(
   sql: SqlStorage,
   channelId: string,

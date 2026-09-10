@@ -23,11 +23,7 @@ export function Nav() {
     api.getCatalog().then(
       ({ catalog }) => {
         if (!cancelled) {
-          setAttention(
-            catalog.requests.pending +
-              catalog.channels.failed +
-              catalog.channels.stuckPending,
-          );
+          setAttention(catalog.channels.failed + catalog.channels.stuckPending);
         }
       },
       () => {

@@ -52,7 +52,6 @@ export function toManagement(
     updatedAt: channel.updatedAt,
     episodes: record.episodes,
     latestRun: record.latestRun,
-    requesterCount: record.requesterCount,
     stuckPending: record.stuckPending,
   };
 }

@@ -1,8 +1,6 @@
 import {
   type Channel,
   ChannelParamsSchema,
-  type ChannelRequestsResponse,
-  ChannelRequestsResponseSchema,
   type ChannelResponse,
   ChannelResponseSchema,
   type ChannelsResponse,
@@ -25,7 +23,6 @@ import { toEpisode } from "../lib/episode-view";
 import { DomainError } from "../lib/errors";
 import { requestIngestion } from "../lib/ingestion";
 import { errorResponses, jsonResponse } from "../lib/openapi";
-import { toChannelRequest } from "../lib/outcome";
 import { validate } from "../lib/validation";
 import { extractChannelId } from "../lib/youtube/ids";
 import { feedFetcher, fetchChannelFeed } from "../lib/youtube/rss";
@@ -36,7 +33,7 @@ type Ctx = Context<AppEnv>;
 /**
  * Channels are the catalog's members. Everyone reads the available ones; the owner reads every
  * state (`?scope=all`, `management`) and performs the state changes. Sub-resources: episodes for
- * everyone with follower-dependent detail, ingestion runs and requests for the owner.
+ * everyone with follower-dependent detail, ingestion runs for the owner.
  */
 export const channelRoutes = new Hono<AppEnv>()
   .get(
@@ -235,36 +232,6 @@ export const channelRoutes = new Hono<AppEnv>()
     },
   )
 
-  .post(
-    "/:id/retry",
-    describeRoute({
-      tags: ["channels"],
-      summary: "Retry a failed channel (owner)",
-      description:
-        "Resets a failed channel to pending and starts a retry run, which reuses completed work and may reattempt episodes that previously had no captions.",
-      responses: {
-        200: jsonResponse(ChannelResponseSchema, "The channel, pending again."),
-        ...errorResponses({
-          owner: true,
-          notFound: true,
-          conflict: "Only failed, non-deleted channels can be retried",
-        }),
-      },
-    }),
-    requireOwner,
-    validate("param", ChannelParamsSchema),
-    async (c) => {
-      const channel = await c.var.registry.retryChannel(
-        c.var.identity.email,
-        c.req.valid("param").id,
-      );
-      requestIngestion(channel.channelId, "owner_retry");
-      return c.json<ChannelResponse>({
-        channel: await ownerChannel(c, channel.channelId),
-      });
-    },
-  )
-
   .get(
     "/:id/episodes",
     describeRoute({
@@ -342,36 +309,6 @@ export const channelRoutes = new Hono<AppEnv>()
         c.req.valid("param").id,
       );
       return c.json<IngestionRunsResponse>({ runs });
-    },
-  )
-
-  .get(
-    "/:id/requests",
-    describeRoute({
-      tags: ["channel-requests"],
-      summary: "List requests for a channel (owner)",
-      description:
-        "Every user's requests for this id, including ids that are not in the catalog yet.",
-      responses: {
-        200: jsonResponse(
-          ChannelRequestsResponseSchema,
-          "Requests for the channel.",
-        ),
-        ...errorResponses({ owner: true }),
-      },
-    }),
-    requireOwner,
-    validate("param", ChannelParamsSchema),
-    async (c) => {
-      // Requests may exist for an id that is not (yet) in the catalog, so no 404 here.
-      const channelId = c.req.valid("param").id;
-      const [requests, channel] = await Promise.all([
-        c.var.registry.listRequestsForChannel(c.var.identity.email, channelId),
-        c.var.registry.getChannel(channelId),
-      ]);
-      return c.json<ChannelRequestsResponse>({
-        requests: requests.map((request) => toChannelRequest(request, channel)),
-      });
     },
   );
 

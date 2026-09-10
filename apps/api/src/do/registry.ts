@@ -9,20 +9,15 @@ import { applyMigrations } from "./migrations";
 import * as catalog from "./registry/catalog";
 import * as channels from "./registry/channels";
 import * as episodes from "./registry/episodes";
-import * as requests from "./registry/requests";
 import * as runs from "./registry/runs";
 import type {
-  ApproveRequestInput,
   CatalogChannel,
   ChannelManagementRecord,
-  ChannelRequest,
   CreateChannelInput,
   EpisodeRecord,
   IngestionRunRecord,
   ListEpisodesOptions,
   RegistryUser,
-  RejectRequestInput,
-  SubmitRequestInput,
 } from "./registry/types";
 import * as users from "./registry/users";
 
@@ -34,8 +29,8 @@ export function getRegistry(env: Env): DurableObjectStub<RegistryDO> {
 }
 
 /**
- * Global Registry Durable Object: identities, the shared channel catalog, approval requests,
- * episodes with their shared summaries, and ingestion runs (reads only until M3 writes them).
+ * Global Registry Durable Object: identities, the shared channel catalog, episodes with their
+ * shared summaries, and ingestion runs (reads only until M3 writes them).
  *
  * Every public method is an RPC endpoint. Owner-only methods take the acting email first and
  * verify the `owner` role here, so a route bug can never grant catalog management to a user.
@@ -76,7 +71,7 @@ export class RegistryDO extends DurableObject<Env> {
     return channels.listAvailableChannels(this.#sql);
   }
 
-  /** Any state, including deleted; used for follows, request outcomes, and channel views. */
+  /** Any state, including deleted; used for follows and channel views. */
   listChannelsByIds(channelIds: string[]): CatalogChannel[] {
     return channels.listChannelsByIds(this.#sql, requireChannelIds(channelIds));
   }
@@ -99,12 +94,6 @@ export class RegistryDO extends DurableObject<Env> {
     );
   }
 
-  /** Owner: `failed → pending`, clearing the failure and fencing stale runs. */
-  retryChannel(actorEmail: string, channelId: string): CatalogChannel {
-    this.#assertOwner(actorEmail);
-    return channels.retryChannel(this.#sql, channelId, Date.now());
-  }
-
   /** Owner: soft delete; follows, episodes, summaries, and vectors are all retained. */
   deleteChannel(actorEmail: string, channelId: string): CatalogChannel {
     this.#assertOwner(actorEmail);
@@ -124,8 +113,8 @@ export class RegistryDO extends DurableObject<Env> {
   }
 
   /**
-   * Owner: channels with their management facts (episode counts, latest run, requester count,
-   * stuck flag). All channels in every state by default, or just the given ids.
+   * Owner: channels with their management facts (episode counts, latest run, stuck flag). All
+   * channels in every state by default, or just the given ids.
    */
   listChannelManagement(
     actorEmail: string,
@@ -184,78 +173,6 @@ export class RegistryDO extends DurableObject<Env> {
     this.#assertOwner(actorEmail);
     this.#requireChannel(channelId);
     return runs.listByChannel(this.#sql, requireChannelId(channelId));
-  }
-
-  // --- channel requests -----------------------------------------------------
-
-  submitRequest(email: string, input: SubmitRequestInput): ChannelRequest {
-    return this.#transaction(() =>
-      requests.submitRequest(
-        this.#sql,
-        users.requireEmail(email),
-        input,
-        Date.now(),
-      ),
-    );
-  }
-
-  listOwnRequests(email: string): ChannelRequest[] {
-    return requests.listOwnRequests(this.#sql, users.requireEmail(email));
-  }
-
-  /** Owner: the review queue across all users. */
-  listAllRequests(actorEmail: string): ChannelRequest[] {
-    this.#assertOwner(actorEmail);
-    return requests.listAllRequests(this.#sql);
-  }
-
-  /** Owner: every requester's request for one channel, newest first. */
-  listRequestsForChannel(
-    actorEmail: string,
-    channelId: string,
-  ): ChannelRequest[] {
-    this.#assertOwner(actorEmail);
-    return requests.listByChannel(this.#sql, requireChannelId(channelId));
-  }
-
-  /**
-   * Owner: approve a pending request, creating or reusing the shared channel; refused while
-   * the channel is deleted. `channelCreated` signals that initial ingestion should start.
-   */
-  approveRequest(
-    actorEmail: string,
-    requestId: string,
-    input: ApproveRequestInput = {},
-  ): {
-    request: ChannelRequest;
-    channel: CatalogChannel;
-    channelCreated: boolean;
-  } {
-    const reviewer = this.#assertOwner(actorEmail);
-    return this.#transaction(() =>
-      requests.approveRequest(
-        this.#sql,
-        reviewer,
-        requestId,
-        input,
-        Date.now(),
-      ),
-    );
-  }
-
-  rejectRequest(
-    actorEmail: string,
-    requestId: string,
-    input: RejectRequestInput = {},
-  ): ChannelRequest {
-    const reviewer = this.#assertOwner(actorEmail);
-    return requests.rejectRequest(
-      this.#sql,
-      reviewer,
-      requestId,
-      input,
-      Date.now(),
-    );
   }
 
   // --- internals (not reachable over RPC) -----------------------------------

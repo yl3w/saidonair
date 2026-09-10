@@ -17,7 +17,6 @@ describe("registry catalog (owner-only mutations)", () => {
     await stub.ensureUser(ALICE);
 
     await expectDomainError(stub.createChannel(ALICE, INPUT_A), "NOT_OWNER");
-    await expectDomainError(stub.retryChannel(ALICE, CHANNEL_A), "NOT_OWNER");
     await expectDomainError(stub.deleteChannel(ALICE, CHANNEL_A), "NOT_OWNER");
     await expectDomainError(stub.restoreChannel(ALICE, CHANNEL_A), "NOT_OWNER");
     await expectDomainError(stub.listChannels(ALICE), "NOT_OWNER");
@@ -86,32 +85,6 @@ describe("registry catalog (owner-only mutations)", () => {
     await expectDomainError(stub.deleteChannel(OWNER, CHANNEL_B), "NOT_FOUND");
   });
 
-  it("retry only applies to failed channels and fences stale runs", async () => {
-    const stub = registry();
-    await stub.createChannel(OWNER, INPUT_A);
-    await expectDomainError(
-      stub.retryChannel(OWNER, CHANNEL_A),
-      "INVALID_STATE",
-    );
-
-    await setChannelState(CHANNEL_A, {
-      status: "failed",
-      failureCode: "NO_TRANSCRIPTS",
-    });
-    expect(await stub.getChannel(CHANNEL_A)).toMatchObject({
-      status: "failed",
-      failureCode: "NO_TRANSCRIPTS",
-    });
-
-    const retried = await stub.retryChannel(OWNER, CHANNEL_A);
-    expect(retried).toMatchObject({
-      status: "pending",
-      failureCode: null,
-      failureDetail: null,
-      lifecycleVersion: 2,
-    });
-  });
-
   it("soft-deletes idempotently and restores without changing processing state", async () => {
     const stub = registry();
     await stub.createChannel(OWNER, INPUT_A);
@@ -130,11 +103,6 @@ describe("registry catalog (owner-only mutations)", () => {
       deletedAt: deleted.deletedAt,
       lifecycleVersion: 2,
     });
-
-    await expectDomainError(
-      stub.retryChannel(OWNER, CHANNEL_A),
-      "INVALID_STATE",
-    );
 
     const restored = await stub.restoreChannel(OWNER, CHANNEL_A);
     expect(restored).toMatchObject({
