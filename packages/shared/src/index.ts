@@ -210,6 +210,9 @@ export const ChannelSchema = z
     lastIngestedAt: UnixMs.nullable(),
     processedCount: Count,
     following: z.boolean().describe("Whether the caller follows this channel."),
+    followerCount: Count.describe(
+      "Active followers, from the Registry's follower record.",
+    ),
     management: ChannelManagementSchema.optional(),
   })
   .meta({
@@ -452,6 +455,43 @@ export const FollowResponseSchema = z.object({ follow: FollowSchema }).meta({
   description: "`PUT /follows/:channelId`, `DELETE /follows/:channelId`",
 });
 export type FollowResponse = z.infer<typeof FollowResponseSchema>;
+
+export const FollowerSchema = z
+  .object({ email: z.string(), followedAt: UnixMs })
+  .meta({
+    id: "Follower",
+    description: "One active follower of a channel, as the owner sees it.",
+  });
+export type Follower = z.infer<typeof FollowerSchema>;
+
+/** `GET /channels/:id/followers` (owner) — active followers, oldest first. */
+export const FollowersResponseSchema = z
+  .object({ followers: z.array(FollowerSchema) })
+  .meta({
+    id: "FollowersResponse",
+    description:
+      "`GET /channels/:id/followers` (owner) — active followers, oldest first.",
+  });
+export type FollowersResponse = z.infer<typeof FollowersResponseSchema>;
+
+/** 409 body when the channel is declined: the client shows the note and offers Request again. */
+export const ChannelDeclinedResponseSchema = z
+  .object({
+    error: z.string(),
+    code: z.literal("INVALID_STATE"),
+    channelId: z.string(),
+    status: z.literal("declined"),
+    reviewNote: z.string().nullable(),
+    reviewedAt: UnixMs.nullable(),
+  })
+  .meta({
+    id: "ChannelDeclinedResponse",
+    description:
+      "409 body for `POST /channels` and `PUT /follows/:channelId` when the channel is declined; the client shows the note and offers Request again.",
+  });
+export type ChannelDeclinedResponse = z.infer<
+  typeof ChannelDeclinedResponseSchema
+>;
 
 // --- catalog ----------------------------------------------------------------------------------------
 

@@ -8,6 +8,8 @@ import {
   CreateChannelBodySchema,
   type EpisodesResponse,
   EpisodesResponseSchema,
+  type FollowersResponse,
+  FollowersResponseSchema,
   type IngestionRunsResponse,
   IngestionRunsResponseSchema,
   LimitQuerySchema,
@@ -59,11 +61,15 @@ export const channelRoutes = new Hono<AppEnv>()
       if (scope === "all") {
         const email = assertOwner(c);
         const rows = await c.var.registry.listChannelManagement(email);
+        const followers = await c.var.registry.countFollowers(
+          rows.map((row) => row.channel.channelId),
+        );
         return c.json<ChannelsResponse>({
           channels: rows.map((row) =>
             toChannel(row.channel, {
               following: following.has(row.channel.channelId),
               processedCount: row.episodes.processed,
+              followerCount: followers[row.channel.channelId] ?? 0,
               management: row,
             }),
           ),
@@ -71,14 +77,15 @@ export const channelRoutes = new Hono<AppEnv>()
       }
 
       const listed = await c.var.registry.listCatalogChannels();
-      const counts = await c.var.registry.countEpisodesByChannel(
-        listed.map((channel) => channel.channelId),
-      );
+      const ids = listed.map((channel) => channel.channelId);
+      const counts = await c.var.registry.countEpisodesByChannel(ids);
+      const followers = await c.var.registry.countFollowers(ids);
       return c.json<ChannelsResponse>({
         channels: listed.map((channel) =>
           toChannel(channel, {
             following: following.has(channel.channelId),
             processedCount: counts[channel.channelId]?.processed ?? 0,
+            followerCount: followers[channel.channelId] ?? 0,
           }),
         ),
       });
@@ -138,7 +145,11 @@ export const channelRoutes = new Hono<AppEnv>()
         {
           channel: owner
             ? await ownerChannel(c, channel.channelId)
-            : toChannel(channel, { following: false, processedCount: 0 }),
+            : toChannel(channel, {
+                following: false,
+                processedCount: 0,
+                followerCount: 0,
+              }),
         },
         201,
       );
@@ -168,10 +179,14 @@ export const channelRoutes = new Hono<AppEnv>()
       const counts = await c.var.registry.countEpisodesByChannel([
         channel.channelId,
       ]);
+      const followers = await c.var.registry.countFollowers([
+        channel.channelId,
+      ]);
       return c.json<ChannelResponse>({
         channel: toChannel(channel, {
           following: await isFollowing(c, channel.channelId),
           processedCount: counts[channel.channelId]?.processed ?? 0,
+          followerCount: followers[channel.channelId] ?? 0,
         }),
       });
     },
@@ -257,6 +272,29 @@ export const channelRoutes = new Hono<AppEnv>()
       );
       return c.json<IngestionRunsResponse>({ runs });
     },
+  )
+
+  .get(
+    "/:id/followers",
+    describeRoute({
+      tags: ["channels"],
+      summary: "List a channel's active followers (owner)",
+      description:
+        "Emails and follow times, oldest first. The web shows emails only in the queue.",
+      responses: {
+        200: jsonResponse(FollowersResponseSchema, "Active followers."),
+        ...errorResponses({ owner: true, notFound: true }),
+      },
+    }),
+    requireOwner,
+    validate("param", ChannelParamsSchema),
+    async (c) =>
+      c.json<FollowersResponse>({
+        followers: await c.var.registry.listFollowers(
+          c.var.identity.email,
+          c.req.valid("param").id,
+        ),
+      }),
   );
 
 /** Every caller sees a channel in any status; only an unknown id is 404. */
@@ -283,9 +321,11 @@ export async function ownerChannel(
     [channelId],
   );
   if (!row) throw new DomainError("NOT_FOUND", "channel not found");
+  const followers = await c.var.registry.countFollowers([channelId]);
   return toChannel(row.channel, {
     following: await isFollowing(c, channelId),
     processedCount: row.episodes.processed,
+    followerCount: followers[channelId] ?? 0,
     management: row,
   });
 }

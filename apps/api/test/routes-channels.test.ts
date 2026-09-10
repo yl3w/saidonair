@@ -4,6 +4,7 @@ import {
   ChannelResponseSchema,
   ChannelsResponseSchema,
   EpisodesResponseSchema,
+  FollowersResponseSchema,
   IngestionRunsResponseSchema,
 } from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
@@ -86,12 +87,22 @@ describe("channel and catalog routes", () => {
       ["GET", "/catalog"],
       ["GET", "/channels?scope=all"],
       ["GET", `/channels/${CHANNEL_A}/ingestion-runs`],
+      ["GET", `/channels/${CHANNEL_A}/followers`],
     ];
     for (const [method, path, body] of ownerOnly) {
       const { status, json } = await call(ALICE, method, path, body);
       expect(status, `${method} ${path}`).toBe(403);
       expect(json.code).toBe("NOT_OWNER");
     }
+
+    const followers = await call(
+      OWNER,
+      "GET",
+      `/channels/${CHANNEL_A}/followers`,
+    );
+    expect(followers.status).toBe(200);
+    expectShape(FollowersResponseSchema, followers.json);
+    expect(followers.json.followers).toEqual([]);
 
     const catalog = await call(OWNER, "GET", "/catalog");
     expectShape(CatalogResponseSchema, catalog.json);

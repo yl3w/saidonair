@@ -9,12 +9,14 @@ import { applyMigrations } from "./migrations";
 import * as catalog from "./registry/catalog";
 import * as channels from "./registry/channels";
 import * as episodes from "./registry/episodes";
+import * as followers from "./registry/followers";
 import * as runs from "./registry/runs";
 import type {
   CatalogChannel,
   ChannelManagementRecord,
   CreateChannelInput,
   EpisodeRecord,
+  FollowerRecord,
   IngestionRunRecord,
   ListEpisodesOptions,
   RegistryUser,
@@ -107,7 +109,11 @@ export class RegistryDO extends DurableObject<Env> {
     );
   }
 
-  /** Owner: `requested | declined → approved`. `importStarts` is true when approved_at was null before. */
+  /**
+   * Owner: `requested | declined → approved`. `importStarts` is true when approved_at was null
+   * before. A channel nobody actively follows is paused by the system at once, so approving one
+   * with no followers never leaves it running unattended (Ruling R4).
+   */
   approveChannel(
     actorEmail: string,
     channelId: string,
@@ -119,13 +125,25 @@ export class RegistryDO extends DurableObject<Env> {
         this.#sql,
         requireChannelId(channelId),
       );
-      const channel = channels.approveChannel(
+      const now = Date.now();
+      let channel = channels.approveChannel(
         this.#sql,
         before.channelId,
         reviewer,
         input,
-        Date.now(),
+        now,
       );
+      const active = followers.countActiveByChannel(this.#sql, [
+        channel.channelId,
+      ])[channel.channelId];
+      if ((active ?? 0) === 0) {
+        channel = channels.setPause(
+          this.#sql,
+          channel.channelId,
+          "system",
+          now,
+        );
+      }
       return { channel, importStarts: before.approvedAt === null };
     });
   }
@@ -230,6 +248,47 @@ export class RegistryDO extends DurableObject<Env> {
     this.#assertOwner(actorEmail);
     this.#requireChannel(channelId);
     return runs.listByChannel(this.#sql, requireChannelId(channelId));
+  }
+
+  // --- followers --------------------------------------------------------------
+
+  /**
+   * Anyone: records the caller's follow, keeping the Registry's follower record in step with the
+   * User DO's own list. `ensureUser` runs first so the foreign key holds for a direct RPC caller
+   * that never went through the identity middleware.
+   */
+  recordFollow(email: string, channelId: string): CatalogChannel {
+    const actor = users.requireEmail(email);
+    return this.#transaction(() => {
+      const now = Date.now();
+      users.ensureUser(this.#sql, actor, now);
+      return followers.recordFollow(this.#sql, channelId, actor, now);
+    });
+  }
+
+  /** Anyone: records the caller's unfollow; the last follower leaving pauses an approved channel. */
+  recordUnfollow(email: string, channelId: string): CatalogChannel {
+    const actor = users.requireEmail(email);
+    return this.#transaction(() => {
+      const now = Date.now();
+      users.ensureUser(this.#sql, actor, now);
+      return followers.recordUnfollow(this.#sql, channelId, actor, now);
+    });
+  }
+
+  /** Active followers per channel, zero-filled; any caller may check counts for channels they can see. */
+  countFollowers(channelIds: string[]): Record<string, number> {
+    return followers.countActiveByChannel(
+      this.#sql,
+      requireChannelIds(channelIds),
+    );
+  }
+
+  /** Owner: one channel's active followers, oldest first. */
+  listFollowers(actorEmail: string, channelId: string): FollowerRecord[] {
+    this.#assertOwner(actorEmail);
+    this.#requireChannel(channelId);
+    return followers.listActive(this.#sql, requireChannelId(channelId));
   }
 
   // --- internals (not reachable over RPC) -----------------------------------

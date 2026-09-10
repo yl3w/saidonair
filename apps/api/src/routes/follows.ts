@@ -1,4 +1,6 @@
 import {
+  type ChannelDeclinedResponse,
+  ChannelDeclinedResponseSchema,
   type Follow,
   FollowParamsSchema,
   type FollowResponse,
@@ -51,6 +53,7 @@ export const followRoutes = new Hono<AppEnv>()
         ]),
       );
       const counts = await c.var.registry.countEpisodesByChannel(ids);
+      const followers = await c.var.registry.countFollowers(ids);
       const unread = await unreadByChannel(c, ids);
 
       const rows: Follow[] = [];
@@ -60,6 +63,7 @@ export const followRoutes = new Hono<AppEnv>()
         rows.push(
           toFollow(follow, channel, {
             processedCount: counts[follow.channelId]?.processed ?? 0,
+            followerCount: followers[follow.channelId] ?? 0,
             unreadCount: unread[follow.channelId] ?? 0,
           }),
         );
@@ -85,10 +89,11 @@ export const followRoutes = new Hono<AppEnv>()
           FollowResponseSchema,
           "The follow, with its channel.",
         ),
-        ...errorResponses({
-          notFound: true,
-          conflict: "Only requested or approved channels can be followed",
-        }),
+        ...errorResponses({ notFound: true }),
+        409: jsonResponse(
+          ChannelDeclinedResponseSchema,
+          "The channel is declined (`INVALID_STATE`).",
+        ),
       },
     }),
     validate("param", FollowParamsSchema),
@@ -97,14 +102,25 @@ export const followRoutes = new Hono<AppEnv>()
       const channel = await c.var.registry.getChannel(channelId);
       if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
       if (channel.status === "declined") {
-        throw new DomainError(
-          "INVALID_STATE",
-          "only requested or approved channels can be followed",
+        return c.json<ChannelDeclinedResponse>(
+          {
+            error: "channel was declined by the owner; request it again",
+            code: "INVALID_STATE",
+            channelId: channel.channelId,
+            status: "declined",
+            reviewNote: channel.reviewNote,
+            reviewedAt: channel.reviewedAt,
+          },
+          409,
         );
       }
       const follow = await c.var.user.follow(channelId);
+      const current = await c.var.registry.recordFollow(
+        c.var.identity.email,
+        channelId,
+      );
       return c.json<FollowResponse>({
-        follow: await followView(c, follow, channel),
+        follow: await followView(c, follow, current),
       });
     },
   )
@@ -128,10 +144,12 @@ export const followRoutes = new Hono<AppEnv>()
     async (c) => {
       const { channelId } = c.req.valid("param");
       const follow = await c.var.user.unfollow(channelId);
-      const channel = await c.var.registry.getChannel(channelId);
-      if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
+      const current = await c.var.registry.recordUnfollow(
+        c.var.identity.email,
+        channelId,
+      );
       return c.json<FollowResponse>({
-        follow: await followView(c, follow, channel),
+        follow: await followView(c, follow, current),
       });
     },
   );
@@ -144,9 +162,11 @@ async function followView(
   const counts = await c.var.registry.countEpisodesByChannel([
     channel.channelId,
   ]);
+  const followers = await c.var.registry.countFollowers([channel.channelId]);
   const unread = await unreadByChannel(c, [channel.channelId]);
   return toFollow(follow, channel, {
     processedCount: counts[channel.channelId]?.processed ?? 0,
+    followerCount: followers[channel.channelId] ?? 0,
     unreadCount: unread[channel.channelId] ?? 0,
   });
 }
@@ -171,7 +191,7 @@ async function unreadByChannel(
 function toFollow(
   follow: ChannelFollow,
   channel: CatalogChannel,
-  view: { processedCount: number; unreadCount: number },
+  view: { processedCount: number; followerCount: number; unreadCount: number },
 ): Follow {
   return {
     channelId: follow.channelId,
@@ -180,6 +200,7 @@ function toFollow(
     channel: toChannel(channel, {
       following: follow.unfollowedAt === null,
       processedCount: view.processedCount,
+      followerCount: view.followerCount,
     }),
     unreadCount: view.unreadCount,
   };

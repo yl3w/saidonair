@@ -55,6 +55,9 @@ export type ReviewInput = {
   explanation?: string;
 };
 
+/** One active or former follower of a channel, as the owner's queue shows it. */
+export type FollowerRecord = { email: string; followedAt: number };
+
 /** Owner-only processing detail of an episode; routes drop it for readers. */
 export type EpisodeProcessingRecord = {
   attemptCount: number;

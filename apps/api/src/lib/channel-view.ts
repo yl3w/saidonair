@@ -12,6 +12,7 @@ export function isApproved(channel: CatalogChannel): boolean {
 export type ChannelView = {
   following: boolean;
   processedCount: number;
+  followerCount: number;
   /** Present only when the caller is the owner. */
   management?: ChannelManagementRecord;
 };
@@ -34,6 +35,7 @@ export function toChannel(channel: CatalogChannel, view: ChannelView): Channel {
     lastIngestedAt: channel.lastIngestedAt,
     processedCount: view.processedCount,
     following: view.following,
+    followerCount: view.followerCount,
   };
   return view.management
     ? { ...base, management: toManagement(view.management) }

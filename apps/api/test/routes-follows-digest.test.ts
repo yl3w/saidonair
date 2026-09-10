@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import {
+  ChannelDeclinedResponseSchema,
   DigestResponseSchema,
   FollowResponseSchema,
   FollowsResponseSchema,
@@ -92,11 +93,30 @@ describe("follow routes", () => {
       channelId: CHANNEL_A,
       unfollowedAt: null,
       unreadCount: 3,
-      channel: { following: true, status: "approved", processedCount: 3 },
+      channel: {
+        following: true,
+        status: "approved",
+        processedCount: 3,
+        followerCount: 1,
+      },
     });
-    expect((await call(ALICE, "PUT", `/follows/${CHANNEL_D}`)).status).toBe(
-      409,
-    );
+    const channelsAfterFollow = await call(ALICE, "GET", "/channels");
+    expect(
+      (channelsAfterFollow.json.channels as Json[]).find(
+        (row) => row.channelId === CHANNEL_A,
+      ),
+    ).toMatchObject({ followerCount: 1 });
+
+    // Alice is the only follower; unfollowing pauses the channel, and refollowing resumes it.
+    const soleUnfollow = await call(ALICE, "DELETE", `/follows/${CHANNEL_A}`);
+    expect(soleUnfollow.json.follow).toMatchObject({
+      channel: { paused: true, pausedBy: "system", followerCount: 0 },
+    });
+    await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
+
+    const declinedFollow = await call(ALICE, "PUT", `/follows/${CHANNEL_D}`);
+    expect(declinedFollow.status).toBe(409);
+    expectShape(ChannelDeclinedResponseSchema, declinedFollow.json);
     expect(
       (await call(ALICE, "PUT", "/follows/UCZZZZZZZZZZZZZZZZZZZZZZ")).status,
     ).toBe(404);

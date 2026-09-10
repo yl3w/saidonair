@@ -95,6 +95,7 @@ describe("GET /openapi.json", () => {
       "Episode",
       "EpisodeSummary",
       "Follow",
+      "Follower",
       "Catalog",
       "IngestionRun",
     ]) {
