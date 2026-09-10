@@ -16,7 +16,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_WINDOW_MS = 7 * DAY_MS;
 
 /**
- * The caller's digest: processed episodes with summaries from eligible follows, newest first.
+ * The caller's digest: available episodes with summaries from eligible follows, newest first.
  * Returning a summary records the caller's read receipt (AGENTS.md → Data & schema conventions);
  * `wasUnread` tells the UI which items were new before this response.
  */
@@ -26,7 +26,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
     tags: ["digest"],
     summary: "The caller's digest",
     description:
-      "Processed episodes with summaries from eligible follows (active follows on approved channels), newest first. The window defaults to the last 24 hours and is clamped to 7 days. Returning a summary records the caller's read receipt; `wasUnread` says which items were new.",
+      "Available episodes with summaries from eligible follows (active follows on approved channels), newest first. The window defaults to the last 24 hours and is clamped to 7 days. Returning a summary records the caller's read receipt; `wasUnread` says which items were new.",
     responses: {
       200: jsonResponse(
         DigestResponseSchema,

@@ -61,26 +61,41 @@ CREATE TABLE channel_followers (
 
 CREATE INDEX channel_followers_channel_id_unfollowed_at ON channel_followers (channel_id, unfollowed_at);
 
+-- Episodes carry the state machine. `pending` may be waiting; `failed` is a technical error that survived three
+-- attempts; `skipped` is a deliberate, reversible outcome by the system or the owner.
 CREATE TABLE episodes (
   video_id TEXT PRIMARY KEY,
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
   title TEXT NOT NULL,
   published_at INTEGER NOT NULL CHECK (published_at >= 0),
-  status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'processed', 'no_transcript', 'failed')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'available', 'failed', 'skipped')),
+  waiting_code TEXT CHECK (waiting_code IS NULL OR waiting_code IN ('CAPTIONS', 'LIVE_OR_UPCOMING', 'PROVIDER_LIMIT')),
   attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
   failure_code TEXT,
   failure_detail TEXT,
+  skip_reason TEXT CHECK (
+    skip_reason IS NULL
+    OR skip_reason IN ('SHORT', 'NON_ENGLISH', 'NO_CAPTIONS', 'LIVE_OR_UPCOMING', 'UNPLAYABLE', 'OWNER')
+  ),
+  skipped_at INTEGER CHECK (skipped_at IS NULL OR skipped_at >= 0),
+  skipped_by_email TEXT REFERENCES global_users (email),
   transcript_checked_at INTEGER CHECK (transcript_checked_at IS NULL OR transcript_checked_at >= 0),
   chunk_count INTEGER CHECK (chunk_count IS NULL OR chunk_count >= 0),
   vectorized_at INTEGER CHECK (vectorized_at IS NULL OR vectorized_at >= 0),
   processed_at INTEGER CHECK (processed_at IS NULL OR processed_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  -- Processed means the full vector set is retrievable and a summary exists.
+  -- Available means the full vector set is retrievable and a summary exists.
   CHECK (
-    status <> 'processed'
+    status <> 'available'
     OR (chunk_count IS NOT NULL AND chunk_count > 0 AND vectorized_at IS NOT NULL AND processed_at IS NOT NULL)
-  )
+  ),
+  CHECK (waiting_code IS NULL OR status = 'pending'),
+  CHECK (status <> 'failed' OR failure_code IS NOT NULL),
+  CHECK ((status = 'skipped') = (skip_reason IS NOT NULL)),
+  CHECK (status <> 'skipped' OR skipped_at IS NOT NULL),
+  CHECK (skipped_by_email IS NULL OR skip_reason = 'OWNER'),
+  CHECK (skip_reason IS NULL OR skip_reason <> 'OWNER' OR skipped_by_email IS NOT NULL)
 );
 
 CREATE INDEX episodes_channel_id_status_published_at ON episodes (channel_id, status, published_at);
@@ -124,10 +139,11 @@ CREATE UNIQUE INDEX ingestion_runs_one_active_per_channel
   ON ingestion_runs (channel_id) WHERE status IN ('queued', 'running');
 
 -- Per-run outcomes stay historical even after a later retry changes the episode's current status.
+-- `selected` is the row's state until the run reaches the episode; `not_attempted` is a run that ended early.
 CREATE TABLE ingestion_run_episodes (
   run_id TEXT NOT NULL REFERENCES ingestion_runs (run_id),
   video_id TEXT NOT NULL REFERENCES episodes (video_id),
-  status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'processed', 'no_transcript', 'failed', 'skipped')),
+  status TEXT NOT NULL CHECK (status IN ('selected', 'available', 'failed', 'skipped', 'waiting', 'not_attempted')),
   failure_code TEXT,
   started_at INTEGER CHECK (started_at IS NULL OR started_at >= 0),
   finished_at INTEGER CHECK (finished_at IS NULL OR finished_at >= 0),

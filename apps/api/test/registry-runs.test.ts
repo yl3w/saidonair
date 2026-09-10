@@ -26,7 +26,10 @@ describe("registry ingestion runs", () => {
       status: "approved",
     });
     await seedEpisode(VIDEO_A, CHANNEL_A);
-    await seedEpisode(VIDEO_B, CHANNEL_A, { status: "no_transcript" });
+    await seedEpisode(VIDEO_B, CHANNEL_A, {
+      status: "pending",
+      waitingCode: "CAPTIONS",
+    });
 
     const first = await seedRun(CHANNEL_A, {
       kind: "initial",
@@ -38,7 +41,7 @@ describe("registry ingestion runs", () => {
       episodeLimit: 5,
       episodes: [
         { videoId: VIDEO_A, status: "failed", failureCode: "FETCH_FAILED" },
-        { videoId: VIDEO_B, status: "no_transcript" },
+        { videoId: VIDEO_B, status: "waiting" },
       ],
     });
     const second = await seedRun(CHANNEL_A, {
@@ -49,7 +52,7 @@ describe("registry ingestion runs", () => {
       finishedAt: 2_500,
       lifecycleVersion: 2,
       episodes: [
-        { videoId: VIDEO_A, status: "processed" },
+        { videoId: VIDEO_A, status: "available" },
         { videoId: VIDEO_B, status: "skipped" },
       ],
     });
@@ -64,7 +67,7 @@ describe("registry ingestion runs", () => {
       lifecycleVersion: 2,
       finishedAt: 2_500,
       episodes: [
-        { videoId: VIDEO_A, status: "processed", failureCode: null },
+        { videoId: VIDEO_A, status: "available", failureCode: null },
         { videoId: VIDEO_B, status: "skipped" },
       ],
     });
@@ -75,7 +78,7 @@ describe("registry ingestion runs", () => {
         status: "failed",
         failureCode: "FETCH_FAILED",
       }),
-      expect.objectContaining({ videoId: VIDEO_B, status: "no_transcript" }),
+      expect.objectContaining({ videoId: VIDEO_B, status: "waiting" }),
     ]);
 
     expect(await stub.listRuns(OWNER, CHANNEL_B)).toEqual([

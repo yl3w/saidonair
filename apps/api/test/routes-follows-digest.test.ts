@@ -43,7 +43,7 @@ const VIDEO_D = "ddddddddddd";
 const VIDEO_OLD = "olderolderx";
 
 /**
- * A: approved, VIDEO_A (1h ago), VIDEO_B (3d ago), VIDEO_OLD (10d ago) processed with summaries,
+ * A: approved, VIDEO_A (1h ago), VIDEO_B (3d ago), VIDEO_OLD (10d ago) available with summaries,
  * VIDEO_C failed. B: approved, VIDEO_D (2h ago). C: requested. D: declined (was approved).
  */
 async function seedCatalog(now: number) {
@@ -96,7 +96,7 @@ describe("follow routes", () => {
       channel: {
         following: true,
         status: "approved",
-        processedCount: 3,
+        episodes: expect.objectContaining({ available: 3 }),
         followerCount: 1,
       },
     });

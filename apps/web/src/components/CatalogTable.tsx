@@ -48,13 +48,6 @@ export function CatalogTable({
           <tbody>
             {shown.map((c) => {
               const m = c.management;
-              const tracked = m
-                ? m.episodes.processed +
-                  m.episodes.pending +
-                  m.episodes.processing +
-                  m.episodes.noTranscript +
-                  m.episodes.failed
-                : c.processedCount;
               return (
                 <tr key={c.channelId}>
                   <td class="wrap">
@@ -65,15 +58,12 @@ export function CatalogTable({
                     {c.paused && " · paused"}
                   </td>
                   <td>
-                    {c.processedCount} / {tracked}
-                    {m && m.episodes.noTranscript > 0 && (
-                      <span class="muted">
-                        {" "}
-                        · {m.episodes.noTranscript} no captions
-                      </span>
+                    {c.episodes.available} / {c.episodes.tracked}
+                    {c.episodes.waiting > 0 && (
+                      <span class="muted"> · {c.episodes.waiting} waiting</span>
                     )}
-                    {m && m.episodes.failed > 0 && (
-                      <span class="muted"> · {m.episodes.failed} failed</span>
+                    {c.episodes.failed > 0 && (
+                      <span class="muted"> · {c.episodes.failed} failed</span>
                     )}
                   </td>
                   <td>

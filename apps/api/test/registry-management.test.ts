@@ -18,7 +18,7 @@ import {
 } from "./helpers";
 
 /**
- * A: approved, two processed and one failed episode, a completed run.
+ * A: approved, two available and one failed episode, a completed run.
  * B: approved with a queued run. C: approved with no run (never started). D: requested.
  * E: approved but paused by the owner (counts only as paused).
  */
@@ -66,7 +66,7 @@ describe("registry catalog summary and management", () => {
 
     expect(await stub.getCatalogSummary(OWNER)).toEqual({
       channels: { requested: 1, approved: 3, paused: 1, declined: 0 },
-      episodes: { processed: 2, tracked: 3 },
+      episodes: { available: 2, pending: 0, waiting: 0, failed: 1, skipped: 0 },
       runs: { active: 1 },
       lastSuccessfulIngestionAt: 150,
     });
@@ -76,7 +76,7 @@ describe("registry catalog summary and management", () => {
   it("is empty-safe before anything exists", async () => {
     expect(await registry().getCatalogSummary(OWNER)).toEqual({
       channels: { requested: 0, approved: 0, paused: 0, declined: 0 },
-      episodes: { processed: 0, tracked: 0 },
+      episodes: { available: 0, pending: 0, waiting: 0, failed: 0, skipped: 0 },
       runs: { active: 0 },
       lastSuccessfulIngestionAt: null,
     });
@@ -90,7 +90,7 @@ describe("registry catalog summary and management", () => {
     const byId = new Map(rows.map((r) => [r.channel.channelId, r]));
 
     expect(byId.get(CHANNEL_A)).toMatchObject({
-      episodes: { processed: 2, failed: 1, pending: 0 },
+      episodes: { available: 2, failed: 1, pending: 0 },
       latestRun: { kind: "scheduled", status: "completed", finishedAt: 150 },
       neverStarted: false,
     });
@@ -100,7 +100,7 @@ describe("registry catalog summary and management", () => {
     });
     // Approved with no run row at all.
     expect(byId.get(CHANNEL_C)).toMatchObject({
-      episodes: { processed: 0 },
+      episodes: { available: 0 },
       latestRun: null,
       neverStarted: true,
     });

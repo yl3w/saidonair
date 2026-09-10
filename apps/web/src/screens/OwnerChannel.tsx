@@ -72,7 +72,11 @@ function OwnerChannelScreen() {
                       </td>
                       <td>{e.status.replace("_", " ")}</td>
                       <td>{e.processing?.attemptCount ?? "—"}</td>
-                      <td>{e.processing?.failureCode ?? "—"}</td>
+                      <td>
+                        {e.processing?.skipReason ??
+                          e.processing?.failureCode ??
+                          "—"}
+                      </td>
                       <td>{e.processing?.chunkCount ?? "—"}</td>
                       <td>{e.summary?.format ?? "—"}</td>
                       <td>

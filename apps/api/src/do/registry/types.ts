@@ -1,8 +1,10 @@
 import type {
   ChannelStatus,
   EpisodeCounts,
+  EpisodeSkipReason,
   EpisodeStatus,
   EpisodeSummary,
+  EpisodeWaitingCode,
   IngestionRunEpisodeStatus,
   IngestionRunKind,
   IngestionRunStatus,
@@ -63,6 +65,10 @@ export type EpisodeProcessingRecord = {
   attemptCount: number;
   failureCode: string | null;
   failureDetail: string | null;
+  waitingCode: EpisodeWaitingCode | null;
+  skipReason: EpisodeSkipReason | null;
+  skippedAt: number | null;
+  skippedByEmail: string | null;
   transcriptCheckedAt: number | null;
   chunkCount: number | null;
   vectorizedAt: number | null;

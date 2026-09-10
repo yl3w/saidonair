@@ -1,6 +1,7 @@
 import {
   type ChannelDeclinedResponse,
   ChannelDeclinedResponseSchema,
+  type EpisodeCounts,
   type Follow,
   FollowParamsSchema,
   type FollowResponse,
@@ -13,7 +14,7 @@ import { describeRoute } from "hono-openapi";
 import type { CatalogChannel } from "../do/registry/types";
 import type { ChannelFollow } from "../do/user/types";
 import type { AppEnv } from "../env";
-import { toChannel } from "../lib/channel-view";
+import { toChannel, zeroEpisodeCounts } from "../lib/channel-view";
 import { DomainError } from "../lib/errors";
 import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
@@ -23,7 +24,7 @@ type Ctx = Context<AppEnv>;
 /**
  * The caller's follows. Each embeds its channel, so a follow whose channel the owner has declined
  * still lists, with its status, and reads again once the channel is approved (AGENTS.md).
- * Unread = processed episodes the caller has no read receipt for.
+ * Unread = available episodes the caller has no read receipt for.
  */
 export const followRoutes = new Hono<AppEnv>()
   .get(
@@ -62,7 +63,7 @@ export const followRoutes = new Hono<AppEnv>()
         if (!channel) continue; // a follow of an id the Registry never had; nothing to show
         rows.push(
           toFollow(follow, channel, {
-            processedCount: counts[follow.channelId]?.processed ?? 0,
+            episodes: counts[follow.channelId] ?? zeroEpisodeCounts(),
             followerCount: followers[follow.channelId] ?? 0,
             unreadCount: unread[follow.channelId] ?? 0,
           }),
@@ -165,18 +166,18 @@ async function followView(
   const followers = await c.var.registry.countFollowers([channel.channelId]);
   const unread = await unreadByChannel(c, [channel.channelId]);
   return toFollow(follow, channel, {
-    processedCount: counts[channel.channelId]?.processed ?? 0,
+    episodes: counts[channel.channelId] ?? zeroEpisodeCounts(),
     followerCount: followers[channel.channelId] ?? 0,
     unreadCount: unread[channel.channelId] ?? 0,
   });
 }
 
-/** Processed episodes minus the caller's read receipts, per channel. Absent means zero. */
+/** Available episodes minus the caller's read receipts, per channel. Absent means zero. */
 async function unreadByChannel(
   c: Ctx,
   channelIds: string[],
 ): Promise<Record<string, number>> {
-  const processed = await c.var.registry.listProcessedVideoIds(channelIds);
+  const processed = await c.var.registry.listAvailableVideoIds(channelIds);
   if (processed.length === 0) return {};
   const read = new Set(
     await c.var.user.readVideoIds(processed.map((p) => p.videoId)),
@@ -191,7 +192,11 @@ async function unreadByChannel(
 function toFollow(
   follow: ChannelFollow,
   channel: CatalogChannel,
-  view: { processedCount: number; followerCount: number; unreadCount: number },
+  view: {
+    episodes: EpisodeCounts;
+    followerCount: number;
+    unreadCount: number;
+  },
 ): Follow {
   return {
     channelId: follow.channelId,
@@ -199,7 +204,7 @@ function toFollow(
     unfollowedAt: follow.unfollowedAt,
     channel: toChannel(channel, {
       following: follow.unfollowedAt === null,
-      processedCount: view.processedCount,
+      episodes: view.episodes,
       followerCount: view.followerCount,
     }),
     unreadCount: view.unreadCount,

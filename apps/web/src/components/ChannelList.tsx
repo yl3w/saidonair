@@ -28,8 +28,9 @@ export function FollowedList({
             <div class="meta">
               {channel.status === "approved" ? (
                 <>
-                  {channel.processedCount} processed · {unreadCount} unread ·
-                  ingested <Time at={channel.lastIngestedAt} fallback="never" />
+                  {channel.episodes.available} available · {unreadCount} unread
+                  · ingested{" "}
+                  <Time at={channel.lastIngestedAt} fallback="never" />
                 </>
               ) : (
                 CHANNEL_STATUS_COPY[channel.status]
@@ -76,7 +77,7 @@ export function AvailableList({
         <div class="row" key={channel.channelId}>
           <div class="grow">
             <a href={`/channel/${channel.channelId}`}>{channel.title}</a>
-            <div class="meta">{channel.processedCount} processed</div>
+            <div class="meta">{channel.episodes.available} available</div>
           </div>
           <button
             type="button"

@@ -70,7 +70,8 @@ function ChannelScreen() {
             <a href={channel.data.channel.canonicalUrl}>
               {channel.data.channel.channelId}
             </a>{" "}
-            · {channel.data.channel.processedCount} processed · last ingested{" "}
+            · {channel.data.channel.episodes.available} /{" "}
+            {channel.data.channel.episodes.tracked} available · last ingested{" "}
             <Time at={channel.data.channel.lastIngestedAt} fallback="never" />
           </p>
           <p>

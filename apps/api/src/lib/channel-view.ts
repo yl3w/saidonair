@@ -1,4 +1,8 @@
-import type { Channel, ChannelManagement } from "@media-digest/shared";
+import type {
+  Channel,
+  ChannelManagement,
+  EpisodeCounts,
+} from "@media-digest/shared";
 import type {
   CatalogChannel,
   ChannelManagementRecord,
@@ -9,9 +13,20 @@ export function isApproved(channel: CatalogChannel): boolean {
   return channel.status === "approved";
 }
 
+export function zeroEpisodeCounts(): EpisodeCounts {
+  return {
+    tracked: 0,
+    available: 0,
+    pending: 0,
+    waiting: 0,
+    failed: 0,
+    skipped: 0,
+  };
+}
+
 export type ChannelView = {
   following: boolean;
-  processedCount: number;
+  episodes: EpisodeCounts;
   followerCount: number;
   /** Present only when the caller is the owner. */
   management?: ChannelManagementRecord;
@@ -33,7 +48,7 @@ export function toChannel(channel: CatalogChannel, view: ChannelView): Channel {
     reviewedAt: channel.reviewedAt,
     reviewNote: channel.reviewNote,
     lastIngestedAt: channel.lastIngestedAt,
-    processedCount: view.processedCount,
+    episodes: view.episodes,
     following: view.following,
     followerCount: view.followerCount,
   };

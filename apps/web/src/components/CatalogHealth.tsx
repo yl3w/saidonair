@@ -17,6 +17,8 @@ export function CatalogHealth({
   onFilter: (filter: CatalogFilter) => void;
 }) {
   const c = catalog.channels;
+  const e = catalog.episodes;
+  const tracked = e.available + e.pending + e.waiting + e.failed + e.skipped;
   const count = (label: string, n: number, filter: CatalogFilter) => (
     <button type="button" onClick={() => onFilter(filter)}>
       {label} {n}
@@ -29,8 +31,7 @@ export function CatalogHealth({
       {count("Paused", c.paused, "paused")}
       {count("Declined", c.declined, "declined")}
       <span>
-        Episodes {catalog.episodes.processed} processed /{" "}
-        {catalog.episodes.tracked} tracked
+        Episodes {e.available} available / {tracked} tracked
       </span>
       <span>Runs active {catalog.runs.active}</span>
       <span>

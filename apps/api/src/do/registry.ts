@@ -204,11 +204,11 @@ export class RegistryDO extends DurableObject<Env> {
 
   // --- episodes -------------------------------------------------------------
 
-  /** Processed video ids for the given channels; routes derive counts and unread state. */
-  listProcessedVideoIds(
+  /** Available video ids for the given channels; routes derive counts and unread state. */
+  listAvailableVideoIds(
     channelIds: string[],
   ): { channelId: string; videoId: string }[] {
-    return episodes.listProcessedVideoIds(
+    return episodes.listAvailableVideoIds(
       this.#sql,
       requireChannelIds(channelIds),
     );

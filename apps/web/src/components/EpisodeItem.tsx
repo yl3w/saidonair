@@ -19,7 +19,7 @@ export function EpisodeItem({
       <div>
         {episode.wasUnread === true && <span class="new">NEW</span>}
         <a href={`https://youtu.be/${episode.videoId}`}>{episode.title}</a>
-        {episode.status !== "processed" && (
+        {episode.status !== "available" && (
           <span class="tag"> · {episode.status.replace("_", " ")}</span>
         )}
       </div>

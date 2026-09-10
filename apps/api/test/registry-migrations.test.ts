@@ -40,22 +40,50 @@ describe("registry migrations", () => {
     await stub.ensureUser(ALICE);
     await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;
-      const insert = (cols: string, vals: string) =>
+      const insert = (id: string, cols: string, vals: string) =>
         sql.exec(
-          `INSERT INTO channels (channel_id, title, canonical_url, ${cols}, updated_at, created_at) VALUES ('UCx', 't', 'u', ${vals}, 1, 1)`,
+          `INSERT INTO channels (channel_id, title, canonical_url, ${cols}, updated_at, created_at) VALUES ('${id}', 't', 'u', ${vals}, 1, 1)`,
         );
-      expect(() => insert("status", "'approved'")).toThrow(/CHECK/i);
-      expect(() => insert("status", "'declined'")).toThrow(/CHECK/i);
+      expect(() => insert("UCx", "status", "'approved'")).toThrow(/CHECK/i);
+      expect(() => insert("UCx", "status", "'declined'")).toThrow(/CHECK/i);
       expect(() =>
-        insert("status, paused_by, paused_at", "'requested', 'system', 1"),
+        insert(
+          "UCx",
+          "status, paused_by, paused_at",
+          "'requested', 'system', 1",
+        ),
       ).toThrow(/CHECK/i);
-      expect(() => insert("status", "'pending'")).toThrow(/CHECK/i);
-      insert("status", "'requested'");
+      expect(() => insert("UCx", "status", "'pending'")).toThrow(/CHECK/i);
+      // Isolates the approved_at check: review fields are set, approved_at is not.
+      expect(() =>
+        insert(
+          "UCy",
+          "status, reviewed_at, reviewed_by_email",
+          "'approved', 1, 'alice@example.com'",
+        ),
+      ).toThrow(/CHECK/i);
+      insert("UCx", "status", "'requested'");
       expect(() =>
         sql.exec(
           "UPDATE channels SET paused_by = 'owner' WHERE channel_id = 'UCx'",
         ),
       ).toThrow(/CHECK/i);
+
+      // Isolates the pause-pair check on an approved row: paused_by alone must fail,
+      // paused_by with paused_at must pass.
+      insert(
+        "UCz",
+        "status, approved_at, reviewed_at, reviewed_by_email",
+        "'approved', 1, 1, 'alice@example.com'",
+      );
+      expect(() =>
+        sql.exec(
+          "UPDATE channels SET paused_by = 'owner' WHERE channel_id = 'UCz'",
+        ),
+      ).toThrow(/CHECK/i);
+      sql.exec(
+        "UPDATE channels SET paused_by = 'owner', paused_at = 1 WHERE channel_id = 'UCz'",
+      );
     });
   });
 
@@ -70,58 +98,49 @@ describe("registry migrations", () => {
     expect(applied).toEqual([]);
   });
 
-  it("requires a positive chunk count only when an episode is processed", async () => {
+  it("ties episode columns to status", async () => {
     const stub = registry();
     await stub.createChannel(OWNER, {
       channelId: CHANNEL_A,
-      title: "Test",
+      title: "A",
       status: "approved",
     });
-
     await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;
-      for (const count of [null, 0]) {
-        expect(() =>
-          sql.exec(
-            `INSERT INTO episodes
-               (video_id, channel_id, title, published_at, status, chunk_count,
-                vectorized_at, processed_at, created_at, updated_at)
-             VALUES ('invalid', ?, 'Test', 1, 'processed', ?, 1, 1, 1, 1)`,
-            CHANNEL_A,
-            count,
-          ),
-        ).toThrow(/CHECK/i);
-      }
-
-      sql.exec(
-        `INSERT INTO episodes
-           (video_id, channel_id, title, published_at, status, created_at, updated_at)
-         VALUES ('pending', ?, 'Test', 1, 'pending', 1, 1)`,
-        CHANNEL_A,
-      );
-      expect(() =>
+      const insert = (cols: string, vals: string) =>
         sql.exec(
-          `UPDATE episodes SET status = 'processed', vectorized_at = 1, processed_at = 1
-           WHERE video_id = 'pending'`,
+          `INSERT INTO episodes (video_id, channel_id, title, published_at, ${cols}, updated_at, created_at) VALUES ('v', ?, 't', 1, ${vals}, 1, 1)`,
+          CHANNEL_A,
+        );
+      expect(() => insert("status", "'processed'")).toThrow(/CHECK/i);
+      expect(() => insert("status", "'available'")).toThrow(/CHECK/i);
+      expect(() =>
+        insert(
+          "status, chunk_count, vectorized_at, processed_at",
+          "'available', 0, 1, 1",
         ),
       ).toThrow(/CHECK/i);
-
-      sql.exec(
-        `UPDATE episodes SET status = 'processed', chunk_count = 1,
-           vectorized_at = 1, processed_at = 1 WHERE video_id = 'pending'`,
-      );
+      expect(() => insert("status", "'skipped'")).toThrow(/CHECK/i);
       expect(() =>
-        sql.exec(
-          "UPDATE episodes SET chunk_count = NULL WHERE video_id = 'pending'",
+        insert("status, skip_reason, skipped_at", "'skipped', 'OWNER', 1"),
+      ).toThrow(/CHECK/i);
+      expect(() => insert("status, skip_reason", "'pending', 'SHORT'")).toThrow(
+        /CHECK/i,
+      );
+      expect(() => insert("status", "'failed'")).toThrow(/CHECK/i);
+      expect(() =>
+        insert(
+          "status, waiting_code, chunk_count, vectorized_at, processed_at",
+          "'available', 'CAPTIONS', 1, 1, 1",
         ),
       ).toThrow(/CHECK/i);
-      expect(
-        sql
-          .exec<{ status: string; chunk_count: number }>(
-            "SELECT status, chunk_count FROM episodes WHERE video_id = 'pending'",
-          )
-          .one(),
-      ).toEqual({ status: "processed", chunk_count: 1 });
+      insert("status, waiting_code", "'pending', 'CAPTIONS'");
+      sql.exec(
+        "UPDATE episodes SET status = 'skipped', waiting_code = NULL, skip_reason = 'SHORT', skipped_at = 1 WHERE video_id = 'v'",
+      );
+      sql.exec(
+        "UPDATE episodes SET status = 'available', skip_reason = NULL, skipped_at = NULL, chunk_count = 2, vectorized_at = 1, processed_at = 1 WHERE video_id = 'v'",
+      );
     });
   });
 

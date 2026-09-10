@@ -51,7 +51,7 @@ async function call(
 // Feeds come from the YOUTUBE_FEEDS_FAKE binding in vitest.config.ts: CHANNEL_A…D have titles
 // "Feed A"…"Feed D"; CHANNEL_E answers 404 like an unknown id. Nothing here reaches YouTube.
 
-/** A: approved with two processed episodes and one failed; B: requested; C: declined (was approved). */
+/** A: approved with two available episodes and one failed; B: requested; C: declined (was approved). */
 async function seedCatalog() {
   const stub = registry();
   await stub.createChannel(OWNER, {
@@ -110,7 +110,7 @@ describe("channel and catalog routes", () => {
     expect(catalog.status).toBe(200);
     expect(catalog.json.catalog).toMatchObject({
       channels: { requested: 1, approved: 1, paused: 0, declined: 1 },
-      episodes: { processed: 2, tracked: 3 },
+      episodes: { available: 2, pending: 0, waiting: 0, failed: 1, skipped: 0 },
     });
 
     expect((await call(ALICE, "GET", "/channels?scope=bogus")).status).toBe(
@@ -136,7 +136,7 @@ describe("channel and catalog routes", () => {
       status: "approved",
       paused: false,
       following: true,
-      processedCount: 2,
+      episodes: expect.objectContaining({ available: 2 }),
     });
     expect(aliceRows[0]).not.toHaveProperty("management");
 
@@ -184,7 +184,7 @@ describe("channel and catalog routes", () => {
     expect(a.json.channel).toMatchObject({
       channelId: CHANNEL_A,
       following: false,
-      processedCount: 2,
+      episodes: expect.objectContaining({ available: 2 }),
     });
     expect(a.json.channel).not.toHaveProperty("management");
 
@@ -233,7 +233,7 @@ describe("channel and catalog routes", () => {
       title: "Feed A",
       status: "requested",
       following: true,
-      processedCount: 0,
+      episodes: expect.objectContaining({ available: 0 }),
     });
     expect(requested.json.channel).not.toHaveProperty("management");
 

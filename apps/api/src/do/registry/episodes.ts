@@ -1,7 +1,9 @@
 import type {
   EpisodeCounts,
+  EpisodeSkipReason,
   EpisodeStatus,
   EpisodeSummary,
+  EpisodeWaitingCode,
   RelatedEpisode,
 } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
@@ -18,6 +20,10 @@ type EpisodeRow = {
   attempt_count: number;
   failure_code: string | null;
   failure_detail: string | null;
+  waiting_code: string | null;
+  skip_reason: string | null;
+  skipped_at: number | null;
+  skipped_by_email: string | null;
   transcript_checked_at: number | null;
   chunk_count: number | null;
   vectorized_at: number | null;
@@ -33,7 +39,8 @@ type EpisodeRow = {
 };
 
 const EPISODE_SELECT = `SELECT e.video_id, e.channel_id, c.title AS channel_title, e.title, e.published_at,
-    e.status, e.attempt_count, e.failure_code, e.failure_detail, e.transcript_checked_at,
+    e.status, e.attempt_count, e.failure_code, e.failure_detail, e.waiting_code, e.skip_reason,
+    e.skipped_at, e.skipped_by_email, e.transcript_checked_at,
     e.chunk_count, e.vectorized_at, e.processed_at, e.created_at, e.updated_at,
     s.format AS summary_format, s.executive_summary, s.takeaways_json, s.topic_tags_json,
     s.raw_text, s.related_video_ids_json
@@ -44,8 +51,8 @@ const EPISODE_SELECT = `SELECT e.video_id, e.channel_id, c.title AS channel_titl
 export const DEFAULT_EPISODE_LIMIT = 20;
 export const MAX_EPISODE_LIMIT = 200;
 
-/** Processed episodes per channel; callers derive counts and unread state from these. */
-export function listProcessedVideoIds(
+/** Available episodes per channel; callers derive counts and unread state from these. */
+export function listAvailableVideoIds(
   sql: SqlStorage,
   channelIds: readonly string[],
 ): { channelId: string; videoId: string }[] {
@@ -53,7 +60,7 @@ export function listProcessedVideoIds(
   for (const batch of chunk(channelIds)) {
     for (const row of sql.exec<{ channel_id: string; video_id: string }>(
       `SELECT channel_id, video_id FROM episodes
-       WHERE status = 'processed' AND channel_id IN (${placeholders(batch.length)})
+       WHERE status = 'available' AND channel_id IN (${placeholders(batch.length)})
        ORDER BY channel_id, video_id`,
       ...batch,
     )) {
@@ -74,22 +81,26 @@ export function countByChannel(
     for (const row of sql.exec<{
       channel_id: string;
       status: string;
+      waiting: number;
       n: number;
     }>(
-      `SELECT channel_id, status, COUNT(*) AS n FROM episodes
+      `SELECT channel_id, status, (waiting_code IS NOT NULL) AS waiting, COUNT(*) AS n FROM episodes
        WHERE channel_id IN (${placeholders(batch.length)})
-       GROUP BY channel_id, status`,
+       GROUP BY channel_id, status, waiting`,
       ...batch,
     )) {
       const entry = counts[row.channel_id];
-      if (entry) addCount(entry, toStatus(row.status), row.n);
+      if (!entry) continue;
+      entry.tracked += row.n;
+      addCount(entry, toStatus(row.status), row.n);
+      if (row.waiting) entry.waiting += row.n;
     }
   }
   return counts;
 }
 
 /**
- * The digest: processed episodes with a stored summary, published at or after `sinceMs`, in the
+ * The digest: available episodes with a stored summary, published at or after `sinceMs`, in the
  * given channels, newest first. Related titles are resolved within the same channels.
  */
 export function listDigest(
@@ -104,7 +115,7 @@ export function listDigest(
       ...sql
         .exec<EpisodeRow>(
           `${EPISODE_SELECT}
-           WHERE e.status = 'processed' AND s.video_id IS NOT NULL AND e.published_at >= ?
+           WHERE e.status = 'available' AND s.video_id IS NOT NULL AND e.published_at >= ?
              AND e.channel_id IN (${placeholders(batch.length)})`,
           sinceMs,
           ...batch,
@@ -138,30 +149,28 @@ export function listByChannel(
 
 export function zeroCounts(): EpisodeCounts {
   return {
-    processed: 0,
+    tracked: 0,
+    available: 0,
     pending: 0,
-    processing: 0,
-    noTranscript: 0,
+    waiting: 0,
     failed: 0,
+    skipped: 0,
   };
 }
 
 function addCount(counts: EpisodeCounts, status: EpisodeStatus, n: number) {
   switch (status) {
-    case "processed":
-      counts.processed += n;
+    case "available":
+      counts.available += n;
       break;
     case "pending":
       counts.pending += n;
       break;
-    case "processing":
-      counts.processing += n;
-      break;
-    case "no_transcript":
-      counts.noTranscript += n;
-      break;
     case "failed":
       counts.failed += n;
+      break;
+    case "skipped":
+      counts.skipped += n;
       break;
   }
 }
@@ -184,7 +193,7 @@ function byNewest(a: EpisodeRow, b: EpisodeRow): number {
 }
 
 /**
- * Resolves each row's related video ids to titles, keeping only processed episodes whose channel
+ * Resolves each row's related video ids to titles, keeping only available episodes whose channel
  * is in `scope` and never the episode itself. AGENTS.md: referenced titles are filtered to the
  * reader's eligible channels.
  */
@@ -214,7 +223,7 @@ function attachRelated(
         title: string;
       }>(
         `SELECT video_id, channel_id, title FROM episodes
-         WHERE status = 'processed' AND video_id IN (${placeholders(batch.length)})`,
+         WHERE status = 'available' AND video_id IN (${placeholders(batch.length)})`,
         ...batch,
       )) {
         if (inScope.has(row.channel_id)) titles.set(row.video_id, row.title);
@@ -248,6 +257,10 @@ function toRecord(row: EpisodeRow, related: RelatedEpisode[]): EpisodeRecord {
       attemptCount: row.attempt_count,
       failureCode: row.failure_code,
       failureDetail: row.failure_detail,
+      waitingCode: toWaitingCode(row.waiting_code),
+      skipReason: toSkipReason(row.skip_reason),
+      skippedAt: row.skipped_at,
+      skippedByEmail: row.skipped_by_email,
       transcriptCheckedAt: row.transcript_checked_at,
       chunkCount: row.chunk_count,
       vectorizedAt: row.vectorized_at,
@@ -287,13 +300,41 @@ function toSummary(row: EpisodeRow): EpisodeSummary | null {
 function toStatus(value: string): EpisodeStatus {
   switch (value) {
     case "pending":
-    case "processing":
-    case "processed":
-    case "no_transcript":
+    case "available":
     case "failed":
+    case "skipped":
       return value;
     default:
       throw new Error(`unexpected episodes.status: ${value}`);
+  }
+}
+
+function toWaitingCode(value: string | null): EpisodeWaitingCode | null {
+  switch (value) {
+    case null:
+      return null;
+    case "CAPTIONS":
+    case "LIVE_OR_UPCOMING":
+    case "PROVIDER_LIMIT":
+      return value;
+    default:
+      throw new Error(`unexpected episodes.waiting_code: ${value}`);
+  }
+}
+
+function toSkipReason(value: string | null): EpisodeSkipReason | null {
+  switch (value) {
+    case null:
+      return null;
+    case "SHORT":
+    case "NON_ENGLISH":
+    case "NO_CAPTIONS":
+    case "LIVE_OR_UPCOMING":
+    case "UNPLAYABLE":
+    case "OWNER":
+      return value;
+    default:
+      throw new Error(`unexpected episodes.skip_reason: ${value}`);
   }
 }
 

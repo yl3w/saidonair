@@ -54,7 +54,7 @@ describe("registry episodes", () => {
     expect(digest.map((e) => e.videoId)).toEqual([VIDEO_A, VIDEO_B]);
     expect(digest[0]).toMatchObject({
       channelTitle: "A",
-      status: "processed",
+      status: "available",
       summary: {
         format: "structured",
         takeaways: ["one", "two"],
@@ -77,35 +77,48 @@ describe("registry episodes", () => {
     await expectDomainError(stub.listDigest(["nope"], 0), "INVALID_INPUT");
   });
 
-  it("counts by status and lists processed ids across more than one parameter batch", async () => {
+  it("counts by status and lists available ids across more than one parameter batch", async () => {
     const stub = await twoChannels();
     const ids = videoIds(120);
     for (const [i, videoId] of ids.entries()) {
       await seedEpisode(videoId, CHANNEL_A, {
         publishedAt: i,
-        status: i < 110 ? "processed" : "no_transcript",
+        status: i < 110 ? "available" : "failed",
       });
     }
     await seedEpisode(VIDEO_A, CHANNEL_B, { status: "failed" });
+    await seedEpisode(VIDEO_B, CHANNEL_B, {
+      status: "pending",
+      waitingCode: "CAPTIONS",
+    });
 
     // 1,000 channel ids, most of them absent: the IN lists are chunked under the 100-binding cap.
     const many = [...channelIds(998), CHANNEL_A, CHANNEL_B];
-    const processed = await stub.listProcessedVideoIds(many);
-    expect(processed).toHaveLength(110);
-    expect(new Set(processed.map((p) => p.channelId))).toEqual(
+    const available = await stub.listAvailableVideoIds(many);
+    expect(available).toHaveLength(110);
+    expect(new Set(available.map((p) => p.channelId))).toEqual(
       new Set([CHANNEL_A]),
     );
 
     const counts = await stub.countEpisodesByChannel(many);
     expect(counts[CHANNEL_A]).toEqual({
-      processed: 110,
+      tracked: 120,
+      available: 110,
       pending: 0,
-      processing: 0,
-      noTranscript: 10,
-      failed: 0,
+      waiting: 0,
+      failed: 10,
+      skipped: 0,
     });
-    expect(counts[CHANNEL_B]).toMatchObject({ processed: 0, failed: 1 });
-    expect(counts[many[0] ?? ""]).toMatchObject({ processed: 0 });
+    // The pending episode's wait reason counts in both `pending` and `waiting`.
+    expect(counts[CHANNEL_B]).toEqual({
+      tracked: 2,
+      available: 0,
+      pending: 1,
+      waiting: 1,
+      failed: 1,
+      skipped: 0,
+    });
+    expect(counts[many[0] ?? ""]).toMatchObject({ available: 0 });
     expect(Object.keys(counts)).toHaveLength(1000);
   });
 

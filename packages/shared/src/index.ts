@@ -81,18 +81,38 @@ export const PausedBySchema = z.enum(["owner", "system"]).meta({
 });
 export type PausedBy = z.infer<typeof PausedBySchema>;
 
-const EPISODE_STATUSES = [
-  "pending",
-  "processing",
-  "processed",
-  "no_transcript",
-  "failed",
-] as const;
-
 export const EpisodeStatusSchema = z
-  .enum(EPISODE_STATUSES)
-  .meta({ id: "EpisodeStatus" });
+  .enum(["pending", "available", "failed", "skipped"])
+  .meta({
+    id: "EpisodeStatus",
+    description:
+      "`pending` may be waiting; `available` has verified vectors and a summary; `failed` is a technical error after three attempts; `skipped` is deliberate and reversible.",
+  });
 export type EpisodeStatus = z.infer<typeof EpisodeStatusSchema>;
+
+export const EpisodeWaitingCodeSchema = z
+  .enum(["CAPTIONS", "LIVE_OR_UPCOMING", "PROVIDER_LIMIT"])
+  .meta({
+    id: "EpisodeWaitingCode",
+    description: "Why a pending episode is waiting for a later run.",
+  });
+export type EpisodeWaitingCode = z.infer<typeof EpisodeWaitingCodeSchema>;
+
+export const EpisodeSkipReasonSchema = z
+  .enum([
+    "SHORT",
+    "NON_ENGLISH",
+    "NO_CAPTIONS",
+    "LIVE_OR_UPCOMING",
+    "UNPLAYABLE",
+    "OWNER",
+  ])
+  .meta({
+    id: "EpisodeSkipReason",
+    description:
+      "Why an episode was skipped; `OWNER` carries the owner's email.",
+  });
+export type EpisodeSkipReason = z.infer<typeof EpisodeSkipReasonSchema>;
 
 export const SummaryFormatSchema = z
   .enum(["structured", "raw_fallback"])
@@ -109,13 +129,19 @@ export const IngestionRunStatusSchema = z
   .meta({ id: "IngestionRunStatus" });
 export type IngestionRunStatus = z.infer<typeof IngestionRunStatusSchema>;
 
-/** Per-run outcome; `skipped` means the run did not attempt an already processed episode. */
 export const IngestionRunEpisodeStatusSchema = z
-  .enum([...EPISODE_STATUSES, "skipped"])
+  .enum([
+    "selected",
+    "available",
+    "failed",
+    "skipped",
+    "waiting",
+    "not_attempted",
+  ])
   .meta({
     id: "IngestionRunEpisodeStatus",
     description:
-      "Per-run outcome; `skipped` means the run did not attempt an already processed episode.",
+      "Per-run outcome; `selected` until the run reaches the episode, `not_attempted` when it ended early.",
   });
 export type IngestionRunEpisodeStatus = z.infer<
   typeof IngestionRunEpisodeStatusSchema
@@ -135,15 +161,17 @@ export type ChatMessageStatus = z.infer<typeof ChatMessageStatusSchema>;
 
 export const EpisodeCountsSchema = z
   .object({
-    processed: Count,
+    tracked: Count,
+    available: Count,
     pending: Count,
-    processing: Count,
-    noTranscript: Count,
+    waiting: Count,
     failed: Count,
+    skipped: Count,
   })
   .meta({
     id: "EpisodeCounts",
-    description: "Episodes of a channel by state.",
+    description:
+      "Episodes of a channel by status; `waiting` is the subset of `pending` with a wait reason.",
   });
 export type EpisodeCounts = z.infer<typeof EpisodeCountsSchema>;
 
@@ -208,7 +236,7 @@ export const ChannelSchema = z
         "The owner's latest note, shown to followers of a declined channel.",
       ),
     lastIngestedAt: UnixMs.nullable(),
-    processedCount: Count,
+    episodes: EpisodeCountsSchema,
     following: z.boolean().describe("Whether the caller follows this channel."),
     followerCount: Count.describe(
       "Active followers, from the Registry's follower record.",
@@ -332,6 +360,10 @@ export const EpisodeProcessingSchema = z
     attemptCount: Count,
     failureCode: z.string().nullable(),
     failureDetail: z.string().nullable(),
+    waitingCode: EpisodeWaitingCodeSchema.nullable(),
+    skipReason: EpisodeSkipReasonSchema.nullable(),
+    skippedAt: UnixMs.nullable(),
+    skippedByEmail: z.string().nullable(),
     transcriptCheckedAt: UnixMs.nullable(),
     chunkCount: Count.nullable(),
     vectorizedAt: UnixMs.nullable(),
@@ -386,7 +418,7 @@ export const EpisodesResponseSchema = z
   });
 export type EpisodesResponse = z.infer<typeof EpisodesResponseSchema>;
 
-/** `GET /digest?since=<iso>` — processed episodes from eligible follows, newest first; returned summaries are marked read. */
+/** `GET /digest?since=<iso>` — available episodes from eligible follows, newest first; returned summaries are marked read. */
 export const DigestResponseSchema = z
   .object({
     since: UnixMs.describe(
@@ -397,7 +429,7 @@ export const DigestResponseSchema = z
   .meta({
     id: "DigestResponse",
     description:
-      "`GET /digest?since=<iso>` — processed episodes from eligible follows, newest first; returned summaries are marked read.",
+      "`GET /digest?since=<iso>` — available episodes from eligible follows, newest first; returned summaries are marked read.",
   });
 export type DigestResponse = z.infer<typeof DigestResponseSchema>;
 
@@ -460,7 +492,7 @@ export const FollowSchema = z
     ),
     channel: ChannelSchema,
     unreadCount: Count.describe(
-      "Processed episodes the caller has no read receipt for.",
+      "Available episodes the caller has no read receipt for.",
     ),
   })
   .meta({
@@ -536,8 +568,11 @@ export const CatalogSchema = z
       declined: Count,
     }),
     episodes: z.object({
-      processed: Count,
-      tracked: Count,
+      available: Count,
+      pending: Count,
+      waiting: Count,
+      failed: Count,
+      skipped: Count,
     }),
     runs: z.object({ active: Count }),
     lastSuccessfulIngestionAt: UnixMs.nullable(),

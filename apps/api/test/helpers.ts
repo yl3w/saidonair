@@ -64,8 +64,6 @@ export async function expectDomainError(
 
 type ChannelState = {
   status: "requested" | "approved" | "declined";
-  approvedAt?: number;
-  pausedBy?: "owner" | "system";
 };
 
 /** Drives channel status directly; the facade methods are exercised in registry-channels.test.ts. */
@@ -73,17 +71,14 @@ export async function setChannelState(
   channelId: string,
   state: ChannelState,
 ): Promise<void> {
-  const approved =
-    state.status === "approved" || state.approvedAt !== undefined;
+  const approved = state.status === "approved";
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `UPDATE channels SET status = ?, approved_at = ?, reviewed_at = COALESCE(reviewed_at, 1),
-         reviewed_by_email = COALESCE(reviewed_by_email, 'owner@example.com'),
-         paused_by = ?, paused_at = ? WHERE channel_id = ?`,
+         reviewed_by_email = COALESCE(reviewed_by_email, 'owner@example.com')
+       WHERE channel_id = ?`,
       state.status,
-      approved ? (state.approvedAt ?? 1) : null,
-      state.pausedBy ?? null,
-      state.pausedBy ? 1 : null,
+      approved ? 1 : null,
       channelId,
     );
   });
@@ -96,7 +91,15 @@ export async function setChannelState(
 type EpisodeSeed = {
   title?: string;
   publishedAt?: number;
-  status?: "pending" | "processing" | "processed" | "no_transcript" | "failed";
+  status?: "pending" | "available" | "failed" | "skipped";
+  waitingCode?: "CAPTIONS" | "LIVE_OR_UPCOMING" | "PROVIDER_LIMIT";
+  skipReason?:
+    | "SHORT"
+    | "NON_ENGLISH"
+    | "NO_CAPTIONS"
+    | "LIVE_OR_UPCOMING"
+    | "UNPLAYABLE"
+    | "OWNER";
   attemptCount?: number;
   failureCode?: string;
   chunkCount?: number;
@@ -108,26 +111,34 @@ export async function seedEpisode(
   channelId: string,
   seed: EpisodeSeed = {},
 ): Promise<void> {
-  const status = seed.status ?? "processed";
-  const processed = status === "processed";
+  const status = seed.status ?? "available";
+  const available = status === "available";
+  const failed = status === "failed";
+  const skipped = status === "skipped";
   const at = seed.processedAt ?? seed.publishedAt ?? 1;
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episodes
-         (video_id, channel_id, title, published_at, status, attempt_count, failure_code,
-          transcript_checked_at, chunk_count, vectorized_at, processed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (video_id, channel_id, title, published_at, status, waiting_code, attempt_count,
+          failure_code, skip_reason, skipped_at, transcript_checked_at, chunk_count,
+          vectorized_at, processed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       videoId,
       channelId,
       seed.title ?? `Episode ${videoId}`,
       seed.publishedAt ?? 1,
       status,
+      seed.waitingCode ?? null,
       seed.attemptCount ?? (status === "pending" ? 0 : 1),
-      seed.failureCode ?? null,
+      failed
+        ? (seed.failureCode ?? "PROVIDER_HTTP")
+        : (seed.failureCode ?? null),
+      skipped ? (seed.skipReason ?? "SHORT") : null,
+      skipped ? at : null,
       status === "pending" ? null : at,
-      processed ? (seed.chunkCount ?? 3) : null,
-      processed ? at : null,
-      processed ? at : null,
+      available ? (seed.chunkCount ?? 3) : null,
+      available ? at : null,
+      available ? at : null,
       at,
       at,
     );
@@ -188,12 +199,12 @@ type RunSeed = {
   episodes?: {
     videoId: string;
     status:
-      | "pending"
-      | "processing"
-      | "processed"
-      | "no_transcript"
+      | "selected"
+      | "available"
       | "failed"
-      | "skipped";
+      | "skipped"
+      | "waiting"
+      | "not_attempted";
     failureCode?: string;
   }[];
 };

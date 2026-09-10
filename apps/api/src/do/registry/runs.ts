@@ -174,12 +174,12 @@ function toStatus(value: string): IngestionRunStatus {
 
 function toEpisodeStatus(value: string): IngestionRunEpisodeStatus {
   switch (value) {
-    case "pending":
-    case "processing":
-    case "processed":
-    case "no_transcript":
+    case "selected":
+    case "available":
     case "failed":
     case "skipped":
+    case "waiting":
+    case "not_attempted":
       return value;
     default:
       throw new Error(`unexpected ingestion_run_episodes.status: ${value}`);

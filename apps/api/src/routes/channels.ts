@@ -23,7 +23,7 @@ import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import type { CatalogChannel } from "../do/registry/types";
 import type { AppEnv } from "../env";
-import { isApproved, toChannel } from "../lib/channel-view";
+import { isApproved, toChannel, zeroEpisodeCounts } from "../lib/channel-view";
 import { eligibleChannels } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
 import { DomainError, domainErrorCode } from "../lib/errors";
@@ -48,7 +48,7 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["channels"],
       summary: "List channels",
       description:
-        "Requested and approved channels with `following` and `processedCount`. With `?scope=all` (owner) every status including declined, each with `management`.",
+        "Requested and approved channels with `following` and `episodes`. With `?scope=all` (owner) every status including declined, each with `management`.",
       responses: {
         200: jsonResponse(
           ChannelsResponseSchema,
@@ -72,7 +72,7 @@ export const channelRoutes = new Hono<AppEnv>()
           channels: rows.map((row) =>
             toChannel(row.channel, {
               following: following.has(row.channel.channelId),
-              processedCount: row.episodes.processed,
+              episodes: row.episodes,
               followerCount: followers[row.channel.channelId] ?? 0,
               management: row,
             }),
@@ -88,7 +88,7 @@ export const channelRoutes = new Hono<AppEnv>()
         channels: listed.map((channel) =>
           toChannel(channel, {
             following: following.has(channel.channelId),
-            processedCount: counts[channel.channelId]?.processed ?? 0,
+            episodes: counts[channel.channelId] ?? zeroEpisodeCounts(),
             followerCount: followers[channel.channelId] ?? 0,
           }),
         ),
@@ -351,7 +351,7 @@ export const channelRoutes = new Hono<AppEnv>()
       return c.json<ChannelResponse>({
         channel: toChannel(channel, {
           following: await isFollowing(c, channel.channelId),
-          processedCount: counts[channel.channelId]?.processed ?? 0,
+          episodes: counts[channel.channelId] ?? zeroEpisodeCounts(),
           followerCount: followers[channel.channelId] ?? 0,
         }),
       });
@@ -490,7 +490,7 @@ export async function ownerChannel(
   const followers = await c.var.registry.countFollowers([channelId]);
   return toChannel(row.channel, {
     following: await isFollowing(c, channelId),
-    processedCount: row.episodes.processed,
+    episodes: row.episodes,
     followerCount: followers[channelId] ?? 0,
     management: row,
   });
@@ -519,7 +519,7 @@ async function readerChannel(
   ]);
   return toChannel(channel, {
     following: true,
-    processedCount: counts[channel.channelId]?.processed ?? 0,
+    episodes: counts[channel.channelId] ?? zeroEpisodeCounts(),
     followerCount: followers[channel.channelId] ?? 0,
   });
 }

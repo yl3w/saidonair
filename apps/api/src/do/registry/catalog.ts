@@ -18,16 +18,26 @@ export function summarize(sql: SqlStorage): Catalog {
     else channels.approved += row.n;
   }
 
-  const episodes = sql
-    .exec<{ processed: number; tracked: number }>(
-      `SELECT COALESCE(SUM(status = 'processed'), 0) AS processed, COUNT(*) AS tracked
-       FROM episodes`,
-    )
-    .one();
+  const episodes = {
+    available: 0,
+    pending: 0,
+    waiting: 0,
+    failed: 0,
+    skipped: 0,
+  };
+  for (const row of sql.exec<{ status: string; waiting: number; n: number }>(
+    `SELECT status, (waiting_code IS NOT NULL) AS waiting, COUNT(*) AS n FROM episodes GROUP BY status, waiting`,
+  )) {
+    if (row.status === "available") episodes.available += row.n;
+    else if (row.status === "pending") episodes.pending += row.n;
+    else if (row.status === "failed") episodes.failed += row.n;
+    else if (row.status === "skipped") episodes.skipped += row.n;
+    if (row.waiting) episodes.waiting += row.n;
+  }
 
   return {
     channels,
-    episodes: { processed: episodes.processed, tracked: episodes.tracked },
+    episodes,
     runs: { active: countActive(sql) },
     lastSuccessfulIngestionAt: lastCompletedFinishedAt(sql),
   };
