@@ -1,11 +1,15 @@
 import {
+  ApproveChannelBodySchema,
   type Channel,
+  type ChannelDeclinedResponse,
+  ChannelDeclinedResponseSchema,
   ChannelParamsSchema,
   type ChannelResponse,
   ChannelResponseSchema,
   type ChannelsResponse,
   ChannelsResponseSchema,
   CreateChannelBodySchema,
+  DeclineChannelBodySchema,
   type EpisodesResponse,
   EpisodesResponseSchema,
   type FollowersResponse,
@@ -22,7 +26,7 @@ import type { AppEnv } from "../env";
 import { isApproved, toChannel } from "../lib/channel-view";
 import { eligibleChannels } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
-import { DomainError } from "../lib/errors";
+import { DomainError, domainErrorCode } from "../lib/errors";
 import { requestIngestion } from "../lib/ingestion";
 import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
@@ -96,17 +100,23 @@ export const channelRoutes = new Hono<AppEnv>()
     "/",
     describeRoute({
       tags: ["channels"],
-      summary: "Add a channel",
+      summary: "Add or follow a channel",
       description:
-        "The owner's add is approved at once and starts its initial import; anyone else's is a request awaiting review. The id is verified against its RSS feed; the feed title is used unless one is given.",
+        "A new id is verified against its RSS feed and added: `requested` for anyone else, `approved` for the owner, in either case starting the initial import when approved. An existing requested or approved id is simply followed. A declined id is refused with the review note; `POST /channels/:id/request` reopens it. Either way the caller ends up following the channel.",
       responses: {
         201: jsonResponse(
           ChannelResponseSchema,
-          "The new channel; the owner also receives `management`.",
+          "The new channel, followed by the caller; the owner also receives `management`.",
         ),
-        ...errorResponses({
-          conflict: "The id is already in the catalog",
-        }),
+        200: jsonResponse(
+          ChannelResponseSchema,
+          "The existing channel, now followed by the caller; the owner also receives `management`.",
+        ),
+        ...errorResponses(),
+        409: jsonResponse(
+          ChannelDeclinedResponseSchema,
+          "The channel was declined by the owner (`INVALID_STATE`); request it again.",
+        ),
       },
     }),
     validate("json", CreateChannelBodySchema),
@@ -115,14 +125,12 @@ export const channelRoutes = new Hono<AppEnv>()
       const channelId = extractChannelId(body.channelId);
 
       // Fast path only: skips the YouTube round trip for a known id. The Registry's
-      // createChannel is the authoritative check; a channel added while the feed is in
-      // flight still ends in the same 409, never in an overwrite.
-      if (await c.var.registry.getChannel(channelId)) {
-        throw new DomainError(
-          "INVALID_STATE",
-          "channel is already in the catalog",
-        );
-      }
+      // createChannel is the authoritative check below, so a channel added while the feed
+      // is in flight still ends in a follow, never in an overwrite.
+      const existing = await c.var.registry.getChannel(channelId);
+      if (existing?.status === "declined") return declinedResponse(c, existing);
+      if (existing) return followAndView(c, channelId, false);
+
       const feed = await fetchChannelFeed(channelId, feedFetcher(c.env));
       if (!feed) {
         throw new DomainError(
@@ -132,27 +140,185 @@ export const channelRoutes = new Hono<AppEnv>()
       }
 
       const owner = isOwner(c);
-      const channel = await c.var.registry.createChannel(c.var.identity.email, {
-        channelId,
-        title: body.title ?? feed.title,
-        initialImportCount: body.initialImportCount,
-        status: owner ? "approved" : "requested",
-      });
+      let channel: CatalogChannel;
+      try {
+        channel = await c.var.registry.createChannel(c.var.identity.email, {
+          channelId,
+          title: body.title ?? feed.title,
+          initialImportCount: body.initialImportCount,
+          status: owner ? "approved" : "requested",
+        });
+      } catch (error) {
+        if (domainErrorCode(error) !== "INVALID_STATE") throw error;
+        // Created meanwhile by another caller; treat it the same as the fast path above.
+        const raced = await c.var.registry.getChannel(channelId);
+        if (!raced) throw error;
+        if (raced.status === "declined") return declinedResponse(c, raced);
+        return followAndView(c, channelId, false);
+      }
       if (channel.status === "approved") {
         requestIngestion(channel.channelId, "channel_approved");
       }
-      return c.json<ChannelResponse>(
-        {
-          channel: owner
-            ? await ownerChannel(c, channel.channelId)
-            : toChannel(channel, {
-                following: false,
-                processedCount: 0,
-                followerCount: 0,
-              }),
-        },
-        201,
+      return followAndView(c, channelId, true);
+    },
+  )
+
+  .post(
+    "/:id/request",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Request a declined channel again",
+      description:
+        "`declined → requested`, keeping the review note. The caller is followed onto it.",
+      responses: {
+        200: jsonResponse(
+          ChannelResponseSchema,
+          "The requested channel, now followed by the caller.",
+        ),
+        ...errorResponses({
+          notFound: true,
+          conflict: "Only a declined channel can be requested again",
+        }),
+      },
+    }),
+    validate("param", ChannelParamsSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      await c.var.registry.requestChannel(c.var.identity.email, id);
+      return followAndView(c, id, false);
+    },
+  )
+
+  .post(
+    "/:id/approve",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Approve a channel (owner)",
+      description:
+        "`requested` or `declined` → `approved`. Sets `approvedAt` the first time and starts the initial import only then; a re-approved channel waits for the next scheduled run.",
+      responses: {
+        200: jsonResponse(
+          ChannelResponseSchema,
+          "The approved channel, with `management`.",
+        ),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict: "The channel is already approved",
+        }),
+      },
+    }),
+    requireOwner,
+    validate("param", ChannelParamsSchema),
+    validate("json", ApproveChannelBodySchema),
+    async (c) => {
+      const { channel, importStarts } = await c.var.registry.approveChannel(
+        c.var.identity.email,
+        c.req.valid("param").id,
+        c.req.valid("json"),
       );
+      if (importStarts) requestIngestion(channel.channelId, "channel_approved");
+      return c.json<ChannelResponse>({
+        channel: await ownerChannel(c, channel.channelId),
+      });
+    },
+  )
+
+  .post(
+    "/:id/decline",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Decline a channel (owner)",
+      description:
+        "`requested` or `approved` → `declined`. From `approved`, the lifecycle fence is bumped so a run already in flight publishes nothing. `POST /channels/:id/request` reopens it.",
+      responses: {
+        200: jsonResponse(
+          ChannelResponseSchema,
+          "The declined channel, with `management`.",
+        ),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict: "The channel is already declined",
+        }),
+      },
+    }),
+    requireOwner,
+    validate("param", ChannelParamsSchema),
+    validate("json", DeclineChannelBodySchema),
+    async (c) => {
+      const channel = await c.var.registry.declineChannel(
+        c.var.identity.email,
+        c.req.valid("param").id,
+        c.req.valid("json"),
+      );
+      return c.json<ChannelResponse>({
+        channel: await ownerChannel(c, channel.channelId),
+      });
+    },
+  )
+
+  .post(
+    "/:id/pause",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Pause a channel (owner)",
+      description:
+        "No new ingestion runs while paused. Idempotent; only an approved channel can be paused.",
+      responses: {
+        200: jsonResponse(
+          ChannelResponseSchema,
+          "The paused channel, with `management`.",
+        ),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict: "Only approved channels can be paused or resumed",
+        }),
+      },
+    }),
+    requireOwner,
+    validate("param", ChannelParamsSchema),
+    async (c) => {
+      const channel = await c.var.registry.pauseChannel(
+        c.var.identity.email,
+        c.req.valid("param").id,
+      );
+      return c.json<ChannelResponse>({
+        channel: await ownerChannel(c, channel.channelId),
+      });
+    },
+  )
+
+  .post(
+    "/:id/resume",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Resume a channel (owner)",
+      description:
+        "Clears an owner or system pause. Idempotent; only an approved channel can be resumed.",
+      responses: {
+        200: jsonResponse(
+          ChannelResponseSchema,
+          "The resumed channel, with `management`.",
+        ),
+        ...errorResponses({
+          owner: true,
+          notFound: true,
+          conflict: "Only approved channels can be paused or resumed",
+        }),
+      },
+    }),
+    requireOwner,
+    validate("param", ChannelParamsSchema),
+    async (c) => {
+      const channel = await c.var.registry.resumeChannel(
+        c.var.identity.email,
+        c.req.valid("param").id,
+      );
+      return c.json<ChannelResponse>({
+        channel: await ownerChannel(c, channel.channelId),
+      });
     },
   )
 
@@ -328,4 +494,46 @@ export async function ownerChannel(
     followerCount: followers[channelId] ?? 0,
     management: row,
   });
+}
+
+/** Follows the caller onto a channel in both objects and returns the channel as they see it. */
+async function followAndView(c: Ctx, channelId: string, created: boolean) {
+  await c.var.user.follow(channelId);
+  const channel = await c.var.registry.recordFollow(
+    c.var.identity.email,
+    channelId,
+  );
+  const view = isOwner(c)
+    ? await ownerChannel(c, channelId)
+    : await readerChannel(c, channel);
+  return c.json<ChannelResponse>({ channel: view }, created ? 201 : 200);
+}
+
+async function readerChannel(
+  c: Ctx,
+  channel: CatalogChannel,
+): Promise<Channel> {
+  const [counts, followers] = await Promise.all([
+    c.var.registry.countEpisodesByChannel([channel.channelId]),
+    c.var.registry.countFollowers([channel.channelId]),
+  ]);
+  return toChannel(channel, {
+    following: true,
+    processedCount: counts[channel.channelId]?.processed ?? 0,
+    followerCount: followers[channel.channelId] ?? 0,
+  });
+}
+
+function declinedResponse(c: Ctx, channel: CatalogChannel) {
+  return c.json<ChannelDeclinedResponse>(
+    {
+      error: "channel was declined by the owner; request it again",
+      code: "INVALID_STATE",
+      channelId: channel.channelId,
+      status: "declined",
+      reviewNote: channel.reviewNote,
+      reviewedAt: channel.reviewedAt,
+    },
+    409,
+  );
 }

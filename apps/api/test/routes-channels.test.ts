@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
 import {
   CatalogResponseSchema,
+  ChannelDeclinedResponseSchema,
   ChannelResponseSchema,
   ChannelsResponseSchema,
   EpisodesResponseSchema,
@@ -196,7 +197,7 @@ describe("channel and catalog routes", () => {
     });
   });
 
-  it("creates a channel only for a real feed, once", async () => {
+  it("creates a channel only for a real feed; an existing one is followed instead of duplicated", async () => {
     const handle = await call(OWNER, "POST", "/channels", {
       channelId: "@veritasium",
     });
@@ -231,15 +232,17 @@ describe("channel and catalog routes", () => {
       channelId: CHANNEL_A,
       title: "Feed A",
       status: "requested",
-      following: false,
+      following: true,
       processedCount: 0,
     });
     expect(requested.json.channel).not.toHaveProperty("management");
 
+    // An id already in the catalog is simply followed again, not refused.
     const duplicate = await call(OWNER, "POST", "/channels", {
       channelId: CHANNEL_D,
     });
-    expect(duplicate.status).toBe(409);
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.json.channel).toMatchObject({ following: true });
 
     // Optional text is omitted or non-blank; a blank never falls back to the feed title (owner decision 2026-09-08).
     const blank = await call(OWNER, "POST", "/channels", {
@@ -412,5 +415,121 @@ describe("channel and catalog routes", () => {
       (await call(OWNER, "GET", `/channels/${CHANNEL_D}/ingestion-runs`))
         .status,
     ).toBe(404);
+  });
+
+  it("a user's add creates a requested channel and follows them; an existing one is followed; a declined one is 409 with the note", async () => {
+    const created = await call(ALICE, "POST", "/channels", {
+      channelId: `https://www.youtube.com/channel/${CHANNEL_A}`,
+    });
+    expect(created.status).toBe(201);
+    expectShape(ChannelResponseSchema, created.json);
+    expect(created.json.channel).toMatchObject({
+      channelId: CHANNEL_A,
+      title: "Feed A",
+      status: "requested",
+      following: true,
+      followerCount: 1,
+    });
+    expect(await userDO(ALICE).activeChannelIds()).toEqual([CHANNEL_A]);
+
+    const existing = await call(BOB, "POST", "/channels", {
+      channelId: CHANNEL_A,
+    });
+    expect(existing.status).toBe(200);
+    expect(existing.json.channel).toMatchObject({
+      following: true,
+      followerCount: 2,
+    });
+
+    await registry().declineChannel(OWNER, CHANNEL_A, {
+      explanation: "not now",
+    });
+    const declined = await call(BOB, "POST", "/channels", {
+      channelId: CHANNEL_A,
+    });
+    expect(declined.status).toBe(409);
+    expectShape(ChannelDeclinedResponseSchema, declined.json);
+    expect(declined.json).toMatchObject({
+      status: "declined",
+      reviewNote: "not now",
+    });
+
+    const again = await call(BOB, "POST", `/channels/${CHANNEL_A}/request`);
+    expect(again.status).toBe(200);
+    expect(again.json.channel).toMatchObject({
+      status: "requested",
+      reviewNote: "not now",
+      following: true,
+    });
+
+    expect(
+      (await call(ALICE, "POST", "/channels", { channelId: "@handle" })).status,
+    ).toBe(400);
+    expect(
+      (await call(ALICE, "POST", "/channels", { channelId: CHANNEL_E })).status,
+    ).toBe(400);
+  });
+
+  it("the owner approves, declines, pauses, and resumes; users may not", async () => {
+    await call(ALICE, "POST", "/channels", { channelId: CHANNEL_A });
+    for (const action of ["approve", "decline", "pause", "resume"]) {
+      const { status } = await call(
+        ALICE,
+        "POST",
+        `/channels/${CHANNEL_A}/${action}`,
+        {},
+      );
+      expect(status, action).toBe(403);
+    }
+    const approved = await call(
+      OWNER,
+      "POST",
+      `/channels/${CHANNEL_A}/approve`,
+      {
+        title: "Renamed",
+        explanation: "welcome",
+      },
+    );
+    expect(approved.status).toBe(200);
+    expect(approved.json.channel).toMatchObject({
+      status: "approved",
+      title: "Renamed",
+      reviewNote: "welcome",
+      paused: false,
+    });
+    expect(
+      (await call(OWNER, "POST", `/channels/${CHANNEL_A}/pause`, {})).json
+        .channel,
+    ).toMatchObject({ paused: true, pausedBy: "owner" });
+    expect(
+      (await call(OWNER, "POST", `/channels/${CHANNEL_A}/resume`, {})).json
+        .channel,
+    ).toMatchObject({ paused: false });
+    const declined = await call(
+      OWNER,
+      "POST",
+      `/channels/${CHANNEL_A}/decline`,
+      {
+        explanation: "withdrawn",
+      },
+    );
+    expect(declined.json.channel).toMatchObject({
+      status: "declined",
+      reviewNote: "withdrawn",
+    });
+    expect((declined.json.channel as Json).management).toMatchObject({
+      lifecycleVersion: 2,
+    });
+    expect(
+      (await call(OWNER, "POST", `/channels/${CHANNEL_A}/pause`, {})).status,
+    ).toBe(409);
+    const owned = await call(OWNER, "POST", "/channels", {
+      channelId: CHANNEL_B,
+    });
+    expect(owned.status).toBe(201);
+    expect(owned.json.channel).toMatchObject({
+      status: "approved",
+      following: true,
+    });
   });
 });

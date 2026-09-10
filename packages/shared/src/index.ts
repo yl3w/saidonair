@@ -265,6 +265,37 @@ export const CreateChannelBodySchema = z
   });
 export type CreateChannelBody = z.infer<typeof CreateChannelBodySchema>;
 
+/** `POST /channels/:id/approve` — every field optional. */
+export const ApproveChannelBodySchema = z
+  .object({
+    title: optionalText("Overrides the channel's title."),
+    initialImportCount: z
+      .number()
+      .int()
+      .positive()
+      .describe("Recent episodes to import first; defaults to five.")
+      .optional(),
+    explanation: optionalText("Shown to the channel's followers."),
+  })
+  .meta({
+    id: "ApproveChannelBody",
+    description: "`POST /channels/:id/approve` — every field optional.",
+  });
+export type ApproveChannelBody = z.infer<typeof ApproveChannelBodySchema>;
+
+/** `POST /channels/:id/decline` */
+export const DeclineChannelBodySchema = z
+  .object({
+    explanation: optionalText(
+      "Shown to the channel's followers with the word Declined or Withdrawn.",
+    ),
+  })
+  .meta({
+    id: "DeclineChannelBody",
+    description: "`POST /channels/:id/decline`",
+  });
+export type DeclineChannelBody = z.infer<typeof DeclineChannelBodySchema>;
+
 // --- episodes ---------------------------------------------------------------------------------------
 
 export const EpisodeSummarySchema = z
