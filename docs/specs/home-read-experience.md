@@ -1,4 +1,5 @@
 # Feature spec — Home on first load: reader and owner views
+> **Superseded in part (2026-09-10):** channel states, requests, follows, deletion, and episode statuses are now defined by docs/specs/channel-simplification.md; sections describing channel_requests, deleted_at, channel failure codes, channel retry, or the automatic follow are historical. The M3 documents need revision against that spec's §12 before implementation.
 
 **Status:** Decided with the owner on 2026-09-07 (§13); the `AGENTS.md` and PRD edits in §16 were applied the
 same day. Ready to implement.

@@ -1,4 +1,5 @@
 # Implementation plan — M3 Ingestion
+> **Superseded in part (2026-09-10):** channel states, requests, follows, deletion, and episode statuses are now defined by docs/specs/channel-simplification.md; sections describing channel_requests, deleted_at, channel failure codes, channel retry, or the automatic follow are historical. The M3 documents need revision against that spec's §12 before implementation.
 
 **Implements:** `docs/specs/m3-ingestion.md` under the rules in `AGENTS.md`.
 **Written:** 2026-09-08, against `main` at `c959cc6`. **Status:** proposed; starts on the owner's go. Plan decisions are marked **plan decision**

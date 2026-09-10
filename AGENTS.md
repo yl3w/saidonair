@@ -326,7 +326,7 @@ The Workflow and the cron are M3; until then `lib/ingestion.ts` records each sta
   48 hours with `waiting_code = LIVE_OR_UPCOMING`, then `skipped LIVE_OR_UPCOMING`. An episode with captions but no
   English track is `skipped NON_ENGLISH`; an `UNPLAYABLE` answer is `skipped UNPLAYABLE`. DownSub credit exhaustion
   (`PROVIDER_LIMIT`) ends the run, leaves the remaining selected episodes `pending` with that waiting code, and counts
-  no attempt; `GET /catalog` shows the remaining credits.
+  no attempt; `GET /catalog` shows the remaining credits (M3, not yet present).
 - **Three technical attempts.** `PROVIDER_AUTH`, `PROVIDER_HTTP`, `PROVIDER_RATE_LIMIT`, `PROVIDER_PARSE`,
   `VECTORIZE_INCOMPLETE`, and summary failures after the raw-text fallback increment `attempt_count` and record the
   reason; below three the episode stays `pending` and the next scheduled run reattempts it, and the third makes it
