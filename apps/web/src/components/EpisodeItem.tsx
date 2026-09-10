@@ -1,4 +1,5 @@
 import type { Episode } from "@media-digest/shared";
+import { episodePhrase } from "../lib/copy";
 import { Time } from "./Time";
 
 /**
@@ -14,14 +15,13 @@ export function EpisodeItem({
   showChannel?: boolean;
 }) {
   const { summary } = episode;
+  const phrase = episodePhrase(episode);
   return (
     <article class="episode">
       <div>
         {episode.wasUnread === true && <span class="new">NEW</span>}
         <a href={`https://youtu.be/${episode.videoId}`}>{episode.title}</a>
-        {episode.status !== "available" && (
-          <span class="tag"> · {episode.status.replace("_", " ")}</span>
-        )}
+        {phrase && <span class="tag"> · {phrase}</span>}
       </div>
       <div class="byline">
         {showChannel && (
