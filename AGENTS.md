@@ -8,7 +8,7 @@ Single source of truth for every coding agent working in this repo (Claude Code,
 A personal, multi-user tool with a shared global YouTube channel catalog: anyone puts a channel in it by pasting
 the channel id, and the owner approves or declines it. It ingests and summarizes
 each episode once with Workers AI, stores shared transcript embeddings in Vectorize, and exposes a text-only
-UI for per-user follows, digests, and multiple chats. Runs entirely on Cloudflare; cron cadence is undecided.
+UI for per-user follows, digests, and multiple chats. Runs entirely on Cloudflare; cron runs every 6 hours.
 
 This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainable over clever. Small, readable modules.
 The full PRD lives at `docs/PRD.md`; this file overrides the PRD where they disagree.
@@ -313,7 +313,15 @@ The Workflow and the cron are M3; until then `lib/ingestion.ts` records each sta
 - **Cron schedule:** every 6 hours, `0 */6 * * *` UTC (owner decision 2026-09-08), in `wrangler.jsonc` `triggers.crons`.
   Scheduled runs select channels with `status = 'approved'`, `paused_by IS NULL`, and no queued or running run — so
   follower count reaches selection only through pause. A paused channel is skipped, not failed; a declined one is
-  excluded by status. Per channel: new feed entries plus every `pending` episode, waiting or below three attempts.
+  excluded by status. Per channel: new feed entries plus every `pending` episode, waiting or below three attempts,
+  including selected episodes that have since left the RSS feed. Elapsed time alone never settles a wait: a fresh
+  no-caption result is fetched again at or after 48 hours before the episode is classified.
+- **The initial import ignores pause.** The one run that first approval starts runs even when nobody follows yet and
+  the channel is already system-paused (owner decision 2026-09-10); only scheduled selection honours `paused_by`.
+- **Reconciliation (M3).** A queued or running run whose Workflow is missing or failed is closed and fenced, its
+  episodes keeping their attempt counts; an approved channel with no run row at all is "approved, never started" in
+  Needs attention. `TODO(owner):` the maximum queued-start delay and the reconciliation interval, and whether
+  "never started" gets an age window, before M3 codes this.
 - **Episode states: `pending | available | failed | skipped`.** `pending` carries an optional `waiting_code`
   (`CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT`), cleared on the next attempt; `failed` carries the last technical
   `failure_code`; `skipped` carries a `skip_reason` (`SHORT`, `NON_ENGLISH`, `NO_CAPTIONS`, `LIVE_OR_UPCOMING`,
@@ -356,25 +364,35 @@ ingestion noticing. `apps/api/src/lib/transcripts/types.ts`:
 
 ```ts
 export type TranscriptSegment = { text: string; startSec: number; durationSec: number };
-export type TranscriptResult = { segments: TranscriptSegment[] | null; durationSec: number | null; isLive: boolean };
+export type TranscriptResult = {
+  segments: TranscriptSegment[] | null;
+  durationSec: number | null;
+  isLive: boolean;
+  captionStatus: "english" | "none" | "non_english";
+};
 export type TranscriptSource = { fetch(videoId: string): Promise<TranscriptResult> };
-// segments null = the video plays but has no captions (not an error); duration and liveness drive the
-// selection rules (Ingestion pipeline); anything else throws TranscriptError
+// captionStatus distinguishes absent captions from non-English captions; segments are present only for English.
+// isLive includes upcoming videos. Known live/upcoming metadata takes precedence over an UNPLAYABLE response:
+// return the result so selection can classify the wait. Duration and liveness drive the selection rules
+// (Ingestion pipeline); other provider failures throw TranscriptError.
 export class TranscriptError extends Error { readonly reason: TranscriptFailure } // UNPLAYABLE | PROVIDER_AUTH |
 // PROVIDER_LIMIT | PROVIDER_RATE_LIMIT | PROVIDER_HTTP | PROVIDER_PARSE
 ```
 
 - `lib/transcripts/index.ts` exports `transcriptSource(env)`: the test-only `TRANSCRIPTS_FAKE` binding wins (canned
-  segments, `null`, or a failure reason per video id, the `YOUTUBE_FEEDS_FAKE` pattern); otherwise the DownSub adapter.
+  complete `TranscriptResult` values or a failure reason per video id, including duration, caption status, and
+  live/upcoming cases, the `YOUTUBE_FEEDS_FAKE` pattern); otherwise the DownSub adapter.
 - `lib/transcripts/downsub.ts`: `GET https://api.downsub.com/download?url=https://www.youtube.com/watch?v=<id>` with
   `Authorization: Bearer <DOWNSUB_API_KEY>`. `data.state` is `subtitles_found` (choose a track, GET its **VTT**, parse
-  cues with `lib/transcripts/vtt.ts`), `no_subtitles` (`null`), or `error` (`UNPLAYABLE`, detail from
-  `metadata.playabilityReason`). HTTP 401 → `PROVIDER_AUTH`, 403 → `PROVIDER_LIMIT`, 429 → `PROVIDER_RATE_LIMIT`,
-  other non-2xx → `PROVIDER_HTTP`, an unparsable body or caption file → `PROVIDER_PARSE`. Tracks carry a `code` such
-  as `en` or `en_auto`; labels are unreliable ("undefined (auto-generated)" occurs), never match on them. The
-  `translatedSubtitles` array (machine translations, most of the ~400 KB body) is discarded.
-- Track choice, English-first: a manual `en`/`en-*` track, else `en_auto`/`en-*_auto`, else the first manual track,
-  else the first auto-generated one. `TODO(owner):` any preference beyond that.
+  cues with `lib/transcripts/vtt.ts`), `no_subtitles` (`captionStatus: "none"`), or `error` (`UNPLAYABLE` with the
+  detail from `metadata.playabilityReason`, unless known live/upcoming metadata says the video is waiting). HTTP 401 →
+  `PROVIDER_AUTH`, 403 → `PROVIDER_LIMIT`, 429 → `PROVIDER_RATE_LIMIT`, other non-2xx → `PROVIDER_HTTP`, an unparsable
+  body or caption file → `PROVIDER_PARSE`. Tracks carry a `code` such as `en` or `en_auto`; labels are unreliable
+  ("undefined (auto-generated)" occurs), never match on them. The `translatedSubtitles` array (machine translations,
+  most of the ~400 KB body) is discarded.
+- Track choice (owner decision 2026-09-10): a manual `en`/`en-*` track, else `en_auto`/`en-*_auto`; if captions exist
+  but neither qualifies, return `captionStatus: "non_english"` without downloading a non-English track, and the
+  episode is `skipped NON_ENGLISH`. No translation fallback; non-English channels are out of scope.
 - The adapter never retries; the Workflow step does, with a generous timeout: about a second when captions exist,
   ~10 s for `no_subtitles`, up to a minute for `error`. One credit per video with or without captions, none for
   errors, `/status`, or the file download; 2,000 credits a month. `GET /status` returns `remainingCredits`.
@@ -408,6 +426,12 @@ gets fed to the LLM at query time, so keep it exact.
 - Per-video summary output: 3–5 takeaways, each `{ text, startSec }` with the timestamp taken from the `[mm:ss]`
   markers in the prompt (null when absent or out of range), a ≤3-sentence executive summary, topic tags. Ask the model
   for JSON and validate the shape before storing; on validation failure retry once, then store raw text with a flag.
+- Summaries publish automatically after that validation, retry, and raw fallback. No manual approval and no
+  summary-quality review gate exist in this version (owner decision 2026-09-10).
+- Digest windows and ordering use the summary's availability time, `episodes.processed_at` exposed as
+  `summaryAvailableAt`, not the video's publication time: 24 hours by default, seven days when expanded. Reads,
+  refollows, re-approval, and enrichment never reset it. Publication time stays separate metadata, and channel history
+  stays publication-ordered (owner decision 2026-09-10; digest routes carry it in M3).
 - Summaries are shared once per episode. User preferences affect chat answers only.
 - RAG Q&A: read current follows → intersect with approved catalog channels → embed question →
   query `shared-catalog` with `filter: { channelId: { $in: eligibleChannelIds } }`, `topK: 3`, all metadata → validate
@@ -418,8 +442,9 @@ gets fed to the LLM at query time, so keep it exact.
   Skip AI and Vectorize calls. Chat creation, history, and message submission remain accessible.
 - Following or unfollowing, and declining or re-approving a channel, changes future retrieval for every existing chat. Earlier
   messages and citations remain visible and may still be used as conversation context; do not scrub history.
-- Shared summary cross-references query the same namespace, excluding the video's own ID. Retain related video IDs
-  and filter referenced titles to the reader's eligible channels when displaying them.
+- Shared summary cross-references are optional enrichment: query the same namespace, exclude the video's own ID,
+  deduplicate to at most five available related videos, and filter titles to the reader's eligible channels at display.
+  A lookup failure or no qualifying results stores `[]` and never blocks publication; the UI omits an empty section.
 
 ## API shape
 
@@ -444,14 +469,14 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 | `POST /channels/:id/approve` `{ title?, initialImportCount?, explanation? }` | owner | `requested → approved` with the one initial import, or `declined → approved` without one; recomputes pause from the follower count |
 | `POST /channels/:id/decline` `{ explanation? }` | owner | `requested → declined`, or `approved → declined` with a `lifecycle_version` bump and the pause cleared |
 | `POST /channels/:id/pause` / `POST /channels/:id/resume` | owner | Owner pause; resume clears either kind of pause. `approved` only |
-| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; the owner and followers of an approved channel get `summary`, `related`, `wasUnread`, and returned summaries are marked read for the caller; everyone else gets titles without summaries; the owner also gets `processing` (attempts, `failureCode`, `waitingCode`, `skipReason`) |
+| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; every caller gets `status` and a top-level `skipReason` (why there is no summary, when skipped); the owner and followers of an approved channel get `summary`, `related`, `wasUnread`, and returned summaries are marked read for the caller; everyone else gets titles without summaries; the owner also gets `processing` (attempts, `failureCode`, `waitingCode`, `skipReason`, timestamps) |
 | `POST /channels/:id/episodes/:videoId/retry` | owner | `failed` or `skipped → pending`, attempts and skip fields cleared, one-episode run |
 | `POST /channels/:id/episodes/:videoId/skip` | owner | `failed → skipped OWNER` |
 | `GET /channels/:id/ingestion-runs` | owner | Runs newest first with per-episode outcomes |
 | `GET /channels/:id/followers` | owner | Emails and `followedAt` of the channel's active followers |
 | `GET /follows` | anyone (own) | Active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
 | `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` otherwise) / retained unfollow tombstone; both also write the Registry follower record |
-| `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel episodes with summaries, newest first; default last 24h, clamped to 7 days; mark returned items read; `wasUnread` per item |
+| `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel summaries, selected and ordered by first availability (`summaryAvailableAt`, M3); default last 24h, clamped to 7 days; mark returned items read; `wasUnread` per item |
 | `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list the user's chats |
 | `GET /chats/:id/messages?limit=50` | anyone (own) | That chat's messages and citation snapshots |
 | `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources, using current eligible follows |
@@ -459,7 +484,8 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 
 `/channel-requests/*`, `DELETE /channels/:id`, `POST /channels/:id/restore`, and `POST /channels/:id/retry` do not
 exist: requests are channels, channels are never deleted, and retry is per episode (2026-09-10). There is no route
-that starts a run on demand either; the Start action for an approved channel that never began belongs to M3.
+that starts a run on demand yet; M3 adds one (planned `POST /channels/:id/runs`, owner, approved channel with no
+active run) so the Start action for an approved channel that never began has something to call.
 
 All routes except `/health`, `/openapi.json`, and `/docs` require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require
 `role = 'owner'`: `requireOwner` from `middleware/owner.ts` is applied to those handlers and returns 403 early from
@@ -508,12 +534,16 @@ when applicable, and "Switch account"; the nav shows **Home** and, for owners, *
 count. Owners also see an attention card first ("2 channels waiting for review · 1 episode failed · 1 channel approved
 but never started", from `GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the
 count is zero. Then:
-1. **Today's digest** — eligible followed channels only (active follows ∩ approved); last 24h, newest
-   first, flat list with the channel as byline; shared summary, takeaways, tags, related titles filtered to eligible
-   channels, and `youtu.be` links. Items with no read receipt at fetch time are marked NEW; returning them records the
-   receipt. "Show last 7 days" widens `since`. Two empty states: with no active follows, "Follow a channel to start
-   your digest." with the catalog and its follow controls rendered inline; otherwise "Nothing new since
-   yesterday." Load `/follows` and `/channels` before `/digest` so unread counts and NEW markers agree.
+1. **Today's digest** — eligible followed channels only (active follows ∩ approved); summaries first available in
+   the last 24h, newest availability first (M3 carries the basis; until then publication time), flat list with the
+   channel as byline; shared summary, takeaways with `youtu.be/<id>?t=<startSec>` links where a timestamp exists,
+   tags, related titles filtered to eligible channels. Items with no read receipt at fetch time are marked NEW;
+   returning them records the receipt. "Show last 7 days" widens `since`. Empty states (owner decision 2026-09-10,
+   web copy lands with M3): with no active follows, "Follow a channel to start your digest." with the catalog and its
+   follow controls rendered inline; with follows but none approved yet, explain that no summaries are available yet
+   and point to the channel rows; otherwise "No new summaries in the last 24 hours." or "No new summaries in the last
+   7 days." Load `/follows` and `/channels` before `/digest` so unread counts and NEW markers agree; unread counts span
+   all eligible summaries while NEW marks only the returned ones.
 2. **Channels** — two subsections and one input. **Followed** (`GET /follows`): approved rows show summarised count,
    unread count and last ingestion and link to the channel; requested rows read "Awaiting owner approval"; paused rows
    add "paused"; declined rows read "Declined" or "Withdrawn" with the owner's note and date and a **Request again**
@@ -584,6 +614,10 @@ Tests are focused, not exhaustive. Required coverage:
   their reason, owner retry clears attempts and skip fields, and owner skip needs a `failed` episode. Test owner-only
   mutations, and that handles and ids with no feed are rejected. Owner overview and channel-health counts match
   SQL-seeded episodes and runs. Add or extend these tests whenever a route or data path is introduced.
+  M3 adds: caption and credit waits resume without owner action and a fresh no-caption answer is re-fetched at or
+  after 48 hours; a decline mid-run cancels the run and publishes nothing; the first-approval run starts while the
+  channel is system-paused and scheduled selection skips paused channels; digest windows use first availability; a
+  related-lookup failure still publishes the summary; missing or failed Workflows reconcile into closed runs.
 - **Pure functions** — chunking (token caps, overlap, edge cases: empty, one segment, very long segment),
   RSS parsing, channel URL resolution, summary JSON validation.
 - **Migrations** — a fresh DO runs all migrations idempotently; running twice is a no-op. The check constraints
@@ -634,6 +668,13 @@ management, rate limiting.
   the seam. The InnerTube code was removed; it survives only on the throwaway branch `spike/transcript-remote`.
 - **Workers plan — `TODO(owner)`:** M3 assumes Workers Paid; Workflows on the free plan allow 10 ms of CPU per step,
   which parsing a 400 KB transcript response may exceed.
+- **Reconciliation window — `TODO(owner)`:** how long a queued run may wait for its Workflow before it counts as a
+  technical start failure, how often the cron reconciles, and whether "approved, never started" needs an age window
+  (today every approved channel with no run row counts, which is honest while ingestion is unbuilt). Decide before
+  M3 Step 4.
+- Channel model — decided 2026-09-10 (`docs/specs/channel-simplification.md`): `requested | approved | declined`, a
+  pause flag, a Registry follower record, and a four-status episode machine; channels are never deleted. Merged the
+  same day; the owner's browser walkthrough of the four screens passed.
 - Owner management interface — decided 2026-09-07: `/owner` and `/owner/channels/:id` as specified in the Web UI
   section and `docs/specs/home-read-experience.md`. Owner identification: `global_users.role`, seeded from the
   `OWNER_EMAIL` secret (see Identity model).

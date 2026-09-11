@@ -4,10 +4,18 @@
 **Written:** 2026-09-07, against the codebase at commit `c668729` plus the uncommitted doc changes of that day.
 Revised the same day after the owner's correction that the API must be modelled on entities, not roles (spec
 decision 11); Step 1.1 was reverted and restarts from this version.
-**Status:** Phase 1 complete on 2026-09-07 (20 test files, 96 tests, walkthrough recorded in the PR notes below).
-Phase 2 built the same day: every screen in spec §5–§8, `pnpm check` green, history-mode deep links verified under
-`wrangler pages dev`. The two-account browser walkthrough (step 2.8) is the owner's to run; the agent environment
-has no browser.
+**Status:** delivered. Phase 1 complete on 2026-09-07 (20 test files, 96 tests, walkthrough recorded in the PR notes
+below). Phase 2 built the same day: every screen in spec §5–§8, `pnpm check` green, history-mode deep links verified
+under `wrangler pages dev`.
+**Superseded in part (2026-09-10):** this plan is the record of the first delivery and is not to be re-executed.
+`docs/specs/channel-simplification-plan.md` (Tasks 1–12, merged to `main` at `6e075b1`) replaced everything here
+about channel requests (`channel_requests`, migration `0002`, `channel_title`, `lib/outcome.ts`, `RequestOutcome`,
+`routes/channel-requests.ts`, the `Requests` component and its polling), soft deletion and restore, channel failure
+codes and channel retry, `CatalogState`, `requesterCount`, `stuckPending`, `FollowOrigin`, and the automatic follow.
+Channels are now `requested | approved | declined` with a pause flag and a real follower record; episodes carry the
+import outcomes. Steps below that name those things describe what was built on 2026-09-07, not what exists; the
+revised spec (`docs/specs/home-read-experience.md`, 2026-09-10) describes the screens and routes on `main`. The owner's
+browser walkthrough of the revised screens was completed on 2026-09-10.
 **Shape:** two phases. Phase 1 delivers the complete API with the web app untouched. Phase 2 delivers the complete
 web app against that API. Each phase ends in a state that can be merged and left alone: nothing in Phase 1 depends
 on Phase 2 existing, and Phase 2 adds no API surface.

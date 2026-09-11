@@ -1765,8 +1765,8 @@ be walked through under `wrangler dev` when M3 makes an episode reach `available
 `ingestion_runs` row exists, so `GET /channels/:id/ingestion-runs` and a pause interacting with a run in flight were
 not observable either.
 
-**Still owed by the owner: the visual pass in a browser.** Nothing on the web side was rendered in this run — the
-walkthrough was API-only. Home (Followed, Catalog, and the Add-a-channel box, including the declined-id note with
-Request again), Channel at each of the three statuses, Owner (Queue, Needs attention, All channels, health strip),
-and Owner channel detail all still need the owner to look at them under `pnpm dev` and say whether the copy reads
-right.
+**Browser pass: done.** Nothing on the web side was rendered in the API run above. On 2026-09-10, after the branch was
+merged to `main` at `6e075b1` and local Durable Object state was wiped with `clean-local-do`, the owner walked Home
+(Followed, Catalog, and the Add-a-channel box, including the declined-id note with Request again), Channel at each of
+the three statuses, Owner (Queue, Needs attention, All channels, health strip), and Owner channel detail under
+`pnpm dev` and reported the walkthrough completed with no defects.
