@@ -53,18 +53,20 @@ function OwnerChannelScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // One action against this channel or one of its episodes; every button reloads through this.
+  // One action against this channel or one of its episodes; every button reloads through this,
+  // on failure as well as success, since the Registry may have applied the change before the
+  // response was lost.
   const act: ChannelAct = async (work) => {
     setBusy(true);
     setError(null);
     try {
       await work();
-      reloadChannel();
-      reloadEpisodes();
-      reloadRuns();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
+      reloadChannel();
+      reloadEpisodes();
+      reloadRuns();
       setBusy(false);
     }
   };

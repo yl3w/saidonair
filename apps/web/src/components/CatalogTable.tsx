@@ -23,18 +23,20 @@ export function CatalogTable({
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // The reload runs whether the call succeeded or failed: the Registry may have applied the change
+  // before the response was lost, and a stale row would offer the opposite action as a live button.
   const act: Act = async (channelId, work) => {
     setBusy((b) => ({ ...b, [channelId]: true }));
     setErrors((e) => ({ ...e, [channelId]: "" }));
     try {
       await work();
-      onChanged();
     } catch (caught) {
       setErrors((e) => ({
         ...e,
         [channelId]: caught instanceof Error ? caught.message : String(caught),
       }));
     } finally {
+      onChanged();
       setBusy((b) => ({ ...b, [channelId]: false }));
     }
   };

@@ -83,16 +83,18 @@ function WaitingRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The form closes only on success, so a failed decision can be retried as typed; the reload runs
+  // either way, since the Registry may have applied the decision before the response was lost.
   async function act(work: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
     try {
       await work();
       setMode("closed");
-      onChanged();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
+      onChanged();
       setBusy(false);
     }
   }
