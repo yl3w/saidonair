@@ -115,7 +115,8 @@ validated through DO methods. There are no cross-DO SQL joins or atomic transact
   at that first approval, whether or not anyone follows yet; approving a channel that had been approved before starts
   nothing and leaves the first-approval timestamp alone. Approval recomputes the pause flag from the follower count.
 - Owner decline sets `declined` and the review fields and clears the pause. A run in flight is not stopped: it
-  finishes, and eligibility hides what it produced until the channel is approved again (decided 2026-09-11).
+  finishes, and eligibility hides what it produced from readers until the channel is approved again, while the owner
+  keeps seeing it (decided 2026-09-11).
   Episodes, summaries, vectors, follows, and read receipts are all kept. Copy reads
   "Declined" when the channel was never approved and "Withdrawn" when it was.
 - Requested and approved channels appear in everyone's catalog and can be followed; declined channels drop out of the
@@ -180,7 +181,8 @@ import outcome, so a channel whose every episode is skipped is an approved chann
 - Reuse persisted progress and deterministic vector IDs. One canonical stored copy does not imply external API calls
   can execute exactly once under retries. Do not repeat completed ingestion just because another user follows.
 - Declining a channel stops nothing in flight. Runs write episodes, summaries, and two channel timestamps, never
-  channel state, so a run that outlives a decline publishes content that eligibility hides until re-approval (decided
+  channel state, so a run that outlives a decline publishes content that eligibility hides from readers until
+  re-approval (decided
   2026-09-11, replacing the `lifecycle_version` fence of 2026-09-10). A run's writes are accepted only while the run
   is open, which guards against a reconciled run's instance turning out to be alive.
 
@@ -367,9 +369,11 @@ Use `CHECK` constraints for these enums:
 - **Owner `/owner`:** owner only. Queue: requested channels oldest first with title, id, their followers by email,
   "nobody is waiting" when there are none, "previously declined" when re-requested, and approve and decline with an
   optional note; reviewed history collapsed. Needs attention: failed episodes grouped by channel with reason,
-  attempts, retry and skip; then approved channels with no ingestion run at all, as information — there is no Start
-  action until M3 adds a route that starts a run. Catalog health: channels by status, paused and declined counts,
-  episodes by status, active runs, last successful ingestion; an all-channels table with status, paused, available
+  attempts, retry and skip; then approved channels with no ingestion run at all, as information until M3 adds a
+  route that starts a run, after which each row carries Start (a run's absence of episodes then says the tick found
+  nothing or could not read the feed). Catalog health: channels by status, paused and declined counts, episodes by
+  status, active runs, last successful ingestion, and in M3 the transcript credits and key status; an all-channels
+  table with status, paused, available
   over tracked episodes with skipped and failed counts, follower count, last ingestion, latest run, and the actions
   the status allows — approve, decline (confirming once with the follower count), pause, resume. Follower counts are
   real; the emails behind them appear only in the queue.
@@ -396,7 +400,7 @@ carry a `management` block for the owner and are otherwise identical for every c
 | Method and path | Who | Purpose |
 |---|---|---|
 | `GET /me` | anyone | Caller's normalized email and role |
-| `GET /catalog` | owner | Aggregate catalog state: channels requested/approved/paused/declined, episodes available/pending/waiting/failed/skipped, active runs, attention (failed episodes, never started, requested), last successful ingestion |
+| `GET /catalog` | owner | Aggregate catalog state: channels requested/approved/paused/declined, episodes available/pending/waiting/failed/skipped, active runs, attention (failed episodes, never started, requested), last successful ingestion (the newest channel `last_ingested_at`), and in M3 `transcripts { remainingCredits, status }` |
 | `GET /channels` | anyone | Requested and approved channels with status, pause, follow state, follower count and episode counts; `?scope=all` (owner) adds declined ones, with `management` |
 | `POST /channels` `{ channelId, title?, initialImportCount? }` | anyone | Create a requested channel and follow the caller (201); the owner's call creates it approved and starts the initial import. An existing requested or approved id is followed instead (200); a declined id is 409 with the owner's note |
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; the owner also gets `management` |
@@ -407,6 +411,7 @@ carry a `management` block for the owner and are otherwise identical for every c
 | `GET /channels/:id/episodes` | anyone | Episodes newest first; the owner and followers of an approved channel receive summaries, which are marked read for the caller; the owner also receives processing detail |
 | `POST /channels/:id/episodes/:videoId/retry` / `…/skip` | owner | Failed or skipped → pending with attempts cleared / failed → skipped by the owner |
 | `GET /channels/:id/ingestion-runs` | owner | Ingestion runs with per-episode outcomes |
+| `POST /channels/:id/runs` | owner | M3. Starts a run now on an approved channel, ignoring pause: 200 with the run, which has no episodes when the feed had nothing new and nothing is pending; 409 while a run is open; 502 when YouTube does not answer, after the empty run is recorded |
 | `GET /channels/:id/followers` | owner | Emails and follow times of the channel's active followers |
 | `GET /follows` | anyone (own) | Own follows, each with its channel — any status — and unread count |
 | `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow/refollow a requested or approved channel (409 with the note for a declined one) / retain unfollow tombstone; both also write the Registry follower record |
@@ -431,7 +436,7 @@ carry a `management` block for the owner and are otherwise identical for every c
   before it becomes a failed episode that needs the owner.
 - Unfollowing to zero followers pauses an approved channel; the next follow lifts a system pause, an owner pause
   survives it, and a paused channel's summaries stay readable while cron skips it.
-- A run that outlives a decline publishes only content that eligibility hides; a write against a closed run is
+- A run that outlives a decline publishes only content that eligibility hides from readers; a write against a closed run is
   refused; partial vector writes cannot become chat context.
 - Existing chats include newly followed channels and exclude unfollowed or declined ones from new retrieval.
   Historical messages and sources remain intact. Approving a declined channel again restores access for its remaining

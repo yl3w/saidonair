@@ -280,7 +280,8 @@ The model is `docs/specs/channel-simplification.md` §3, decided 2026-09-10.
   paused by the system straight away while its one initial import still runs.
 - **Decline.** `POST /channels/:id/decline { explanation? }`, owner, from `requested` or `approved`. Sets `declined`
   and the review fields and clears any pause. A run in flight is not stopped: it finishes, and eligibility hides what
-  it produced until the channel is approved again (decided 2026-09-11; nothing is fenced). Episodes, summaries,
+  it produced from readers until the channel is approved again, while the owner keeps seeing it (decided
+  2026-09-11; nothing is fenced). Episodes, summaries,
   vectors, follows, and read receipts are kept. Copy reads "Declined" when `approved_at` is
   null and "Withdrawn" when it is not; declining an approved channel confirms once, naming the follower count.
 - **Pause and resume.** `POST /channels/:id/pause` and `POST /channels/:id/resume`, owner, `approved` only.
@@ -329,7 +330,11 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   initial import left out. Elapsed time alone never settles a wait: a fresh no-caption result is fetched again at or
   after 48 hours before the episode is classified. A tick numbers the instances it creates across every channel and
   the k-th sleeps k × 3 seconds before its first call; before starting anything it reads DownSub's `/status` and
-  starts nothing while credits are zero or the key is rejected (decided 2026-09-11).
+  starts nothing while credits are zero or the key is rejected (decided 2026-09-11). Every start attempt records a
+  run: when the selection is empty or the feed cannot be read, the run is inserted already `completed` with no
+  run-episodes, and `last_checked_at` moves only when the feed was read, so an unreadable feed shows as runs that
+  keep appearing while the check time stands still. The first run that selects anything is `initial`, whoever
+  creates it; later runs are `scheduled` (decided 2026-09-11).
 - **The initial import ignores pause.** The one run that first approval starts runs even when nobody follows yet and
   the channel is already system-paused (owner decision 2026-09-10); only scheduled selection honours `paused_by`.
 - **Reconciliation (M3, decided 2026-09-11).** At the start of each cron tick, for every run older than one hour,
@@ -357,7 +362,8 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   `PROVIDER_RATE_LIMIT`, `VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED` (after
   the raw-text fallback), and `WORKFLOW_LOST` all increment `attempt_count` and record the reason; below three the
   episode stays `pending` and the next scheduled run reattempts it, and the third makes it `failed`.
-  `TRANSCRIPT_TOO_LARGE` is deterministic and goes to `failed` at once. Waiting never counts as an attempt. Only
+  `TRANSCRIPT_TOO_LARGE` is deterministic: it counts its one attempt and goes to `failed` at once. Waiting never
+  counts as an attempt. Only
   `failed` episodes reach the owner. There is no account-level outcome family and no run-level failure code: a run is
   `running` and then `completed`, and its run-episodes say what happened.
 - **Pre-flight gate.** A cron tick first calls DownSub's `/status` through the wrapper the catalog uses; a rejected
@@ -377,7 +383,8 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   never expose partial ingestion as completed content. `processed_at` is the summary's availability time and is
   never reset.
 - Declining a channel stops nothing in flight (decided 2026-09-11). Runs never write channel state, so a run that
-  outlives a decline publishes episodes that eligibility hides until re-approval; the `lifecycle_version` fence of
+  outlives a decline publishes episodes that eligibility hides from readers until re-approval, the owner's episode
+  reads being independent of channel status; the `lifecycle_version` fence of
   2026-09-10 was removed with migration `0002`. An instance's Registry writes are accepted only while its run is
   still open, which guards against a reconciled run's instance turning out to be alive. Retained partial vectors
   remain ineligible.
@@ -514,8 +521,11 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 
 `/channel-requests/*`, `DELETE /channels/:id`, `POST /channels/:id/restore`, and `POST /channels/:id/retry` do not
 exist: requests are channels, channels are never deleted, and retry is per episode (2026-09-10). There is no route
-that starts a run on demand yet; M3 adds one (planned `POST /channels/:id/runs`, owner, approved channel with no
-active run) so the Start action for an approved channel that never began has something to call.
+that starts a run on demand yet; M3 adds one (planned `POST /channels/:id/runs`, owner, approved channel) so the
+Start action for an approved channel that never began has something to call. Its answers: 200 `{ run }`, where a run
+with no run-episodes and status `completed` means the feed had nothing new and nothing is pending; 409
+`INVALID_STATE` while a run is open; 502 `UPSTREAM_UNAVAILABLE` when YouTube does not answer, after that empty run
+has been recorded (2026-09-11).
 
 All routes except `/health`, `/openapi.json`, and `/docs` require `X-User-Email`; missing or malformed returns 400. Owner routes additionally require
 `role = 'owner'`: `requireOwner` from `middleware/owner.ts` is applied to those handlers and returns 403 early from

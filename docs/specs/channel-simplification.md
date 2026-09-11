@@ -260,7 +260,7 @@ Entity-based as before: no `/owner/*`, authorization per operation, `management`
 | `GET /channels/:id/followers` | owner | new, replaces `/requests` | Emails and `followedAt` of active followers; the UI shows emails only in the queue and counts elsewhere |
 | `GET /follows`, `PUT /follows/:channelId`, `DELETE /follows/:channelId` | anyone (own) | changed | Follow any `requested` or `approved` channel (409 with the note for `declined`); each write also records the follower in the Registry |
 | `GET /channel-requests`, `POST /channel-requests`, `…/approve`, `…/reject` | | **removed** | Requests are channels |
-| `GET /catalog` | owner | changed | `channels: { requested, approved, paused, declined }`, `episodes: { available, pending, waiting, failed, skipped }`, `attention: { failedEpisodes, neverStarted, requested }`, `lastSuccessfulIngestionAt`, `transcripts.remainingCredits` |
+| `GET /catalog` | owner | changed | `channels: { requested, approved, paused, declined }`, `episodes: { available, pending, waiting, failed, skipped }`, `attention: { failedEpisodes, neverStarted, requested }`, `lastSuccessfulIngestionAt` (the newest channel `last_ingested_at`, 2026-09-11), `transcripts: { remainingCredits, status }` (M3) |
 | `GET /digest`, chats, preferences, `/me` | | unchanged | |
 
 Shared schemas: `ChannelStatus` becomes `requested | approved | declined`; `ChannelFailureCode`, `CatalogState`,

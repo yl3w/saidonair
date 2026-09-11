@@ -166,7 +166,8 @@ export function approveChannel(
 
 /**
  * `requested | approved → declined`. A run in flight finishes; eligibility hides what it publishes
- * until the channel is approved again (owner decision 2026-09-11, no fence).
+ * from readers until the channel is approved again, while the owner keeps seeing it (owner decision
+ * 2026-09-11, no fence).
  */
 export function declineChannel(
   sql: SqlStorage,
