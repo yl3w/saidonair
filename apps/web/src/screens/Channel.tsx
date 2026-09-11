@@ -20,7 +20,8 @@ export function Channel() {
 /**
  * One channel, any status (spec §7). Requested: awaiting-approval line, Follow or Unfollow, no
  * episodes. Approved: as today, with skipped and pending episodes listed by title and phrase.
- * Declined: the owner's note and Request again, plus titles-only episodes when it had been
+ * Declined: the owner's note, the follower count, Unfollow for a follower (Follow is not offered:
+ * the API refuses it with 409), and Request again, plus titles-only episodes when it had been
  * approved. Followers of an approved channel see summaries newest first, and the API records
  * their read receipts; everyone else sees titles only. No chat input here.
  */
@@ -197,8 +198,22 @@ function ChannelDetail({
       )}
       {c.status === "declined" && (
         <>
-          <p>{reviewCopy(c) ?? channelStateCopy(c)}</p>
           <p>
+            {reviewCopy(c) ?? channelStateCopy(c)} · {c.followerCount} following
+          </p>
+          <p>
+            {c.following && (
+              <>
+                <button
+                  id="channel-follow-toggle"
+                  type="button"
+                  disabled={busy}
+                  onClick={onToggleFollow}
+                >
+                  Unfollow
+                </button>{" "}
+              </>
+            )}
             <button
               id="channel-request-again"
               type="button"

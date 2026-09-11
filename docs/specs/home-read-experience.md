@@ -215,7 +215,8 @@ Header: title, "<state> · N following", and **Follow** or **Unfollow**.
   "Follow to read the summaries."; `pending`, `skipped`, and `failed` episodes listed by title with their
   phrase from `episodePhrase` ("Not summarised yet", "No summary: under three minutes", "Summary failed; the
   owner has been notified"). A paused channel reads "Approved · paused" and its existing summaries stay readable.
-- **Declined:** the note and date ("Declined on…" or "Withdrawn on…") and **Request again**, which asks
+- **Declined:** the note and date ("Declined on…" or "Withdrawn on…"), the follower count, **Unfollow** when the
+  caller follows (Follow is not offered: the API answers 409 for a declined channel), and **Request again**, which asks
   "<review copy>. Ask the owner again?" once. Episode titles are listed without summaries when the channel had
   been approved.
 

@@ -560,7 +560,7 @@ count is zero. Then:
 **`/channel/:id` — Channel.** Any status. A requested channel shows the header, "Awaiting owner approval", and Follow
 or Unfollow, with no episodes. An approved one shows shared summaries newest first for followers, and `pending`,
 `skipped` and `failed` episodes by title with their phrase; viewing marks returned summaries read for this user.
-A declined one shows the note, the date, and Request again, with episode titles and no summaries when it had been
+A declined one shows the note, the date, the follower count, Unfollow for a follower (Follow is refused with 409), and Request again, with episode titles and no summaries when it had been
 approved. No chat input here; conversations live on Home. Back link to `/home`.
 
 **`/owner` — Owner.** Owner only: users are sent back to `/home` with a note, and the API returns 403 regardless. One

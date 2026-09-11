@@ -3,8 +3,9 @@ import { channelStateCopy, reviewCopy } from "../lib/copy";
 import { Time } from "./Time";
 
 /**
- * Followed channels (spec §6.4). A requested follow reads "Awaiting owner approval"; a declined one
- * shows the owner's note (falling back to the plain status) and offers Request again, confirmed.
+ * Followed channels (spec §6.4). Every title links to the channel screen, which renders any status.
+ * A requested follow reads "Awaiting owner approval"; a declined one shows the owner's note (falling
+ * back to the plain status) and offers Request again, confirmed.
  */
 export function FollowedList({
   follows,
@@ -28,13 +29,12 @@ export function FollowedList({
         return (
           <div class="row" key={c.channelId}>
             <div class="grow">
-              {approved ? (
-                <a href={`/channel/${c.channelId}`}>{c.title}</a>
-              ) : (
-                <span class={c.status === "declined" ? "unavailable" : ""}>
-                  {c.title}
-                </span>
-              )}
+              <a
+                href={`/channel/${c.channelId}`}
+                class={c.status === "declined" ? "unavailable" : undefined}
+              >
+                {c.title}
+              </a>
               <div class="meta">
                 {approved && (
                   <>
@@ -81,7 +81,7 @@ export function FollowedList({
   );
 }
 
-/** Catalog channels the caller does not follow yet (spec §7). Approved rows link; others show status. */
+/** Catalog channels the caller does not follow yet (spec §7). Every row links; requested rows show status. */
 export function CatalogList({
   channels,
   busy,
@@ -101,11 +101,7 @@ export function CatalogList({
         return (
           <div class="row" key={channel.channelId}>
             <div class="grow">
-              {approved ? (
-                <a href={`/channel/${channel.channelId}`}>{channel.title}</a>
-              ) : (
-                <span>{channel.title}</span>
-              )}
+              <a href={`/channel/${channel.channelId}`}>{channel.title}</a>
               <div class="meta">
                 {approved
                   ? `${channel.episodes.available} summarised`
