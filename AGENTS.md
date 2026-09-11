@@ -329,7 +329,7 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   published after the channel's `approved_at`, so the first cron after approval never imports the older entries the
   initial import left out. Elapsed time alone never settles a wait: a fresh no-caption result is fetched again at or
   after 48 hours before the episode is classified. A tick numbers the instances it creates across every channel and
-  the k-th sleeps k × 3 seconds before its first call; before starting anything it reads DownSub's `/status` and
+  the k-th sleeps k × 3 seconds before its first call; like every start, it reads DownSub's `/status` first and
   starts nothing while credits are zero or the key is rejected (decided 2026-09-11). Every start attempt records a
   run: when the selection is empty or the feed cannot be read, the run is inserted already `completed` with no
   run-episodes, and `last_checked_at` moves only when the feed was read, so an unreadable feed shows as runs that
@@ -344,10 +344,13 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   gives up writes `failEpisode` itself, so the sweep is a safety net. An approved channel with no run row at all is
   "approved, never started" in Needs attention, with no age window; the Start route is its remedy.
 - **Episode states: `pending | available | failed | skipped`.** `pending` carries an optional `waiting_code`
-  (`CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT`), cleared on the next attempt; `failed` carries the last technical
-  `failure_code`; `skipped` carries a `skip_reason` (`SHORT`, `NON_ENGLISH`, `NO_CAPTIONS`, `LIVE_OR_UPCOMING`,
-  `UNPLAYABLE`, `OWNER`) with `skipped_at` and, for an owner skip, `skipped_by_email`. There is no channel-level
-  failure code and no channel waiting code.
+  (`CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT`); `failed` carries the last technical `failure_code`; `skipped`
+  carries a `skip_reason` (`SHORT`, `NON_ENGLISH`, `NO_CAPTIONS`, `LIVE_OR_UPCOMING`, `UNPLAYABLE`, `OWNER`) with
+  `skipped_at` and, for an owner skip, `skipped_by_email`. Every write that records an outcome clears the fields of
+  the outcomes it supersedes: finding captions or a technical failure clears the wait, a wait clears the failure
+  code, a skip and a publication clear both, and only Retry resets `attempt_count`, which is history (decided
+  2026-09-11; the matrix is in `docs/specs/m3-ingestion-plan.md` Step 4). There is no channel-level failure code
+  and no channel waiting code.
 - **Selection rules (owner decisions 2026-09-08, carried onto the new statuses):** a "no captions" answer for a video
   published within the last 48 hours is "not yet": the episode stays `pending` with `waiting_code = CAPTIONS` and
   `transcript_checked_at` set, no attempt counted, re-checked each run; at or after 48 hours it is `skipped
@@ -366,9 +369,11 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   counts as an attempt. Only
   `failed` episodes reach the owner. There is no account-level outcome family and no run-level failure code: a run is
   `running` and then `completed`, and its run-episodes say what happened.
-- **Pre-flight gate.** A cron tick first calls DownSub's `/status` through the wrapper the catalog uses; a rejected
-  key or zero credits means the tick launches nothing and logs why, so neither ever reaches an episode as an
-  attempt. An unreachable `/status` does not block.
+- **Pre-flight gate.** Every start, cron or owner, first calls DownSub's `/status` through the cached wrapper the
+  catalog uses; a rejected key or zero credits means nothing is launched and no run is recorded, so neither ever
+  reaches an episode as an attempt. Cron logs why and skips the tick; Start answers 502 naming the reason; approve
+  and retry answer as usual and leave the channel or episode for a later start. An unreachable `/status` does not
+  block (decided 2026-09-11).
 - **Owner episode actions**, both requiring an approved channel with no queued or running run, else 409:
   `POST /channels/:id/episodes/:videoId/retry` takes `failed` or `skipped` back to `pending`, clearing attempts and
   skip fields, and `POST /channels/:id/episodes/:videoId/skip` takes `failed` to `skipped OWNER`. Siblings and their
@@ -406,7 +411,9 @@ export type TranscriptResult = {
   captionStatus: "english" | "none" | "non_english";
 };
 export type TranscriptSource = { fetch(videoId: string): Promise<TranscriptResult> };
-// captionStatus distinguishes absent captions from non-English captions; segments are present only for English.
+// captionStatus distinguishes absent captions from non-English captions; segments are present only for English,
+// and "english" always carries at least one segment: a chosen track whose file has no usable cues is "none"
+// (decided 2026-09-11), so the 48-hour rule applies and nothing downstream meets an empty transcript.
 // isLive includes upcoming videos. Known live/upcoming metadata takes precedence over an UNPLAYABLE response:
 // return the result so selection can classify the wait. Duration and liveness drive the selection rules
 // (Ingestion pipeline); other provider failures throw TranscriptError.
@@ -421,7 +428,8 @@ export class TranscriptError extends Error { readonly reason: TranscriptFailure 
   live/upcoming cases, the `YOUTUBE_FEEDS_FAKE` pattern); otherwise the DownSub adapter.
 - `lib/transcripts/downsub.ts`: `GET https://api.downsub.com/download?url=https://www.youtube.com/watch?v=<id>` with
   `Authorization: Bearer <DOWNSUB_API_KEY>`. `data.state` is `subtitles_found` (choose a track, GET its **VTT**, parse
-  cues with `lib/transcripts/vtt.ts`), `no_subtitles` (`captionStatus: "none"`), or `error` (`UNPLAYABLE` with the
+  cues with `lib/transcripts/vtt.ts`; a file with no usable cues is reported as `captionStatus: "none"`),
+  `no_subtitles` (`captionStatus: "none"`), or `error` (`UNPLAYABLE` with the
   detail from `metadata.playabilityReason`, unless known live/upcoming metadata says the video is waiting). HTTP 401 →
   `PROVIDER_AUTH`, 403 → `PROVIDER_LIMIT`, 429 → `PROVIDER_RATE_LIMIT`, other non-2xx → `PROVIDER_HTTP`, an unparsable
   body or caption file → `PROVIDER_PARSE`. Tracks carry a `code` such as `en` or `en_auto`; labels are unreliable
@@ -578,7 +586,8 @@ count is zero. Then:
    the last 24h, newest availability first (M3 carries the basis; until then publication time), flat list with the
    channel as byline; shared summary, takeaways with `youtu.be/<id>?t=<startSec>` links where a timestamp exists,
    tags, related titles filtered to eligible channels. Items with no read receipt at fetch time are marked NEW;
-   returning them records the receipt. "Show last 7 days" widens `since`. Empty states (owner decision 2026-09-10,
+   returning them records the receipt. "Show last 7 days" widens `since`; "Refresh" (M3) re-fetches the lists and
+   then the digest, since polling stops at approval and the first summaries land minutes later. Empty states (owner decision 2026-09-10,
    web copy lands with M3): with no active follows, "Follow a channel to start your digest." with the catalog and its
    follow controls rendered inline; with follows but none approved yet, explain that no summaries are available yet
    and point to the channel rows; otherwise "No new summaries in the last 24 hours." or "No new summaries in the last
@@ -664,7 +673,7 @@ Tests are focused, not exhaustive. Required coverage:
   published before `approved_at`; every failure that is not a wait or a skip counts one attempt, a lost instance and
   a rejected key included, and the pre-flight check launches nothing on a rejected key or zero credits; instances
   created in one tick
-  carry increasing start delays; digest windows use first availability with a publication tiebreak; a
+  carry increasing start delays; digest windows use first availability, ordered strictly by it; a
   related-lookup failure still publishes the summary; a missing or errored instance reconciles into a `failed
   WORKFLOW_LOST` run-episode at the next tick once its run is an hour old, one attempt added.
 - **Pure functions** — chunking (token caps, overlap, edge cases: empty, one segment, very long segment),

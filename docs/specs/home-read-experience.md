@@ -95,7 +95,7 @@ Home · Owner (3)
 Digest · Channels
 
 ## Today's digest                                          since 2026-09-06 09:12
-                                                            Show last 7 days
+                                                            Show last 7 days · Refresh
 NEW  How we shipped the thing — Some Channel · 3h ago
      Executive summary, at most three sentences.
      • takeaway
@@ -151,6 +151,10 @@ Hidden entirely when the sum is zero; the nav still shows **Owner**. Fed by `GET
 - **NEW** marks items that had no read receipt when the request ran. Returning them records the receipt, so
   the marker is the only trace the user gets of what they had not seen. The response carries `wasUnread`.
 - **Show last 7 days** re-queries with `since` seven days ago. There is no further paging in this slice.
+- **Refresh** (M3) runs the same list reload a follow or unfollow runs, which re-fetches the digest after the lists
+  so NEW markers and unread counts still describe one moment. It exists because the only poll stops the moment a
+  followed channel is approved, and its first summaries land minutes later; without it a reader on an empty digest
+  could only reload the page. It is a button, not a poll.
 - Empty states are two today, three after M3:
   - No active follows: "Follow a channel to start your digest." followed by the **Catalog** list from §6.4
     rendered inline, with follow buttons. Following any channel switches the section to the normal layout
@@ -312,7 +316,7 @@ every status, including declined, with client-side filter links from the health 
 | State | `status`, `paused`, `approvedAt` | "Awaiting approval", "Approved", "Approved · paused", "Declined", or "Withdrawn" (declined after having been approved). |
 | Episodes | `episodes` counts | `available / tracked`, then non-zero `waiting`, `failed`, `skipped`. |
 | Last ingested | `lastIngestedAt` | Relative time. |
-| Latest run | `management.latestRun` | Kind and status of the newest run; failure code when failed. |
+| Latest run | `management.latestRun` | Kind and status of the newest run, `running` or `completed`; runs carry no failure code (2026-09-11). A completed run with no episodes reads "no episodes · nothing new" when `lastCheckedAt` equals its `startedAt`, and "no episodes · feed could not be read since [last checked]" when the check time is older, so a broken feed is a sentence on the row rather than a gap between two dates. |
 | Followers | `followerCount` | Real count from the Registry's follower record; emails only in the queue and the detail view. |
 | Actions | `ChannelStatusActions` | Requested: Approve, Decline. Approved: Pause or Resume, Decline. Declined: Approve. Declining an approved channel confirms once, naming its follower count. |
 
@@ -327,7 +331,7 @@ owner, and starts the initial import. The title comes from the RSS feed with an 
 
 # Some Channel                                     Approved · 4 following
 UCxxxxxxxxxxxxxxxxxxxxxx · youtube.com/channel/UCxxxx…
-Approved 2026-08-01 · reviewed 2026-09-09 by owner@example.com: “great channel” · import count 5
+Approved 2026-08-01 · reviewed 2026-09-09 by owner@example.com: “great channel” · import count 5 · last checked 9h ago
 [Pause] [Decline]
 
 ## Episodes (12)
@@ -338,9 +342,10 @@ Fresh upload             1d ago      pending · waiting for captions   0        
 Broken upload            6d ago      failed · PROVIDER_HTTP           3         —            —        [Retry] [Skip]
 
 ## Runs (4)
-Kind        Status     Started  Finished  Limit  Failure           Episodes
-scheduled   completed  3h ago   3h ago    —      —                 ▸ 2 available · 1 waiting
-initial     failed     9d ago   9d ago    5      PROVIDER_LIMIT    ▸ 3 available · 2 not attempted
+Kind        Status     Started  Finished  Limit  Episodes
+scheduled   completed  3h ago   3h ago    —      no episodes · feed could not be read since 9h ago
+scheduled   completed  9h ago   9h ago    —      ▸ 2 available · 1 waiting
+initial     completed  9d ago   9d ago    5      ▸ 3 available · 2 waiting
 
 ## Followers
 4 following
@@ -350,8 +355,9 @@ Everything below is read from the Registry DO; the source table is named so it i
 today versus after M3.
 
 **Header** (`channels`): title, canonical URL, id, state with pause, `approvedAt`, the latest review
-(`reviewedAt`, `reviewedByEmail`, `reviewNote`), `initialImportCount`, created and
-updated times, and the follower count. Actions from `ChannelStatusActions`, the same component the table uses:
+(`reviewedAt`, `reviewedByEmail`, `reviewNote`), `initialImportCount`, `lastCheckedAt` (M3: it moves only when
+the feed was actually read, so a check time that stands still while runs keep appearing means the feed cannot be
+read), created and updated times, and the follower count. Actions from `ChannelStatusActions`, the same component the table uses:
 Approve, Decline, Pause, Resume as the status allows, with the one withdraw confirmation.
 
 **Episodes** (`episodes`, `episode_summaries`): title linked to `youtu.be`, published, status with the wait
@@ -360,11 +366,17 @@ processed times, and whether a summary exists and in which format. Sorted newest
 **Retry** on `failed` and `skipped` rows and **Skip** on `failed` rows. This is where the owner sees that a
 channel is "approved but thin", say two available out of five.
 
-**Runs** (`ingestion_runs`, `ingestion_run_episodes`): kind, status, started, finished, episode limit,
-failure code and detail. Each run expands to its per-episode outcomes
-(`selected | available | failed | skipped | waiting | not_attempted`), which stay historical even after a later
-retry changes the episode's current status. This is the audit trail for "why did this fail and what did the
-retry do".
+**Runs** (`ingestion_runs`, `ingestion_run_episodes`): kind, status, started, finished, episode limit. A run is
+`running` or `completed` and carries no verdict of its own (decided 2026-09-11); the outcomes are on its
+run-episodes. A run with no run-episodes renders as one quiet line, since every tick records one for every channel
+it looks at. The latest such run says which kind it was, derived in `copy.ts` from fields the page already has:
+"no episodes · nothing new" when the header's `lastCheckedAt` equals the run's `startedAt`, "no episodes · feed
+could not be read since [last checked]" when the check time is older. Earlier empty runs read "no episodes", since
+only the latest check time is kept. Each run
+with rows expands to its per-episode outcomes (`selected | available | failed | skipped | waiting`;
+`not_attempted` is in the enum but never written), which stay historical even after a later retry changes the
+episode's current status. This is the audit trail for "why did this fail and what did the retry do". The section
+does not poll: a run in flight reads `running` until the owner reloads, in keeping with §11.
 
 **Followers** (`channel_followers`): for a `requested` channel, the active followers' emails and follow times
 from `GET /channels/:id/followers`, because they are the people waiting on the decision. For any other status,
@@ -622,7 +634,9 @@ enums join the existing types in `packages/shared`. Every response wraps its ent
   unfollow, add, approve, decline from `requested`, pause, resume, episode retry, and episode skip act
   immediately; their effects are reversible or recorded.
 - **Polling.** Only the Home channel lists, only while a followed channel is `requested` (§6.4). The owner
-  attention count refreshes on navigation, not on a timer.
+  attention count refreshes on navigation, not on a timer. Ingestion progress is never polled: readers press
+  **Refresh** on the digest (M3), and the owner reloads the channel detail. Readers are not told about runs, so
+  there is nothing for them to poll on, and caption and credit waits can last days.
 - **Timestamps.** Relative in the row ("3h ago"); the absolute time in the element's `title`.
 - **Layout.** Text only, one CSS file, no component library. Reader pages keep the current 42rem measure.
   Owner tables sit in a wider container (64rem) inside an `overflow-x: auto` wrapper, so the page never
@@ -710,7 +724,8 @@ channel can always be requested again).
   after following, the digest shows "Nothing new since yesterday." until summaries exist.
 - With seeded summaries: the digest lists the last 24 hours across eligible channels newest first, marks
   NEW on items without a receipt, records receipts for exactly the returned items, and excludes declined,
-  requested, and unfollowed channels. "Show last 7 days" widens the window.
+  requested, and unfollowed channels. "Show last 7 days" widens the window; "Refresh" (M3) re-fetches lists and
+  digest in that order.
 - Followed rows show summarised and unread counts consistent with the NEW markers on the same load; a
   declined channel that is still followed shows "Declined" or "Withdrawn" with the note and Request again, and
   disappears from the digest and the unread counts.
