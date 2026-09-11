@@ -49,7 +49,8 @@ the owner; the web copy for every skip and wait reason; and `GET /catalog` with 
 
 - `types.ts`: `TranscriptSource` returning
   `TranscriptResult = { segments | null, durationSec | null, isLive, captionStatus: "english" | "none" | "non_english" }`,
-  `TranscriptSegment`, `TranscriptError` with the `TranscriptFailure` union, and `chooseTrack(tracks)` implementing
+  `TranscriptSegment`, `TranscriptError` with the `TranscriptFailure` union (the reason is also the message prefix
+  and `transcriptFailure(error)` recovers it, so it survives a Workflow step boundary), and `chooseTrack(tracks)` implementing
   the English-first rule over `{ code, auto }` pairs, returning no track when captions exist but none is English
   (`captionStatus: "non_english"`, distinct from `"none"`).
 - `vtt.ts`: pure WebVTT/SRT cue parser (the spike's `parseCues`, hardened: tag stripping, `.`/`,` millis, blank
@@ -81,7 +82,9 @@ web `EpisodeItem`, fixtures and tests.
 
 - `packages/shared`: `EpisodeSummary.takeaways` becomes `{ text: string; startSec: number | null }[]`; `Episode`
   gains `summaryAvailableAt: UnixMs | null` (the first `processed_at`, null until available); `CatalogSchema` gains
-  `transcripts: { remainingCredits: number | null }`. No legacy normalisation: there is no pre-reset data.
+  `transcripts: { remainingCredits: number | null }`. `IngestionRunStatusSchema`'s description says `queued` and
+  `cancelled` exist only because the CHECK is frozen and are never written. No legacy normalisation: there is no
+  pre-reset data.
 - `lib/ai.ts`: `embed(texts)` (batches ≤ 20, 768-dim check, returns the vectors plus their running sum and count for
   the centroid), `summarizeSection(section)` and `reduceSummaries(sections)` returning
   `{ format: "structured", ... } | { format: "raw_fallback", rawText }` with JSON validation and the single
@@ -134,16 +137,20 @@ the schema after `0002` already holds every column this step writes.
 
 - **Runs.** `createRun(channelId, kind, selection, { ignorePause })` in one transaction: refuses a channel that is
   not `approved`, refuses a paused channel unless `ignorePause` (the first-approval run, an owner episode retry, and
-  an on-demand start pass it), and returns `null` when a run is queued or running. Otherwise it upserts the feed
-  entries in `selection.entries` as `pending` episodes, inserts the run `running` with `started_at`, inserts one
-  run-episode `selected` per selected video, and sets `channels.last_checked_at`. For `kind: "owner_retry"` the
+  an on-demand start pass it), refuses an empty selection with `INVALID_INPUT` so a run with no run-episodes can
+  never exist, and returns `null` when a run is queued or running. Otherwise it upserts the feed
+  entries in `selection.entries` as `pending` episodes, inserts the run `running` with `started_at` and `episode_limit`
+  (the import count on `initial` runs, null otherwise), inserts one run-episode `selected` per selected video, and
+  sets `channels.last_checked_at`. For `kind: "owner_retry"` the
   selection is exactly the one video. Run id is one ULID-style string generated here; `workflow_id` is set to the
   same value, since the instances are named from it and nothing else needs the column.
 - **Selection helper.** `selectForRun(channelId, kind, entries)` is a pure function over the channel row, the feed
   entries, and the channel's current episodes: `initial` takes the newest `initial_import_count` entries whatever
   their date; `scheduled` takes untracked entries whose `published_at` is later than `approved_at` plus every
   `pending` episode (waiting, or below three attempts); `owner_retry` takes the given video. Cron passes the same
-  entries so a channel is selected consistently.
+  entries so a channel is selected consistently. The kind is chosen before selection: `owner_retry` for the retry
+  route; otherwise `initial` when the channel has no run row at all and `scheduled` when it has one, so the first
+  run a channel ever gets is always the initial import, whoever creates it.
 - **The three instance writes**, each taking `(runId, videoId, ...)`, each beginning with the run gate (the run row
   must be `queued` or `running`, else `INVALID_STATE`), each updating the episode and its run-episode in one
   transaction, and each ending with the close check:
@@ -163,35 +170,58 @@ the schema after `0002` already holds every column this step writes.
     `available`.
   - `failEpisode(runId, videoId, code, detail)` for post-transcript technical failures uses the same attempt rule and
     records the run-episode `failed`.
-  - **Close check:** when no run-episode of the run is still `selected`, the run becomes `failed` with
-    `PROVIDER_LIMIT`, `PROVIDER_AUTH`, or `PROVIDER_RATE_LIMIT` if any run-episode carries one of those codes, else
-    `completed`; `finished_at` is set; `channels.last_ingested_at` is set when at least one run-episode is
-    `available`. `recordCreateFailure(runId, videoId)` marks a run-episode `failed WORKFLOW_LOST` for a `create()`
-    that threw and runs the same close check.
-- **Channels.** No new transition. `declineChannel` already stopped bumping anything on 2026-09-11; nothing in this
-  step touches channel status, and there is no failure code and no waiting code on channels.
+  - **Close check:** when no run-episode of the run is still `selected`, the run's status is derived from its rows
+    by precedence: `failed PROVIDER_AUTH` if any row carries that code, else `failed PROVIDER_LIMIT`, else
+    `failed WORKFLOW_LOST`, else `completed`; a `PROVIDER_RATE_LIMIT` row never fails the run. `finished_at` is
+    set; `channels.last_ingested_at` is set when at least one run-episode is `available`.
+    `recordCreateFailure(runId, videoId)` marks a run-episode `failed WORKFLOW_LOST` for a `create()` that threw
+    and runs the same close check.
+  - **Catalog figure:** `catalog.summarize` computes `lastSuccessfulIngestionAt` as `MAX(channels.last_ingested_at)`
+    and `runs.lastCompletedFinishedAt` goes, so the health strip reads "when was a summary last published anywhere"
+    and a lost instance never drags it backwards.
+- **Channels.** `touchChecked(channelId)` sets `last_checked_at` and nothing else; the handler calls it when the
+  feed was read but the selection is empty, so the check is recorded without a run row. No new transition:
+  `declineChannel` already stopped bumping anything on 2026-09-11, nothing in this step touches channel status, and
+  there is no failure code and no waiting code on channels.
 - **Reconciliation helpers.** `listOpenRunEpisodes(olderThanMs)` returns `(runId, videoId)` pairs still `selected`
   on runs created before the cutoff; `closeLostRunEpisode(runId, videoId)` marks the pair `failed WORKFLOW_LOST`,
   leaves the episode's attempt count alone, and runs the close check. Step 8 drives them.
-- **Plan decision:** instance ids are `${runId}.${videoId}`, computed and never stored, so reconciliation can name
-  every instance from the run-episode row alone.
+- **Plan decision:** instance ids are `${runId}-${videoId}`, computed and never stored, so reconciliation can name
+  every instance from the run-episode row alone. Workflows accepts ids matching `^[a-zA-Z0-9_][a-zA-Z0-9-_]*$` up
+  to 100 characters (confirmed against Cloudflare's docs 2026-09-11); a ULID, a dash, and an 11-character video id
+  is 38 characters and starts with the ULID, so a video id beginning with `-` or `_` is fine. A period was the
+  original choice and is not allowed.
 
 **Tests:** extend `registry-runs`, `registry-episodes`, `registry-channels`: one active run per channel; `createRun`
-refuses declined, requested, and paused channels and honours `ignorePause`; `selectForRun` takes the newest N for
+refuses declined, requested, and paused channels, refuses an empty selection, and honours `ignorePause`;
+`touchChecked` moves `last_checked_at` and nothing else; `selectForRun` takes the newest N for
 `initial`, only entries published after `approved_at` for `scheduled`, every pending episode including ones no longer
 in the feed, and never a skipped or failed one; the run gate rejects a write against a completed or failed run;
 `completeEpisode` sets `processed_at` once and never on retry; `markTranscript` waiting outcomes count no attempt,
 technical outcomes count one and flip to `failed` on the third, account-level outcomes count none and leave the
 episode `pending` with no wait reason, skipped outcomes carry their reason; the close check derives `completed`,
-`failed PROVIDER_LIMIT`, and `failed PROVIDER_AUTH` from the run-episodes and sets `last_ingested_at` only when
-something became available; the 48-hour boundary exactly; declining an approved channel mid-run changes no run or
+`failed PROVIDER_LIMIT`, `failed PROVIDER_AUTH`, and `failed WORKFLOW_LOST` from the run-episodes, `PROVIDER_AUTH`
+outranking `PROVIDER_LIMIT` outranking `WORKFLOW_LOST` when rows disagree, a rate-limited row leaving `completed`,
+and sets `last_ingested_at` only when something became available; the catalog's `lastSuccessfulIngestionAt` equals
+the newest channel `last_ingested_at` and ignores run status (`registry-management`); the 48-hour boundary exactly; declining an approved channel mid-run changes no run or
 episode row, and the run's later writes still succeed; the channel row's status never changes because of a run.
 
 ### Step 5 — Bindings  (size: S)
 
-**Files:** `wrangler.jsonc`, `bindings.d.ts`, `vitest.config.ts`. `ai` and `vectorize` with `remote: true`,
-`workflows` with `IngestWorkflow`, cron placeholder comment. Verified by `wrangler dev` starting and `pnpm check`
-passing (Step 0's finding decides whether tests see these bindings).
+**Files:** `wrangler.jsonc`, `bindings.d.ts`, `vitest.config.ts`, `lib/workflows.ts`, tests. `ai` and `vectorize`
+with `remote: true`, `workflows` with `IngestWorkflow`, cron placeholder comment. `WORKFLOW_FAKE` joins the test-only
+bindings in `vitest.config.ts` and `bindings.d.ts`, never set in `.dev.vars` or deployed.
+
+- `lib/workflows.ts`: `ingestLauncher(env): { create(id, params), status(id) }`, the only path to `INGEST_WORKFLOW`
+  (owner decision 2026-09-11). The real launcher wraps the binding and folds the engine's statuses into `active`
+  (queued, running, paused, waiting), `gone` (complete, errored, terminated), or `missing` when `get` throws
+  not-found. With `WORKFLOW_FAKE` set, a JSON object of instance id → one of those three, a `default` for unknown
+  ids, and a `createFails` list, `create()` is a no-op or throws as instructed and `status()` answers from the map.
+  The stagger delays and the id pattern are unit tests of the pure `instanceId` and `startDelaySec` helpers, so the
+  fake never has to remember what was created.
+
+Verified by `wrangler dev` starting and `pnpm check` passing. Step 0's finding no longer gates the tests; it decides
+only whether one Step 6 test goes through a real instance.
 
 ### Step 6 — The per-episode Workflow  (size: L)
 
@@ -206,18 +236,31 @@ passing (Step 0's finding decides whether tests see these bindings).
   outcome but `captions` ends the instance), `embed[i]` and `upsert[i]` per batch of ≤ 20 chunks, `verify`
   (batched `getByIds`, its own retry policy of three from five seconds), `summarize[s]` per section, `reduce` when
   there is more than one section, `related`, `publish` (the `completeEpisode` write).
-- `NonRetryableError` for `UNPLAYABLE`, `no_subtitles`, `PROVIDER_AUTH`, `PROVIDER_LIMIT`, `TRANSCRIPT_TOO_LARGE`,
-  and a refused Registry write. Step retries and timeouts per spec §3. The episode's `attempt_count` is the
-  cross-run retry; step retries are within one instance.
-- The body of `run` wraps everything after `classify` in a try/catch: when a step gives up after its retries, the
-  instance calls `failEpisode` with the step's code (`VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`,
-  `AI_SUMMARY_FAILED`) and ends. A refused write, meaning the run was closed under it, is logged and swallowed.
+- `NonRetryableError` for `UNPLAYABLE`, `PROVIDER_AUTH`, `PROVIDER_LIMIT`, `TRANSCRIPT_TOO_LARGE`, and a refused
+  Registry write. Step retries and timeouts per spec §3. The episode's `attempt_count` is the cross-run retry; step
+  retries are within one instance.
+- **Two catch regions, the write chosen by the stage that failed.** Stage 1 is the transcript: `run` awaits the
+  transcript step inside a try/catch; a result is classified (`captions`, `waiting`, `skipped`, `deterministic`)
+  and a thrown `TranscriptError`, whether non-retryable or thrown after the step's retries, is classified from its
+  reason (`technical` for `PROVIDER_HTTP` and `PROVIDER_PARSE`, `accountLevel` for `PROVIDER_AUTH` and
+  `PROVIDER_RATE_LIMIT`, `waiting PROVIDER_LIMIT`, `skipped UNPLAYABLE`). Either way the outcome reaches
+  `markTranscript`, which is itself a `step.do` so a replay never writes it twice, and its answer decides whether the
+  instance continues. Stage 2 wraps everything after that: when a step gives up after its retries, the instance
+  calls `failEpisode`, also as a step, with the stage's code (`VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`,
+  `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED`) and ends. No exception may escape `run`: an instance that errors out
+  leaves its run-episode `selected` for the sweep to mislabel as `WORKFLOW_LOST`.
+- A refused write, meaning the run was closed under the instance, is logged and ends the instance; it is never
+  turned into `failEpisode`, which would be another refused write.
+- `TranscriptError` carries its reason as the message prefix, as `DomainError` carries its code, and
+  `transcriptFailure(error)` recovers it the way `domainErrorCode` does: an error thrown inside a step reaches the
+  catch after the engine has serialised it, and the class and custom fields may not survive.
 - Transcript text never logged; logs carry `{ event, runId, channelId, videoId, step, outcome }`.
 - Tests drive `ingestEpisode` with an in-process `StepRunner` (runs each step once, records names, skips sleeps) and
   the fakes: happy path to `available` with `processed_at` set and the run closing `completed` when it was the last
   selected row; fresh no-captions to `pending CAPTIONS` and, with the clock moved 48 hours, a second fetch to
   `skipped NO_CAPTIONS`; a short video to `skipped SHORT`; non-English to `skipped NON_ENGLISH`; a transport failure
-  to `pending` with one attempt, then `failed` on the third run; a 401 to `pending` with no attempt and run-episode
+  to `pending` with one attempt, then `failed` on the third run, reached through `markTranscript` when the
+  transcript step is what gave up and through `failEpisode` when a later step did; a 401 to `pending` with no attempt and run-episode
   `not_attempted PROVIDER_AUTH`; `verify` missing an id past its retries → `VECTORIZE_INCOMPLETE` attempt, and an id
   that appears on the second try → no attempt; invalid model JSON → `raw_fallback`; related-query failure →
   published summary with `[]`; a 403 → `pending PROVIDER_LIMIT` and the run closing `failed PROVIDER_LIMIT`; a
@@ -229,30 +272,45 @@ passing (Step 0's finding decides whether tests see these bindings).
 **Files:** `lib/ingestion.ts`, `routes/channels.ts`, `routes/catalog.ts`, `lib/youtube/rss.ts` (the feed fake grows
 entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
 
-- `startRun(env, channelId, kind, { ignorePause, videoId?, stagger })` replaces the log-only `requestIngestion`:
-  fetch the feed with `feedFetcher(env)`, compute the selection, call `registry.createRun`, then for each selected
-  video call `INGEST_WORKFLOW.create({ id: `${runId}.${videoId}`, params })` with `startDelaySec` taken from the
+- `startRun(env, channelId, { ignorePause, videoId?, stagger })` replaces the log-only `requestIngestion`. The kind
+  is `owner_retry` when `videoId` is given; otherwise `initial` when the channel has no run row and `scheduled` when
+  it has one, read from the Registry before the feed is fetched. Then: an owner retry fetches no feed, since its
+  selection is exactly the one video, which may have left the feed, and it leaves `last_checked_at` alone because
+  nothing was checked. Otherwise fetch the feed with `feedFetcher(env)` and compute the selection; when it is
+  empty, call `registry.touchChecked` and return `null` without creating a run. In both cases call
+  `registry.createRun`, then for each selected
+  video call `ingestLauncher(env).create(`${runId}-${videoId}`, params)` with `startDelaySec` taken from the
   `stagger` counter (`k × 3` across everything created in this invocation); a `create()` that throws is recorded at
   once with `registry.recordCreateFailure`. Returns the run or `null` when one was already open. A feed that cannot
   be fetched logs `{ event: "ingestion.feed_unavailable", channelId }` and returns `null`; the caller's own
   response is unaffected.
-- Callers: `POST /channels` (owner add) and `POST /channels/:id/approve` on first approval, `kind: "initial"`,
-  `ignorePause`, after the approval has committed, so approval never fails because YouTube did not answer;
-  `POST /channels/:id/episodes/:videoId/retry`, `kind: "owner_retry"`, the one video, `ignorePause`.
-- **Plan decision:** add `POST /channels/:id/runs` (owner; `approved`; 409 while a run is open) creating a
-  `scheduled`-kind run now, ignoring pause, and returning `{ run }`. It is the Start action for a never-started
+- Callers: `POST /channels` (owner add) and `POST /channels/:id/approve` on first approval, which resolve to
+  `initial`, `ignorePause`, after the approval has committed, so approval never fails because YouTube did not
+  answer; `POST /channels/:id/episodes/:videoId/retry`, the one video (`owner_retry`), `ignorePause`.
+- **Plan decision:** add `POST /channels/:id/runs` (owner; `approved`; 409 while a run is open) creating a run now,
+  ignoring pause, `initial` when the channel has no run row and `scheduled` otherwise, and returning `{ run }`. It
+  is the Start action for a never-started
   channel and the owner's nudge after a credit refill or a run that closed `failed`. Shared
   `IngestionRunResponse { run: IngestionRun }`.
 - `GET /catalog` gains `transcripts: { remainingCredits: number | null }` from the DownSub `/status` wrapper, cached
   for five minutes per isolate, two-second timeout, and `null` when the call fails, times out, or the fake source is
-  in use. The response never fails because of it.
+  in use. The response never fails because of it. `attention` gains `failedRuns`, the count of channels whose latest
+  run closed `failed`, computed in `catalog.summarize` from the same latest-run query the management rows use;
+  `CatalogSchema` grows accordingly (additive).
 - `YOUTUBE_FEEDS_FAKE` accepts `channelId → { title, entries: { videoId, title, publishedAt }[] }` beside the
   existing string form, so route tests can seed a feed with a Short, a fresh upload, and an old entry.
 - Route tests assert exactly one run row with the right run-episodes after first approval, after
-  `POST /channels/:id/runs`, and after an episode retry (one run-episode, that video); none after re-approval of a
+  `POST /channels/:id/runs`, and after an episode retry (one run-episode, that video, no feed request recorded by
+  the fake, and a video absent from the feed still selected); a Start on a channel with no
+  run row creates an `initial` run selecting the newest N regardless of date, and on a channel with runs a
+  `scheduled` one; none after re-approval of a
   previously approved channel; 409 for a second start while one is open; the catalog carries credits (`null` with the
-  fake); the first-approval run is created while the channel is system-paused; an approve whose feed fetch fails
-  still approves and leaves the channel never-started; instances created in one call carry delays 0, 3, 6, … s.
+  fake) and `attention.failedRuns` counts a seeded channel whose latest run is `failed` and not one whose later run
+  completed; the first-approval run is created while the channel is system-paused; a `create()` that `WORKFLOW_FAKE` is
+  told to throw for is recorded as run-episode `failed WORKFLOW_LOST` at once; an approve whose feed fetch fails
+  still approves and leaves the channel never-started; a Start on a channel with nothing new and nothing pending
+  creates no run and moves `lastCheckedAt`; instances created in one call carry delays 0, 3, 6, … s and ids that
+  match Workflows' `^[a-zA-Z0-9_][a-zA-Z0-9-_]*$`, including a video id that starts with `-`.
 
 ### Step 8 — Cron handler and reconciliation  (size: M)
 
@@ -262,27 +320,32 @@ entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
 Order inside one tick: reconcile, check credits, select channels, start runs.
 
 - `reconcileRuns(env)`: for every `(runId, videoId)` from `listOpenRunEpisodes(now − 1 h)`, ask
-  `env.INGEST_WORKFLOW.get(`${runId}.${videoId}`).status()`. Running, queued, paused, or sleeping → leave it. Complete,
-  errored, terminated, or not found → `closeLostRunEpisode`. Logs `{ event: "ingestion.reconciled", runId, videoId,
-  status }`.
+  `ingestLauncher(env).status(`${runId}-${videoId}`)`. `active` → leave it. `gone` or `missing` →
+  `closeLostRunEpisode`. Logs `{ event: "ingestion.reconciled", runId, videoId, status }`.
 - Credits: `remainingCredits(env)`; when it is `0`, log `{ event: "ingestion.tick_skipped", reason: "no_credits" }`
   and start nothing. `null` (unknown) does not block.
 - Selection: channels with `status = 'approved'`, `paused_by IS NULL`, and no open run; for each, `startRun(env,
-  channelId, "scheduled", { stagger })` with one stagger counter shared across the whole tick. Selection inside
+  channelId, { stagger })` with one stagger counter shared across the whole tick, which creates an `initial` run for
+  a channel with no run row and a `scheduled` one otherwise. Selection inside
   `startRun` resumes persisted `pending` work (waiting and attempts below three, including episodes no longer in
-  the feed) and never touches `skipped` or `failed` episodes.
+  the feed) and never touches `skipped` or `failed` episodes. Feed fetches run in batches of five with
+  `Promise.all`; the whole tick sits inside the cron trigger's 15-minute wall clock, ample at this catalog size.
 - Verified with `wrangler dev --test-scheduled` and `curl "http://127.0.0.1:8787/__scheduled?cron=0+*/6+*+*+*"`.
   `triggers.crons` becomes `["0 */6 * * *"]` (owner decision 2026-09-08).
 
-**Tests:** a seeded open run older than an hour whose instance the fake Workflow binding reports as errored closes
-`failed WORKFLOW_LOST` with the episode's attempt count unchanged; a run younger than an hour is left alone; a
-running instance is left alone; the tick skips paused channels and channels with an open run; with the credits
+**Tests:** a seeded open run older than an hour whose instance `WORKFLOW_FAKE` reports `gone` closes
+`failed WORKFLOW_LOST` with the episode's attempt count unchanged, and a `missing` one closes the same way; a run
+younger than an hour is left alone; an `active` instance is left alone; the tick skips paused channels and channels with an open run; a channel with
+nothing new and nothing pending gets no run and its `lastCheckedAt` moves; a never-started channel with followers
+gets an `initial` run from the tick; with the credits
 wrapper returning `0` nothing starts; delays increase across channels within one tick.
 
 ### Step 9 — Owner and reader touches, walkthrough, docs  (size: M)
 
-- Web: **Start** on never-started rows and on approved rows whose latest run is `failed` in `AttentionList` and the
-  catalog table, calling `POST /channels/:id/runs`; the credits figure on the catalog health strip; the digest's
+- Web: **Start** on never-started rows in `AttentionList` and in the catalog table, calling `POST /channels/:id/runs`;
+  a third Needs-attention group, **Last run failed**, listing each channel whose latest run closed `failed` with its
+  code and Start; `attentionCount` adds `failedRuns` so the Owner badge and the Home card include it; the credits
+  figure on the catalog health strip; the digest's
   three empty states and its availability-time label (spec §2, AGENTS.md Screens); takeaway timestamp links; owner
   phrases for the technical codes in `copy.ts`. `apps/web` stays typecheck and lint only.
 - `wrangler dev` end to end per spec §7, recorded below: first approval with no followers starts the import while

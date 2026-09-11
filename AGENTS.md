@@ -94,6 +94,7 @@ Toolchain pinning:
 │   │   │   ├── lib/chunk.ts          # transcript chunking (pure)
 │   │   │   ├── lib/ai.ts             # Workers AI wrappers: embed, summarize, chat
 │   │   │   ├── lib/vectorize.ts      # namespaced upsert/query helpers
+│   │   │   ├── lib/workflows.ts      # ingestLauncher(env): the one path to INGEST_WORKFLOW (create, status); WORKFLOW_FAKE in tests
 │   │   │   ├── lib/transcripts/      # index.ts transcriptSource(env): fake | downsub; downsub.ts adapter; vtt.ts cue
 │   │   │   │                         # parser; types.ts (TranscriptSource, TranscriptError, the track rule)
 │   │   │   └── prompts/              # prompt templates as .ts exporting functions; summary.ts carries prompt_version
@@ -308,7 +309,7 @@ The model is `docs/specs/channel-simplification.md` §3, decided 2026-09-10.
 
 First approval, owner episode retry, owner Start, or cron → a Worker handler, never a Workflow, fetches the feed,
 selects the episodes, writes the run and its selection to the Registry in one transaction, and creates one Workflow
-instance per selected episode, id `${runId}.${videoId}` (decided 2026-09-11; `docs/specs/m3-ingestion.md` §2 "Unit
+instance per selected episode, id `${runId}-${videoId}` (decided 2026-09-11; `docs/specs/m3-ingestion.md` §2 "Unit
 of execution"). Per instance: stagger → fetch transcript through `lib/transcripts/` → classify → chunk → embed →
 upsert in `shared-catalog` → verify → summarize → write the shared summary and mark the episode `available`. An
 instance makes exactly three kinds of Registry write, `markTranscript`, `completeEpisode`, and `failEpisode`; each
@@ -402,6 +403,8 @@ export type TranscriptSource = { fetch(videoId: string): Promise<TranscriptResul
 // (Ingestion pipeline); other provider failures throw TranscriptError.
 export class TranscriptError extends Error { readonly reason: TranscriptFailure } // UNPLAYABLE | PROVIDER_AUTH |
 // PROVIDER_LIMIT | PROVIDER_RATE_LIMIT | PROVIDER_HTTP | PROVIDER_PARSE
+// The reason is also the message prefix, as DomainError's code is, so it survives a Workflow step boundary and
+// `transcriptFailure(error)` recovers it the way `domainErrorCode` does.
 ```
 
 - `lib/transcripts/index.ts` exports `transcriptSource(env)`: the test-only `TRANSCRIPTS_FAKE` binding wins (canned
@@ -486,7 +489,7 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 | Route | Who | Purpose |
 |---|---|---|
 | `GET /me` | anyone | The caller's normalized email and `role` (`owner` or `user`); the UI uses it to show owner controls |
-| `GET /catalog` | owner | The catalog's aggregate state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, waiting, failed, skipped }`, `runs { active }`, `attention { failedEpisodes, neverStarted, requested }`, `lastSuccessfulIngestionAt` |
+| `GET /catalog` | owner | The catalog's aggregate state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, waiting, failed, skipped }`, `runs { active }`, `attention { failedEpisodes, neverStarted, requested, failedRuns }` (`failedRuns`: channels whose latest run closed `failed`, M3), `lastSuccessfulIngestionAt` (the newest channel `last_ingested_at`, M3) |
 | `GET /channels` | anyone | `requested` and `approved` channels, each with `status`, `paused`, `following`, `followerCount`, `episodes` counts and `lastIngestedAt`; `?scope=all` (owner) adds `declined` ones and a `management` block |
 | `POST /channels` `{ channelId, title?, initialImportCount? }` | anyone | A user's call creates a `requested` channel and follows them (201); the owner's creates it `approved`, starts the initial import, and follows the owner (201). An existing `requested` or `approved` id is followed and returned (200); a `declined` id is 409 `ChannelDeclinedResponse`. A handle or an id with no feed is 400 |
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; the owner also gets `management` |
@@ -557,8 +560,8 @@ straight to `/home`. A "switch account" link is visible on every other screen.
 **`/home` — Home.** One page for everyone, with section jump links. The header shows the email, the word `owner`
 when applicable, and "Switch account"; the nav shows **Home** and, for owners, **Owner (n)** where `n` is the attention
 count. Owners also see an attention card first ("2 channels waiting for review · 1 episode failed · 1 channel approved
-but never started", from `GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the
-count is zero. Then:
+but never started · 1 channel's last run failed", from `GET /catalog`) linking to `/owner#attention`; users never see
+it and it is hidden when the count is zero. Then:
 1. **Today's digest** — eligible followed channels only (active follows ∩ approved); summaries first available in
    the last 24h, newest availability first (M3 carries the basis; until then publication time), flat list with the
    channel as byline; shared summary, takeaways with `youtu.be/<id>?t=<startSec>` links where a timestamp exists,
@@ -595,7 +598,10 @@ page, sections **Queue**, **Catalog**, and **Needs attention**, jump links `#req
   (title, import count, note) and Decline (note) forms. Reviewed history is collapsed: reviewer, time, note.
 - **Needs attention.** `failed` episodes grouped by channel with reason, attempts, Retry and Skip; then approved
   channels with no run row at all, listed as information — there is no Start button until M3 adds a route that starts
-  a run. "Never started" means approved and no run, with no age window.
+  a run. "Never started" means approved and no run, with no age window. M3 adds a third group, **Last run failed**:
+  channels whose latest run closed `failed`, with the code (`PROVIDER_AUTH`, `PROVIDER_LIMIT`, `WORKFLOW_LOST`) and
+  Start, since account-level failures are never charged to episodes and would otherwise raise no attention
+  (decided 2026-09-11).
 - **Catalog.** Health strip from `GET /catalog`. **All channels**: status, paused, `available / tracked` with skipped
   and failed counts, follower count, last ingested, latest run, and the actions the status allows — Approve or
   Decline, Pause or Resume. Declining an approved channel confirms once, naming its follower count. Follower counts
@@ -618,7 +624,9 @@ wireframes, load order, and acceptance criteria are in `docs/specs/home-read-exp
 Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`. Bindings come from `wrangler.jsonc`.
 Workers AI and Vectorize are not available locally in tests — wrap them behind `lib/ai.ts` / `lib/vectorize.ts`
 interfaces and select fakes with the test-only `AI_FAKE` and `VECTORIZE_FAKE` bindings; transcripts likewise
-through `TRANSCRIPTS_FAKE` (`lib/transcripts/index.ts`). The same pattern already covers YouTube's feed: `lib/youtube/rss.ts` `feedFetcher(env)`
+through `TRANSCRIPTS_FAKE` (`lib/transcripts/index.ts`), and Workflows through `WORKFLOW_FAKE` (`lib/workflows.ts`),
+which answers `active`, `gone`, or `missing` per instance id and can make `create()` throw (decided 2026-09-11).
+The same pattern already covers YouTube's feed: `lib/youtube/rss.ts` `feedFetcher(env)`
 serves canned feeds when the test-only `YOUTUBE_FEEDS_FAKE` binding is set in `vitest.config.ts`, so no test reaches
 the network. The pinned `@cloudflare/vitest-pool-workers` has no `fetchMock`, and `vi.mock` does not reach modules the
 Worker loads for `SELF` requests, so env-selected fakes are the only seam that works end to end.
