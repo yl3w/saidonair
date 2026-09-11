@@ -58,7 +58,8 @@ the owner; the web copy for every skip and wait reason; and `GET /catalog` with 
 - `downsub.ts`: `downsubSource(env, fetchImpl)`; state and HTTP mapping from spec §2; VTT preferred, SRT fallback
   if a track lacks VTT; discards `translatedSubtitles`; reports `duration` and `metadata.isLiveContent` (also on the
   `error` state, where live/upcoming wins over `UNPLAYABLE`) so selection can skip Shorts and wait for streams.
-  `remainingCredits(env)` wraps `/status` for the catalog with a two-second timeout. Tests with fixtures taken from
+  `providerStatus(env)` wraps `/status` for the catalog and the cron's pre-flight gate with a two-second timeout,
+  returning `{ remainingCredits: number | null, status: "ok" | "auth_failed" | "unreachable" }`. Tests with fixtures taken from
   the probe: found, no_subtitles, error, error-but-live, 401/403/429, malformed body; the probe's VTT for
   `jNQXAC9IVRw` parses to its known 6 cues.
 - `index.ts`: `transcriptSource(env)`: `TRANSCRIPTS_FAKE` → canned (`{ [videoId]: TranscriptResult | { reason } }`);
@@ -82,8 +83,10 @@ web `EpisodeItem`, fixtures and tests.
 
 - `packages/shared`: `EpisodeSummary.takeaways` becomes `{ text: string; startSec: number | null }[]`; `Episode`
   gains `summaryAvailableAt: UnixMs | null` (the first `processed_at`, null until available); `CatalogSchema` gains
-  `transcripts: { remainingCredits: number | null }`. `IngestionRunStatusSchema`'s description says `queued` and
-  `cancelled` exist only because the CHECK is frozen and are never written. No legacy normalisation: there is no
+  `transcripts: { remainingCredits: number | null, status: "ok" | "auth_failed" | "unreachable" }`.
+  `IngestionRunStatusSchema`'s description says `queued`, `failed`, and `cancelled` exist only because the CHECK is
+  frozen and are never written: a run is `running` and then `completed`; `IngestionRunEpisodeStatusSchema` says the
+  same of `not_attempted`. No legacy normalisation: there is no
   pre-reset data.
 - `lib/ai.ts`: `embed(texts)` (batches ≤ 20, 768-dim check, returns the vectors plus their running sum and count for
   the centroid), `summarizeSection(section)` and `reduceSummaries(sections)` returning
@@ -159,9 +162,9 @@ the schema after `0002` already holds every column this step writes.
     wait reason without counting an attempt and records the run-episode `waiting`, `skipped(SHORT | NON_ENGLISH |
     NO_CAPTIONS | LIVE_OR_UPCOMING | UNPLAYABLE)` with run-episode `skipped`, `technical(code, detail)` which
     increments `attempt_count`, records the reason, keeps `pending` below three and sets `failed` on the third, with
-    run-episode `failed`, `deterministic(TRANSCRIPT_TOO_LARGE)` which sets `failed` at once, and
-    `accountLevel(PROVIDER_AUTH | PROVIDER_RATE_LIMIT)` which leaves the episode untouched and records the
-    run-episode `not_attempted` with the code. The 48-hour rule lives here: a `waiting CAPTIONS` outcome for a video
+    run-episode `failed`, and `deterministic(TRANSCRIPT_TOO_LARGE)` which sets `failed` at once. `PROVIDER_AUTH`
+    and `PROVIDER_RATE_LIMIT` are `technical` like any other provider error: one rule, no account-level family.
+    The 48-hour rule lives here: a `waiting CAPTIONS` outcome for a video
     published 48 hours ago or more is a `skipped NO_CAPTIONS` outcome, and the caller must have fetched again to
     reach it.
   - `completeEpisode(runId, videoId, { chunkCount, summary, related })` writes the summary row (takeaways as
@@ -170,12 +173,10 @@ the schema after `0002` already holds every column this step writes.
     `available`.
   - `failEpisode(runId, videoId, code, detail)` for post-transcript technical failures uses the same attempt rule and
     records the run-episode `failed`.
-  - **Close check:** when no run-episode of the run is still `selected`, the run's status is derived from its rows
-    by precedence: `failed PROVIDER_AUTH` if any row carries that code, else `failed PROVIDER_LIMIT`, else
-    `failed WORKFLOW_LOST`, else `completed`; a `PROVIDER_RATE_LIMIT` row never fails the run. `finished_at` is
-    set; `channels.last_ingested_at` is set when at least one run-episode is `available`.
-    `recordCreateFailure(runId, videoId)` marks a run-episode `failed WORKFLOW_LOST` for a `create()` that threw
-    and runs the same close check.
+  - **Close check:** when no run-episode of the run is still `selected`, the run closes `completed` with
+    `finished_at` set and `failure_code` null; `channels.last_ingested_at` is set when at least one run-episode is
+    `available`. `recordCreateFailure(runId, videoId)` marks a run-episode `failed WORKFLOW_LOST` for a `create()`
+    that threw, counts one attempt on the episode through the same rule as `failEpisode`, and runs the close check.
   - **Catalog figure:** `catalog.summarize` computes `lastSuccessfulIngestionAt` as `MAX(channels.last_ingested_at)`
     and `runs.lastCompletedFinishedAt` goes, so the health strip reads "when was a summary last published anywhere"
     and a lost instance never drags it backwards.
@@ -185,7 +186,7 @@ the schema after `0002` already holds every column this step writes.
   there is no failure code and no waiting code on channels.
 - **Reconciliation helpers.** `listOpenRunEpisodes(olderThanMs)` returns `(runId, videoId)` pairs still `selected`
   on runs created before the cutoff; `closeLostRunEpisode(runId, videoId)` marks the pair `failed WORKFLOW_LOST`,
-  leaves the episode's attempt count alone, and runs the close check. Step 8 drives them.
+  counts one attempt on the episode (`failed` on the third), and runs the close check. Step 8 drives them.
 - **Plan decision:** instance ids are `${runId}-${videoId}`, computed and never stored, so reconciliation can name
   every instance from the run-episode row alone. Workflows accepts ids matching `^[a-zA-Z0-9_][a-zA-Z0-9-_]*$` up
   to 100 characters (confirmed against Cloudflare's docs 2026-09-11); a ULID, a dash, and an 11-character video id
@@ -198,11 +199,9 @@ refuses declined, requested, and paused channels, refuses an empty selection, an
 `initial`, only entries published after `approved_at` for `scheduled`, every pending episode including ones no longer
 in the feed, and never a skipped or failed one; the run gate rejects a write against a completed or failed run;
 `completeEpisode` sets `processed_at` once and never on retry; `markTranscript` waiting outcomes count no attempt,
-technical outcomes count one and flip to `failed` on the third, account-level outcomes count none and leave the
-episode `pending` with no wait reason, skipped outcomes carry their reason; the close check derives `completed`,
-`failed PROVIDER_LIMIT`, `failed PROVIDER_AUTH`, and `failed WORKFLOW_LOST` from the run-episodes, `PROVIDER_AUTH`
-outranking `PROVIDER_LIMIT` outranking `WORKFLOW_LOST` when rows disagree, a rate-limited row leaving `completed`,
-and sets `last_ingested_at` only when something became available; the catalog's `lastSuccessfulIngestionAt` equals
+technical outcomes count one and flip to `failed` on the third, `PROVIDER_AUTH` and `PROVIDER_RATE_LIMIT` among
+them, skipped outcomes carry their reason; the close check closes the run `completed` whatever its rows say, a
+lost row counts one attempt, and `last_ingested_at` moves only when something became available; the catalog's `lastSuccessfulIngestionAt` equals
 the newest channel `last_ingested_at` and ignores run status (`registry-management`); the 48-hour boundary exactly; declining an approved channel mid-run changes no run or
 episode row, and the run's later writes still succeed; the channel row's status never changes because of a run.
 
@@ -242,8 +241,8 @@ only whether one Step 6 test goes through a real instance.
 - **Two catch regions, the write chosen by the stage that failed.** Stage 1 is the transcript: `run` awaits the
   transcript step inside a try/catch; a result is classified (`captions`, `waiting`, `skipped`, `deterministic`)
   and a thrown `TranscriptError`, whether non-retryable or thrown after the step's retries, is classified from its
-  reason (`technical` for `PROVIDER_HTTP` and `PROVIDER_PARSE`, `accountLevel` for `PROVIDER_AUTH` and
-  `PROVIDER_RATE_LIMIT`, `waiting PROVIDER_LIMIT`, `skipped UNPLAYABLE`). Either way the outcome reaches
+  reason (`technical` for `PROVIDER_HTTP`, `PROVIDER_PARSE`, `PROVIDER_AUTH`, and `PROVIDER_RATE_LIMIT`,
+  `waiting PROVIDER_LIMIT`, `skipped UNPLAYABLE`). Either way the outcome reaches
   `markTranscript`, which is itself a `step.do` so a replay never writes it twice, and its answer decides whether the
   instance continues. Stage 2 wraps everything after that: when a step gives up after its retries, the instance
   calls `failEpisode`, also as a step, with the stage's code (`VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`,
@@ -260,10 +259,10 @@ only whether one Step 6 test goes through a real instance.
   selected row; fresh no-captions to `pending CAPTIONS` and, with the clock moved 48 hours, a second fetch to
   `skipped NO_CAPTIONS`; a short video to `skipped SHORT`; non-English to `skipped NON_ENGLISH`; a transport failure
   to `pending` with one attempt, then `failed` on the third run, reached through `markTranscript` when the
-  transcript step is what gave up and through `failEpisode` when a later step did; a 401 to `pending` with no attempt and run-episode
-  `not_attempted PROVIDER_AUTH`; `verify` missing an id past its retries → `VECTORIZE_INCOMPLETE` attempt, and an id
+  transcript step is what gave up and through `failEpisode` when a later step did; a 401, and a 429 still standing after the step's retries, each → `pending` with one attempt and run-episode
+  `failed` with the code, exactly like a 500; `verify` missing an id past its retries → `VECTORIZE_INCOMPLETE` attempt, and an id
   that appears on the second try → no attempt; invalid model JSON → `raw_fallback`; related-query failure →
-  published summary with `[]`; a 403 → `pending PROVIDER_LIMIT` and the run closing `failed PROVIDER_LIMIT`; a
+  published summary with `[]`; a 403 → `pending PROVIDER_LIMIT`, run-episode `waiting`, and the run closing `completed`; a
   write against a run that reconciliation closed → refused, instance exits, nothing changes. If Step 0 showed the
   pool runs Workflows, one test also goes through `env.INGEST_WORKFLOW.create()`.
 
@@ -292,11 +291,9 @@ entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
   is the Start action for a never-started
   channel and the owner's nudge after a credit refill or a run that closed `failed`. Shared
   `IngestionRunResponse { run: IngestionRun }`.
-- `GET /catalog` gains `transcripts: { remainingCredits: number | null }` from the DownSub `/status` wrapper, cached
-  for five minutes per isolate, two-second timeout, and `null` when the call fails, times out, or the fake source is
-  in use. The response never fails because of it. `attention` gains `failedRuns`, the count of channels whose latest
-  run closed `failed`, computed in `catalog.summarize` from the same latest-run query the management rows use;
-  `CatalogSchema` grows accordingly (additive).
+- `GET /catalog` gains `transcripts: { remainingCredits, status }` from `providerStatus(env)`, cached for five
+  minutes per isolate, two-second timeout; `status` is `ok`, `auth_failed`, or `unreachable`, and `remainingCredits`
+  is `null` when the call fails, times out, or the fake source is in use. The response never fails because of it.
 - `YOUTUBE_FEEDS_FAKE` accepts `channelId → { title, entries: { videoId, title, publishedAt }[] }` beside the
   existing string form, so route tests can seed a feed with a Short, a fresh upload, and an old entry.
 - Route tests assert exactly one run row with the right run-episodes after first approval, after
@@ -304,9 +301,8 @@ entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
   the fake, and a video absent from the feed still selected); a Start on a channel with no
   run row creates an `initial` run selecting the newest N regardless of date, and on a channel with runs a
   `scheduled` one; none after re-approval of a
-  previously approved channel; 409 for a second start while one is open; the catalog carries credits (`null` with the
-  fake) and `attention.failedRuns` counts a seeded channel whose latest run is `failed` and not one whose later run
-  completed; the first-approval run is created while the channel is system-paused; a `create()` that `WORKFLOW_FAKE` is
+  previously approved channel; 409 for a second start while one is open; the catalog carries credits (`null` and `unreachable` with the
+  fake); the first-approval run is created while the channel is system-paused; a `create()` that `WORKFLOW_FAKE` is
   told to throw for is recorded as run-episode `failed WORKFLOW_LOST` at once; an approve whose feed fetch fails
   still approves and leaves the channel never-started; a Start on a channel with nothing new and nothing pending
   creates no run and moves `lastCheckedAt`; instances created in one call carry delays 0, 3, 6, … s and ids that
@@ -322,8 +318,8 @@ Order inside one tick: reconcile, check credits, select channels, start runs.
 - `reconcileRuns(env)`: for every `(runId, videoId)` from `listOpenRunEpisodes(now − 1 h)`, ask
   `ingestLauncher(env).status(`${runId}-${videoId}`)`. `active` → leave it. `gone` or `missing` →
   `closeLostRunEpisode`. Logs `{ event: "ingestion.reconciled", runId, videoId, status }`.
-- Credits: `remainingCredits(env)`; when it is `0`, log `{ event: "ingestion.tick_skipped", reason: "no_credits" }`
-  and start nothing. `null` (unknown) does not block.
+- Pre-flight: `providerStatus(env)`; on `auth_failed` or `remainingCredits === 0`, log
+  `{ event: "ingestion.tick_skipped", reason }` and start nothing. `unreachable` and unknown credits do not block.
 - Selection: channels with `status = 'approved'`, `paused_by IS NULL`, and no open run; for each, `startRun(env,
   channelId, { stagger })` with one stagger counter shared across the whole tick, which creates an `initial` run for
   a channel with no run row and a `scheduled` one otherwise. Selection inside
@@ -334,18 +330,16 @@ Order inside one tick: reconcile, check credits, select channels, start runs.
   `triggers.crons` becomes `["0 */6 * * *"]` (owner decision 2026-09-08).
 
 **Tests:** a seeded open run older than an hour whose instance `WORKFLOW_FAKE` reports `gone` closes
-`failed WORKFLOW_LOST` with the episode's attempt count unchanged, and a `missing` one closes the same way; a run
+`failed WORKFLOW_LOST` with one attempt added to the episode, and a `missing` one closes the same way; a run
 younger than an hour is left alone; an `active` instance is left alone; the tick skips paused channels and channels with an open run; a channel with
 nothing new and nothing pending gets no run and its `lastCheckedAt` moves; a never-started channel with followers
-gets an `initial` run from the tick; with the credits
-wrapper returning `0` nothing starts; delays increase across channels within one tick.
+gets an `initial` run from the tick; with the provider status
+`auth_failed` or credits `0` nothing starts, and with `unreachable` the tick proceeds; delays increase across channels within one tick.
 
 ### Step 9 — Owner and reader touches, walkthrough, docs  (size: M)
 
 - Web: **Start** on never-started rows in `AttentionList` and in the catalog table, calling `POST /channels/:id/runs`;
-  a third Needs-attention group, **Last run failed**, listing each channel whose latest run closed `failed` with its
-  code and Start; `attentionCount` adds `failedRuns` so the Owner badge and the Home card include it; the credits
-  figure on the catalog health strip; the digest's
+  the credits figure and the transcript key status on the catalog health strip; the digest's
   three empty states and its availability-time label (spec §2, AGENTS.md Screens); takeaway timestamp links; owner
   phrases for the technical codes in `copy.ts`. `apps/web` stays typecheck and lint only.
 - `wrangler dev` end to end per spec §7, recorded below: first approval with no followers starts the import while

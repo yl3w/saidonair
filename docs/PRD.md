@@ -156,9 +156,10 @@ import outcome, so a channel whose every episode is skipped is an approved chann
   summary failures after the raw-text fallback — increment `attempt_count` and record the reason. Below three attempts
   the episode stays `pending` and the next scheduled run reattempts it; the third makes it `failed`. Only `failed`
   episodes reach the owner (decided 2026-09-10, replacing "technical failures are never restarted automatically").
-  A provider authentication failure or a rate limit still standing after the step's own retries is a fact about the
-  account, not the video: it ends the instance without counting an attempt and closes the run as failed with that
-  code so the owner sees what to fix (decided 2026-09-11).
+  Authentication failures, rate limits that outlast the step's retries, and lost Workflow instances count the same
+  one attempt; there is no separate account-level outcome and no run-level failure code. A cron tick first calls the
+  transcript provider's status endpoint and launches nothing when the key is rejected or the credits are gone, so
+  neither reaches an episode as an attempt (decided 2026-09-11, evening).
 - Owner retry moves a `failed` or `skipped` episode back to `pending`, clearing attempts and skip fields, and owner
   skip moves a `failed` one to `skipped OWNER`. Both need an approved channel with no queued or running run. Sibling
   episodes and their summaries are untouched. There is no channel-level retry.
@@ -463,8 +464,10 @@ carry a `management` block for the owner and are otherwise identical for every c
   ingested by its own Workflow instance, so a lost instance blocks one episode and episodes process in parallel. The
   `lifecycle_version` fence of 2026-09-10 is reversed: declining stops nothing in flight, and the column was dropped
   by the one owner-approved drop migration. Lost instances reconcile at each cron tick once their run is an hour old,
-  with no age window on "approved, never started". A tick staggers its instances by three seconds each, and a rate
-  limit or an authentication failure never counts as an episode attempt. The deployment is on Workers Paid.
+  with no age window on "approved, never started". A tick checks the transcript provider's status first, launches
+  nothing on a rejected key or zero credits, and staggers its instances by three seconds each. Every failure that is
+  not a wait or a skip counts one episode attempt; runs are only running and then completed. The deployment is on
+  Workers Paid.
 - Cron cadence — decided 2026-09-08: every 6 hours, `0 */6 * * *` UTC.
 - Owner management interface: decided 2026-09-07 as the Owner screens in §7 and `docs/specs/home-read-experience.md`.
   Identification: `global_users.role` seeded from the `OWNER_EMAIL` secret.

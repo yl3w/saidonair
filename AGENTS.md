@@ -329,12 +329,12 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   initial import left out. Elapsed time alone never settles a wait: a fresh no-caption result is fetched again at or
   after 48 hours before the episode is classified. A tick numbers the instances it creates across every channel and
   the k-th sleeps k × 3 seconds before its first call; before starting anything it reads DownSub's `/status` and
-  starts nothing while credits are zero (decided 2026-09-11).
+  starts nothing while credits are zero or the key is rejected (decided 2026-09-11).
 - **The initial import ignores pause.** The one run that first approval starts runs even when nobody follows yet and
   the channel is already system-paused (owner decision 2026-09-10); only scheduled selection honours `paused_by`.
 - **Reconciliation (M3, decided 2026-09-11).** At the start of each cron tick, for every run older than one hour,
   each run-episode still `selected` has its instance looked up by id; a missing, errored, terminated, or completed
-  instance becomes run-episode `failed WORKFLOW_LOST` with the episode's attempt count untouched, and the run closes
+  instance becomes run-episode `failed WORKFLOW_LOST`, one attempt on the episode, and the run closes
   when nothing is left `selected`. The handler records a `create()` that throws at once, and an instance whose step
   gives up writes `failEpisode` itself, so the sweep is a safety net. An approved channel with no run row at all is
   "approved, never started" in Needs attention, with no age window; the Start route is its remedy.
@@ -350,24 +350,26 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   48 hours with `waiting_code = LIVE_OR_UPCOMING`, then `skipped LIVE_OR_UPCOMING`. An episode with captions but no
   English track is `skipped NON_ENGLISH`; an `UNPLAYABLE` answer is `skipped UNPLAYABLE`. DownSub credit exhaustion
   (`PROVIDER_LIMIT`) leaves the episode `pending` with that waiting code, counts no attempt, and the run closes
-  `failed PROVIDER_LIMIT`; `GET /catalog` shows the remaining credits (M3, not yet present).
-- **Three technical attempts.** `PROVIDER_HTTP`, `PROVIDER_PARSE`, `VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`,
-  `AI_EMBED_FAILED`, and `AI_SUMMARY_FAILED` (after the raw-text fallback) increment `attempt_count` and record the
-  reason; below three the episode stays `pending` and the next scheduled run reattempts it, and the third makes it
-  `failed`. `TRANSCRIPT_TOO_LARGE` is deterministic and goes to `failed` at once. Waiting never counts as an attempt.
-  Only `failed` episodes reach the owner.
-- **Account-level provider failures are not attempts** (decided 2026-09-11). `PROVIDER_AUTH` and a
-  `PROVIDER_RATE_LIMIT` still standing after the step's own retries are facts about the account, not the video: the
-  instance ends, the episode stays `pending` with no wait reason and no attempt counted, its run-episode is
-  `not_attempted` with the code, and the run closes `failed` with it so the owner sees what to fix.
+  `completed` with that row `waiting`; `GET /catalog` shows the remaining credits and the key status (M3, not yet
+  present).
+- **Three technical attempts, one rule** (decided 2026-09-11, evening). Every outcome that is not a success, a wait,
+  or a deterministic skip counts one attempt: `PROVIDER_HTTP`, `PROVIDER_PARSE`, `PROVIDER_AUTH`,
+  `PROVIDER_RATE_LIMIT`, `VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED` (after
+  the raw-text fallback), and `WORKFLOW_LOST` all increment `attempt_count` and record the reason; below three the
+  episode stays `pending` and the next scheduled run reattempts it, and the third makes it `failed`.
+  `TRANSCRIPT_TOO_LARGE` is deterministic and goes to `failed` at once. Waiting never counts as an attempt. Only
+  `failed` episodes reach the owner. There is no account-level outcome family and no run-level failure code: a run is
+  `running` and then `completed`, and its run-episodes say what happened.
+- **Pre-flight gate.** A cron tick first calls DownSub's `/status` through the wrapper the catalog uses; a rejected
+  key or zero credits means the tick launches nothing and logs why, so neither ever reaches an episode as an
+  attempt. An unreachable `/status` does not block.
 - **Owner episode actions**, both requiring an approved channel with no queued or running run, else 409:
   `POST /channels/:id/episodes/:videoId/retry` takes `failed` or `skipped` back to `pending`, clearing attempts and
   skip fields, and `POST /channels/:id/episodes/:videoId/skip` takes `failed` to `skipped OWNER`. Siblings and their
   summaries are untouched. There is no channel-level retry.
 - Persist `ingestion_runs` and the exact selected `ingestion_run_episodes` (`selected`, `available`, `failed`,
   `skipped`, `waiting`, `not_attempted`). Permit at most one queued/running run per channel. A run-episode whose
-  instance is gone is closed `failed WORKFLOW_LOST` by the reconciliation sweep, its episode keeping its attempt
-  count; an approved channel with no run row at all appears under Needs attention as "approved, never started".
+  instance is gone is closed `failed WORKFLOW_LOST` by the reconciliation sweep, its episode taking one attempt; an approved channel with no run row at all appears under Needs attention as "approved, never started".
 - Workflows: each external call (transcript, AI, Vectorize) is its own `step.do()` inside the episode's instance for
   granular retries; the feed is read by the handler before the run exists. Use deterministic vector IDs. The verify
   step retries before a missing vector counts as `VECTORIZE_INCOMPLETE`, since Vectorize applies upserts
@@ -489,7 +491,7 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 | Route | Who | Purpose |
 |---|---|---|
 | `GET /me` | anyone | The caller's normalized email and `role` (`owner` or `user`); the UI uses it to show owner controls |
-| `GET /catalog` | owner | The catalog's aggregate state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, waiting, failed, skipped }`, `runs { active }`, `attention { failedEpisodes, neverStarted, requested, failedRuns }` (`failedRuns`: channels whose latest run closed `failed`, M3), `lastSuccessfulIngestionAt` (the newest channel `last_ingested_at`, M3) |
+| `GET /catalog` | owner | The catalog's aggregate state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, waiting, failed, skipped }`, `runs { active }`, `attention { failedEpisodes, neverStarted, requested }`, `lastSuccessfulIngestionAt` (the newest channel `last_ingested_at`, M3), `transcripts { remainingCredits, status }` (M3) |
 | `GET /channels` | anyone | `requested` and `approved` channels, each with `status`, `paused`, `following`, `followerCount`, `episodes` counts and `lastIngestedAt`; `?scope=all` (owner) adds `declined` ones and a `management` block |
 | `POST /channels` `{ channelId, title?, initialImportCount? }` | anyone | A user's call creates a `requested` channel and follows them (201); the owner's creates it `approved`, starts the initial import, and follows the owner (201). An existing `requested` or `approved` id is followed and returned (200); a `declined` id is 409 `ChannelDeclinedResponse`. A handle or an id with no feed is 400 |
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; the owner also gets `management` |
@@ -560,8 +562,8 @@ straight to `/home`. A "switch account" link is visible on every other screen.
 **`/home` — Home.** One page for everyone, with section jump links. The header shows the email, the word `owner`
 when applicable, and "Switch account"; the nav shows **Home** and, for owners, **Owner (n)** where `n` is the attention
 count. Owners also see an attention card first ("2 channels waiting for review · 1 episode failed · 1 channel approved
-but never started · 1 channel's last run failed", from `GET /catalog`) linking to `/owner#attention`; users never see
-it and it is hidden when the count is zero. Then:
+but never started", from `GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the
+count is zero. Then:
 1. **Today's digest** — eligible followed channels only (active follows ∩ approved); summaries first available in
    the last 24h, newest availability first (M3 carries the basis; until then publication time), flat list with the
    channel as byline; shared summary, takeaways with `youtu.be/<id>?t=<startSec>` links where a timestamp exists,
@@ -598,10 +600,8 @@ page, sections **Queue**, **Catalog**, and **Needs attention**, jump links `#req
   (title, import count, note) and Decline (note) forms. Reviewed history is collapsed: reviewer, time, note.
 - **Needs attention.** `failed` episodes grouped by channel with reason, attempts, Retry and Skip; then approved
   channels with no run row at all, listed as information — there is no Start button until M3 adds a route that starts
-  a run. "Never started" means approved and no run, with no age window. M3 adds a third group, **Last run failed**:
-  channels whose latest run closed `failed`, with the code (`PROVIDER_AUTH`, `PROVIDER_LIMIT`, `WORKFLOW_LOST`) and
-  Start, since account-level failures are never charged to episodes and would otherwise raise no attention
-  (decided 2026-09-11).
+  a run. "Never started" means approved and no run, with no age window. Every other problem reaches the owner as a
+  `failed` episode or on the health strip, which in M3 also shows the transcript key status and credits.
 - **Catalog.** Health strip from `GET /catalog`. **All channels**: status, paused, `available / tracked` with skipped
   and failed counts, follower count, last ingested, latest run, and the actions the status allows — Approve or
   Decline, Pause or Resume. Declining an approved channel confirms once, naming its follower count. Follower counts
@@ -651,10 +651,12 @@ Tests are focused, not exhaustive. Required coverage:
   after 48 hours; a decline mid-run stops nothing, the run closes `completed`, and its later summaries stay hidden
   until re-approval; a write against a closed run is refused; the first-approval run starts while the channel is
   system-paused and scheduled selection skips paused channels; the first cron after approval imports no entry
-  published before `approved_at`; account-level provider failures count no attempt; instances created in one tick
+  published before `approved_at`; every failure that is not a wait or a skip counts one attempt, a lost instance and
+  a rejected key included, and the pre-flight check launches nothing on a rejected key or zero credits; instances
+  created in one tick
   carry increasing start delays; digest windows use first availability with a publication tiebreak; a
   related-lookup failure still publishes the summary; a missing or errored instance reconciles into a `failed
-  WORKFLOW_LOST` run-episode at the next tick once its run is an hour old, attempt count untouched.
+  WORKFLOW_LOST` run-episode at the next tick once its run is an hour old, one attempt added.
 - **Pure functions** — chunking (token caps, overlap, edge cases: empty, one segment, very long segment),
   RSS parsing, channel URL resolution, summary JSON validation.
 - **Migrations** — a fresh DO runs all migrations idempotently; running twice is a no-op. The check constraints
@@ -706,7 +708,9 @@ management, rate limiting.
 - **M3 execution model — decided 2026-09-11** (`docs/specs/m3-ingestion.md` §2): one Workflow instance per episode
   with one run row per channel kept in the Registry; the handler fetches, selects, and fans out. The
   `lifecycle_version` fence of 2026-09-10 is reversed: declining stops nothing in flight, and migration `0002`
-  removed the column. A cron tick staggers its instances by 3 s each and never counts a rate limit as an attempt.
+  removed the column. A cron tick checks DownSub's `/status` first and staggers its instances by 3 s each. Every
+  failure that is not a wait or a skip counts one attempt; there is no account-level outcome family and no run-level
+  failure code (decided the same evening, reversing that afternoon's precedence and `failedRuns`).
 - **Workers plan — decided 2026-09-11: Workers Paid.** Per-step CPU and the concurrent-instance cap both fit.
 - **Reconciliation window — decided 2026-09-11:** the sweep runs at each cron tick over runs older than one hour;
   "approved, never started" has no age window.

@@ -194,11 +194,11 @@ Classification, carrying the 2026-09-08 rules onto the new statuses:
   LIVE_OR_UPCOMING`. Known live metadata takes precedence over an `UNPLAYABLE` answer, as in the M3 spec.
 - `UNPLAYABLE` → `skipped UNPLAYABLE`. The owner can retry it if the video becomes public.
 - `PROVIDER_LIMIT` (credits) leaves the episode `pending` with `waiting_code = PROVIDER_LIMIT`, counts no attempt,
-  and the run closes `failed PROVIDER_LIMIT`.
-- `PROVIDER_HTTP`, `PROVIDER_PARSE`, `VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`, and
-  `AI_SUMMARY_FAILED` after the raw-text fallback → technical: attempt +1, reason recorded, `failed` on the third.
-  `PROVIDER_AUTH` and a `PROVIDER_RATE_LIMIT` that outlasts the step's retries are account-level and count no
-  attempt (`m3-ingestion.md` §2, 2026-09-11).
+  and the run closes `completed` with that row `waiting`.
+- `PROVIDER_HTTP`, `PROVIDER_PARSE`, `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `VECTORIZE_FAILED`,
+  `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED` after the raw-text fallback, and `WORKFLOW_LOST` →
+  technical: attempt +1, reason recorded, `failed` on the third. One rule; a cron pre-flight `/status` call keeps a
+  rejected key or an empty balance from reaching episodes (`m3-ingestion.md` §2, 2026-09-11).
 - Publish rules are unchanged: `available` only after `getByIds` returns every expected vector and the summary row
   exists, in one Registry write that is accepted only while the run is still open.
 
