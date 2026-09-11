@@ -158,7 +158,7 @@ import outcome, so a channel whose every episode is skipped is an approved chann
   the episode stays `pending` and the next scheduled run reattempts it; the third makes it `failed`. Only `failed`
   episodes reach the owner (decided 2026-09-10, replacing "technical failures are never restarted automatically").
   Authentication failures, rate limits that outlast the step's retries, and lost Workflow instances count the same
-  one attempt; there is no separate account-level outcome and no run-level failure code. A cron tick first calls the
+  one attempt; there is no separate account-level outcome and no run-level failure code. Every start, cron's or the owner's, first calls the
   transcript provider's status endpoint and launches nothing when the key is rejected or the credits are gone, so
   neither reaches an episode as an attempt (decided 2026-09-11, evening).
 - Owner retry moves a `failed` or `skipped` episode back to `pending`, clearing attempts and skip fields, and owner
@@ -167,8 +167,9 @@ import outcome, so a channel whose every episode is skipped is an approved chann
 - Cron selects approved, non-paused channels with no queued or running run, every 6 hours (decided 2026-09-08), and
   per channel takes the new feed entries, meaning untracked ones published after the channel's first approval, plus
   every `pending` episode that is waiting or below three attempts. Follower count reaches selection only through the
-  pause flag (§4.3). A tick spreads the instances it starts a few seconds apart and starts nothing while the
-  transcript provider reports no credits (decided 2026-09-11).
+  pause flag (§4.3). Every start first checks the transcript provider's status and launches nothing while the key
+  is rejected or the credits are gone; a tick spreads the instances it starts a few seconds apart (decided
+  2026-09-11).
 - Persist each run and its exact episode selection/outcomes (`selected`, `available`, `failed`, `skipped`, `waiting`,
   `not_attempted`). At most one run per channel can be queued or running. The handler that creates a run reads the
   feed and selects; each selected episode is then ingested by its own Workflow instance, in which every transcript,
@@ -375,8 +376,9 @@ Use `CHECK` constraints for these enums:
   status, active runs, last successful ingestion, and in M3 the transcript credits and key status; an all-channels
   table with status, paused, available
   over tracked episodes with skipped and failed counts, follower count, last ingestion, latest run, and the actions
-  the status allows — approve, decline (confirming once with the follower count), pause, resume. Follower counts are
-  real; the emails behind them appear only in the queue.
+  the status allows — approve, decline (confirming once with the follower count), pause, resume, and in M3 start on
+  any approved channel with no open run, paused or not. Follower counts are real; the emails behind them appear only
+  in the queue.
 - **Owner channel detail `/owner/channels/:id`:** status, pause, approval and review fields, import count, follower
   count; episodes with status, wait reason, attempts, failure or skip reason, and summary format, with
   retry and skip; ingestion runs with per-episode outcomes; followers by email. Never shows any user's read or chat
@@ -469,8 +471,8 @@ carry a `management` block for the owner and are otherwise identical for every c
   ingested by its own Workflow instance, so a lost instance blocks one episode and episodes process in parallel. The
   `lifecycle_version` fence of 2026-09-10 is reversed: declining stops nothing in flight, and the column was dropped
   by the one owner-approved drop migration. Lost instances reconcile at each cron tick once their run is an hour old,
-  with no age window on "approved, never started". A tick checks the transcript provider's status first, launches
-  nothing on a rejected key or zero credits, and staggers its instances by three seconds each. Every failure that is
+  with no age window on "approved, never started". Every start checks the transcript provider's status first and launches
+  nothing on a rejected key or zero credits; a tick staggers its instances by three seconds each. Every failure that is
   not a wait or a skip counts one episode attempt; runs are only running and then completed. The deployment is on
   Workers Paid.
 - Cron cadence — decided 2026-09-08: every 6 hours, `0 */6 * * *` UTC.
@@ -484,8 +486,8 @@ carry a `management` block for the owner and are otherwise identical for every c
 ```text
 M1 Foundation    pnpm/Turbo/Volta scaffold · Hono · identity · Registry/User DO migrations
 M2 Catalog       anyone adds a channel · owner approve/decline · pause · follows and followers
-M3 Ingestion     shared runs/episodes · RSS/transcripts · chunking · embeddings · one Workflow instance per episode
-M4 Intelligence  shared summaries · unread receipts · multiple chats · filtered retrieval/citations
+M3 Ingestion     shared runs/episodes · RSS/transcripts · chunking · embeddings · shared summaries · one Workflow instance per episode
+M4 Intelligence  unread receipts · multiple chats · filtered retrieval/citations
 M5 UI            account · home (digest · channels · add a channel) · owner queue · catalog health · channel details · conversations
 M6 Hardening     isolation/lifecycle tests · wrangler verification · owner-decided cron · docs
 ```

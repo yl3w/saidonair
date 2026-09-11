@@ -316,9 +316,9 @@ every status, including declined, with client-side filter links from the health 
 | State | `status`, `paused`, `approvedAt` | "Awaiting approval", "Approved", "Approved · paused", "Declined", or "Withdrawn" (declined after having been approved). |
 | Episodes | `episodes` counts | `available / tracked`, then non-zero `waiting`, `failed`, `skipped`. |
 | Last ingested | `lastIngestedAt` | Relative time. |
-| Latest run | `management.latestRun` | Kind and status of the newest run, `running` or `completed`; runs carry no failure code (2026-09-11). A completed run with no episodes reads "no episodes · nothing new" when `lastCheckedAt` equals its `startedAt`, and "no episodes · feed could not be read since [last checked]" when the check time is older, so a broken feed is a sentence on the row rather than a gap between two dates. |
+| Latest run | `management.latestRun` | Kind and status of the newest run, `running` or `completed`; runs carry no failure code (2026-09-11). The latest run reads its outcome counts, or "no episodes · nothing new", and gains "· feed could not be read since [last checked]" when `lastCheckedAt` is older than its `startedAt` or "· feed never read successfully" when there is no check time at all, so a broken feed is a sentence on the row rather than a gap between two dates. |
 | Followers | `followerCount` | Real count from the Registry's follower record; emails only in the queue and the detail view. |
-| Actions | `ChannelStatusActions` | Requested: Approve, Decline. Approved: Pause or Resume, Decline. Declined: Approve. Declining an approved channel confirms once, naming its follower count. |
+| Actions | `ChannelStatusActions` | Requested: Approve, Decline. Approved: Pause or Resume, Decline, and in M3 Start whenever no run is open, paused or not. Declined: Approve. Declining an approved channel confirms once, naming its follower count. |
 
 **Add a channel** (in scope, decision 1). A `UC…` id or `/channel/UC…` URL, optional title, optional import
 count defaulting to 5. Calls `POST /channels`; for the owner this creates an `approved` channel, follows the
@@ -332,7 +332,7 @@ owner, and starts the initial import. The title comes from the RSS feed with an 
 # Some Channel                                     Approved · 4 following
 UCxxxxxxxxxxxxxxxxxxxxxx · youtube.com/channel/UCxxxx…
 Approved 2026-08-01 · reviewed 2026-09-09 by owner@example.com: “great channel” · import count 5 · last checked 9h ago
-[Pause] [Decline]
+[Start] [Pause] [Decline]
 
 ## Episodes (12)
 Title                    Published   Status                           Attempts  Summary      Processed
@@ -358,7 +358,9 @@ today versus after M3.
 (`reviewedAt`, `reviewedByEmail`, `reviewNote`), `initialImportCount`, `lastCheckedAt` (M3: it moves only when
 the feed was actually read, so a check time that stands still while runs keep appearing means the feed cannot be
 read), created and updated times, and the follower count. Actions from `ChannelStatusActions`, the same component the table uses:
-Approve, Decline, Pause, Resume as the status allows, with the one withdraw confirmation.
+Approve, Decline, Pause, Resume as the status allows, with the one withdraw confirmation, and in M3 Start on an
+approved channel with no open run, paused or not, since a channel paused for having no followers whose first fetch
+failed is one cron will never reach.
 
 **Episodes** (`episodes`, `episode_summaries`): title linked to `youtu.be`, published, status with the wait
 reason or skip reason or technical code, attempt count, transcript check time, chunk count, vectorized and
@@ -369,10 +371,12 @@ channel is "approved but thin", say two available out of five.
 **Runs** (`ingestion_runs`, `ingestion_run_episodes`): kind, status, started, finished, episode limit. A run is
 `running` or `completed` and carries no verdict of its own (decided 2026-09-11); the outcomes are on its
 run-episodes. A run with no run-episodes renders as one quiet line, since every tick records one for every channel
-it looks at. The latest such run says which kind it was, derived in `copy.ts` from fields the page already has:
-"no episodes · nothing new" when the header's `lastCheckedAt` equals the run's `startedAt`, "no episodes · feed
-could not be read since [last checked]" when the check time is older. Earlier empty runs read "no episodes", since
-only the latest check time is kept. Each run
+it looks at. The latest run, empty or not, says whether the feed was read, derived in `copy.ts` from fields the page
+already has: when the header's `lastCheckedAt` equals the run's `startedAt`, an empty run reads "no episodes ·
+nothing new" and a run with rows reads its outcome counts; when the check time is older, the line gains "· feed
+could not be read since [last checked]", so pending work relaunched during an outage reads, say, "2 waiting · feed
+could not be read since 9h ago"; when it is null, the line gains "· feed never read successfully", which is how a
+channel whose approval-time fetch failed looks until a tick gets through. Earlier empty runs read "no episodes", since only the latest check time is kept. Each run
 with rows expands to its per-episode outcomes (`selected | available | failed | skipped | waiting`;
 `not_attempted` is in the enum but never written), which stay historical even after a later retry changes the
 episode's current status. This is the audit trail for "why did this fail and what did the retry do". The section

@@ -315,18 +315,22 @@ entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
   fetched nothing and recorded nothing (`unreachable` and unknown credits do not block). The kind is `owner_retry`
   when `videoId` is given; otherwise `initial` while no run has selected an episode for the channel and `scheduled`
   after that, read from the Registry before the feed is fetched. Then: an owner retry fetches no feed, since its selection is exactly the one video, which may have left the feed. Otherwise fetch the
-  feed with `feedFetcher(env)` unless the caller passed one, and compute the selection. Call `registry.createRun` in
-  every case: an empty selection, or a feed that could not be read, records a run already `completed` with no
-  run-episodes, with `feedRead` false in the second case so `last_checked_at` stays. For a non-empty selection, for
+  feed with `feedFetcher(env)` unless the caller passed one, and compute the selection. Feed discovery and pending
+  recovery are separate inputs to `selectForRun`: a feed that could not be read gives an empty `selectedEntries` and
+  `feedRead` false, while `reselectedVideoIds` still holds every persisted `pending` episode, so an RSS outage never
+  freezes a wait or a second attempt. Call `registry.createRun` in every case: when both parts are empty it records
+  a run already `completed` with no run-episodes, and `feedRead` decides whether `last_checked_at` moves. For a
+  non-empty selection, for
   each selected video call `ingestLauncher(env).create(`${runId}-${videoId}`, params)` with `startDelaySec` taken
   from the `stagger` counter (`k × 3` across everything created in this invocation); a `create()` that throws is
   recorded at once with `registry.recordCreateFailure`. **Every way `startRun` can end is a named outcome**, so no
   caller has to interpret `null`:
-  - `{ outcome: "started", run }` for any run it recorded, empty or not;
+  - `{ outcome: "started", run, feedRead }` for any run that launched at least one episode, or an empty run recorded
+    after a successful read with nothing to do; `feedRead` false means the rows are persisted pending work relaunched
+    during an RSS outage, and `{ event: "ingestion.feed_unavailable", channelId }` is logged;
   - `{ outcome: "run_open" }` when a run is already queued or running;
-  - `{ outcome: "feed_unavailable", run }` when the feed could not be read: the empty run has been recorded and
-    `{ event: "ingestion.feed_unavailable", channelId }` logged, and the caller decides whether that is an error
-    for it;
+  - `{ outcome: "feed_unavailable", run }` when the feed could not be read **and nothing was pending**: the empty
+    run has been recorded, the same line logged, and the caller decides whether that is an error for it;
   - `{ outcome: "provider_blocked", status }` when the pre-flight gate refused: nothing fetched, nothing recorded.
 - Callers: `POST /channels` (owner add, passing the feed it already fetched for the title, so no second request)
   and `POST /channels/:id/approve` on first approval resolve to `initial` with `ignorePause`, run after the approval
@@ -338,12 +342,20 @@ entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
 - **Plan decision:** add `POST /channels/:id/runs` (owner; channel must be `approved`, else 409 `INVALID_STATE`)
   creating a run now, ignoring pause, `initial` or `scheduled` by the rule above. Responses:
   - 200 `{ run }` for `started`; a run with no run-episodes and status `completed` tells the owner the feed had
-    nothing new and nothing is pending;
+    nothing new and nothing is pending, and a run whose rows are relaunched pending episodes with `lastCheckedAt`
+    older than its `startedAt` tells the owner the feed could not be read but the pending work went ahead: 200, not
+    502, because answering with an error after launching work would mislead (owner decision 2026-09-11);
   - 409 `INVALID_STATE` for `run_open`;
-  - 502 `UPSTREAM_UNAVAILABLE` for `feed_unavailable`, the same error `POST /channels` already returns for a feed it
-    cannot read, after the empty run has been recorded;
+  - 502 `UPSTREAM_UNAVAILABLE` for `feed_unavailable`, which only arises when nothing was pending, the same error
+    `POST /channels` already returns for a feed it cannot read, after the empty run has been recorded;
   - 502 `UPSTREAM_UNAVAILABLE` for `provider_blocked`, with the message naming the reason, "transcript key
     rejected" or "no transcript credits", and nothing recorded.
+  **Order of checks:** the route answers about the channel's state before it asks the provider anything. It loads
+  the channel (404 when unknown), requires `approved` (409), and requires no queued or running run through
+  `hasActiveRun` (409), and only then calls `startRun`, whose pre-flight gate runs first inside it. So a rejected key
+  never turns a mistaken Start into a 502. `createRun` repeats the state checks inside the Registry, so a run
+  created between the route's check and its own still ends as `run_open` and 409, never as a duplicate. Approve
+  and retry already have this order for free: the Registry transition commits before `startRun` is called.
   Shared `IngestionRunResponse { run: IngestionRun }`. It is the Start action for a never-started channel and the
   owner's nudge after a credit refill.
 - `GET /catalog` gains `transcripts: { remainingCredits, status }` from `providerStatus(env)`, cached for five
@@ -357,9 +369,12 @@ entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
   selected anything creates an `initial` run selecting the newest N regardless of date, and on a channel with a run
   that did a `scheduled` one; none after re-approval of a previously approved channel; Start answers 200 with the
   run, 409 for a second start while one is open, 200 with an empty `completed` run and a moved `lastCheckedAt` when
-  the seeded feed has nothing new and nothing is pending, and 502 with an empty `completed` run recorded and an
-  unmoved `lastCheckedAt` when the feed fake answers 500, and 502 naming the reason with no run row at all when the
-  transcripts fake reports `auth_failed` or zero credits; under that same fake an approve still approves and leaves
+  the seeded feed has nothing new and nothing is pending, 502 with an empty `completed` run recorded and an unmoved `lastCheckedAt` when the feed fake answers 500 and
+  nothing is pending, 200 with a run holding exactly the persisted pending episodes, one of them absent from the
+  feed, and an unmoved `lastCheckedAt` when the feed fake answers 500 and pending work exists, and 502 naming the reason with no run row at all when the
+  transcripts fake reports `auth_failed` or zero credits, while under that same blocked provider a Start on a
+  requested channel, on a declined channel, and on a channel with an open run still answers 409, and on an unknown
+  id 404, exactly as with a healthy provider; under that same fake an approve still approves and leaves
   the channel never-started, and a retry leaves the episode `pending` with attempts cleared and no run; the catalog
   carries credits (`null` and `unreachable` with the fake, the seeded values otherwise); the first-approval run is
   created while the channel is
@@ -398,20 +413,32 @@ tick meets it on its first channel; because the wrapper is cached, that is one r
 `failed WORKFLOW_LOST` with one attempt added to the episode, and a `missing` one closes the same way; a run
 younger than an hour is left alone; an `active` instance is left alone; the tick skips paused channels and channels with an open run; a channel with
 nothing new and nothing pending gets an empty `completed` run and its `lastCheckedAt` moves; one whose feed answers
-500 gets an empty `completed` run with `lastCheckedAt` unmoved; a channel whose runs never selected anything gets an
+500 with nothing pending gets an empty `completed` run with `lastCheckedAt` unmoved, and one whose feed answers 500
+with a persisted pending episode that has left the feed gets a normal run launching that episode, `lastCheckedAt`
+unmoved; a channel whose runs never selected anything gets an
 `initial` run from the tick; with the provider status
 `auth_failed` or credits `0` nothing starts, and with `unreachable` the tick proceeds; delays increase across channels within one tick.
 
 ### Step 9 — Owner and reader touches, walkthrough, docs  (size: M)
 
-- Web: **Start** on never-started rows in `AttentionList` and in the catalog table, calling `POST /channels/:id/runs`
-  and showing the run on the row: "Started, N episodes", or "Nothing new to import" when the run came back with no
+- Web: **Start** joins `ChannelStatusActions` for every `approved` channel with no open run, paused or not, so it
+  appears wherever that component renders: the catalog table, the owner channel detail header, and the never-started
+  rows in `AttentionList`. "Never started" stays an attention category, not the rule for showing the button; the
+  rule is the route's own precondition, which is what lets the owner rescue a channel whose approval-time feed fetch
+  failed and that is system-paused for having no followers, where cron will never come. Start calls
+  `POST /channels/:id/runs` and shows the run on the row: "Started, N episodes", or "Nothing new to import" when the run came back with no
   episodes, and the API's message for 409 and 502 through the existing row error, so "YouTube did not answer" reads
   the same as it does when adding a channel; the runs list renders an empty run as one quiet line, since a channel
-  gets up to four a day, and the latest one says which kind it was: `lastCheckedAt` equal to the run's `startedAt`
-  reads "no episodes · nothing new", an older `lastCheckedAt` reads "no episodes · feed could not be read since
-  [last checked]", derived in `copy.ts` from the two fields the management block already carries, with the same
-  phrase in the catalog table's Latest run cell; `lastCheckedAt` on the owner detail header and as a Last checked
+  gets up to four a day, and the latest run, empty or not, says whether the feed was read: with `lastCheckedAt`
+  equal to its `startedAt` an empty run reads "no episodes · nothing new" and a run with rows reads its outcome
+  counts; with an older `lastCheckedAt` the line gains "· feed could not be read since [last checked]", so pending
+  work relaunched during an outage reads, say, "2 waiting · feed could not be read since 9h ago"; with a null
+  `lastCheckedAt` it gains "· feed never read successfully", which is what an approval whose feed fetch failed looks
+  like until a tick gets through; derived in
+  `copy.ts` from the two fields the management block already carries, with the same phrase in the catalog table's
+  Latest run cell; the three branches are exhaustive over `lastCheckedAt` being null, equal, or older, the web
+  stays typecheck and lint only, and the walkthrough below exercises the null branch by approving a channel while
+  the feed fake answers 500; `lastCheckedAt` on the owner detail header and as a Last checked
   column in the catalog table; the credits figure and the transcript key status on the catalog health strip; the digest's
   three empty states and its availability-time label (spec §2, AGENTS.md Screens); a **Refresh** control beside
   "Show last 7 days" that runs the existing list reload, which re-fetches the digest after the lists so NEW markers
@@ -423,11 +450,16 @@ nothing new and nothing pending gets an empty `completed` run and its `lastCheck
   paused → a follow resumes scheduling → captioned video `available`, fresh captionless `pending CAPTIONS`, short
   `skipped SHORT` → a forced transport failure counts an attempt → decline mid-run changes nothing and the run
   closes `completed` with its summaries hidden → re-approve shows them and starts nothing → `/__scheduled` starts
-  staggered runs → credits shown on the catalog.
+  staggered runs → credits shown on the catalog → a channel approved while its feed answers 500 shows an empty
+  run reading "no episodes · feed never read successfully", and the next tick with the feed back gives it an
+  `initial` run; then a channel with a caption wait whose feed answers 500 still relaunches that episode and its
+  run reads "1 waiting · feed could not be read since …".
 - Docs: PRD §4.2 and §4.4 wording for the digest basis; PRD §7 Screens (Start on never-started rows, the health
   strip's credits and key status, the empty-run line in the runs list) and the PRD §7 route table
   (`POST /channels/:id/runs` with its three answers, `GET /catalog`'s `transcripts` block); AGENTS.md's API table,
-  where the Start route moves from "planned" to a row of its own; `channel-simplification.md` §5's catalog row; `home-read-experience.md` §8, whose owner detail wireframe and
+  where the Start route moves from "planned" to a row of its own, and its API-shape prose; `channel-simplification.md`
+  §3.3 and §5; PRD §9's decision entry and §10's milestone lines, where shared summaries already sit in M3 because
+  `available` requires one; `home-read-experience.md` §8, whose owner detail wireframe and
   runs paragraph were brought to the run-carries-no-verdict model on 2026-09-11 and take whatever the walkthrough
   changes; spec and plan status set for work actually completed.
 

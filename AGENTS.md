@@ -330,10 +330,11 @@ are M3; until then `lib/ingestion.ts` records each start point as a
   initial import left out. Elapsed time alone never settles a wait: a fresh no-caption result is fetched again at or
   after 48 hours before the episode is classified. A tick numbers the instances it creates across every channel and
   the k-th sleeps k × 3 seconds before its first call; like every start, it reads DownSub's `/status` first and
-  starts nothing while credits are zero or the key is rejected (decided 2026-09-11). Every start attempt records a
-  run: when the selection is empty or the feed cannot be read, the run is inserted already `completed` with no
-  run-episodes, and `last_checked_at` moves only when the feed was read, so an unreadable feed shows as runs that
-  keep appearing while the check time stands still. The first run that selects anything is `initial`, whoever
+  starts nothing while credits are zero or the key is rejected (decided 2026-09-11). Every start the gate admits
+  records a run: a feed that cannot be read empties only discovery, and every persisted `pending` episode is still
+  relaunched, since resuming it needs only its video id; only when nothing is pending is the run inserted already
+  `completed` with no run-episodes. `last_checked_at` moves only when the feed was read, so an unreadable feed
+  shows as runs whose start outruns the check time. The first run that selects anything is `initial`, whoever
   creates it; later runs are `scheduled` (decided 2026-09-11).
 - **The initial import ignores pause.** The one run that first approval starts runs even when nobody follows yet and
   the channel is already system-paused (owner decision 2026-09-10); only scheduled selection honours `paused_by`.
@@ -623,7 +624,9 @@ page, sections **Queue**, **Catalog**, and **Needs attention**, jump links `#req
   `failed` episode or on the health strip, which in M3 also shows the transcript key status and credits.
 - **Catalog.** Health strip from `GET /catalog`. **All channels**: status, paused, `available / tracked` with skipped
   and failed counts, follower count, last ingested, latest run, and the actions the status allows — Approve or
-  Decline, Pause or Resume. Declining an approved channel confirms once, naming its follower count. Follower counts
+  Decline, Pause or Resume, and in M3 Start on every approved channel with no open run, paused or not (the route's
+  own precondition, so a system-paused channel whose first fetch failed can be rescued by hand). Declining an
+  approved channel confirms once, naming its follower count. Follower counts
   are real, from the Registry's follower record; the emails behind them are shown only in the queue.
 
 **`/owner/channels/:id` — Owner channel detail.** From `GET /channels/:id` (with `management`), `/episodes`,

@@ -197,8 +197,9 @@ Classification, carrying the 2026-09-08 rules onto the new statuses:
   and the run closes `completed` with that row `waiting`.
 - `PROVIDER_HTTP`, `PROVIDER_PARSE`, `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `VECTORIZE_FAILED`,
   `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED` after the raw-text fallback, and `WORKFLOW_LOST` →
-  technical: attempt +1, reason recorded, `failed` on the third. One rule; a cron pre-flight `/status` call keeps a
-  rejected key or an empty balance from reaching episodes (`m3-ingestion.md` §2, 2026-09-11).
+  technical: attempt +1, reason recorded, `failed` on the third. One rule; a pre-flight `/status` call on every
+  start, cron's or the owner's, keeps a rejected key or an empty balance from reaching episodes
+  (`m3-ingestion.md` §2, 2026-09-11).
 - Publish rules are unchanged: `available` only after `getByIds` returns every expected vector and the summary row
   exists, in one Registry write that is accepted only while the run is still open.
 
