@@ -1,7 +1,8 @@
-import type { Channel, Follower } from "@media-digest/shared";
-import { useEffect, useState } from "preact/hooks";
+import type { Channel } from "@media-digest/shared";
+import { useState } from "preact/hooks";
 import { api } from "../api";
 import { decisionCopy, reviewCopy } from "../lib/copy";
+import { useLoad } from "../lib/use-load";
 import { Time } from "./Time";
 
 /**
@@ -67,7 +68,12 @@ function WaitingRow({
   channel: Channel;
   onChanged: () => void;
 }) {
-  const [followers, setFollowers] = useState<Follower[] | null>(null);
+  // Who is waiting is its own load with its own error state: a failed request must never read as
+  // "nobody is waiting", which is the phrase that argues for Decline.
+  const [followers, reloadFollowers] = useLoad(
+    () => api.listFollowers(c.channelId),
+    [c.channelId],
+  );
   const [mode, setMode] = useState<"closed" | "approve" | "decline">("closed");
   const [title, setTitle] = useState(c.title);
   const [importCount, setImportCount] = useState(
@@ -76,21 +82,6 @@ function WaitingRow({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.listFollowers(c.channelId).then(
-      ({ followers }) => {
-        if (!cancelled) setFollowers(followers);
-      },
-      () => {
-        if (!cancelled) setFollowers([]);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [c.channelId]);
 
   async function act(work: () => Promise<unknown>) {
     setBusy(true);
@@ -116,11 +107,28 @@ function WaitingRow({
         <strong>{c.title}</strong> <a href={c.canonicalUrl}>{c.channelId}</a>
         <div class="meta">
           requested <Time at={c.management?.createdAt ?? null} />
-          {followers === null
-            ? " · loading followers"
-            : followers.length === 0
+          {followers.status === "loading" && " · loading followers"}
+          {followers.status === "ready" &&
+            (followers.data.followers.length === 0
               ? " · nobody is waiting"
-              : ` · requested by ${followers.map((f) => f.email).join(", ")}`}
+              : ` · requested by ${followers.data.followers
+                  .map((f) => f.email)
+                  .join(", ")}`)}
+          {followers.status === "error" && (
+            <>
+              {" · "}
+              <span class="error">
+                couldn't load who is waiting: {followers.error.message}.{" "}
+                <button
+                  id={`followers-retry-${c.channelId}`}
+                  type="button"
+                  onClick={reloadFollowers}
+                >
+                  Retry
+                </button>
+              </span>
+            </>
+          )}
           {previous && ` · ${previous}`}
         </div>
         {mode === "approve" && (
