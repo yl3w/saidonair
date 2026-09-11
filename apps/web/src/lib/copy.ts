@@ -27,6 +27,12 @@ export function channelStateCopy(channel: Channel): string {
   return CHANNEL_STATUS_COPY[channel.status];
 }
 
+/** The decision word for review history: "Approved", "Declined", or "Withdrawn" (declined after approval). */
+export function decisionCopy(channel: Channel): string {
+  if (channel.status === "approved") return "Approved";
+  return channel.approvedAt === null ? "Declined" : "Withdrawn";
+}
+
 /** The owner's latest decision with its note, for declined channels and re-requests. */
 export function reviewCopy(channel: Channel): string | null {
   if (channel.status !== "declined" || channel.reviewedAt === null) return null;

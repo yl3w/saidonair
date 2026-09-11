@@ -1,10 +1,14 @@
 import type { Channel, Follower } from "@media-digest/shared";
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api";
-import { reviewCopy } from "../lib/copy";
+import { decisionCopy, reviewCopy } from "../lib/copy";
 import { Time } from "./Time";
 
-/** The owner's review queue (spec §7): requested channels oldest first, with who is waiting. */
+/**
+ * The owner's review queue (spec §7): requested channels oldest first, with who is waiting, then the
+ * reviewed history collapsed: every approved or declined channel with its decision, reviewer, time,
+ * and note, newest decision first. A re-requested channel is in Waiting, not in the history.
+ */
 export function RequestQueue({
   channels,
   onChanged,
@@ -17,6 +21,9 @@ export function RequestQueue({
     .sort(
       (a, b) => (a.management?.createdAt ?? 0) - (b.management?.createdAt ?? 0),
     );
+  const reviewed = channels
+    .filter((c) => c.status !== "requested" && c.reviewedAt !== null)
+    .sort((a, b) => (b.reviewedAt ?? 0) - (a.reviewedAt ?? 0));
   return (
     <section id="requests">
       <h2>Queue</h2>
@@ -25,7 +32,31 @@ export function RequestQueue({
       {waiting.map((c) => (
         <WaitingRow key={c.channelId} channel={c} onChanged={onChanged} />
       ))}
+      <details id="reviewed">
+        <summary>Reviewed ({reviewed.length})</summary>
+        {reviewed.length === 0 && <p class="muted">No decisions yet.</p>}
+        {reviewed.map((c) => (
+          <ReviewedRow key={c.channelId} channel={c} />
+        ))}
+      </details>
     </section>
+  );
+}
+
+/** One past decision: title linked to the owner detail, the decision, when, by whom, and the note. */
+function ReviewedRow({ channel: c }: { channel: Channel }) {
+  return (
+    <div class="row">
+      <div class="grow">
+        <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
+        <div class="meta">
+          {decisionCopy(c)} <Time at={c.reviewedAt} />
+          {c.management?.reviewedByEmail &&
+            ` by ${c.management.reviewedByEmail}`}
+          {c.reviewNote && ` · “${c.reviewNote}”`}
+        </div>
+      </div>
+    </div>
   );
 }
 
