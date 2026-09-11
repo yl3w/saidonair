@@ -118,7 +118,6 @@ function OwnerChannelScreen() {
                     {run.failureCode && ` · ${run.failureCode}`}
                     {run.episodeLimit !== null &&
                       ` · limit ${run.episodeLimit}`}
-                    {` · lifecycle v${run.lifecycleVersion}`}
                   </summary>
                   {run.failureDetail && (
                     <p class="muted">{run.failureDetail}</p>
@@ -174,7 +173,7 @@ function OwnerChannelScreen() {
   );
 }
 
-/** State copy, review history, pause state, lifecycle and import counts, and the actions the status allows. */
+/** State copy, review history, pause state, import and follower counts, and the actions the status allows. */
 function Header({
   channel: c,
   busy,
@@ -210,7 +209,7 @@ function Header({
         )}
         {m && (
           <>
-            {` · lifecycle v${m.lifecycleVersion} · import count ${m.initialImportCount} · `}
+            {` · import count ${m.initialImportCount} · `}
             {followerLabel(c.followerCount)}
           </>
         )}

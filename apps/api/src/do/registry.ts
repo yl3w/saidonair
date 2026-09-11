@@ -161,7 +161,7 @@ export class RegistryDO extends DurableObject<Env> {
     });
   }
 
-  /** Owner: `requested | approved → declined`; from approved the fence is bumped. */
+  /** Owner: `requested | approved → declined`. A run in flight finishes; eligibility hides its output. */
   declineChannel(
     actorEmail: string,
     channelId: string,

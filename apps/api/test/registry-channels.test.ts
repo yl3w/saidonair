@@ -23,7 +23,6 @@ describe("registry channels", () => {
       approvedAt: null,
       reviewedAt: null,
       pausedBy: null,
-      lifecycleVersion: 1,
     });
     await expectDomainError(
       stub.createChannel(ALICE, {
@@ -85,7 +84,6 @@ describe("registry channels", () => {
     });
     expect(declined).toMatchObject({
       status: "declined",
-      lifecycleVersion: 2,
       reviewNote: "withdrawn",
       pausedBy: null,
     });
@@ -94,7 +92,7 @@ describe("registry channels", () => {
     expect(again.channel.approvedAt).toBe(first.channel.approvedAt);
   });
 
-  it("decline from requested keeps the fence; request again reopens and keeps the note", async () => {
+  it("decline from requested records the note; request again reopens and keeps it", async () => {
     const stub = registry();
     await stub.createChannel(ALICE, {
       channelId: CHANNEL_A,
@@ -106,7 +104,6 @@ describe("registry channels", () => {
     });
     expect(declined).toMatchObject({
       status: "declined",
-      lifecycleVersion: 1,
       reviewNote: "no",
     });
     await expectDomainError(

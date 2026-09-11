@@ -233,7 +233,7 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["channels"],
       summary: "Decline a channel (owner)",
       description:
-        "`requested` or `approved` → `declined`. From `approved`, the lifecycle fence is bumped so a run already in flight publishes nothing. `POST /channels/:id/request` reopens it.",
+        "`requested` or `approved` → `declined`. A run already in flight finishes; its summaries are hidden by eligibility until the channel is approved again. `POST /channels/:id/request` reopens it.",
       responses: {
         200: jsonResponse(
           ChannelResponseSchema,

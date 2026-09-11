@@ -12,7 +12,6 @@ type RunRow = {
   channel_id: string;
   kind: string;
   status: string;
-  lifecycle_version: number;
   episode_limit: number | null;
   started_at: number | null;
   finished_at: number | null;
@@ -30,7 +29,7 @@ type RunEpisodeRow = {
   finished_at: number | null;
 };
 
-const RUN_COLUMNS = `run_id, channel_id, kind, status, lifecycle_version, episode_limit, started_at,
+const RUN_COLUMNS = `run_id, channel_id, kind, status, episode_limit, started_at,
   finished_at, failure_code, failure_detail, created_at`;
 
 /** The newest run per channel, for catalog rows. Channels without runs are absent. */
@@ -83,7 +82,6 @@ export function listByChannel(
     channelId: row.channel_id,
     kind: toKind(row.kind),
     status: toStatus(row.status),
-    lifecycleVersion: row.lifecycle_version,
     episodeLimit: row.episode_limit,
     startedAt: row.started_at,
     finishedAt: row.finished_at,

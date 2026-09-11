@@ -5,23 +5,31 @@ import { applyMigrations } from "../src/do/migrations";
 import { ALICE, CHANNEL_A, OWNER, registry } from "./helpers";
 
 describe("registry migrations", () => {
-  it("creates every Registry table on first access and records the one version", async () => {
+  it("creates every Registry table on first access and records both versions", async () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
-    const { tables, versions } = await runInDurableObject(stub, (_, state) => ({
-      tables: state.storage.sql
-        .exec<{ name: string }>(
-          `SELECT name FROM sqlite_master WHERE type = 'table' AND substr(name, 1, 4) <> '_cf_' ORDER BY name`,
-        )
+    const columnsOf = (sql: SqlStorage, table: string) =>
+      sql
+        .exec<{ name: string }>(`PRAGMA table_info(${table})`)
         .toArray()
-        .map((row) => row.name),
-      versions: state.storage.sql
-        .exec<{ version: string }>(
-          "SELECT version FROM _migrations ORDER BY version",
-        )
-        .toArray()
-        .map((row) => row.version),
-    }));
+        .map((row) => row.name);
+    const { tables, versions, channelColumns, runColumns } =
+      await runInDurableObject(stub, (_, state) => ({
+        tables: state.storage.sql
+          .exec<{ name: string }>(
+            `SELECT name FROM sqlite_master WHERE type = 'table' AND substr(name, 1, 4) <> '_cf_' ORDER BY name`,
+          )
+          .toArray()
+          .map((row) => row.name),
+        versions: state.storage.sql
+          .exec<{ version: string }>(
+            "SELECT version FROM _migrations ORDER BY version",
+          )
+          .toArray()
+          .map((row) => row.version),
+        channelColumns: columnsOf(state.storage.sql, "channels"),
+        runColumns: columnsOf(state.storage.sql, "ingestion_runs"),
+      }));
     expect(tables).toEqual([
       "_migrations",
       "channel_followers",
@@ -32,7 +40,12 @@ describe("registry migrations", () => {
       "ingestion_run_episodes",
       "ingestion_runs",
     ]);
-    expect(versions).toEqual(["0001_init"]);
+    expect(versions).toEqual(["0001_init", "0002_drop_lifecycle_version"]);
+    // 0002 is the one owner-approved DROP COLUMN (2026-09-11): the fence is gone from both tables.
+    expect(channelColumns).not.toContain("lifecycle_version");
+    expect(runColumns).not.toContain("lifecycle_version");
+    expect(channelColumns).toContain("paused_by");
+    expect(runColumns).toContain("workflow_id");
   });
 
   it("ties channel columns to status", async () => {

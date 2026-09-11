@@ -50,7 +50,6 @@ describe("registry ingestion runs", () => {
       createdAt: 2_000,
       startedAt: 2_000,
       finishedAt: 2_500,
-      lifecycleVersion: 2,
       episodes: [
         { videoId: VIDEO_A, status: "available" },
         { videoId: VIDEO_B, status: "skipped" },
@@ -64,7 +63,6 @@ describe("registry ingestion runs", () => {
       channelId: CHANNEL_A,
       kind: "owner_retry",
       status: "completed",
-      lifecycleVersion: 2,
       finishedAt: 2_500,
       episodes: [
         { videoId: VIDEO_A, status: "available", failureCode: null },

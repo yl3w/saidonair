@@ -201,7 +201,6 @@ type RunSeed = {
   runId?: string;
   kind?: "initial" | "scheduled" | "owner_retry";
   status?: "queued" | "running" | "completed" | "failed" | "cancelled";
-  lifecycleVersion?: number;
   episodeLimit?: number;
   startedAt?: number;
   finishedAt?: number;
@@ -230,15 +229,14 @@ export async function seedRun(
     const sql = ctx.storage.sql;
     sql.exec(
       `INSERT INTO ingestion_runs
-         (run_id, channel_id, workflow_id, kind, status, lifecycle_version, episode_limit,
+         (run_id, channel_id, workflow_id, kind, status, episode_limit,
           started_at, finished_at, failure_code, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       runId,
       channelId,
       `wf-${runId}`,
       seed.kind ?? "initial",
       seed.status ?? "completed",
-      seed.lifecycleVersion ?? 1,
       seed.episodeLimit ?? null,
       seed.startedAt ?? null,
       seed.finishedAt ?? null,

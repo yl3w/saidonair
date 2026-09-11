@@ -66,7 +66,6 @@ export function toManagement(
     pausedBy: channel.pausedBy,
     pausedAt: channel.pausedAt,
     lastCheckedAt: channel.lastCheckedAt,
-    lifecycleVersion: channel.lifecycleVersion,
     createdAt: channel.createdAt,
     updatedAt: channel.updatedAt,
     episodes: record.episodes,

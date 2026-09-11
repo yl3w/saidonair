@@ -35,7 +35,6 @@ export type CatalogChannel = {
   pausedAt: number | null;
   lastCheckedAt: number | null;
   lastIngestedAt: number | null;
-  lifecycleVersion: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -113,7 +112,6 @@ export type IngestionRunRecord = {
   channelId: string;
   kind: IngestionRunKind;
   status: IngestionRunStatus;
-  lifecycleVersion: number;
   episodeLimit: number | null;
   startedAt: number | null;
   finishedAt: number | null;

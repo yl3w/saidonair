@@ -18,14 +18,13 @@ type ChannelRow = {
   paused_at: number | null;
   last_checked_at: number | null;
   last_ingested_at: number | null;
-  lifecycle_version: number;
   created_at: number;
   updated_at: number;
 };
 
 const CHANNEL_COLUMNS = `channel_id, title, canonical_url, status, initial_import_count, approved_at,
   reviewed_at, reviewed_by_email, review_note, paused_by, paused_at, last_checked_at,
-  last_ingested_at, lifecycle_version, created_at, updated_at`;
+  last_ingested_at, created_at, updated_at`;
 
 export function canonicalChannelUrl(channelId: string): string {
   return `https://www.youtube.com/channel/${channelId}`;
@@ -112,8 +111,8 @@ export function createChannel(
     sql
       .exec<ChannelRow>(
         `INSERT INTO channels (channel_id, title, canonical_url, status, initial_import_count,
-           approved_at, reviewed_at, reviewed_by_email, lifecycle_version, created_at, updated_at)
-         VALUES (?, ?, ?, ?, COALESCE(?, 5), ?, ?, ?, 1, ?, ?)
+           approved_at, reviewed_at, reviewed_by_email, created_at, updated_at)
+         VALUES (?, ?, ?, ?, COALESCE(?, 5), ?, ?, ?, ?, ?)
          RETURNING ${CHANNEL_COLUMNS}`,
         channelId,
         requireTitle(input.title),
@@ -165,7 +164,10 @@ export function approveChannel(
   );
 }
 
-/** `requested | approved → declined`. From approved, bumps the fence so a run in flight publishes nothing. */
+/**
+ * `requested | approved → declined`. A run in flight finishes; eligibility hides what it publishes
+ * until the channel is approved again (owner decision 2026-09-11, no fence).
+ */
 export function declineChannel(
   sql: SqlStorage,
   channelId: string,
@@ -177,19 +179,17 @@ export function declineChannel(
   if (channel.status === "declined") {
     throw new DomainError("INVALID_STATE", "channel is already declined");
   }
-  const bump = channel.status === "approved" ? 1 : 0;
   return toChannel(
     sql
       .exec<ChannelRow>(
         `UPDATE channels
          SET status = 'declined', reviewed_at = ?, reviewed_by_email = ?, review_note = ?,
-             paused_by = NULL, paused_at = NULL, lifecycle_version = lifecycle_version + ?, updated_at = ?
+             paused_by = NULL, paused_at = NULL, updated_at = ?
          WHERE channel_id = ?
          RETURNING ${CHANNEL_COLUMNS}`,
         now,
         reviewer,
         optionalNote(input.explanation),
-        bump,
         now,
         channel.channelId,
       )
@@ -302,7 +302,6 @@ function toChannel(row: ChannelRow): CatalogChannel {
     pausedAt: row.paused_at,
     lastCheckedAt: row.last_checked_at,
     lastIngestedAt: row.last_ingested_at,
-    lifecycleVersion: row.lifecycle_version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

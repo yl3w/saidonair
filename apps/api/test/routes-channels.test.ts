@@ -581,9 +581,7 @@ describe("channel and catalog routes", () => {
     expect(declined.json.channel).toMatchObject({
       status: "declined",
       reviewNote: "withdrawn",
-    });
-    expect((declined.json.channel as Json).management).toMatchObject({
-      lifecycleVersion: 2,
+      paused: false,
     });
     expect(
       (await call(OWNER, "POST", `/channels/${CHANNEL_A}/pause`, {})).status,
