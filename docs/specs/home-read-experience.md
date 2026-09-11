@@ -608,7 +608,11 @@ enums join the existing types in `packages/shared`. Every response wraps its ent
 ## 11. States, errors, polling, layout
 
 - **Loading.** The word "Loading…" in place of each section. Sections load independently; a slow digest
-  never blocks the channel list.
+  never blocks the channel list. The owner's channel list keeps its rows while it refreshes after an action,
+  with a "Refreshing channels…" line above and a "Couldn't refresh channels" error with Retry if the refresh
+  fails, so a row's inline error and an open approve or decline form are not lost to the reload. While the list is
+  refreshing, and after a refresh has failed, the rows' Approve, Decline, Pause, Resume, Retry, and Skip controls are
+  disabled, because the rows may no longer match the Registry; the refresh Retry stays enabled.
 - **Errors.** Inline, per section: "Couldn't load the digest. Retry." with a retry link. No toasts, no
   modals. A 400 from a malformed `X-User-Email` returns the user to `/`.
 - **Actions.** Buttons disable while in flight and the row re-renders from a reload of its list, which runs

@@ -12,11 +12,13 @@ export type Act = (
 export function AttentionList({
   channels,
   busy,
+  disabled,
   errors,
   act,
 }: {
   channels: Channel[];
   busy: Record<string, boolean>;
+  disabled: boolean;
   errors: Record<string, string>;
   act: Act;
 }) {
@@ -36,7 +38,7 @@ export function AttentionList({
         <FailedEpisodes
           key={c.channelId}
           channel={c}
-          busy={busy[c.channelId] ?? false}
+          busy={disabled || (busy[c.channelId] ?? false)}
           actionError={errors[c.channelId]}
           act={act}
         />

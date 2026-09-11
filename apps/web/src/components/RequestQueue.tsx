@@ -12,9 +12,11 @@ import { Time } from "./Time";
  */
 export function RequestQueue({
   channels,
+  disabled,
   onChanged,
 }: {
   channels: Channel[];
+  disabled: boolean;
   onChanged: () => void;
 }) {
   const waiting = channels
@@ -31,7 +33,12 @@ export function RequestQueue({
       <h3>Waiting ({waiting.length})</h3>
       {waiting.length === 0 && <p class="muted">Nothing waiting for review.</p>}
       {waiting.map((c) => (
-        <WaitingRow key={c.channelId} channel={c} onChanged={onChanged} />
+        <WaitingRow
+          key={c.channelId}
+          channel={c}
+          disabled={disabled}
+          onChanged={onChanged}
+        />
       ))}
       <details id="reviewed">
         <summary>Reviewed ({reviewed.length})</summary>
@@ -63,9 +70,11 @@ function ReviewedRow({ channel: c }: { channel: Channel }) {
 
 function WaitingRow({
   channel: c,
+  disabled,
   onChanged,
 }: {
   channel: Channel;
+  disabled: boolean;
   onChanged: () => void;
 }) {
   // Who is waiting is its own load with its own error state: a failed request must never read as
@@ -179,7 +188,7 @@ function WaitingRow({
             <button
               id={`approve-confirm-${c.channelId}`}
               type="submit"
-              disabled={busy}
+              disabled={busy || disabled}
             >
               Confirm approval
             </button>
@@ -210,7 +219,7 @@ function WaitingRow({
               id={`decline-confirm-${c.channelId}`}
               type="submit"
               class="danger"
-              disabled={busy}
+              disabled={busy || disabled}
             >
               Confirm decline
             </button>
@@ -222,7 +231,7 @@ function WaitingRow({
         <button
           id={`queue-approve-${c.channelId}`}
           type="button"
-          disabled={busy}
+          disabled={busy || disabled}
           onClick={() => setMode(mode === "approve" ? "closed" : "approve")}
         >
           Approve
@@ -231,7 +240,7 @@ function WaitingRow({
           id={`queue-decline-${c.channelId}`}
           type="button"
           class="danger"
-          disabled={busy}
+          disabled={busy || disabled}
           onClick={() => setMode(mode === "decline" ? "closed" : "decline")}
         >
           Decline

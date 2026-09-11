@@ -13,10 +13,12 @@ import { Time } from "./Time";
  */
 export function CatalogTable({
   channels,
+  disabled,
   filter,
   onChanged,
 }: {
   channels: Channel[];
+  disabled: boolean;
   filter: CatalogFilter;
   onChanged: () => void;
 }) {
@@ -46,11 +48,13 @@ export function CatalogTable({
       <AttentionList
         channels={channels}
         busy={busy}
+        disabled={disabled}
         errors={errors}
         act={act}
       />
       <AllChannelsTable
         channels={channels}
+        disabled={disabled}
         filter={filter}
         busy={busy}
         errors={errors}
@@ -63,12 +67,14 @@ export function CatalogTable({
 /** **All channels** (spec §7): every channel, with the actions its status allows. */
 function AllChannelsTable({
   channels,
+  disabled,
   filter,
   busy,
   errors,
   act,
 }: {
   channels: Channel[];
+  disabled: boolean;
   filter: CatalogFilter;
   busy: Record<string, boolean>;
   errors: Record<string, string>;
@@ -132,7 +138,7 @@ function AllChannelsTable({
                   <td>
                     <ChannelStatusActions
                       channel={c}
-                      busy={busy[c.channelId] ?? false}
+                      busy={disabled || (busy[c.channelId] ?? false)}
                       idPrefix=""
                       act={(work) => act(c.channelId, work)}
                     />
