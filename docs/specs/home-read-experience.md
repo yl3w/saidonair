@@ -327,7 +327,7 @@ owner, and starts the initial import. The title comes from the RSS feed with an 
 
 # Some Channel                                     Approved · 4 following
 UCxxxxxxxxxxxxxxxxxxxxxx · youtube.com/channel/UCxxxx…
-Approved 2026-08-01 · reviewed 2026-09-09 by owner@example.com: “great channel” · lifecycle v2 · import count 5
+Approved 2026-08-01 · reviewed 2026-09-09 by owner@example.com: “great channel” · import count 5
 [Pause] [Decline]
 
 ## Episodes (12)
@@ -350,7 +350,7 @@ Everything below is read from the Registry DO; the source table is named so it i
 today versus after M3.
 
 **Header** (`channels`): title, canonical URL, id, state with pause, `approvedAt`, the latest review
-(`reviewedAt`, `reviewedByEmail`, `reviewNote`), `lifecycleVersion`, `initialImportCount`, created and
+(`reviewedAt`, `reviewedByEmail`, `reviewNote`), `initialImportCount`, created and
 updated times, and the follower count. Actions from `ChannelStatusActions`, the same component the table uses:
 Approve, Decline, Pause, Resume as the status allows, with the one withdraw confirmation.
 
@@ -361,7 +361,7 @@ processed times, and whether a summary exists and in which format. Sorted newest
 channel is "approved but thin", say two available out of five.
 
 **Runs** (`ingestion_runs`, `ingestion_run_episodes`): kind, status, started, finished, episode limit,
-lifecycle version, failure code and detail. Each run expands to its per-episode outcomes
+failure code and detail. Each run expands to its per-episode outcomes
 (`selected | available | failed | skipped | waiting | not_attempted`), which stay historical even after a later
 retry changes the episode's current status. This is the audit trail for "why did this fail and what did the
 retry do".
@@ -389,7 +389,7 @@ the count only. Never any user's read or chat activity.
 One store module per concern under `do/registry/`, all present on `main`:
 
 - `channels.ts`: the transitions of `channel-simplification.md` §3.1 (`requestChannel`, `approveChannel`,
-  `declineChannel` with the fence bump from `approved`, `pauseChannel`, `resumeChannel`, `createChannel`),
+  `declineChannel`, `pauseChannel`, `resumeChannel`, `createChannel`),
   `listChannels` with the `scope` rule, `listChannelsByIds` in any status, `getChannel`.
 - `followers.ts`: `recordFollow`, `recordUnfollow`, `listFollowers`, `countFollowers`; the automatic system
   pause at zero followers and its lift on the next follow.
@@ -437,7 +437,7 @@ This slice ships those screens with real empty states and tests them with SQL-se
 | Add (owner) | the same, `createChannel` as `approved`, `recordFollow` for the owner, `requestIngestion(channel_approved)` | `follow` | The owner is a follower of their own additions, so the channel is not system-paused. |
 | Request again | `requestChannel` (`declined → requested`) plus `recordFollow` | `follow` | Review fields are kept so the queue can say "previously declined". |
 | Approve | `approveChannel` | — | `requested → approved` starts the initial import (`requestIngestion`), which ignores the pause a zero-follower channel starts with; `declined → approved` for a previously approved channel starts nothing. Recomputes pause from the follower count. |
-| Decline | `declineChannel` | — | From `requested` or `approved`; the latter bumps `lifecycle_version` so a run in flight cannot publish. |
+| Decline | `declineChannel` | — | From `requested` or `approved`; the latter also clears the pause. A run in flight finishes (2026-09-11). |
 | Pause, resume | `pauseChannel`, `resumeChannel` | — | `approved` only; resume clears any pause, owner or system. |
 | Episode retry, skip | `retryEpisode`, `skipEpisode` | — | Approved channel with no active run; retry logs `ingestion.start_requested` with `episode_retry` until M3 starts the run. |
 
@@ -509,7 +509,7 @@ routes in step.
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; `management` for the owner | 2026-09-07, reshaped 2026-09-10 |
 | `POST /channels/:id/request` | anyone | `declined → requested`; follows the caller | 2026-09-10 |
 | `POST /channels/:id/approve { title?, initialImportCount?, explanation? }` | owner | `requested → approved` with the initial import, or `declined → approved` without one; recomputes pause | 2026-09-10 |
-| `POST /channels/:id/decline { explanation? }` | owner | `requested → declined`, or `approved → declined` with a fence bump | 2026-09-10 |
+| `POST /channels/:id/decline { explanation? }` | owner | `requested → declined`, or `approved → declined` with the pause cleared; a run in flight finishes | 2026-09-10, revised 2026-09-11 |
 | `POST /channels/:id/pause`, `POST /channels/:id/resume` | owner | Owner pause; resume clears any pause. `approved` only | 2026-09-10 |
 | `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first with `status` and top-level `skipReason` for every caller. Followers and the owner receive `summary`, `related`, and `wasUnread`, and those summaries are marked read for the caller; the owner also receives `processing` | 2026-09-07, reshaped 2026-09-10 |
 | `POST /channels/:id/episodes/:videoId/retry` | owner | `failed` or `skipped → pending`; run start is M3 | 2026-09-10 |
@@ -549,7 +549,6 @@ export type ChannelManagement = {
   pausedBy: "owner" | "system" | null;
   pausedAt: number | null;
   lastCheckedAt: number | null;
-  lifecycleVersion: number;
   createdAt: number;
   updatedAt: number;
   episodes: EpisodeCounts;
@@ -723,8 +722,8 @@ channel can always be requested again).
 - The owner queue lists requested channels oldest first with their followers' emails or "nobody is waiting";
   approve records the note and starts one initial import, using the stored title unless one was typed; decline
   records the note; re-approving a previously approved channel starts no second import.
-- Declining an approved channel asks once, names the follower count, bumps the lifecycle version, and leaves
-  followers' rows reading "Withdrawn" with the note.
+- Declining an approved channel asks once, names the follower count, and leaves followers' rows reading
+  "Withdrawn" with the note.
 - Unfollowing a channel to zero followers pauses it by the system; a follow resumes it; the owner's Pause holds
   until Resume regardless of followers.
 - Catalog health counts match seeded fixtures; failed episodes list under Needs attention with their code and

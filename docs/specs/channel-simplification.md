@@ -60,7 +60,7 @@ The first block is the PM proposal of 2026-09-10 as amended in review; the secon
 | How do we know who requested a channel? | **Following a requested channel registers the follower in the Registry.** | One action for users. The Registry keeps an active follower record per channel and user. |
 | What does `skipped` mean to each role? | **Reversible by owner retry; readers see the title with no summary.** | Channel history stays complete and a wrong automatic skip can be undone. |
 | Does unfollowing withdraw a request? | **A channel with no active followers is paused, whatever its status.** Pause lifts on the next follow. | Ingestion follows demand. The Registry tracks active followers for every channel, replacing requester count with a real follower count. |
-| Should declining soft-delete the channel, or be a status? | **A `declined` status; nothing is deleted.** Declined excludes scheduling by itself, so it is never also paused. A user re-requests a declined channel after seeing the owner's note, with one confirmation; the owner may approve a declined channel directly. Declining an approved channel bumps the fence and confirms once in the UI. Copy says "Declined" when the channel was never approved and "Withdrawn" when it was. | One field describes the channel. The `deleted_at` axis, the restore route, the "restore it first" guards, and the two meanings of deletion all go. Approve and Decline become the only owner verbs at channel level, with Pause and Resume. |
+| Should declining soft-delete the channel, or be a status? | **A `declined` status; nothing is deleted.** Declined excludes scheduling by itself, so it is never also paused. A user re-requests a declined channel after seeing the owner's note, with one confirmation; the owner may approve a declined channel directly. Declining an approved channel confirms once in the UI. Copy says "Declined" when the channel was never approved and "Withdrawn" when it was. | One field describes the channel. The `deleted_at` axis, the restore route, the "restore it first" guards, and the two meanings of deletion all go. Approve and Decline become the only owner verbs at channel level, with Pause and Resume. |
 | Is there production data to migrate? | **No.** The application is not deployed; local Durable Object state is wiped once and the initial migrations are rewritten to the new model (§6). | No data migration, no deprecated columns or tables, no compatibility shims. A one-time, owner-approved exception to "migrations are additive only" and "never edit a committed migration"; both rules resume afterwards. |
 | Does the initial import run at first approval when nobody follows yet? | **Yes.** The newest `initial_import_count` entries are imported once; later runs wait for a follower. | The owner asked for the channel explicitly, the cost is at most five credits, and the catalog can show "N summarised" so people can judge the channel before following it. Recommended in review and adopted. |
 
@@ -79,7 +79,7 @@ The first block is the PM proposal of 2026-09-10 as amended in review; the secon
        │     ▲                         │        ▲    first follow / owner resume
   owner   user requests           owner       owner approves again
   declines  again (sees note)     withdraws   (no new initial import)
-       │     │                    (fence +1)    │
+       │     │                    (no fence)    │
        ▼     │                         ▼        │
    ┌────────────────────────────────────────────────┐
    │  declined   hidden from the catalog list; followers keep the row and read the owner's note   │
@@ -95,7 +95,7 @@ Columns on `channels` (Registry), exactly as §6 creates them:
 | `approved_at` | null or unix ms; non-null whenever `status = 'approved'` | Set the first time the channel is approved and never reset. Decides whether a later approval starts an initial import, and whether copy says "Declined" or "Withdrawn". |
 | `reviewed_at`, `reviewed_by_email`, `review_note` | nullable; the first two non-null whenever the status is not `requested` | Written by approve, decline, and owner add (the owner is the reviewer); the latest review only. Kept when a declined channel is re-requested, so the queue can show it. A review log is out of scope (§8). |
 | `initial_import_count` | integer, default 5 | Unchanged. Applies to the import started at first approval. |
-| `lifecycle_version` | integer from 1 | Unchanged. Bumped when an approved channel is declined; that is the only transition a run can be in flight for. |
+| `lifecycle_version` | removed 2026-09-11 | Was the fence for run writes, bumped when an approved channel was declined. Dropped by migration `0002_drop_lifecycle_version.sql`; a run in flight now simply finishes (`m3-ingestion.md` §2 "Decline mid-run"). |
 | `last_checked_at`, `last_ingested_at` | nullable unix ms | Unchanged. |
 
 There is no `deleted_at`, `failure_code`, `failure_detail`, or `available_at`.
@@ -119,8 +119,8 @@ Rules:
   up by the next scheduled run. Recomputes pause from the follower count. Followers are already following; nothing is
   handed off.
 - **Decline.** `POST /channels/:id/decline { explanation? }`, owner. Requires `requested` or `approved`. Sets
-  `status = 'declined'` and the review fields. From `approved` it also bumps `lifecycle_version`, so a running run is
-  fenced out, and clears the pause. Episodes, summaries, vectors, follows, and read receipts are kept. The UI
+  `status = 'declined'` and the review fields. From `approved` it also clears the pause; a running run is not stopped
+  and finishes (decided 2026-09-11). Episodes, summaries, vectors, follows, and read receipts are kept. The UI
   confirms once when declining an approved channel, showing its follower count.
 - **Pause and resume.** `POST /channels/:id/pause` and `POST /channels/:id/resume`, owner, `approved` only.
   Automatic pause and resume are §3.2. A running run finishes; pause only stops new selection. Pause never hides
@@ -193,12 +193,14 @@ Classification, carrying the 2026-09-08 rules onto the new statuses:
 - Live or upcoming → `pending`, `waiting_code = LIVE_OR_UPCOMING`; at or after 48 hours still live → `skipped
   LIVE_OR_UPCOMING`. Known live metadata takes precedence over an `UNPLAYABLE` answer, as in the M3 spec.
 - `UNPLAYABLE` → `skipped UNPLAYABLE`. The owner can retry it if the video becomes public.
-- `PROVIDER_LIMIT` (credits) ends the run, leaves the remaining selected episodes `pending` with
-  `waiting_code = PROVIDER_LIMIT`, and counts no attempt.
-- `PROVIDER_AUTH`, `PROVIDER_HTTP`, `PROVIDER_RATE_LIMIT`, `PROVIDER_PARSE`, `VECTORIZE_INCOMPLETE`, and summary
-  failures after the raw-text fallback → technical: attempt +1, reason recorded, `failed` on the third.
+- `PROVIDER_LIMIT` (credits) leaves the episode `pending` with `waiting_code = PROVIDER_LIMIT`, counts no attempt,
+  and the run closes `failed PROVIDER_LIMIT`.
+- `PROVIDER_HTTP`, `PROVIDER_PARSE`, `VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`, and
+  `AI_SUMMARY_FAILED` after the raw-text fallback → technical: attempt +1, reason recorded, `failed` on the third.
+  `PROVIDER_AUTH` and a `PROVIDER_RATE_LIMIT` that outlasts the step's retries are account-level and count no
+  attempt (`m3-ingestion.md` §2, 2026-09-11).
 - Publish rules are unchanged: `available` only after `getByIds` returns every expected vector and the summary row
-  exists, in one Registry write fenced by `lifecycle_version`.
+  exists, in one Registry write that is accepted only while the run is still open.
 
 Owner actions, both requiring an `approved` channel with no queued or running run, else 409:
 
@@ -212,13 +214,13 @@ Owner actions, both requiring an `approved` channel with no queued or running ru
   or running run. Per channel: new feed entries plus every `pending` episode, waiting or below three attempts,
   including selected episodes that have left the feed.
 - **First approval** starts the initial import of the newest `initial_import_count` entries, whether or not anyone
-  follows yet (decided 2026-09-10). If nobody follows, the channel is paused by the system as soon as that run
-  finishes and later runs wait for a follower. A later approval, after a decline, starts nothing; the next scheduled
-  run picks the channel up.
-- **Reconciliation** (unchanged in intent from the M3 spec): a queued or running run whose Workflow is missing or
-  failed is closed and fenced; its episodes keep their attempt counts. An approved channel with no run at all after
-  the `TODO(owner)` window from the M3 spec appears under Needs attention as "approved, never started" with a Start
-  action that requests a run.
+  follows yet (decided 2026-09-10). If nobody follows, the channel is paused by the system at approval while that
+  one run still proceeds, and later runs wait for a follower. A later approval, after a decline, starts nothing; the
+  next scheduled run picks the channel up.
+- **Reconciliation** (decided 2026-09-11, `m3-ingestion.md` §2): at each cron tick, a run-episode whose Workflow
+  instance is missing or errored is closed `failed WORKFLOW_LOST` once its run is an hour old; its episode keeps its
+  attempt count, and the run closes when nothing is left selected. An approved channel with no run at all appears
+  under Needs attention as "approved, never started", with no age window, and a Start action that requests a run.
 - Follower count never affects selection except through pause. A paused channel is skipped, not failed. A declined
   channel is excluded by status.
 
@@ -247,7 +249,7 @@ Entity-based as before: no `/owner/*`, authorization per operation, `management`
 | `GET /channels/:id` | anyone | changed | Any status by id, so a declined channel can show its note; declined ones simply do not appear in the list |
 | `POST /channels/:id/request` | anyone | new | `declined → requested`; follows the caller |
 | `POST /channels/:id/approve { title?, initialImportCount?, explanation? }` | owner | new | `requested → approved` with the initial import, or `declined → approved` without one |
-| `POST /channels/:id/decline { explanation? }` | owner | new | `requested → declined`, or `approved → declined` with a fence bump |
+| `POST /channels/:id/decline { explanation? }` | owner | new | `requested → declined`, or `approved → declined` with the pause cleared; a run in flight finishes (revised 2026-09-11) |
 | `DELETE /channels/:id`, `POST /channels/:id/restore` | | **removed** | Channels are never deleted |
 | `POST /channels/:id/pause`, `POST /channels/:id/resume` | owner | new | Owner pause; resume clears any pause. `approved` only |
 | `POST /channels/:id/retry` | owner | **removed** | |
@@ -276,7 +278,9 @@ The application is not deployed and holds no data anyone depends on (decided 202
 schema with additive columns and leave the old ones deprecated, the initial migrations are rewritten to the model in
 §3. This is a one-time exception, approved by the owner, to two rules in `AGENTS.md` → Data & schema conventions:
 "migrations are additive only" and "never edit a migration file that has been committed". Both rules resume the moment
-this lands; §11 records the exception in `AGENTS.md`.
+this lands; §11 records the exception in `AGENTS.md`. A second, owner-approved exception followed on 2026-09-11:
+`0002_drop_lifecycle_version.sql` drops `lifecycle_version` from `channels` and `ingestion_runs` as a new file. The
+listing in §6.1 is the frozen `0001` file exactly as committed, so it still shows the column.
 
 What the reset involves:
 
@@ -498,8 +502,8 @@ The Registry's `_migrations` table lists `0001_init` alone after the reset; `reg
   Start. **All channels**: status, paused, `available / tracked` with skipped and failed counts, followers, last
   ingested, latest run, and actions Approve or Decline, Pause or Resume. Declining an approved channel confirms once
   with the follower count. Health strip from `GET /catalog`.
-- **Owner channel detail `/owner/channels/:id`.** Header with status, pause, approval and review fields, lifecycle
-  version, import count, follower count; episodes with status, wait reason, attempts, failure or skip reason,
+- **Owner channel detail `/owner/channels/:id`.** Header with status, pause, approval and review fields, import
+  count, follower count; episodes with status, wait reason, attempts, failure or skip reason,
   summary format, Retry and Skip; runs; followers (emails) for requested channels, count only for approved ones.
   Never any user's read or chat activity.
 
@@ -529,12 +533,14 @@ should be dropped when that spec is revised.
 | Technical failures are never restarted automatically; scheduled runs do not reattempt failed episodes | 2026-09-10 | AGENTS.md → Ingestion; M3 spec §3.4 | Three attempts across runs (§3.3) |
 | Scheduled runs select channels independently of follower count | 2026-09-08 | AGENTS.md → Ingestion; PRD §4.2 | Pause at zero followers (§3.2) |
 | Only available, non-deleted channels can be followed | 2026-09-07 | AGENTS.md → Catalog; PRD §4.3 | Any `requested` or `approved` channel (§3.2) |
-| Migrations are additive only; a committed migration file is frozen | 2026-09-07 | AGENTS.md → Data & schema conventions; both `0001_init.sql` headers | Suspended once, before first deployment, for the rewrite in §6; in force again afterwards |
+| Migrations are additive only; a committed migration file is frozen | 2026-09-07 | AGENTS.md → Data & schema conventions; both `0001_init.sql` headers | Suspended once, before first deployment, for the rewrite in §6; in force again afterwards, with one owner-approved drop on 2026-09-11 (`0002_drop_lifecycle_version.sql`) |
+| Declining an approved channel bumps `lifecycle_version` so a run in flight is fenced out | 2026-09-08, reaffirmed 2026-09-10 | AGENTS.md → Catalog, Ingestion; PRD §4.2; M3 spec §2; §3.1 and §9 here | Reversed 2026-09-11: runs write no channel state, so a run in flight simply finishes and eligibility hides its output; the column was dropped (`m3-ingestion.md` §2 "Decline mid-run") |
 
 Unchanged and reaffirmed: DownSub as the transcript source, the 48-hour caption wait, the 180-second cutoff, live
-and upcoming waits, English-only tracks, cron every 6 hours, fencing by `lifecycle_version`, publish only after
-vector verification, soft deletion for every entity other than channels, retention of everything, and hard rule 3
-with "approved" in place of "available, non-deleted".
+and upcoming waits, English-only tracks, cron every 6 hours, publish only after vector verification, soft deletion
+for every entity other than channels, retention of everything, and hard rule 3 with "approved" in place of
+"available, non-deleted". Fencing by `lifecycle_version` was reaffirmed here and reversed on 2026-09-11
+(`m3-ingestion.md` §2 "Decline mid-run"): runs write no channel state, so a run in flight simply finishes.
 
 ## 10. Acceptance criteria
 
@@ -547,7 +553,7 @@ with "approved" in place of "available, non-deleted".
    and changes no follow. There is no auto-follow code path left in the API or the User DO. Approving a declined
    channel that had been approved before starts no run and leaves `approved_at` as it was.
 4. Declining a requested channel sets `declined` and no run row exists; its followers read "Declined" with the note.
-   Declining an approved channel bumps `lifecycle_version`, so a run in flight publishes nothing; its followers read
+   Declining an approved channel changes no run or episode row (revised 2026-09-11); its followers read
    "Withdrawn" with the note; its summaries leave digest and chat and return on re-approval.
 5. Following a requested or approved channel succeeds; following a declined one is 409 with the note. Each follow
    and unfollow is visible in the Registry follower record, and `followerCount` matches.

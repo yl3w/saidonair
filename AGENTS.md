@@ -78,7 +78,7 @@ Toolchain pinning:
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
 │   │   │   ├── do/user.ts            # Per-user Durable Object (RPC facade)
 │   │   │   ├── do/user/              # User store modules: follows, reads, chats, preferences, types
-│   │   │   ├── workflows/ingest.ts   # channel ingestion Workflow
+│   │   │   ├── workflows/ingest.ts   # per-episode ingestion Workflow: one instance per episode of a run
 │   │   │   ├── lib/youtube/          # ids.ts (id validation, /channel/UC… extraction), rss.ts (feed verification,
 │   │   │   │                         # title, episodes); nothing else in the codebase talks to YouTube
 │   │   │   ├── lib/eligibility.ts    # active follows ∩ approved channels (digest, follows, episodes, chat)
@@ -87,7 +87,7 @@ Toolchain pinning:
 │   │   │   ├── lib/validation.ts     # validate(target, schema): hono-openapi validator with the INVALID_INPUT 400 contract
 │   │   │   ├── lib/openapi.ts        # the document's fixed parts (info, tags, security) and describeRoute response helpers
 │   │   │   ├── lib/cors.ts           # browser origins allowed to call the API, from vars.WEB_ORIGINS
-│   │   │   ├── lib/ingestion.ts      # ingestion start points (log-only until M3)
+│   │   │   ├── lib/ingestion.ts      # the start handler: feed, selection, run row, fan-out (log-only until M3)
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
 │   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC
 │   │   │   ├── lib/sql.ts            # bound-parameter chunking for DO SQLite
@@ -130,7 +130,7 @@ If a file doesn't exist yet, create it at the path above rather than inventing a
 | HTTP | Hono |
 | Validation and API document | Zod 4 schemas in `packages/shared` (types inferred from them); `hono-openapi` generates OpenAPI 3.1 at `GET /openapi.json`; Scalar test client at `GET /docs` (see `docs/specs/api-reference.md`) |
 | State | Durable Objects with SQLite storage (`new_sqlite_classes` migration) |
-| Orchestration | Cloudflare Workflows for ingestion; Cron Trigger in the same Worker |
+| Orchestration | Cloudflare Workflows for ingestion, one instance per episode; Cron Trigger in the same Worker |
 | LLM | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
 | Embeddings | Workers AI `@cf/baai/bge-base-en-v1.5` (768 dims, 512-token input limit; the deployed model id carries `.5`, corrected 2026-09-08) |
 | Vectors | Vectorize index `media-rag`, 768 dimensions, cosine, `namespace: shared-catalog`, metadata indexes on `channelId` and `videoId` (see Setup) |
@@ -229,7 +229,9 @@ The agreed logical schema, keys, and indexes are in `docs/PRD.md` §5. Implement
   Never drop, rename, or change a column type in a migration without owner approval. Deprecate instead.
 - Never edit a migration file that has been committed. Add a new one. The initial migrations were rewritten once, on
   2026-09-10 before first deployment, with owner approval (`docs/specs/channel-simplification.md` §6); from then on
-  the additive-only and frozen-file rules apply without exception.
+  the additive-only and frozen-file rules apply without exception. One drop has been approved since:
+  `0002_drop_lifecycle_version.sql` (2026-09-11) removes `lifecycle_version` from `channels` and `ingestion_runs`
+  as a new file, with `0001` untouched (`docs/specs/m3-ingestion.md` §2 "Decline mid-run").
 - `snake_case` for tables and columns. Every table has `created_at INTEGER` (unix ms). Use `TEXT` for ids.
 - The single Registry DO owns `global_users`, `channels`, `channel_followers`, `episodes`, `episode_summaries`,
   `ingestion_runs`, and `ingestion_run_episodes`. One User DO per normalized email owns `channel_follows`,
@@ -276,8 +278,9 @@ The model is `docs/specs/channel-simplification.md` §3, decided 2026-09-10.
   and `approved_at` does not move. Approving recomputes pause from the follower count, so a channel nobody follows is
   paused by the system straight away while its one initial import still runs.
 - **Decline.** `POST /channels/:id/decline { explanation? }`, owner, from `requested` or `approved`. Sets `declined`
-  and the review fields, clears any pause, and from `approved` bumps `lifecycle_version` so a run in flight is fenced
-  out. Episodes, summaries, vectors, follows, and read receipts are kept. Copy reads "Declined" when `approved_at` is
+  and the review fields and clears any pause. A run in flight is not stopped: it finishes, and eligibility hides what
+  it produced until the channel is approved again (decided 2026-09-11; nothing is fenced). Episodes, summaries,
+  vectors, follows, and read receipts are kept. Copy reads "Declined" when `approved_at` is
   null and "Withdrawn" when it is not; declining an approved channel confirms once, naming the follower count.
 - **Pause and resume.** `POST /channels/:id/pause` and `POST /channels/:id/resume`, owner, `approved` only.
   `paused_by` is `owner` or `system`, always with `paused_at`. Pause stops new run selection only: a running run
@@ -303,10 +306,16 @@ The model is `docs/specs/channel-simplification.md` §3, decided 2026-09-10.
 
 ## Ingestion pipeline
 
-First approval, owner episode retry, or cron → Registry selects channel → one Workflow per channel run → per episode
-still to do: fetch transcript through `lib/transcripts/` → chunk → embed → upsert in `shared-catalog` → summarize → write shared summary and mark the
-episode `available` in the Registry DO. Following never launches per-user ingestion or duplicates vectors/summaries.
-The Workflow and the cron are M3; until then `lib/ingestion.ts` records each start point as a
+First approval, owner episode retry, owner Start, or cron → a Worker handler, never a Workflow, fetches the feed,
+selects the episodes, writes the run and its selection to the Registry in one transaction, and creates one Workflow
+instance per selected episode, id `${runId}.${videoId}` (decided 2026-09-11; `docs/specs/m3-ingestion.md` §2 "Unit
+of execution"). Per instance: stagger → fetch transcript through `lib/transcripts/` → classify → chunk → embed →
+upsert in `shared-catalog` → verify → summarize → write the shared summary and mark the episode `available`. An
+instance makes exactly three kinds of Registry write, `markTranscript`, `completeEpisode`, and `failEpisode`; each
+updates the episode and its run-episode row together, is accepted only while the run is still open, and closes the
+run when no run-episode is still `selected`. Instances never fetch the feed, select, or touch channel status.
+Following never launches per-user ingestion or duplicates vectors/summaries. The handler, the Workflow, and the cron
+are M3; until then `lib/ingestion.ts` records each start point as a
 `{ event: "ingestion.start_requested", channelId, reason }` log line, with reasons `channel_approved` and
 `episode_retry`, so the call sites are already in place and visible under `wrangler dev`.
 
@@ -314,14 +323,20 @@ The Workflow and the cron are M3; until then `lib/ingestion.ts` records each sta
   Scheduled runs select channels with `status = 'approved'`, `paused_by IS NULL`, and no queued or running run — so
   follower count reaches selection only through pause. A paused channel is skipped, not failed; a declined one is
   excluded by status. Per channel: new feed entries plus every `pending` episode, waiting or below three attempts,
-  including selected episodes that have since left the RSS feed. Elapsed time alone never settles a wait: a fresh
-  no-caption result is fetched again at or after 48 hours before the episode is classified.
+  including selected episodes that have since left the RSS feed. A feed entry is new when it is untracked and
+  published after the channel's `approved_at`, so the first cron after approval never imports the older entries the
+  initial import left out. Elapsed time alone never settles a wait: a fresh no-caption result is fetched again at or
+  after 48 hours before the episode is classified. A tick numbers the instances it creates across every channel and
+  the k-th sleeps k × 3 seconds before its first call; before starting anything it reads DownSub's `/status` and
+  starts nothing while credits are zero (decided 2026-09-11).
 - **The initial import ignores pause.** The one run that first approval starts runs even when nobody follows yet and
   the channel is already system-paused (owner decision 2026-09-10); only scheduled selection honours `paused_by`.
-- **Reconciliation (M3).** A queued or running run whose Workflow is missing or failed is closed and fenced, its
-  episodes keeping their attempt counts; an approved channel with no run row at all is "approved, never started" in
-  Needs attention. `TODO(owner):` the maximum queued-start delay and the reconciliation interval, and whether
-  "never started" gets an age window, before M3 codes this.
+- **Reconciliation (M3, decided 2026-09-11).** At the start of each cron tick, for every run older than one hour,
+  each run-episode still `selected` has its instance looked up by id; a missing, errored, terminated, or completed
+  instance becomes run-episode `failed WORKFLOW_LOST` with the episode's attempt count untouched, and the run closes
+  when nothing is left `selected`. The handler records a `create()` that throws at once, and an instance whose step
+  gives up writes `failEpisode` itself, so the sweep is a safety net. An approved channel with no run row at all is
+  "approved, never started" in Needs attention, with no age window; the Start route is its remedy.
 - **Episode states: `pending | available | failed | skipped`.** `pending` carries an optional `waiting_code`
   (`CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT`), cleared on the next attempt; `failed` carries the last technical
   `failure_code`; `skipped` carries a `skip_reason` (`SHORT`, `NON_ENGLISH`, `NO_CAPTIONS`, `LIVE_OR_UPCOMING`,
@@ -333,26 +348,36 @@ The Workflow and the cron are M3; until then `lib/ingestion.ts` records each sta
   NO_CAPTIONS`. Videos under 180 seconds are `skipped SHORT` and store nothing. Live or upcoming videos wait the same
   48 hours with `waiting_code = LIVE_OR_UPCOMING`, then `skipped LIVE_OR_UPCOMING`. An episode with captions but no
   English track is `skipped NON_ENGLISH`; an `UNPLAYABLE` answer is `skipped UNPLAYABLE`. DownSub credit exhaustion
-  (`PROVIDER_LIMIT`) ends the run, leaves the remaining selected episodes `pending` with that waiting code, and counts
-  no attempt; `GET /catalog` shows the remaining credits (M3, not yet present).
-- **Three technical attempts.** `PROVIDER_AUTH`, `PROVIDER_HTTP`, `PROVIDER_RATE_LIMIT`, `PROVIDER_PARSE`,
-  `VECTORIZE_INCOMPLETE`, and summary failures after the raw-text fallback increment `attempt_count` and record the
+  (`PROVIDER_LIMIT`) leaves the episode `pending` with that waiting code, counts no attempt, and the run closes
+  `failed PROVIDER_LIMIT`; `GET /catalog` shows the remaining credits (M3, not yet present).
+- **Three technical attempts.** `PROVIDER_HTTP`, `PROVIDER_PARSE`, `VECTORIZE_FAILED`, `VECTORIZE_INCOMPLETE`,
+  `AI_EMBED_FAILED`, and `AI_SUMMARY_FAILED` (after the raw-text fallback) increment `attempt_count` and record the
   reason; below three the episode stays `pending` and the next scheduled run reattempts it, and the third makes it
-  `failed`. Waiting never counts as an attempt. Only `failed` episodes reach the owner.
+  `failed`. `TRANSCRIPT_TOO_LARGE` is deterministic and goes to `failed` at once. Waiting never counts as an attempt.
+  Only `failed` episodes reach the owner.
+- **Account-level provider failures are not attempts** (decided 2026-09-11). `PROVIDER_AUTH` and a
+  `PROVIDER_RATE_LIMIT` still standing after the step's own retries are facts about the account, not the video: the
+  instance ends, the episode stays `pending` with no wait reason and no attempt counted, its run-episode is
+  `not_attempted` with the code, and the run closes `failed` with it so the owner sees what to fix.
 - **Owner episode actions**, both requiring an approved channel with no queued or running run, else 409:
   `POST /channels/:id/episodes/:videoId/retry` takes `failed` or `skipped` back to `pending`, clearing attempts and
   skip fields, and `POST /channels/:id/episodes/:videoId/skip` takes `failed` to `skipped OWNER`. Siblings and their
   summaries are untouched. There is no channel-level retry.
 - Persist `ingestion_runs` and the exact selected `ingestion_run_episodes` (`selected`, `available`, `failed`,
-  `skipped`, `waiting`, `not_attempted`). Permit at most one queued/running run per channel. A queued or running run
-  whose Workflow is missing or failed is closed and fenced, its episodes keeping their attempt counts; an approved
-  channel with no run row at all appears under Needs attention as "approved, never started".
-- Workflows: each external call (RSS, transcript, AI, Vectorize) is its own `step.do()` for granular retries.
-  Check persisted episode progress and use deterministic vector IDs. Publish `available` only after the full vector
-  set is ready for retrieval and a summary is stored; never expose partial ingestion as completed content.
-  `processed_at` is the summary's availability time and is never reset.
-- Declining an approved channel increments `lifecycle_version`; run writes must match that version. Cancel/fence
-  stale runs so they cannot change catalog state after a withdrawal. Retained partial vectors remain ineligible.
+  `skipped`, `waiting`, `not_attempted`). Permit at most one queued/running run per channel. A run-episode whose
+  instance is gone is closed `failed WORKFLOW_LOST` by the reconciliation sweep, its episode keeping its attempt
+  count; an approved channel with no run row at all appears under Needs attention as "approved, never started".
+- Workflows: each external call (transcript, AI, Vectorize) is its own `step.do()` inside the episode's instance for
+  granular retries; the feed is read by the handler before the run exists. Use deterministic vector IDs. The verify
+  step retries before a missing vector counts as `VECTORIZE_INCOMPLETE`, since Vectorize applies upserts
+  asynchronously. Publish `available` only after the full vector set is ready for retrieval and a summary is stored;
+  never expose partial ingestion as completed content. `processed_at` is the summary's availability time and is
+  never reset.
+- Declining a channel stops nothing in flight (decided 2026-09-11). Runs never write channel state, so a run that
+  outlives a decline publishes episodes that eligibility hides until re-approval; the `lifecycle_version` fence of
+  2026-09-10 was removed with migration `0002`. An instance's Registry writes are accepted only while its run is
+  still open, which guards against a reconciled run's instance turning out to be alive. Retained partial vectors
+  remain ineligible.
 - Channel identity is the canonical `UC…` id; the feed is `https://www.youtube.com/feeds/videos.xml?channel_id=UC…`.
   Ids and `/channel/UC…` URLs validate offline in `lib/youtube/ids.ts`. There is no resolution of `@handle` or
   `/c/…` URLs: the feed does not accept them, and users copy the id from the channel's About dialog instead.
@@ -467,7 +492,7 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; the owner also gets `management` |
 | `POST /channels/:id/request` | anyone | `declined → requested`, keeping the review fields, and follows the caller |
 | `POST /channels/:id/approve` `{ title?, initialImportCount?, explanation? }` | owner | `requested → approved` with the one initial import, or `declined → approved` without one; recomputes pause from the follower count |
-| `POST /channels/:id/decline` `{ explanation? }` | owner | `requested → declined`, or `approved → declined` with a `lifecycle_version` bump and the pause cleared |
+| `POST /channels/:id/decline` `{ explanation? }` | owner | `requested → declined`, or `approved → declined` with the pause cleared; a run in flight finishes |
 | `POST /channels/:id/pause` / `POST /channels/:id/resume` | owner | Owner pause; resume clears either kind of pause. `approved` only |
 | `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; every caller gets `status` and a top-level `skipReason` (why there is no summary, when skipped); the owner and followers of an approved channel get `summary`, `related`, `wasUnread`, and returned summaries are marked read for the caller; everyone else gets titles without summaries; the owner also gets `processing` (attempts, `failureCode`, `waitingCode`, `skipReason`, timestamps) |
 | `POST /channels/:id/episodes/:videoId/retry` | owner | `failed` or `skipped → pending`, attempts and skip fields cleared, one-episode run |
@@ -577,8 +602,8 @@ page, sections **Queue**, **Catalog**, and **Needs attention**, jump links `#req
   are real, from the Registry's follower record; the emails behind them are shown only in the queue.
 
 **`/owner/channels/:id` — Owner channel detail.** From `GET /channels/:id` (with `management`), `/episodes`,
-`/ingestion-runs`, and `/followers`: header with status, pause, approval and review fields, lifecycle version, import
-count, and follower count; episodes with status, wait reason, attempts, failure or skip reason, summary format, and
+`/ingestion-runs`, and `/followers`: header with status, pause, approval and review fields, import count, and
+follower count; episodes with status, wait reason, attempts, failure or skip reason, summary format, and
 Retry and Skip; runs with per-episode outcomes; followers by email. Never shows any user's read or chat activity.
 
 Owner catalog management is required, but a general admin dashboard is not: `/owner` shows only what supports approve,
@@ -607,17 +632,21 @@ Tests are focused, not exhaustive. Required coverage:
 - **Lifecycle and retry** — adding an existing channel follows the caller and creates nothing; a declined id is 409
   with the note, and `POST /channels/:id/request` makes it requested again and follows the caller. First approval
   starts exactly one import and later approvals start none, leaving `approved_at` alone. Declining an approved channel
-  bumps `lifecycle_version` so stale run writes are rejected, and its summaries leave digest and chat and come back on
-  re-approval. Unfollowing to zero followers pauses an approved channel by the system, the next follow lifts it, an
+  changes no run or episode row, and its summaries leave digest and chat and come back on re-approval. Unfollowing to
+  zero followers pauses an approved channel by the system, the next follow lifts it, an
   owner pause survives a follow, and a requested channel is never paused; `followerCount` matches the Registry
   follower record. Episode attempts stay `pending` below three and turn `failed` on the third; system skips carry
   their reason, owner retry clears attempts and skip fields, and owner skip needs a `failed` episode. Test owner-only
   mutations, and that handles and ids with no feed are rejected. Owner overview and channel-health counts match
   SQL-seeded episodes and runs. Add or extend these tests whenever a route or data path is introduced.
   M3 adds: caption and credit waits resume without owner action and a fresh no-caption answer is re-fetched at or
-  after 48 hours; a decline mid-run cancels the run and publishes nothing; the first-approval run starts while the
-  channel is system-paused and scheduled selection skips paused channels; digest windows use first availability; a
-  related-lookup failure still publishes the summary; missing or failed Workflows reconcile into closed runs.
+  after 48 hours; a decline mid-run stops nothing, the run closes `completed`, and its later summaries stay hidden
+  until re-approval; a write against a closed run is refused; the first-approval run starts while the channel is
+  system-paused and scheduled selection skips paused channels; the first cron after approval imports no entry
+  published before `approved_at`; account-level provider failures count no attempt; instances created in one tick
+  carry increasing start delays; digest windows use first availability with a publication tiebreak; a
+  related-lookup failure still publishes the summary; a missing or errored instance reconciles into a `failed
+  WORKFLOW_LOST` run-episode at the next tick once its run is an hour old, attempt count untouched.
 - **Pure functions** — chunking (token caps, overlap, edge cases: empty, one segment, very long segment),
   RSS parsing, channel URL resolution, summary JSON validation.
 - **Migrations** — a fresh DO runs all migrations idempotently; running twice is a no-op. The check constraints
@@ -666,12 +695,13 @@ management, rate limiting.
   Cloudflare Tunnel, Bright Data's Web Unlocker, and DownSub, and chose DownSub after a probe with a trial key passed
   every check (`docs/specs/m3-ingestion.md` §2). Hard rule 2 carries the exception; the transcript contract carries
   the seam. The InnerTube code was removed; it survives only on the throwaway branch `spike/transcript-remote`.
-- **Workers plan — `TODO(owner)`:** M3 assumes Workers Paid; Workflows on the free plan allow 10 ms of CPU per step,
-  which parsing a 400 KB transcript response may exceed.
-- **Reconciliation window — `TODO(owner)`:** how long a queued run may wait for its Workflow before it counts as a
-  technical start failure, how often the cron reconciles, and whether "approved, never started" needs an age window
-  (today every approved channel with no run row counts, which is honest while ingestion is unbuilt). Decide before
-  M3 Step 4.
+- **M3 execution model — decided 2026-09-11** (`docs/specs/m3-ingestion.md` §2): one Workflow instance per episode
+  with one run row per channel kept in the Registry; the handler fetches, selects, and fans out. The
+  `lifecycle_version` fence of 2026-09-10 is reversed: declining stops nothing in flight, and migration `0002`
+  removed the column. A cron tick staggers its instances by 3 s each and never counts a rate limit as an attempt.
+- **Workers plan — decided 2026-09-11: Workers Paid.** Per-step CPU and the concurrent-instance cap both fit.
+- **Reconciliation window — decided 2026-09-11:** the sweep runs at each cron tick over runs older than one hour;
+  "approved, never started" has no age window.
 - Channel model — decided 2026-09-10 (`docs/specs/channel-simplification.md`): `requested | approved | declined`, a
   pause flag, a Registry follower record, and a four-status episode machine; channels are never deleted. Merged the
   same day; the owner's browser walkthrough of the four screens passed.
