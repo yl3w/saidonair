@@ -72,9 +72,12 @@ function AllChannelsTable({
   errors: Record<string, string>;
   act: Act;
 }) {
+  // Approved and Paused are disjoint here, as they are in the health strip's counts: the Registry's
+  // summary counts an approved channel as paused, not approved, while a pause is set.
   const shown = channels.filter((c) => {
     if (filter === "all") return true;
     if (filter === "paused") return c.status === "approved" && c.paused;
+    if (filter === "approved") return c.status === "approved" && !c.paused;
     return c.status === filter;
   });
 
