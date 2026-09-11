@@ -47,30 +47,34 @@ function ChannelScreen() {
     },
   );
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  async function toggleFollow(following: boolean) {
+  // A failed action shows its message under the header; the channel reloads either way so the
+  // screen reflects the server, not the click.
+  async function act(work: () => Promise<unknown>) {
     setBusy(true);
+    setActionError(null);
     try {
-      if (following) await api.unfollow(channelId);
-      else await api.follow(channelId);
+      await work();
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
       reloadChannel();
       reloadEpisodes();
-    } finally {
       setBusy(false);
     }
   }
 
-  async function requestAgain(c: ChannelData) {
+  function toggleFollow(following: boolean) {
+    return act(() =>
+      following ? api.unfollow(channelId) : api.follow(channelId),
+    );
+  }
+
+  function requestAgain(c: ChannelData) {
     if (!window.confirm(`${reviewCopy(c) ?? "Declined"}. Ask the owner again?`))
       return;
-    setBusy(true);
-    try {
-      await api.requestChannel(channelId);
-      reloadChannel();
-      reloadEpisodes();
-    } finally {
-      setBusy(false);
-    }
+    return act(() => api.requestChannel(channelId));
   }
 
   const showEpisodes =
@@ -105,6 +109,7 @@ function ChannelScreen() {
           onRequestAgain={() => requestAgain(channel.data.channel)}
         />
       )}
+      {actionError !== null && <p class="error">{actionError}</p>}
       {showEpisodes && (
         <>
           <h2>Episodes</h2>

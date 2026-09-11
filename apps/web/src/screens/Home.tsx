@@ -41,6 +41,7 @@ function HomeScreen() {
   );
 
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   // After a follow or unfollow only the lists reload. The digest follows on its own: `listsReady`
   // drops while they load and comes back once both are ready, and that flip is what starts its one
   // request. Reloading the digest here as well would fire it in the same render, while the lists
@@ -50,12 +51,21 @@ function HomeScreen() {
     reloadChannels();
   }, [reloadFollows, reloadChannels]);
 
+  // A failed action shows its message on the row. The lists reload whether the call succeeded or
+  // failed: a request that reached the server but lost its response would otherwise leave the row
+  // stale, and no poll would correct it, since polling runs only while a followed channel is requested.
   async function withBusy(channelId: string, work: () => Promise<unknown>) {
     setBusy((current) => new Set(current).add(channelId));
+    setErrors(({ [channelId]: _cleared, ...rest }) => rest);
     try {
       await work();
-      reloadLists();
+    } catch (caught) {
+      setErrors((current) => ({
+        ...current,
+        [channelId]: caught instanceof Error ? caught.message : String(caught),
+      }));
     } finally {
+      reloadLists();
       setBusy((current) => {
         const next = new Set(current);
         next.delete(channelId);
@@ -106,6 +116,7 @@ function HomeScreen() {
         hasFollows={follows.status !== "ready" || followList.length > 0}
         available={available}
         busy={busy}
+        errors={errors}
         onFollow={follow}
         showingWeek={showingWeek}
         onToggleWeek={() => setShowingWeek((w) => !w)}
@@ -128,6 +139,7 @@ function HomeScreen() {
           <FollowedList
             follows={followList}
             busy={busy}
+            errors={errors}
             onUnfollow={unfollow}
             onRequestAgain={requestAgain}
           />
@@ -144,7 +156,12 @@ function HomeScreen() {
           </p>
         )}
         {channels.status === "ready" && (
-          <CatalogList channels={available} busy={busy} onFollow={follow} />
+          <CatalogList
+            channels={available}
+            busy={busy}
+            errors={errors}
+            onFollow={follow}
+          />
         )}
 
         <AddChannel onChanged={reloadLists} />

@@ -10,11 +10,13 @@ import { Time } from "./Time";
 export function FollowedList({
   follows,
   busy,
+  errors,
   onUnfollow,
   onRequestAgain,
 }: {
   follows: Follow[];
   busy: ReadonlySet<string>;
+  errors: Readonly<Record<string, string>>;
   onUnfollow: (channelId: string) => void;
   onRequestAgain: (channelId: string) => void;
 }) {
@@ -47,6 +49,9 @@ export function FollowedList({
                 {c.status === "declined" &&
                   (reviewCopy(c) ?? channelStateCopy(c))}
               </div>
+              {errors[c.channelId] && (
+                <p class="error">{errors[c.channelId]}</p>
+              )}
             </div>
             <div class="actions">
               {c.status === "declined" && (
@@ -85,10 +90,12 @@ export function FollowedList({
 export function CatalogList({
   channels,
   busy,
+  errors,
   onFollow,
 }: {
   channels: Channel[];
   busy: ReadonlySet<string>;
+  errors: Readonly<Record<string, string>>;
   onFollow: (channelId: string) => void;
 }) {
   if (channels.length === 0) {
@@ -107,6 +114,9 @@ export function CatalogList({
                   ? `${channel.episodes.available} summarised`
                   : `awaiting approval · ${channel.followerCount} following`}
               </div>
+              {errors[channel.channelId] && (
+                <p class="error">{errors[channel.channelId]}</p>
+              )}
             </div>
             <button
               type="button"

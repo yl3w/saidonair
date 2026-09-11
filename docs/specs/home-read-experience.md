@@ -611,7 +611,9 @@ enums join the existing types in `packages/shared`. Every response wraps its ent
   never blocks the channel list.
 - **Errors.** Inline, per section: "Couldn't load the digest. Retry." with a retry link. No toasts, no
   modals. A 400 from a malformed `X-User-Email` returns the user to `/`.
-- **Actions.** Buttons disable while in flight and the row re-renders from the response. Two confirmations,
+- **Actions.** Buttons disable while in flight and the row re-renders from a reload of its list, which runs
+  whether the call succeeded or failed, so a lost response cannot leave a row stale. A failed action shows its
+  message inline on the row (or under the channel header) until the next action on that row. Two confirmations,
   each asked once: declining an approved channel (the question names its follower count, shared by the table
   and the detail view through `ChannelStatusActions`) and **Request again** on a declined channel. Follow,
   unfollow, add, approve, decline from `requested`, pause, resume, episode retry, and episode skip act

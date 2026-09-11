@@ -13,6 +13,7 @@ export function Digest({
   hasFollows,
   available,
   busy,
+  errors,
   onFollow,
   showingWeek,
   onToggleWeek,
@@ -22,6 +23,7 @@ export function Digest({
   hasFollows: boolean;
   available: Channel[];
   busy: ReadonlySet<string>;
+  errors: Readonly<Record<string, string>>;
   onFollow: (channelId: string) => void;
   showingWeek: boolean;
   onToggleWeek: () => void;
@@ -33,7 +35,12 @@ export function Digest({
       {!hasFollows && (
         <>
           <p>Follow a channel to start your digest.</p>
-          <CatalogList channels={available} busy={busy} onFollow={onFollow} />
+          <CatalogList
+            channels={available}
+            busy={busy}
+            errors={errors}
+            onFollow={onFollow}
+          />
         </>
       )}
       {hasFollows && load.status === "loading" && <p>Loading…</p>}
