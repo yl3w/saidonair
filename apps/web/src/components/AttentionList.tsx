@@ -1,6 +1,6 @@
-import type { Channel, Episode } from "@media-digest/shared";
-import { useEffect, useState } from "preact/hooks";
+import type { Channel } from "@media-digest/shared";
 import { api } from "../api";
+import { useLoad } from "../lib/use-load";
 import { Time } from "./Time";
 
 export type Act = (
@@ -26,106 +26,21 @@ export function AttentionList({
   const neverStarted = channels.filter(
     (c) => c.status === "approved" && c.management?.neverStarted,
   );
-  const failedChannelIds = failedChannels.map((c) => c.channelId);
-  const failedChannelIdsKey = failedChannelIds.join(",");
-
-  const [episodesByChannel, setEpisodesByChannel] = useState<
-    Record<string, Episode[]>
-  >({});
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoadError(null);
-    if (failedChannelIds.length === 0) {
-      setEpisodesByChannel({});
-      return;
-    }
-    Promise.all(
-      failedChannelIds.map((id) =>
-        api
-          .listEpisodes(id, 200)
-          .then(
-            (r) =>
-              [id, r.episodes.filter((e) => e.status === "failed")] as const,
-          ),
-      ),
-    )
-      .then((pairs) => {
-        if (cancelled) return;
-        const next: Record<string, Episode[]> = {};
-        for (const [id, list] of pairs) next[id] = list;
-        setEpisodesByChannel(next);
-      })
-      .catch((caught: unknown) => {
-        if (cancelled) return;
-        setLoadError(caught instanceof Error ? caught.message : String(caught));
-        setEpisodesByChannel({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [failedChannelIdsKey]);
 
   return (
     <section id="attention">
       <h2>Needs attention</h2>
       <h3>Failed episodes</h3>
       {failedChannels.length === 0 && <p class="muted">No failed episodes.</p>}
-      {loadError !== null && (
-        <p class="error">Couldn't load failed episodes: {loadError}.</p>
-      )}
-      {failedChannels.map((c) => {
-        const episodes = episodesByChannel[c.channelId];
-        return (
-          <div key={c.channelId}>
-            <p>
-              <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
-            </p>
-            {episodes === undefined && loadError === null && (
-              <p class="muted">Loading…</p>
-            )}
-            {episodes?.map((e) => (
-              <div class="row" key={e.videoId}>
-                <div class="grow">
-                  <a href={`https://youtu.be/${e.videoId}`}>{e.title}</a>
-                  <div class="meta">
-                    {e.processing?.failureCode ?? "unknown failure"} · attempt{" "}
-                    {e.processing?.attemptCount ?? 0}
-                  </div>
-                </div>
-                <div class="actions">
-                  <button
-                    id={`retry-${e.videoId}`}
-                    type="button"
-                    disabled={busy[c.channelId]}
-                    onClick={() =>
-                      act(c.channelId, () =>
-                        api.retryEpisode(c.channelId, e.videoId),
-                      )
-                    }
-                  >
-                    Retry
-                  </button>
-                  <button
-                    id={`skip-${e.videoId}`}
-                    type="button"
-                    disabled={busy[c.channelId]}
-                    onClick={() =>
-                      act(c.channelId, () =>
-                        api.skipEpisode(c.channelId, e.videoId),
-                      )
-                    }
-                  >
-                    Skip
-                  </button>
-                </div>
-              </div>
-            ))}
-            {errors[c.channelId] && <p class="error">{errors[c.channelId]}</p>}
-          </div>
-        );
-      })}
+      {failedChannels.map((c) => (
+        <FailedEpisodes
+          key={c.channelId}
+          channel={c}
+          busy={busy[c.channelId] ?? false}
+          actionError={errors[c.channelId]}
+          act={act}
+        />
+      ))}
 
       <h3>Approved, never started</h3>
       {neverStarted.length === 0 && (
@@ -142,5 +57,90 @@ export function AttentionList({
         </div>
       ))}
     </section>
+  );
+}
+
+/**
+ * One channel's failed episodes, loaded on their own so a failure here reaches no other channel
+ * and can be retried in place (spec §11). The load is keyed on the channel's failed count, so a
+ * Retry or Skip that changes it refetches the list instead of leaving the acted-on episode shown.
+ */
+function FailedEpisodes({
+  channel: c,
+  busy,
+  actionError,
+  act,
+}: {
+  channel: Channel;
+  busy: boolean;
+  actionError: string | undefined;
+  act: Act;
+}) {
+  const failedCount = c.management?.episodes.failed ?? 0;
+  const [load, reload] = useLoad(
+    () =>
+      api
+        .listEpisodes(c.channelId, 200)
+        .then((r) => r.episodes.filter((e) => e.status === "failed")),
+    [c.channelId, failedCount],
+  );
+  return (
+    <div>
+      <p>
+        <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
+      </p>
+      {load.status === "loading" && <p class="muted">Loading…</p>}
+      {load.status === "error" && (
+        <p class="error">
+          Couldn't load failed episodes: {load.error.message}.{" "}
+          <button
+            id={`attention-reload-${c.channelId}`}
+            type="button"
+            onClick={reload}
+          >
+            Retry
+          </button>
+        </p>
+      )}
+      {load.status === "ready" &&
+        load.data.map((e) => (
+          <div class="row" key={e.videoId}>
+            <div class="grow">
+              <a href={`https://youtu.be/${e.videoId}`}>{e.title}</a>
+              <div class="meta">
+                {e.processing?.failureCode ?? "unknown failure"} · attempt{" "}
+                {e.processing?.attemptCount ?? 0}
+              </div>
+            </div>
+            <div class="actions">
+              <button
+                id={`retry-${e.videoId}`}
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  act(c.channelId, () =>
+                    api.retryEpisode(c.channelId, e.videoId),
+                  )
+                }
+              >
+                Retry
+              </button>
+              <button
+                id={`skip-${e.videoId}`}
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  act(c.channelId, () =>
+                    api.skipEpisode(c.channelId, e.videoId),
+                  )
+                }
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        ))}
+      {actionError && <p class="error">{actionError}</p>}
+    </div>
   );
 }
