@@ -24,10 +24,10 @@ it stops scheduling by itself, hides the channel from the catalog list, keeps ev
 undone by the owner approving it again or by a user requesting it again after reading the owner's note. Channels are
 never deleted, softly or otherwise.
 
-Episodes carry the state machine that matters: `pending`, `available`, `failed`, `skipped`. Technical failures are
-retried on three runs before they reach the owner, and deterministic outcomes (too short, non-English, no captions
-after the wait, live, unplayable) are skipped automatically. Follows are recorded in the Registry as well as the User
-DO, so the owner sees real follower counts and a channel nobody follows is paused rather than ingested.
+Episodes carry the state machine that matters: `pending`, `available`, `failed`, `skipped`. Every unfinished,
+non-deterministic outcome recovers every six hours for one 48-hour window; only short, non-English, and unplayable
+episodes skip automatically. Follows are recorded in the Registry as well as the User DO, so the owner sees real
+follower counts and a channel nobody follows is paused rather than discovered again.
 
 Gone: the automatic-follow handoff between the Durable Objects, channel failure codes, channel retry, the channel
 waiting code, channel soft delete and restore, the request entity with its seven outcome phrases, and the follow
@@ -45,8 +45,8 @@ The first block is the PM proposal of 2026-09-10 as amended in review; the secon
 | Channel statuses | **Three: `requested`, `approved`, `declined`.** Pause (`paused_by`) is a flag on approved channels. Nothing is deleted. | Import outcomes never described the channel well: today `available` is absorbing and every later problem already lives on episodes. Three statuses on one axis make the channel what it is, a catalog membership with the owner's answer. |
 | Who creates a channel | **Anyone.** A user pasting a `UC…` id or `/channel/UC…` URL creates a `requested` channel and follows it. The owner's add creates it `approved`. | One action for users, no separate request form, and the owner queue is simply the requested channels. |
 | Follow guard | **Any `requested` or `approved` channel can be followed.** Following a declined one is "request again" (§3.1). | With requests being follows, gating follows on availability would block the very action that requests a channel. Readability is decided by episode state, not by the follow. |
-| Episode metadata on channels | Every channel representation carries `episodes: { tracked, available, pending, waiting, failed, skipped }`, `lastIngestedAt`, `lastCheckedAt`, `followerCount`, and `paused`. | "Approved" no longer promises content, so the reader needs "0 of 5 summarised yet" where today they had "available". The counts already exist in the owner-only management block. |
-| Episode statuses | **Four: `pending`, `available`, `failed`, `skipped`.** `processing` and `no_transcript` go. Pending carries an optional wait reason; failed carries the last technical reason; skipped carries a skip reason. | The run table already says what is in progress. "No transcript" is one skip reason among several, not a status of its own. |
+| Episode metadata on channels | Every channel representation carries `episodes: { tracked, available, pending, waiting, failed, skipped }`, derived `lastIngestedAt`, `lastCheckedAt`, `followerCount`, and `paused`. | "Approved" no longer promises content, so the reader needs "0 of 5 summarised yet" where today they had "available". `lastIngestedAt` becomes `MAX(episodes.processed_at)` in M3 so an episode Retry never writes the channel. |
+| Episode statuses | **Four: `pending`, `available`, `failed`, `skipped`.** `processing` and `no_transcript` go. Pending's wait or technical reason lives on its latest attempt (2026-09-12); failed carries `INGESTION_TIMEOUT` with that reason as detail; skipped carries a skip reason. | The run table already says what is in progress. "No transcript" is one skip reason among several, not a status of its own. |
 | Owner review of episodes | The owner retries or skips a `failed` episode; retry also reopens a `skipped` one. Channel-level retry is removed. | This is the per-episode retry the M3 spec already proposes, made the only retry. |
 
 | Review question (2026-09-10) | Decision | Consequence |
@@ -56,7 +56,7 @@ The first block is the PM proposal of 2026-09-10 as amended in review; the secon
 | How does the owner stop a hopeless channel? | **An owner pause flag.** | Scheduling stops, summaries stay readable, resume is one click. |
 | What are the channel statuses called? | **`requested` and `approved`**, later joined by `declined`. | "Available" is freed to mean readable content, on episodes only. |
 | Are requested channels visible to everyone? | **Yes, as awaiting approval.** | Anyone can follow early; the owner sees interest build. Requests stop being private and Home drops its requests list. |
-| Do technical failures retry before the owner sees them? | **Up to three attempts across scheduled runs, then `failed`.** Credit exhaustion is a wait, not an attempt. | Transient provider errors clear themselves at no credit cost (errors are not billed). Replaces "never automatically restart technical failures". |
+| Do unsuccessful episodes retry before the owner sees them? | **Yes, every six hours for one 48-hour recovery window.** Waiting, provider, technical, oversized-transcript, AI, Vectorize, and lost-Workflow outcomes all use the same deadline; there is no three-attempt terminal rule. | One recovery policy is predictable. `attempt_count` remains diagnostic history; only the deadline makes an unfinished publication `failed`. |
 | How do we know who requested a channel? | **Following a requested channel registers the follower in the Registry.** | One action for users. The Registry keeps an active follower record per channel and user. |
 | What does `skipped` mean to each role? | **Reversible by owner retry; readers see the title with no summary.** | Channel history stays complete and a wrong automatic skip can be undone. |
 | Does unfollowing withdraw a request? | **A channel with no active followers is paused, whatever its status.** Pause lifts on the next follow. | Ingestion follows demand. The Registry tracks active followers for every channel, replacing requester count with a real follower count. |
@@ -91,12 +91,13 @@ Columns on `channels` (Registry), exactly as §6 creates them:
 | Column | Values | Rule |
 |---|---|---|
 | `status` | `requested`, `approved`, `declined` | `requested` by a user's add or re-request; `approved` by the owner's add or approval; `declined` by the owner. Every transition is in the rules below; there is no other. |
-| `paused_by`, `paused_at` | null, `owner`, `system`; both set or both null | `approved` only, enforced by a check. No new runs while set. `system` is set when the last active follower leaves and cleared by the next follow. `owner` is set and cleared only by the owner; a system pause never overrides it. Cleared on decline, recomputed on approve. |
+| `paused_by`, `paused_at` | null, `owner`, `system`; both set or both null | `approved` only, enforced by a check. No new feed-discovery runs while set; already discovered episodes keep recovering. `system` is set when the last active follower leaves and cleared by the next follow. `owner` is set and cleared only by the owner; a system pause never overrides it. Cleared on decline, recomputed on approve. |
 | `approved_at` | null or unix ms; non-null whenever `status = 'approved'` | Set the first time the channel is approved and never reset. Decides whether a later approval starts an initial import, and whether copy says "Declined" or "Withdrawn". |
 | `reviewed_at`, `reviewed_by_email`, `review_note` | nullable; the first two non-null whenever the status is not `requested` | Written by approve, decline, and owner add (the owner is the reviewer); the latest review only. Kept when a declined channel is re-requested, so the queue can show it. A review log is out of scope (§8). |
 | `initial_import_count` | integer, default 5 | Unchanged. Applies to the import started at first approval. |
-| `lifecycle_version` | removed 2026-09-11 | Was the fence for run writes, bumped when an approved channel was declined. Dropped by migration `0002_drop_lifecycle_version.sql`; a run in flight now simply finishes (`m3-ingestion.md` §2 "Decline mid-run"). |
-| `last_checked_at`, `last_ingested_at` | nullable unix ms | Unchanged. |
+| `lifecycle_version` | removed 2026-09-11 | Was the fence for run writes. Dropped by migration `0002_drop_lifecycle_version.sql` on 2026-09-11, then absent from the `0001` rewritten on 2026-09-12; the 2026-09-12 design gives episode recovery its own lifecycle independent of channel status. |
+| `last_checked_at` | nullable unix ms | Stored feed-check time, changed only by a feed-aware channel run. |
+| `last_ingested_at` | removed 2026-09-12 | Gone from the rewritten `0001`; the API derives `lastIngestedAt` from episode `processed_at`. |
 
 There is no `deleted_at`, `failure_code`, `failure_detail`, or `available_at`.
 
@@ -119,12 +120,13 @@ Rules:
   up by the next scheduled run. Recomputes pause from the follower count. Followers are already following; nothing is
   handed off.
 - **Decline.** `POST /channels/:id/decline { explanation? }`, owner. Requires `requested` or `approved`. Sets
-  `status = 'declined'` and the review fields. From `approved` it also clears the pause; a running run is not stopped
-  and finishes (decided 2026-09-11). Episodes, summaries, vectors, follows, and read receipts are kept. The UI
+  `status = 'declined'` and the review fields. From `approved` it also clears the pause. Future feed discovery stops,
+  but recovery of already discovered episodes continues independently; any resulting summary remains hidden from
+  readers until re-approval. Episodes, summaries, vectors, follows, and read receipts are kept. The UI
   confirms once when declining an approved channel, showing its follower count.
 - **Pause and resume.** `POST /channels/:id/pause` and `POST /channels/:id/resume`, owner, `approved` only.
-  Automatic pause and resume are §3.2. A running run finishes; pause only stops new selection. Pause never hides
-  summaries or affects digest, chat, or read receipts.
+  Automatic pause and resume are §3.2. Pause stops feed discovery, not episode recovery. Pause never hides summaries
+  or affects digest, chat, or read receipts.
 - **No channel failure, no channel retry, no channel waiting code, no channel deletion.** A channel with every
   episode skipped is an approved channel with `episodes.available = 0`, visible as such to everyone.
 
@@ -158,84 +160,93 @@ remain private to the User DO.
 ### 3.3 Episodes
 
 ```
-   feed entry selected (newest N at first approval; new uploads on scheduled runs)
+   feed entry discovered (newest N at first approval; new uploads on scheduled runs)
           │
           ▼
-   ┌─────────────┐   third technical failure    ┌──────────┐
+   ┌─────────────┐   unfinished after 48 hours  ┌──────────┐
    │   pending   │ ───────────────────────────► │  failed  │
-   │  (waiting?) │ ◄─────────────────────────── │          │
-   └─────────────┘   owner retry                └──────────┘
+   │ recovering  │ ◄─────────────────────────── │          │
+   └─────────────┘   owner Retry: new window    └──────────┘
       │       ▲                                     │
       │       │ owner retry                         │ owner skip
       │       │                                     ▼
       │   ┌───────────┐ ◄───────────────────────────┘
-      │   │  skipped  │  system: SHORT · NON_ENGLISH · NO_CAPTIONS (≥ 48 h) · LIVE_OR_UPCOMING (≥ 48 h) · UNPLAYABLE
+      │   │  skipped  │  system: SHORT · NON_ENGLISH · UNPLAYABLE; owner: OWNER
       │   └───────────┘
       ▼
    ┌─────────────┐
-   │  available  │  every vector verified in `shared-catalog` and a summary stored; `processed_at` set once
+   │  available  │  may also carry a replacement recovery while its old summary remains readable
    └─────────────┘
 ```
 
 | Column | Values | Rule |
 |---|---|---|
-| `status` | `pending`, `available`, `failed`, `skipped` | What the M3 spec called `processed` is `available`; `no_transcript` is `skipped` with `NO_CAPTIONS`; there is no `processing`, the run row says what is in flight. |
-| `waiting_code` | null, `CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT`; only while `pending` | Set when a run leaves the episode for a later run; cleared on the next attempt. Waiting never counts as an attempt. |
-| `attempt_count`, `failure_code`, `failure_detail` | count from 0; code required while `failed` | A technical or provider error increments `attempt_count` and records the reason. Below three attempts the episode stays `pending` and the next scheduled run reattempts it. The third makes it `failed`. Owner retry resets the count. |
-| `skip_reason`, `skipped_at`, `skipped_by_email` | `SHORT`, `NON_ENGLISH`, `NO_CAPTIONS`, `LIVE_OR_UPCOMING`, `UNPLAYABLE`, `OWNER`; present exactly when `skipped` | System skips carry a reason and no email; owner skips carry `OWNER` and the owner's email. Cleared by owner retry. |
-| `transcript_checked_at`, `chunk_count`, `vectorized_at`, `processed_at` | as in the M3 spec | `processed_at` is `summaryAvailableAt` and is never reset. |
+| `status` | `pending`, `available`, `failed`, `skipped` | Readable content state. Active processing is described by the recovery columns, so an available episode can generate a replacement without disappearing. |
+| `discovered_by_run_id` | an ingestion run id | Immutable provenance: the feed-discovery run that created the episode. It replaces new M3 writes to `ingestion_run_episodes`. |
+| `recovery_mode`, recovery timestamps | `publication`, `replacement`, or null; `recovery_started_at`, `recovery_deadline_at`, `next_attempt_at` | New episodes start publication recovery immediately. Every unsuccessful result schedules another attempt six hours later. At 48 hours publication becomes failed; replacement ends while the old summary remains available. An Owner Retry that passes pre-flight starts a new window. |
+| `waiting_code` | removed 2026-09-12 | Gone from the rewritten `0001`; the latest attempt carries the waiting reason. |
+| `attempt_count`, `failure_code`, `failure_detail` | count from 0; `INGESTION_TIMEOUT` and the latest attempt's reason, written once at the deadline | Diagnostic count that never makes an episode terminal; the deadline does. Technical reasons before the deadline live on the attempt. |
+| `skip_reason`, `skipped_at`, `skipped_by_email` | `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`, `OWNER`; present exactly when `skipped` | System skips carry a reason and no email; owner skips carry `OWNER` and the owner's email. Cleared by owner Retry. |
+| vector generations | `active_vector_generation`, `recovery_vector_generation` | Attempts stage vectors under the recovery generation. Publication switches the active generation only after the full set and summary are ready, and the attempt then deletes the previous generation; an abandoned staged generation is deleted by the episode's next attempt. |
+| `transcript_checked_at`, `chunk_count`, `vectorized_at`, `processed_at` | as in the M3 spec | `processed_at` is first `summaryAvailableAt` and never resets. |
 
 Classification, carrying the 2026-09-08 rules onto the new statuses:
 
 - Under 180 seconds → `skipped SHORT`, nothing stored. Captions exist but none English → `skipped NON_ENGLISH`.
-- No captions on a video published within the last 48 hours → `pending`, `waiting_code = CAPTIONS`,
-  `transcript_checked_at` set. At or after 48 hours a fresh no-caption answer → `skipped NO_CAPTIONS`.
-- Live or upcoming → `pending`, `waiting_code = LIVE_OR_UPCOMING`; at or after 48 hours still live → `skipped
-  LIVE_OR_UPCOMING`. Known live metadata takes precedence over an `UNPLAYABLE` answer, as in the M3 spec.
+- No captions → the attempt finishes `waiting CAPTIONS`; live or upcoming → `waiting LIVE_OR_UPCOMING`; the episode
+  stays `pending` with its next attempt time and no reason of its own. Both retry every six hours and use the same
+  episode recovery deadline as every other unfinished outcome.
 - `UNPLAYABLE` → `skipped UNPLAYABLE`. The owner can retry it if the video becomes public.
-- `PROVIDER_LIMIT` (credits) leaves the episode `pending` with `waiting_code = PROVIDER_LIMIT`, counts no attempt,
-  and the run closes `completed` with that row `waiting`.
+- `PROVIDER_LIMIT` finishes the attempt `waiting PROVIDER_LIMIT` and leaves recovery active with the next attempt six
+  hours later.
 - `PROVIDER_HTTP`, `PROVIDER_PARSE`, `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `VECTORIZE_FAILED`,
-  `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED` after the raw-text fallback, and `WORKFLOW_LOST` →
-  technical: attempt +1, reason recorded, `failed` on the third. One rule; a pre-flight `/status` call on every
-  start, cron's or the owner's, keeps a rejected key or an empty balance from reaching episodes
-  (`m3-ingestion.md` §2, 2026-09-11).
-- Publish rules are unchanged: `available` only after `getByIds` returns every expected vector and the summary row
-  exists, in one Registry write that is accepted only while the run is still open.
+  `VECTORIZE_INCOMPLETE`, `AI_EMBED_FAILED`, `AI_SUMMARY_FAILED`, `WORKFLOW_LOST`, and `TRANSCRIPT_TOO_LARGE` record
+  the attempt and retry six hours later. None fails early because of its count.
+- At `recovery_deadline_at`, pre-flight permits one final attempt. If pre-flight blocks or that attempt remains
+  unfinished, publication becomes `failed INGESTION_TIMEOUT`; its detail retains the latest reason. An unfinished
+  replacement leaves the episode available and records the timeout.
+- `available` is published only after the complete recovery vector generation and summary are ready, so an
+  available replacement cannot damage the current summary's retrieval data. Superseded and abandoned generations are
+  deleted by the attempts that follow them, and retrieval verifies each vector's generation before using its text
+  (`m3-ingestion.md` §2 "Publishing").
 
-Owner actions, both requiring an `approved` channel with no queued or running run, else 409:
+Owner actions are independent of both channel status and channel runs:
 
-- `POST /channels/:id/episodes/:videoId/retry`: from `failed` or `skipped` to `pending`, attempts and skip fields
-  cleared, one-episode `owner_retry` run. Siblings and their summaries are untouched. Widened on 2026-09-11 to any
-  state: from `available` the summary is redone, its availability time and read receipts kept
-  (`m3-ingestion.md` §2 "Owner episode actions").
-- `POST /channels/:id/episodes/:videoId/skip`: from `failed` to `skipped OWNER`.
+- `POST /channels/:id/episodes/:videoId/retry`: any episode state and any channel status. When pre-flight permits, it
+  starts a new 48-hour publication or replacement recovery and one immediate episode attempt. A blocked pre-flight
+  records a blocked owner attempt but leaves episode and recovery state unchanged. Retry is refused only while that
+  episode has a running attempt; a running attempt older than an hour whose instance is gone is reconciled inline
+  and the Retry proceeds.
+- `POST /channels/:id/episodes/:videoId/skip`: `failed → skipped OWNER` in any channel status.
 
 ### 3.4 Scheduling
 
-- **Cron, every 6 hours** (unchanged): select channels with `status = 'approved'`, `paused_by IS NULL`, and no queued
-  or running run. Per channel: new feed entries plus every `pending` episode, waiting or below three attempts,
-  including selected episodes that have left the feed.
+- **Channel discovery, every 6 hours:** `0 */6 * * *` selects `approved`, non-paused channels and reads RSS only.
+  It creates previously unknown episodes and never selects an existing one.
+- **Episode recovery, every 6 hours:** `30 */6 * * *` selects every active recovery due at `next_attempt_at`, without
+  joining channel status or pause. It reconciles old running attempts, applies 48-hour deadlines, checks DownSub
+  status once, and starts due attempts when the provider is available, spaced three seconds apart. A provider block
+  at the deadline settles the recovery instead of scheduling a later check.
 - **First approval** starts the initial import of the newest `initial_import_count` entries, whether or not anyone
   follows yet (decided 2026-09-10). If nobody follows, the channel is paused by the system at approval while that
   one run still proceeds, and later runs wait for a follower. A later approval, after a decline, starts nothing; the
   next scheduled run picks the channel up.
-- **Reconciliation** (decided 2026-09-11, `m3-ingestion.md` §2): at each cron tick, a run-episode whose Workflow
-  instance is missing or errored is closed `failed WORKFLOW_LOST` once its run is an hour old; its episode keeps its
-  attempt count, and the run closes when nothing is left selected. An approved channel with no run at all appears
+- **Reconciliation** (decided 2026-09-11, revised 2026-09-12): at each recovery tick, a running episode attempt whose
+  Workflow is missing or gone after one hour closes `failed WORKFLOW_LOST`; the episode remains in its recovery window
+  and is due again six hours later. An approved channel with no discovery run at all appears
   under Needs attention as "approved, never started", with no age window, and a Start action that requests a run.
-- Follower count never affects selection except through pause. A paused channel is skipped, not failed. A declined
-  channel is excluded by status.
+- Follower count affects only discovery through pause. Paused and declined channels do no discovery; their already
+  discovered episodes remain eligible for recovery.
 
 ## 4. What each role sees
 
 | Channel is | Users see it | Users follow it | Owner actions | Cron |
 |---|---|---|---|---|
 | `requested` | Yes, "awaiting owner approval", with follower count | Yes; following registers them as a requester | Approve, Decline. Queue shows followers and "nobody is waiting" when none | No |
-| `approved` | Yes, with episode counts; summaries for followers | Yes | Decline (confirms once), Pause; per-episode Retry and Skip | Yes, unless paused |
-| `approved · paused` | Yes, "paused", existing summaries readable | Yes; a follow lifts a system pause | Resume, Decline | No |
-| `declined`, never approved | Not in the catalog list. Followers see "Declined" with the note and Request again; anyone who pastes the id sees the same | Request again (one confirmation) | Approve | No |
-| `declined`, previously approved | Not in the catalog list. Followers see "Withdrawn" with the note and Request again | Request again (one confirmation) | Approve; no new initial import | No |
+| `approved` | Yes, with episode counts; summaries for followers | Yes | Decline (confirms once), Pause; per-episode Retry and Skip | Discovery and episode recovery |
+| `approved · paused` | Yes, "paused", existing summaries readable | Yes; a follow lifts a system pause | Resume, Decline; per-episode Retry and Skip | Episode recovery only |
+| `declined`, never approved | Not in the catalog list. Followers see "Declined" with the note and Request again; anyone who pastes the id sees the same | Request again (one confirmation) | Approve; per-episode Retry and Skip when an episode exists | Episode recovery only |
+| `declined`, previously approved | Not in the catalog list. Followers see "Withdrawn" with the note and Request again | Request again (one confirmation) | Approve; no new initial import; per-episode Retry and Skip | Episode recovery only |
 
 Episodes: readers see every tracked episode's title in channel history; `available` ones carry the summary, others
 read "no summary" (`pending`: "not yet"; `skipped`: the humanised reason; `failed`: "the owner has been notified").
@@ -252,18 +263,18 @@ Entity-based as before: no `/owner/*`, authorization per operation, `management`
 | `GET /channels/:id` | anyone | changed | Any status by id, so a declined channel can show its note; declined ones simply do not appear in the list |
 | `POST /channels/:id/request` | anyone | new | `declined → requested`; follows the caller |
 | `POST /channels/:id/approve { title?, initialImportCount?, explanation? }` | owner | new | `requested → approved` with the initial import, or `declined → approved` without one |
-| `POST /channels/:id/decline { explanation? }` | owner | new | `requested → declined`, or `approved → declined` with the pause cleared; a run in flight finishes (revised 2026-09-11) |
+| `POST /channels/:id/decline { explanation? }` | owner | new | `requested → declined`, or `approved → declined` with the pause cleared; stops future discovery, not recovery of existing episodes |
 | `DELETE /channels/:id`, `POST /channels/:id/restore` | | **removed** | Channels are never deleted |
 | `POST /channels/:id/pause`, `POST /channels/:id/resume` | owner | new | Owner pause; resume clears any pause. `approved` only |
 | `POST /channels/:id/retry` | owner | **removed** | |
-| `GET /channels/:id/episodes?limit=` | anyone | changed | Episode `status` takes the new values; `skipReason`, `waitingCode`, `attemptCount` in the owner's `processing` block |
-| `POST /channels/:id/episodes/:videoId/retry` | owner | as planned | From `failed` or `skipped`; widened to any state on 2026-09-11 (`m3-ingestion.md` §2) |
-| `POST /channels/:id/episodes/:videoId/skip` | owner | new | From `failed` |
-| `GET /channels/:id/ingestion-runs` | owner | unchanged | |
+| `GET /channels/:id/episodes?limit=` | anyone | changed | Episode `status` takes the new values; the owner's `processing` block adds recovery mode/start/deadline/next-attempt, attempt count, latest outcome, and latest attempt |
+| `POST /channels/:id/episodes/:videoId/retry` | owner | as planned | Any episode state and channel status; when pre-flight permits, resets the 48-hour recovery and starts an immediate attempt, never a channel run; blocked leaves recovery/content unchanged |
+| `POST /channels/:id/episodes/:videoId/skip` | owner | new | `failed → skipped OWNER` in any channel status |
+| `GET /channels/:id/ingestion-runs` | owner | clarified | Initial/scheduled feed-discovery runs with feed status and discovered episodes; all processing history is exposed through episode attempts |
 | `GET /channels/:id/followers` | owner | new, replaces `/requests` | Emails and `followedAt` of active followers; the UI shows emails only in the queue and counts elsewhere |
 | `GET /follows`, `PUT /follows/:channelId`, `DELETE /follows/:channelId` | anyone (own) | changed | Follow any `requested` or `approved` channel (409 with the note for `declined`); each write also records the follower in the Registry |
 | `GET /channel-requests`, `POST /channel-requests`, `…/approve`, `…/reject` | | **removed** | Requests are channels |
-| `GET /catalog` | owner | changed | `channels: { requested, approved, paused, declined }`, `episodes: { available, pending, waiting, failed, skipped }`, `attention: { failedEpisodes, neverStarted, requested }`, `lastSuccessfulIngestionAt` (the newest channel `last_ingested_at`, 2026-09-11), `transcripts: { remainingCredits, status }` (M3) |
+| `GET /catalog` | owner | changed | `channels: { requested, approved, paused, declined }`, `episodes: { available, pending, waiting, failed, skipped }`, `attention: { failedEpisodes, neverStarted, requested }`, `lastSuccessfulIngestionAt` (`MAX(episodes.processed_at)`, revised 2026-09-12), `transcripts: { remainingCredits, status }` (M3) |
 | `GET /digest`, chats, preferences, `/me` | | unchanged | |
 
 Shared schemas: `ChannelStatus` becomes `requested | approved | declined`; `ChannelFailureCode`, `CatalogState`,
@@ -282,8 +293,11 @@ schema with additive columns and leave the old ones deprecated, the initial migr
 §3. This is a one-time exception, approved by the owner, to two rules in `AGENTS.md` → Data & schema conventions:
 "migrations are additive only" and "never edit a migration file that has been committed". Both rules resume the moment
 this lands; §11 records the exception in `AGENTS.md`. A second, owner-approved exception followed on 2026-09-11:
-`0002_drop_lifecycle_version.sql` drops `lifecycle_version` from `channels` and `ingestion_runs` as a new file. The
-listing in §6.1 is the frozen `0001` file exactly as committed, so it still shows the column.
+`0002_drop_lifecycle_version.sql` dropped `lifecycle_version` from `channels` and `ingestion_runs` as a new file. A
+third followed on 2026-09-12, when the owner chose to start over on the schema, the Registry DO's store modules, and
+the API for M3: `0001` is rewritten again to the M3 model and `0002` is deleted (§6.4). The listing in §6.1 below is
+the 2026-09-10 file, kept as the record of that rewrite; the authoritative M3 shape is `m3-ingestion-plan.md` Step 4
+and PRD §5.
 
 What the reset involves:
 
@@ -301,6 +315,8 @@ What the reset involves:
 -- Global Registry DO — initial schema (docs/PRD.md §5.1, §5.3; docs/specs/channel-simplification.md §3, §6).
 -- Rewritten 2026-09-10 before first deployment, with owner approval; from here on this file is frozen and
 -- schema changes are additive 0002_*.sql files (AGENTS.md → Data & schema conventions).
+-- Superseded 2026-09-12 by a second pre-deployment rewrite (m3-ingestion-plan.md Step 4); kept here as the record
+-- of the 2026-09-10 shape.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
 
 -- Identities. `role` is the owner mechanism decided in AGENTS.md → Identity model:
@@ -361,8 +377,8 @@ CREATE TABLE channel_followers (
 
 CREATE INDEX channel_followers_channel_id_unfollowed_at ON channel_followers (channel_id, unfollowed_at);
 
--- Episodes carry the state machine. `pending` may be waiting; `failed` is a technical error that survived three
--- attempts; `skipped` is a deliberate, reversible outcome by the system or the owner.
+-- 2026-09-10 shape. The 2026-09-12 rewrite (m3-ingestion-plan.md Step 4) replaces this table's recovery and reason columns.
+-- `skipped` remains a deliberate, reversible outcome by the system or the owner.
 CREATE TABLE episodes (
   video_id TEXT PRIMARY KEY,
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
@@ -484,6 +500,17 @@ CREATE INDEX channel_follows_unfollowed_at ON channel_follows (unfollowed_at);
 The Registry's `_migrations` table lists `0001_init` alone after the reset; `registry-migrations.test.ts` and
 `user-migrations.test.ts` keep proving idempotence over the new files.
 
+### 6.4 M3 rewrite (2026-09-12)
+
+The owner chose to start over on the schema, the Registry DO's store modules, and the API for M3 rather than carry
+deprecated tables, columns, and enum values. The Registry's `0001_init.sql` is rewritten a second time before first
+deployment, `0002_drop_lifecycle_version.sql` is deleted, and local DO state is wiped, exactly as in §6 above. The new
+file drops `ingestion_run_episodes`, `channels.last_ingested_at`, `episodes.waiting_code`, the `owner_retry` run kind,
+the run status and Workflow columns, and the `NO_CAPTIONS` and `LIVE_OR_UPCOMING` skip values; it adds `feed_status`
+and `discovered_count` to `ingestion_runs`, `discovered_by_run_id`, recovery mode/timestamps, and active/recovery
+vector generations to `episodes`, and creates `episode_ingestion_attempts` as the single execution history. The DDL is
+in `m3-ingestion-plan.md` Step 4; the logical schema is PRD §5.
+
 ## 7. Screens
 
 - **Home, Channels.** Two subsections. **Followed** (`GET /follows`): approved rows show "N summarised · M unread ·
@@ -501,13 +528,15 @@ The Registry's `_migrations` table lists `0001_init` alone after the reset; `reg
 - **Owner `/owner`.** **Queue**: requested channels oldest first with title, id linked to YouTube, active followers by
   email, "nobody is waiting" when none, "previously declined on <date>: '<note>'" when re-requested, Approve (title,
   import count, note) and Decline (note). Reviewed history collapsed: reviewer, time, note. **Needs attention**:
-  `failed` episodes grouped by channel with reason, attempts, Retry and Skip; approved channels never started, with
+  episodes whose publication recovery expired, grouped by channel with `INGESTION_TIMEOUT`, last reason, attempts,
+  Retry and Skip; approved channels never started, with
   Start. **All channels**: status, paused, `available / tracked` with skipped and failed counts, followers, last
   ingested, latest run, and actions Approve or Decline, Pause or Resume. Declining an approved channel confirms once
   with the follower count. Health strip from `GET /catalog`.
 - **Owner channel detail `/owner/channels/:id`.** Header with status, pause, approval and review fields, import
-  count, follower count; episodes with status, wait reason, attempts, failure or skip reason,
-  summary format, Retry and Skip; runs; followers (emails) for requested channels, count only for approved ones.
+  count, follower count; episodes with content status, recovery mode/deadline/next attempt, attempts, latest outcome,
+  summary format, Retry and Skip; Retry is disabled only while that episode's attempt is running. Initial/scheduled
+  runs show feed status and discovered episodes; followers (emails) for requested channels, count only for approved ones.
   Never any user's read or chat activity.
 
 ## 8. Out of scope
@@ -533,17 +562,20 @@ should be dropped when that spec is revised.
 | Channel failure codes `NO_TRANSCRIPTS`, `NO_EPISODES`, `INITIAL_IMPORT_FAILED`; failed channels leave scheduling; owner channel retry | 2026-09-07/08 | AGENTS.md → Catalog, Ingestion; PRD §4.2 | No channel failure; pause (§3.1, §3.4) |
 | Approval-driven automatic follows delivered immediately, including pending and failed channels | 2026-09-10 | AGENTS.md → Catalog; M3 spec §3 | Requesters follow when they request (§3.2) |
 | Channel-level `ingestion_waiting_code` | 2026-09-10 | AGENTS.md → Ingestion; M3 spec §3.4 | Episode `waiting_code` (§3.3) |
-| Technical failures are never restarted automatically; scheduled runs do not reattempt failed episodes | 2026-09-10 | AGENTS.md → Ingestion; M3 spec §3.4 | Three attempts across runs (§3.3) |
+| Technical failures are never restarted automatically; scheduled runs do not reattempt failed episodes | 2026-09-10 | AGENTS.md → Ingestion; M3 spec §3.4 | Independent episode recovery retries every six hours for up to 48 hours (§3.3) |
+| Three technical attempts, and caption/live-specific settlement at 48 hours | 2026-09-10/11 | M3 spec §2; §3.3 here | One six-hour recovery schedule and one 48-hour deadline for every unfinished episode; only content classifications skip immediately (2026-09-12) |
+| Channel runs own episode execution through `ingestion_run_episodes` | 2026-09-10/11 | M3 spec §2; §3.4 here | Runs record RSS discovery; episodes point to the run that created them; every execution is an episode attempt (2026-09-12) |
+| Episode `waiting_code` and pre-deadline `failure_code` as the wait and technical reasons | 2026-09-10 | §3.3 here; M3 spec §3.3 | The latest attempt's outcome; the episode carries only `INGESTION_TIMEOUT` at the deadline and the column is gone from the rewritten schema (2026-09-12) |
 | Scheduled runs select channels independently of follower count | 2026-09-08 | AGENTS.md → Ingestion; PRD §4.2 | Pause at zero followers (§3.2) |
 | Only available, non-deleted channels can be followed | 2026-09-07 | AGENTS.md → Catalog; PRD §4.3 | Any `requested` or `approved` channel (§3.2) |
-| Migrations are additive only; a committed migration file is frozen | 2026-09-07 | AGENTS.md → Data & schema conventions; both `0001_init.sql` headers | Suspended once, before first deployment, for the rewrite in §6; in force again afterwards, with one owner-approved drop on 2026-09-11 (`0002_drop_lifecycle_version.sql`) |
-| Declining an approved channel bumps `lifecycle_version` so a run in flight is fenced out | 2026-09-08, reaffirmed 2026-09-10 | AGENTS.md → Catalog, Ingestion; PRD §4.2; M3 spec §2; §3.1 and §9 here | Reversed 2026-09-11: runs write no channel state, so a run in flight simply finishes and eligibility hides its output; the column was dropped (`m3-ingestion.md` §2 "Decline mid-run") |
+| Migrations are additive only; a committed migration file is frozen | 2026-09-07 | AGENTS.md → Data & schema conventions; both `0001_init.sql` headers | Suspended twice before first deployment, for the rewrite in §6 (2026-09-10) and the M3 rewrite in §6.4 (2026-09-12), with one owner-approved drop between them (`0002_drop_lifecycle_version.sql`, 2026-09-11, since folded into the second rewrite); in force again afterwards |
+| Declining an approved channel bumps `lifecycle_version` so a run in flight is fenced out | 2026-09-08, reaffirmed 2026-09-10 | AGENTS.md → Catalog, Ingestion; PRD §4.2; M3 spec §2; §3.1 and §9 here | Reversed: decline stops future discovery while independent recovery of already discovered episodes continues; the column was dropped |
 
-Unchanged and reaffirmed: DownSub as the transcript source, the 48-hour caption wait, the 180-second cutoff, live
-and upcoming waits, English-only tracks, cron every 6 hours, publish only after vector verification, soft deletion
+Unchanged and reaffirmed: DownSub as the transcript source, the universal 48-hour recovery ceiling, the 180-second cutoff, live
+and upcoming waits, English-only tracks, both crons every 6 hours, publish only after vector verification, soft deletion
 for every entity other than channels, retention of everything, and hard rule 3 with "approved" in place of
-"available, non-deleted". Fencing by `lifecycle_version` was reaffirmed here and reversed on 2026-09-11
-(`m3-ingestion.md` §2 "Decline mid-run"): runs write no channel state, so a run in flight simply finishes.
+"available, non-deleted". Fencing by `lifecycle_version` was later removed; channel state now controls discovery and
+reader eligibility, while episode recovery owns its own lifecycle.
 
 ## 10. Acceptance criteria
 
@@ -563,18 +595,20 @@ for every entity other than channels, retention of everything, and hard rule 3 w
 6. When the last active follower of an approved channel unfollows, `paused_by = 'system'` is set; the next follow
    clears it. An owner pause is not cleared by a follow, only by owner resume. Declining clears the flag; approving
    recomputes it. A requested channel is never paused.
-7. Cron selects approved, non-paused channels only. A paused channel's summaries stay readable in digest, channel
-   history, and chat retrieval. A declined channel's do not.
-8. Episode outcomes classify per §3.3: short, non-English, no captions after 48 hours, live after 48 hours, and
-   unplayable become `skipped` with the right reason and no owner action; a captionless fresh upload waits with
-   `CAPTIONS`; credit exhaustion waits with `PROVIDER_LIMIT` and counts no attempt.
-9. A technical error leaves the episode `pending` with `attempt_count` 1 and 2 and is reattempted on the next
-   scheduled run; the third makes it `failed`, which appears under Needs attention.
-10. Owner retry moves `failed` or `skipped` to `pending`, resets attempts, clears skip fields, starts a one-episode
-    run, and leaves sibling summaries untouched; owner skip moves `failed` to `skipped OWNER`. Both are 409 while a
-    run is active on the channel.
-11. `available` is set only after every vector is verified and a summary stored; `processed_at` never resets on
-    retry, refollow, or re-approval.
+7. The channel cron discovers only on approved, non-paused channels. The episode cron recovers every due accepted
+   episode regardless of channel status or pause. Paused summaries stay readable; declined summaries do not.
+8. Short, non-English, and unplayable episodes skip immediately. Every other unsuccessful result, including missing
+   captions, live/upcoming, provider limit, technical failures, and oversized transcripts, stays in recovery and is
+   attempted every six hours until the 48-hour deadline.
+9. No attempt count makes an episode terminal. At the deadline, unfinished publication becomes `failed
+   INGESTION_TIMEOUT` with the last reason retained and appears under Needs attention.
+10. M3 Retry works on every episode and channel status and creates no channel run or channel write. When pre-flight
+    permits it starts a new 48-hour episode recovery; a blocked owner Retry records a blocked attempt and leaves
+    recovery/content unchanged. Skip
+    moves `failed` to `skipped OWNER` in any channel status. Episode actions ignore channel-run state.
+11. `available` is set only after every vector in the recovery generation is verified and a summary stored;
+    publication switches the active generation and the previous one is deleted. Failed replacement attempts cannot
+    alter the old active generation, and `processed_at` never resets on retry, refollow, or re-approval.
 12. Readers see titles for pending, skipped, and failed episodes with the phrases in §4, and summaries only for
     available ones; digest and unread counts consider available episodes only.
 13. `GET /openapi.json` lists exactly the routes in §5, and the removed routes return 404.
@@ -595,15 +629,16 @@ for every entity other than channels, retention of everything, and hard rule 3 w
   the auto-follow paragraphs, channel states `pending | available | failed`, channel failure codes, channel retry,
   and the deletion and restoration paragraph. Add `requested | approved | declined`, pause, decline and request again,
   the follower record, and "the initial import runs at first approval regardless of followers".
-- **Ingestion pipeline:** remove channel failure classification and the channel waiting code; add episode
-  `waiting_code`, `skipped` with reasons, three technical attempts, cron selection by approved and not paused, the
-  fence bump on declining an approved channel, and the never-started attention item. Keep the transcript contract,
-  chunking, and fencing.
+- **Ingestion pipeline:** remove channel failure classification and the channel waiting code; split feed discovery
+  from episode recovery, make episodes point to their discovery run, add the unified attempt ledger and universal
+  48-hour recovery, and stage vectors by generation. Keep the transcript contract and chunking.
 - **Hard rule 3:** "current followed, approved channels".
 - **Data & schema conventions:** the Registry owns `global_users`, `channels`, `channel_followers`, `episodes`,
-  `episode_summaries`, `ingestion_runs`, `ingestion_run_episodes`; `channel_requests` is gone. Add one sentence:
-  "The initial migrations were rewritten once, on 2026-09-10 before first deployment, with owner approval; from then
-  on the additive-only and frozen-file rules apply without exception." Keep "Deletion is soft" for every other entity
+  `episode_summaries`, `ingestion_runs`, and in M3 `episode_ingestion_attempts`;
+  `channel_requests` is gone. Add one sentence:
+  "The initial migrations were rewritten twice before first deployment, with owner approval, on 2026-09-10 and
+  2026-09-12; from then on the additive-only and frozen-file rules apply without exception." Keep "Deletion is soft"
+  for every other entity
   and add "channels are never deleted".
 - **API shape table:** per §5. **Screens:** per §7. **Testing → Lifecycle and retry:** replace the auto-follow,
   channel-failure, and restore bullets with pause, decline and request again, the fence bump on withdraw, episode
@@ -615,17 +650,12 @@ for every entity other than channels, retention of everything, and hard rule 3 w
 
 - **Step 3:** shared contracts gain the new enums and `Channel` fields; `RequestOutcome`, `ChannelRequest`, and
   `FollowOrigin` go. The legacy-takeaway normalisation and its fixtures are dropped; there is no legacy data.
-- **Step 4:** the additive migration for `channels.ingestion_waiting_code` is replaced by the rewritten `0001_init`
-  files of §6, applied first, with `0002` deleted and local state wiped. No `failChannel`, no channel `NON_ENGLISH`,
-  no `listPendingAutoFollows` or `ackAutoFollow`, no `deleteChannel` or `restoreChannel`. Add
-  `recordFollow`/`recordUnfollow` with automatic pause, `approveChannel`, `declineChannel` (with the fence bump from
-  approved), `requestChannel`, `pauseChannel`/`resumeChannel`, episode `skip`, and the attempt rule in
-  `markTranscript`/`failEpisode`. The run-episode status vocabulary in §6.1 is a plan decision the step may adjust.
-- **Step 6:** the Workflow never flips channel state; it publishes episodes only.
-- **Step 7:** becomes "start points": first approval and owner add start the initial import; episode retry and skip
-  routes; the auto-follow sweep is deleted from the step.
-- **Step 8:** cron selects approved, non-paused channels and reattempts pending episodes below three attempts; no
-  approval sweep.
+- **Step 4:** add discovery provenance and recovery/vector-generation columns, deprecate run-episodes, and make one
+  attempt ledger serve first processing, scheduled recovery, and owner Retry.
+- **Step 6:** the Workflow writes only its attempt and episode recovery state; it never flips channel or run state.
+- **Step 7:** first approval and owner add record discovery, create pending episodes, and start their first attempts;
+  owner Retry starts the same episode path and Skip stays episode-level.
+- **Step 8:** separate six-hour channel-discovery and episode-recovery schedules; no approval sweep.
 - **Step 9:** web copy for skip reasons, pause, "Declined" and "Withdrawn"; the queue and attention list per §7.
 - The plan should be revised against this spec before the owner's go, and this spec's own plan can fold into it,
   since both touch the same files.

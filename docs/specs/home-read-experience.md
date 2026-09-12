@@ -7,6 +7,11 @@ the automatic follow are gone; channels are `requested | approved | declined` wi
 when they request, follower counts are real, and episodes carry the outcomes. The screens below describe what is on
 `main` today; the owner's browser walkthrough of them was completed on 2026-09-10. §13 keeps the 2026-09-07 decisions
 and marks which ones the revision superseded.
+**Revised 2026-09-12:** M3 channel runs are RSS discovery history only. Episode processing and recovery use one
+independent attempt ledger, continue for 48 hours regardless of channel status or pause, and no longer use a
+three-attempt terminal rule. Owner Retry and Skip are episode actions in every channel status. The owner started over
+on the schema, the Registry DO stores, and the API for M3 (`m3-ingestion-plan.md` Step 4): no legacy value survives
+in the types below.
 **Slice:** the "read experience". First UI milestone (M5) plus the read routes it needs from M2 and M4.
 **Precedence:** `AGENTS.md` overrides this document where they disagree, and `channel-simplification.md` §2–§7 is
 the authority on channel and episode state. Section 16 lists the edits that carried the 2026-09-07 decisions into
@@ -246,7 +251,7 @@ Bar Channel   UCyyyy   nobody is waiting · previously declined on 2026-09-08: �
 ## Catalog
 
 Requested 2 · Approved 9 · Paused 1 · Declined 1  |  Episodes 61 available / 70 tracked · 3 waiting · 1 failed · 5 skipped
-Runs active 0  |  Last successful ingestion 3h ago
+Last successful ingestion 3h ago
 
 ### All channels (13)
 Title          State               Episodes                     Last ingested  Latest run             Followers  Actions
@@ -261,7 +266,7 @@ Add a channel  [ UC… channel id ] [ title (from feed) ] [ import count: 5 ] [A
 
 ### Failed episodes (1)
 Foo Channel
-  Broken upload   6d ago   PROVIDER_HTTP · 3 attempts                          [Retry] [Skip]
+  Broken upload   6d ago   Timed out after 48h · last: PROVIDER_HTTP · 8 attempts   [Retry] [Skip]
 
 ### Approved, never started (1)
 Bar Channel   approved 3 days ago, no run recorded
@@ -287,8 +292,9 @@ Row: title, decision, reviewer, review time, note.
 ### 7.2 Catalog health strip
 
 Source: `GET /catalog`. Counts of channels by status plus paused, episodes `available / tracked` with the
-nonzero `waiting`, `failed`, and `skipped` counts, active runs (queued or running), and the most recent
-successful ingestion anywhere in the catalog. Numbers only; each channel count links to the matching filter of
+nonzero `failed` and `skipped` counts (the `waiting` count was dropped on 2026-09-12; wait reasons appear on
+episode rows), and the most recent successful ingestion anywhere in the catalog.
+Numbers only; each channel count links to the matching filter of
 the All channels table. M3 adds the DownSub credit balance (`transcripts.remainingCredits`) to the same strip.
 
 ### 7.3 Needs attention
@@ -296,9 +302,11 @@ the All channels table. M3 adds the DownSub credit balance (`transcripts.remaini
 The failed-episode review that replaced the failed-channel review, plus one neighbour.
 
 - **Failed episodes.** From the same `GET /channels?scope=all` rows: channels whose `episodes.failed` is nonzero,
-  each expanded through `GET /channels/:id/episodes` to its `failed` episodes with the technical code,
-  `attemptCount`, and failure time. Actions per episode: **Retry** (`failed → pending`; M3 makes it start a
-  one-episode run) and **Skip** (`failed → skipped` with reason `OWNER`). Siblings and the channel are untouched.
+  each expanded through `GET /channels/:id/episodes` to publication recoveries that exhausted 48 hours. Show
+  `INGESTION_TIMEOUT`, the last underlying reason, diagnostic `attemptCount`, and failure time. Actions per episode:
+  **Retry**, which starts a fresh 48-hour publication recovery when provider pre-flight permits, and **Skip** (`failed → skipped OWNER`). Both work
+  regardless of channel status or discovery activity; Retry is disabled only while that episode has a running
+  attempt. Siblings and every channel/run record are untouched.
   Skipped episodes are not listed here; the owner reopens one from the channel detail with Retry.
 - **Approved, never started.** Approved channels whose `management.neverStarted` is true: no ingestion run row
   exists at all, with no age window (decision 9, carried over). Shown as information with how long ago the
@@ -314,11 +322,11 @@ every status, including declined, with client-side filter links from the health 
 |---|---|---|
 | Title | `channels.title` | Links to `/owner/channels/:id`. |
 | State | `status`, `paused`, `approvedAt` | "Awaiting approval", "Approved", "Approved · paused", "Declined", or "Withdrawn" (declined after having been approved). |
-| Episodes | `episodes` counts | `available / tracked`, then non-zero `waiting`, `failed`, `skipped`. |
-| Last ingested | `lastIngestedAt` | Relative time. |
-| Latest run | `management.latestRun` | Kind and status of the newest run, `running` or `completed`; runs carry no failure code (2026-09-11). The latest run reads its outcome counts, or "no episodes · nothing new", and gains "· feed could not be read since [last checked]" when `lastCheckedAt` is older than its `startedAt` or "· feed never read successfully" when there is no check time at all, so a broken feed is a sentence on the row rather than a gap between two dates. |
+| Episodes | `episodes` counts | `available / tracked`, then non-zero `failed`, `skipped` (no `waiting` count since 2026-09-12). |
+| Last ingested | `lastIngestedAt` | Relative time, derived from the channel's newest episode `processed_at`; Retry never writes the channel. |
+| Latest run | `management.latestRun` | Kind and completed time plus exactly what the RSS check found: “N episodes discovered”, “Nothing new”, or “Feed unavailable”. Episode outcomes never appear on a discovery run. |
 | Followers | `followerCount` | Real count from the Registry's follower record; emails only in the queue and the detail view. |
-| Actions | `ChannelStatusActions` | Requested: Approve, Decline. Approved: Pause or Resume, Decline, and in M3 Start whenever no run is open, paused or not. Declined: Approve. Declining an approved channel confirms once, naming its follower count. |
+| Actions | `ChannelStatusActions` | Requested: Approve, Decline. Approved: Pause or Resume, Decline, and in M3 Start to check the feed now, paused or not. Declined: Approve. Declining an approved channel confirms once, naming its follower count. |
 
 **Add a channel** (in scope, decision 1). A `UC…` id or `/channel/UC…` URL, optional title, optional import
 count defaulting to 5. Calls `POST /channels`; for the owner this creates an `approved` channel, follows the
@@ -335,17 +343,17 @@ Approved 2026-08-01 · reviewed 2026-09-09 by owner@example.com: “great channe
 [Start] [Pause] [Decline]
 
 ## Episodes (12)
-Title                    Published   Status                           Attempts  Summary      Processed
-The big one              2d ago      available                        1         structured   2d ago
-Short update             5d ago      skipped · under three minutes    0         —            —        [Retry]
-Fresh upload             1d ago      pending · waiting for captions   0         —            —
-Broken upload            6d ago      failed · PROVIDER_HTTP           3         —            —        [Retry] [Skip]
+Title                    Published   Content              Recovery                         Attempts  Actions
+The big one              2d ago      available            replacement · retry in 6h       2         [Retry]
+Short update             5d ago      skipped · short      —                                1         [Retry]
+Fresh upload             1d ago      pending              captions · 30h left · retry 6h  4         [Retry]
+Broken upload            6d ago      failed · timeout     last: PROVIDER_HTTP              8         [Retry] [Skip]
 
 ## Runs (4)
-Kind        Status     Started  Finished  Limit  Episodes
-scheduled   completed  3h ago   3h ago    —      no episodes · feed could not be read since 9h ago
-scheduled   completed  9h ago   9h ago    —      ▸ 2 available · 1 waiting
-initial     completed  9d ago   9d ago    5      ▸ 3 available · 2 waiting
+Kind        Finished  Feed          Discovery
+scheduled   3h ago    unavailable   Feed unavailable
+scheduled   9h ago    read          2 episodes discovered
+initial     9d ago    read          5 episodes discovered
 
 ## Followers
 4 following
@@ -359,29 +367,26 @@ today versus after M3.
 the feed was actually read, so a check time that stands still while runs keep appearing means the feed cannot be
 read), created and updated times, and the follower count. Actions from `ChannelStatusActions`, the same component the table uses:
 Approve, Decline, Pause, Resume as the status allows, with the one withdraw confirmation, and in M3 Start on an
-approved channel with no open run, paused or not, since a channel paused for having no followers whose first fetch
-failed is one cron will never reach.
+approved channel, paused or not, so the owner can check its feed immediately.
 
-**Episodes** (`episodes`, `episode_summaries`): title linked to `youtu.be`, published, status with the wait
-reason or skip reason or technical code, attempt count, transcript check time, chunk count, vectorized and
-processed times, and whether a summary exists and in which format. Sorted newest published first. Per-episode
-**Retry** on every row (`failed` and `skipped` today; any state in M3, where Retry on an `available` row is how the
-owner redoes a poor summary, with the row saying "Summary hidden until the retry lands") and **Skip** on `failed`
-rows. This is where the owner sees that a channel is "approved but thin", say two available out of five.
+**Episodes** (`episodes`, `episode_summaries`, `episode_ingestion_attempts`): title linked to `youtu.be`, published,
+content status, recovery mode, last reason (from the latest attempt), recovery deadline, next attempt, diagnostic attempt count, transcript,
+vector, and processing times, summary format, and latest attempt. Sorted newest published first. Publication recovery
+shows pending; replacement recovery keeps the row available and says “Generating a replacement; the current summary
+remains available.” A timed-out publication reads “Failed after 48 hours” plus its last reason. A timed-out
+replacement stays available and reads as a finished recovery, not a failed episode.
 
-**Runs** (`ingestion_runs`, `ingestion_run_episodes`): kind, status, started, finished, episode limit. A run is
-`running` or `completed` and carries no verdict of its own (decided 2026-09-11); the outcomes are on its
-run-episodes. A run with no run-episodes renders as one quiet line, since every tick records one for every channel
-it looks at. The latest run, empty or not, says whether the feed was read, derived in `copy.ts` from fields the page
-already has: when the header's `lastCheckedAt` equals the run's `startedAt`, an empty run reads "no episodes ·
-nothing new" and a run with rows reads its outcome counts; when the check time is older, the line gains "· feed
-could not be read since [last checked]", so pending work relaunched during an outage reads, say, "2 waiting · feed
-could not be read since 9h ago"; when it is null, the line gains "· feed never read successfully", which is how a
-channel whose approval-time fetch failed looks until a tick gets through. Earlier empty runs read "no episodes", since only the latest check time is kept. Each run
-with rows expands to its per-episode outcomes (`selected | available | failed | skipped | waiting`;
-`not_attempted` is in the enum but never written), which stay historical even after a later retry changes the
-episode's current status. This is the audit trail for "why did this fail and what did the retry do". The section
-does not poll: a run in flight reads `running` until the owner reloads, in keeping with §11.
+**Retry** appears on every row and works under requested, approved, paused, and declined channels. When pre-flight
+permits, it resets that episode's 48-hour window; it is disabled while the same episode has an attempt running under
+an hour, and enabled after that because the route reconciles a dead instance inline; the row shows how long the
+attempt has been running. A provider-blocked owner
+Retry remains visible as a blocked latest attempt without changing content. **Skip** appears on failed rows and
+marks `OWNER`; it has no discovery-run precondition. Siblings, channels, and discovery history are untouched.
+
+**Runs** (`ingestion_runs`) are completed RSS discovery history: kind, finished time, feed status, episode limit,
+and discovered count. Copy is “N episodes discovered”, “Nothing new”, or “Feed unavailable”. Runs never show
+episode attempt outcomes and do not expand to run-episode rows. An episode's immutable `discoveredByRunId` is
+diagnostic provenance, while its execution history stays on the episode. The section does not poll.
 
 **Followers** (`channel_followers`): for a `requested` channel, the active followers' emails and follow times
 from `GET /channels/:id/followers`, because they are the people waiting on the decision. For any other status,
@@ -414,16 +419,15 @@ One store module per concern under `do/registry/`, all present on `main`:
   `retryEpisode`, `skipEpisode`. Digest items join `episodes`, `episode_summaries`, and `channels.title`; related
   ids are resolved to titles inside the method and filtered to the passed channel ids, so the route never sees
   titles from ineligible channels.
-- `runs.ts`: `latestByChannel`, `listByChannel` with run episodes, `hasActiveRun`, `countActive`,
-  `lastCompletedFinishedAt`.
+- `runs.ts`: `latestByChannel`, completed discovery history, feed status, discovered counts, and `neverStarted`.
+- `episode-attempts.ts` (M3): unified first-processing, scheduled-recovery, and Owner-Retry attempt history.
 - `catalog.ts`: `summarize()`, the `Catalog` aggregate.
 - Facade methods on `RegistryDO`: reader-safe `listChannels`, `listChannelsByIds`, `getChannel`,
   `listAvailableVideoIds`, `listDigest`, `listEpisodes`; owner-checked `getCatalogSummary`, `listRuns`,
   `listFollowers`, and every transition. Internal names follow the entity vocabulary of §10.
 
-All `IN (...)` lists go through `lib/sql.ts` chunking; a reader following 20 channels with 50 available
-episodes each produces 1,000 video ids, which is well within the PRD's five-second Home target but over the
-100-parameter cap per statement. M3 adds the write side of runs and episodes to the same modules.
+All `IN (...)` lists go through `lib/sql.ts` chunking. M3 adds discovery writes, episode recovery state, and the
+attempt ledger on the rewritten schema, which has no run-episode table.
 
 ### 9.3 What the DOs cannot tell us, and what we show instead
 
@@ -454,9 +458,9 @@ This slice ships those screens with real empty states and tests them with SQL-se
 | Add (owner) | the same, `createChannel` as `approved`, `recordFollow` for the owner, `requestIngestion(channel_approved)` | `follow` | The owner is a follower of their own additions, so the channel is not system-paused. |
 | Request again | `requestChannel` (`declined → requested`) plus `recordFollow` | `follow` | Review fields are kept so the queue can say "previously declined". |
 | Approve | `approveChannel` | — | `requested → approved` starts the initial import (`requestIngestion`), which ignores the pause a zero-follower channel starts with; `declined → approved` for a previously approved channel starts nothing. Recomputes pause from the follower count. |
-| Decline | `declineChannel` | — | From `requested` or `approved`; the latter also clears the pause. A run in flight finishes (2026-09-11). |
+| Decline | `declineChannel` | — | From `requested` or `approved`; the latter also clears the pause. Stops future discovery, never recovery of existing episodes. |
 | Pause, resume | `pauseChannel`, `resumeChannel` | — | `approved` only; resume clears any pause, owner or system. |
-| Episode retry, skip | `retryEpisode`, `skipEpisode` | — | Approved channel with no active run; retry logs `ingestion.start_requested` with `episode_retry` until M3 starts the run. |
+| Episode retry, skip | `retryEpisode`, `skipEpisode` | — | Both are independent of channel status and discovery runs. Retry resets the episode's 48-hour window when work starts; a blocked Retry leaves it unchanged. Skip is `failed → skipped OWNER`. |
 
 **Requesting is following.** The automatic follow of 2026-09-07 (deliver the requester's follow once the
 channel is available) is gone: a user follows at the moment they add or re-request a channel, and the follow
@@ -520,24 +524,24 @@ routes in step.
 | Method and path | Who | Purpose | Since |
 |---|---|---|---|
 | `GET /me` | anyone | Email and role | M1 |
-| `GET /catalog` | owner | The catalog's aggregate state: channels by status plus paused, episodes by status, active runs, last successful ingestion, and the `attention` counts that feed the Home card and the health strip | 2026-09-07, reshaped 2026-09-10 |
+| `GET /catalog` | owner | Aggregate channels and episodes, last successful publication, provider health, and attention counts | revised 2026-09-12 |
 | `GET /channels` | anyone | `requested` and `approved` channels with `following`, `followerCount`, `episodes` counts. `?scope=all` (owner) adds `declined` channels, each with `management` | 2026-09-07, reshaped 2026-09-10 |
 | `POST /channels { channelId, title?, initialImportCount? }` | anyone | The id is verified against its RSS feed. User: create `requested` and follow (201), or follow the existing `requested` or `approved` channel (200). Owner: create `approved`, follow, start the import (201). 409 `ChannelDeclinedResponse` for a declined id; 400 `INVALID_INPUT` for handles, other URLs, or an id with no feed | 2026-09-07, reshaped 2026-09-10 |
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; `management` for the owner | 2026-09-07, reshaped 2026-09-10 |
 | `POST /channels/:id/request` | anyone | `declined → requested`; follows the caller | 2026-09-10 |
 | `POST /channels/:id/approve { title?, initialImportCount?, explanation? }` | owner | `requested → approved` with the initial import, or `declined → approved` without one; recomputes pause | 2026-09-10 |
-| `POST /channels/:id/decline { explanation? }` | owner | `requested → declined`, or `approved → declined` with the pause cleared; a run in flight finishes | 2026-09-10, revised 2026-09-11 |
+| `POST /channels/:id/decline { explanation? }` | owner | `requested → declined`, or `approved → declined` with the pause cleared; stops new discovery but existing episode recovery continues | revised 2026-09-12 |
 | `POST /channels/:id/pause`, `POST /channels/:id/resume` | owner | Owner pause; resume clears any pause. `approved` only | 2026-09-10 |
-| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first with `status` and top-level `skipReason` for every caller. Followers and the owner receive `summary`, `related`, and `wasUnread`, and those summaries are marked read for the caller; the owner also receives `processing` | 2026-09-07, reshaped 2026-09-10 |
-| `POST /channels/:id/episodes/:videoId/retry` | owner | `failed` or `skipped → pending`; run start is M3 | 2026-09-10 |
-| `POST /channels/:id/episodes/:videoId/skip` | owner | `failed → skipped` with reason `OWNER` | 2026-09-10 |
-| `GET /channels/:id/ingestion-runs` | owner | Runs newest first, each with per-episode outcomes | 2026-09-07 |
+| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first. Followers and the owner receive available summaries; the owner also receives recovery state and the latest attempt | revised 2026-09-12 |
+| `POST /channels/:id/episodes/:videoId/retry` | owner | Any episode/channel state; resets the 48-hour window when work starts and returns an attempt; blocked leaves recovery unchanged; no discovery or channel write | revised 2026-09-12 |
+| `POST /channels/:id/episodes/:videoId/skip` | owner | Any channel state; `failed → skipped OWNER`; no discovery precondition | revised 2026-09-12 |
+| `GET /channels/:id/ingestion-runs` | owner | Completed initial/scheduled RSS discovery checks with feed status and discovered count | revised 2026-09-12 |
 | `GET /channels/:id/followers` | owner | Active followers' emails and follow times, oldest first | 2026-09-10, replaces `/requests` |
 | `GET /follows` | anyone (own) | Active follows in any channel status, each embedding its `channel` and carrying `unreadCount`; most recent ingestion first | 2026-09-07, reshaped 2026-09-10 |
 | `PUT /follows/:channelId`, `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for declined); retained unfollow. Each write also records the follower in the Registry | 2026-09-07, reshaped 2026-09-10 |
 | `GET /digest?since=<iso>` | anyone (own) | `available` episodes of eligible follows, newest first, default 24 h, clamped to 7 days; returned summaries are marked read; each carries `wasUnread` | 2026-09-07 |
 | `DELETE /channels/:id`, `POST /channels/:id/restore`, `POST /channels/:id/retry`, `GET`/`POST /channel-requests`, `POST /channel-requests/:id/approve|reject`, `GET /channels/:id/requests` | | **Removed 2026-09-10.** Channels are never deleted, have no failure to retry, and are their own requests | |
-| `POST /channels/:id/runs` | owner | Planned for M3: start a run now for an approved channel with none active (`m3-ingestion-plan.md` Step 7) | planned |
+| `POST /channels/:id/runs` | owner | M3: check an approved channel's RSS feed now, ignoring pause; return the completed discovery result | planned M3 |
 
 Response shapes live in `packages/shared` as Zod schemas with inferred types, named after the entity they carry.
 Sketch of the ones with structure this document depends on (the schemas are authoritative):
@@ -573,6 +577,31 @@ export type ChannelManagement = {
   neverStarted: boolean;           // approved and no ingestion run row at all
 };
 
+export type IngestionRunSummary = {   // the newest run, as the catalog row shows it
+  runId: string;
+  kind: "initial" | "scheduled";     // no status: a discovery run exists only once complete
+  feedStatus: "read" | "unavailable";
+  discoveredCount: number;
+  startedAt: number;
+  finishedAt: number;
+};
+
+export type EpisodeIngestionAttempt = {
+  attemptId: string;
+  videoId: string;
+  trigger: "channel_ingestion" | "scheduled_recovery" | "owner_retry";
+  requestedByEmail: string | null;
+  recoveryMode: "publication" | "replacement";
+  generationId: string | null;
+  stagedChunkCount: number | null;  // set when embedding starts; lets the next attempt delete an abandoned generation
+  workflowId: string | null;
+  status: "running" | "available" | "failed" | "skipped" | "waiting" | "blocked";
+  outcomeCode: string | null;
+  failureDetail: string | null;
+  startedAt: number;
+  finishedAt: number | null;
+};
+
 export type Episode = {
   videoId: string;
   channelId: string;
@@ -580,11 +609,11 @@ export type Episode = {
   title: string;
   publishedAt: number;
   status: "pending" | "available" | "failed" | "skipped";
-  skipReason: EpisodeSkipReason | null;   // SHORT, NON_ENGLISH, NO_CAPTIONS, LIVE_OR_UPCOMING, UNPLAYABLE, OWNER
+  skipReason: EpisodeSkipReason | null;   // SHORT, NON_ENGLISH, UNPLAYABLE, OWNER
   summary: EpisodeSummary | null;  // content for followers and the owner
   related: { videoId: string; title: string }[]; // already filtered to the caller's eligible channels
   wasUnread?: boolean;             // set when a summary was returned to a reader
-  processing?: EpisodeProcessing;  // owner only: attemptCount, failureCode, waitingCode, skippedByEmail, timestamps
+  processing?: EpisodeProcessing;  // owner only: recovery mode/deadline/next attempt/reason and latest attempt
 };
 export type DigestResponse = { since: number; episodes: Episode[] };
 
@@ -610,16 +639,16 @@ export type ChannelDeclinedResponse = ErrorResponse & {
 export type Catalog = {
   channels: { requested: number; approved: number; paused: number; declined: number };
   episodes: { available: number; pending: number; waiting: number; failed: number; skipped: number };
-  runs: { active: number };
   lastSuccessfulIngestionAt: number | null;
   attention: { failedEpisodes: number; neverStarted: number; requested: number };
 };
 ```
 
-`IngestionRun`, `IngestionRunEpisode`, `IngestionRunSummary`, `EpisodeSummary`, `EpisodeProcessing`, and the
+`IngestionRun`, `IngestionRunEpisode`, `IngestionRunSummary`, `EpisodeIngestionAttempt`, `EpisodeSummary`,
+`EpisodeProcessing`, and the
 enums join the existing types in `packages/shared`. Every response wraps its entity or list in a named field
 (`{ channel }`, `{ channels }`, `{ episode }`, `{ episodes }`, `{ follows }`, `{ follow }`, `{ followers }`,
-`{ runs }`, `{ catalog }`).
+`{ runs }`, `{ catalog }`); Retry returns `{ episode, attempt }`.
 
 ## 11. States, errors, polling, layout
 
@@ -695,9 +724,8 @@ channel can always be requested again).
    and stored on the request. Approval uses the stored title and fetches nothing. The owner may override in
    either form; 400 with a prompt when a feed fetch fails and nothing was typed. *Stands,* stored on the channel.
 8. **Routing.** History mode, verified under `wrangler pages dev`; hash mode is the fallback. *Stands.*
-9. **Stuck pending.** No age threshold. Any pending, non-deleted channel with no queued or running run is
-   listed, with how long it has been pending. *Carried over as "never started":* approved with no run row,
-   still no age window (`channel-simplification.md` §3.4 leaves the window open as `TODO(owner)` for M3).
+9. **Stuck pending.** The 2026-09-07 channel rule was superseded. M3 keeps “approved, never started” only for an
+   approved channel with no discovery-run row; episode publication has its own 48-hour recovery deadline.
 10. **UI vocabulary.** "Owner". *Stands.*
 11. **API modelled on entities, not roles** (owner correction after Step 1.1 of the plan). The owner is a role
     that authorizes operations; it is not a resource. No `/owner/*` namespace, no `Owner*` types. Owner-only
@@ -717,6 +745,19 @@ channel can always be requested again).
   Readers see the skip reason; the owner retries or skips per episode. Needs attention lists failed episodes
   and never-started channels, not failed channels.
 - A previously approved channel that is declined reads "Withdrawn"; re-approving it starts no second import.
+
+### 2026-09-12 (M3 functional contract)
+
+- Channel runs are completed RSS discovery checks, not containers for episode processing outcomes.
+- Every episode attempt—first processing, automatic recovery, or Owner Retry—uses the same attempt ledger.
+- Episode recovery retries every six hours for 48 hours and ignores channel status and pause. Attempt count is
+  diagnostic; it never fails an episode by itself.
+- Owner Retry and Skip work in every channel status. A Retry that starts work resets only that episode's recovery window; Skip remains
+  `failed → skipped OWNER`.
+- Available replacement keeps the current summary and vector generation readable until a new generation succeeds,
+  after which the previous generation is deleted; retrieval verifies generations before using any text.
+- The schema, the Registry DO stores, and the API were restarted for this model: `0001` rewritten a second time
+  before first deployment, `0002` deleted, no legacy member in any shared type.
 
 ## 14. Acceptance criteria
 
@@ -746,12 +787,19 @@ channel can always be requested again).
   "Withdrawn" with the note.
 - Unfollowing a channel to zero followers pauses it by the system; a follow resumes it; the owner's Pause holds
   until Resume regardless of followers.
-- Catalog health counts match seeded fixtures; failed episodes list under Needs attention with their code and
-  attempts, Retry returns one to `pending` without touching its siblings, Skip marks it `skipped` by the owner;
-  every approved channel with no run row appears under "Approved, never started".
+- Catalog health counts match seeded fixtures. Needs attention lists publication recoveries that exhausted 48 hours
+  with `INGESTION_TIMEOUT`, their last reason, and diagnostic attempts. A Retry that starts work opens a fresh
+  48-hour window without touching siblings, the channel, or discovery history; blocked Retry leaves recovery unchanged.
+  Skip marks `OWNER`. Both actions work while the channel is
+  requested, approved, paused, or declined; Retry is disabled only for an attempt on that episode running under an
+  hour. Every
+  approved channel with no discovery run appears under "Approved, never started".
 - History-mode deep links to `/owner` and `/owner/channels/:id` survive a reload under `wrangler pages dev`.
-- Channel detail shows episodes with wait, skip, or failure reasons and summary format, runs with per-episode
-  outcomes, and followers' emails only while the channel is `requested`.
+- Channel detail separates episode content/recovery from completed discovery runs. Runs show discovered count,
+  nothing new, or feed unavailable and never per-episode outcomes. Followers' emails appear only while requested.
+- Pausing or declining stops new discovery but not recovery of episodes already discovered. An available replacement
+  keeps old content readable; a publication or replacement retries every six hours for up to 48 hours regardless of
+  attempt count.
 - Two users with overlapping follows see independent unread counts and NEW markers for the same summaries.
 - `pnpm check` passes; every route has been exercised under `wrangler dev` with a seeded local Registry
   (recorded in `channel-simplification-plan.md` → Walkthrough record), and the owner has walked the screens in a
