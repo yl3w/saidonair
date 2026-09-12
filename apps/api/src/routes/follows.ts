@@ -23,7 +23,7 @@ type Ctx = Context<AppEnv>;
 
 /**
  * The caller's follows. Each embeds its channel, so a follow whose channel the owner has declined
- * still lists, with its status, and reads again once the channel is approved (AGENTS.md).
+ * still lists, with its status, and reads again once the channel is approved (docs/PRD.md §4.3).
  * Unread = available episodes the caller has no read receipt for.
  */
 export const followRoutes = new Hono<AppEnv>()

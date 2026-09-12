@@ -4,7 +4,7 @@ const MAX_EMAIL_LENGTH = 254;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Trim + lowercase, the identity normalization from AGENTS.md → Identity model.
+ * Trim + lowercase, the identity normalization from docs/PRD.md §2.
  * Returns null when the value cannot serve as an identity.
  */
 export function normalizeEmail(raw: string | null | undefined): string | null {

@@ -17,7 +17,7 @@ const MAX_WINDOW_MS = 7 * DAY_MS;
 
 /**
  * The caller's digest: available episodes with summaries from eligible follows, newest first.
- * Returning a summary records the caller's read receipt (AGENTS.md → Data & schema conventions);
+ * Returning a summary records the caller's read receipt (docs/PRD.md §4.4);
  * `wasUnread` tells the UI which items were new before this response.
  */
 export const digestRoutes = new Hono<AppEnv>().get(

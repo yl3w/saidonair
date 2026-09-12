@@ -5,7 +5,7 @@ import { isApproved } from "./channel-view";
 
 /**
  * The channels a caller may read from: active follows ∩ approved catalog. The digest, follows,
- * episodes, and later chat retrieval all use this one definition (AGENTS.md → AI usage).
+ * episodes, and later chat retrieval all use this one definition (docs/PRD.md §4.3).
  */
 export async function eligibleChannels(
   registry: DurableObjectStub<RegistryDO>,

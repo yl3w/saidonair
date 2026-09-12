@@ -3,7 +3,7 @@ import { useLocation } from "preact-iso";
 import { recentEmails } from "../account";
 import { useSession } from "../session";
 
-/** "Who is this for?" — identity selection, never sign-in (AGENTS.md → Screens). */
+/** "Who is this for?" — identity selection, never sign-in (docs/PRD.md §7 Screens). */
 export function Account() {
   const { state, select } = useSession();
   const { route } = useLocation();

@@ -5,7 +5,7 @@ import { Time } from "./Time";
 /**
  * One episode as a reader sees it: title linked to YouTube, byline, the shared summary when the
  * API returned one, related titles (already filtered to the reader's eligible channels). Text only;
- * youtube.com is the only host ever linked (AGENTS.md → Web UI).
+ * youtube.com is the only host ever linked (docs/PRD.md §7).
  */
 export function EpisodeItem({
   episode,

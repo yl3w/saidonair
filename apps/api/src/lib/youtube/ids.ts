@@ -14,7 +14,7 @@ export const CHANNEL_ID_INSTRUCTIONS =
 /**
  * Accepts a bare `UC…` id or any URL containing `/channel/UC…` and returns the id. Everything
  * else, including `@handle` and `/c/…` URLs, is rejected with the copy-the-id instructions:
- * there is no handle resolution (AGENTS.md → Catalog, requests, and follows).
+ * there is no handle resolution (docs/PRD.md §4.1).
  */
 export function extractChannelId(raw: string): string {
   const input = raw.trim();

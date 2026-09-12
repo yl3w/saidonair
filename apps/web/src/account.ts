@@ -1,5 +1,5 @@
-// Which person this browser is acting for. Identity, not authentication (AGENTS.md → Identity
-// model): the selected email is sent as X-User-Email on every request. Stored in localStorage as a
+// Which person this browser is acting for. Identity, not authentication (docs/PRD.md
+// §2): the selected email is sent as X-User-Email on every request. Stored in localStorage as a
 // convenience; every access is guarded because storage can be blocked or throw.
 
 const SELECTED_KEY = "media-digest:email";

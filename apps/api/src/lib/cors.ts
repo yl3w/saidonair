@@ -8,7 +8,7 @@ import { USER_EMAIL_HEADER } from "../middleware/user";
  * Browser clients live on another origin: the Pages web app, or Vite locally. Which origins may
  * call the API comes from `WEB_ORIGINS` (wrangler.jsonc `vars`, overridable in `.dev.vars`), a
  * comma-separated list where `scheme://*.host` matches any subdomain, for Pages previews. There are
- * no cookies and no authentication, so this is hygiene rather than a guard (AGENTS.md → Identity).
+ * no cookies and no authentication, so this is hygiene rather than a guard (docs/PRD.md §2).
  */
 
 /** What an unset `WEB_ORIGINS` means: the local Vite dev server, both spellings. */

@@ -8,7 +8,7 @@ import { normalizeEmail } from "../lib/email";
 export const USER_EMAIL_HEADER = "X-User-Email";
 
 /**
- * Identity, not authentication (AGENTS.md → Identity model). Normalizes X-User-Email,
+ * Identity, not authentication (docs/PRD.md §2). Normalizes X-User-Email,
  * auto-registers it in the Registry, and exposes `identity`, `registry`, and the caller's
  * own per-user DO stub `user` on the context.
  */

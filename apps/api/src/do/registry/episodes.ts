@@ -283,7 +283,7 @@ function byNewest(a: EpisodeRow, b: EpisodeRow): number {
 
 /**
  * Resolves each row's related video ids to titles, keeping only available episodes whose channel
- * is in `scope` and never the episode itself. AGENTS.md: referenced titles are filtered to the
+ * is in `scope` and never the episode itself. docs/PRD.md §4.4: referenced titles are filtered to the
  * reader's eligible channels.
  */
 function attachRelated(
@@ -427,7 +427,7 @@ function toSkipReason(value: string | null): EpisodeSkipReason | null {
   }
 }
 
-// Summaries are validated before they are stored (AGENTS.md → AI usage), so a malformed column
+// Summaries are validated before they are stored (docs/PRD.md §4.4), so a malformed column
 // is corruption, not input: fail loudly rather than return a half summary.
 function requireText(value: string | null, column: string): string {
   if (value === null) throw new Error(`episode_summaries.${column} is NULL`);
