@@ -365,8 +365,9 @@ failed is one cron will never reach.
 **Episodes** (`episodes`, `episode_summaries`): title linked to `youtu.be`, published, status with the wait
 reason or skip reason or technical code, attempt count, transcript check time, chunk count, vectorized and
 processed times, and whether a summary exists and in which format. Sorted newest published first. Per-episode
-**Retry** on `failed` and `skipped` rows and **Skip** on `failed` rows. This is where the owner sees that a
-channel is "approved but thin", say two available out of five.
+**Retry** on every row (`failed` and `skipped` today; any state in M3, where Retry on an `available` row is how the
+owner redoes a poor summary, with the row saying "Summary hidden until the retry lands") and **Skip** on `failed`
+rows. This is where the owner sees that a channel is "approved but thin", say two available out of five.
 
 **Runs** (`ingestion_runs`, `ingestion_run_episodes`): kind, status, started, finished, episode limit. A run is
 `running` or `completed` and carries no verdict of its own (decided 2026-09-11); the outcomes are on its

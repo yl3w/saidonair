@@ -373,12 +373,17 @@ are M3; until then `lib/ingestion.ts` records each start point as a
 - **Pre-flight gate.** Every start, cron or owner, first calls DownSub's `/status` through the cached wrapper the
   catalog uses; a rejected key or zero credits means nothing is launched and no run is recorded, so neither ever
   reaches an episode as an attempt. Cron logs why and skips the tick; Start answers 502 naming the reason; approve
-  and retry answer as usual and leave the channel or episode for a later start. An unreachable `/status` does not
+  answers as usual and the channel reads "approved, never started"; retry answers 200 with the reset episode and
+  `start.outcome = "provider_blocked"`, since the episode leaves Needs attention on the reset and the owner must
+  see that nothing is running. An unreachable `/status` does not
   block (decided 2026-09-11).
 - **Owner episode actions**, both requiring an approved channel with no queued or running run, else 409:
-  `POST /channels/:id/episodes/:videoId/retry` takes `failed` or `skipped` back to `pending`, clearing attempts and
-  skip fields, and `POST /channels/:id/episodes/:videoId/skip` takes `failed` to `skipped OWNER`. Siblings and their
-  summaries are untouched. There is no channel-level retry.
+  `POST /channels/:id/episodes/:videoId/retry` takes an episode in any state back to `pending`, clearing attempts
+  and wait and skip fields, and starts a one-episode run (decided 2026-09-11; until M3 the code accepts `failed` and
+  `skipped` only). From `available` the existing summary leaves readers' view until the new one replaces it,
+  `processed_at` and read receipts stay, and vectors beyond the new chunk count are deleted in `shared-catalog`
+  before publish. We promise a retry, not a better summary. `POST /channels/:id/episodes/:videoId/skip` takes
+  `failed` to `skipped OWNER`. Siblings and their summaries are untouched. There is no channel-level retry.
 - Persist `ingestion_runs` and the exact selected `ingestion_run_episodes` (`selected`, `available`, `failed`,
   `skipped`, `waiting`, `not_attempted`). Permit at most one queued/running run per channel. A run-episode whose
   instance is gone is closed `failed WORKFLOW_LOST` by the reconciliation sweep, its episode taking one attempt; an approved channel with no run row at all appears under Needs attention as "approved, never started".
@@ -516,7 +521,7 @@ plus a `management` block, and `?scope=all` widens a collection for the owner. S
 | `POST /channels/:id/decline` `{ explanation? }` | owner | `requested → declined`, or `approved → declined` with the pause cleared; a run in flight finishes |
 | `POST /channels/:id/pause` / `POST /channels/:id/resume` | owner | Owner pause; resume clears either kind of pause. `approved` only |
 | `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; every caller gets `status` and a top-level `skipReason` (why there is no summary, when skipped); the owner and followers of an approved channel get `summary`, `related`, `wasUnread`, and returned summaries are marked read for the caller; everyone else gets titles without summaries; the owner also gets `processing` (attempts, `failureCode`, `waitingCode`, `skipReason`, timestamps) |
-| `POST /channels/:id/episodes/:videoId/retry` | owner | `failed` or `skipped → pending`, attempts and skip fields cleared, one-episode run |
+| `POST /channels/:id/episodes/:videoId/retry` | owner | `failed` or `skipped → pending`, attempts and skip fields cleared, one-episode run; in M3 the response carries `start`, `started` with the run or `provider_blocked` with the status |
 | `POST /channels/:id/episodes/:videoId/skip` | owner | `failed → skipped OWNER` |
 | `GET /channels/:id/ingestion-runs` | owner | Runs newest first with per-episode outcomes |
 | `GET /channels/:id/followers` | owner | Emails and `followedAt` of the channel's active followers |
@@ -631,8 +636,9 @@ page, sections **Queue**, **Catalog**, and **Needs attention**, jump links `#req
 
 **`/owner/channels/:id` — Owner channel detail.** From `GET /channels/:id` (with `management`), `/episodes`,
 `/ingestion-runs`, and `/followers`: header with status, pause, approval and review fields, import count, and
-follower count; episodes with status, wait reason, attempts, failure or skip reason, summary format, and
-Retry and Skip; runs with per-episode outcomes; followers by email. Never shows any user's read or chat activity.
+follower count; episodes with status, wait reason, attempts, failure or skip reason, summary format, Retry on every
+row (M3) and Skip on failed ones; runs with per-episode outcomes; followers by email. Never shows any user's read or
+chat activity.
 
 Owner catalog management is required, but a general admin dashboard is not: `/owner` shows only what supports approve,
 decline, pause, resume, and per-episode retry and skip. Render owner controls only when `GET /me` returns
@@ -666,7 +672,9 @@ Tests are focused, not exhaustive. Required coverage:
   zero followers pauses an approved channel by the system, the next follow lifts it, an
   owner pause survives a follow, and a requested channel is never paused; `followerCount` matches the Registry
   follower record. Episode attempts stay `pending` below three and turn `failed` on the third; system skips carry
-  their reason, owner retry clears attempts and skip fields, and owner skip needs a `failed` episode. Test owner-only
+  their reason, owner retry clears attempts, wait, and skip fields from any state (M3; an `available` episode keeps
+  `processed_at` and its receipts and loses its summary from readers' view until replaced), and owner skip needs a
+  `failed` episode. Test owner-only
   mutations, and that handles and ids with no feed are rejected. Owner overview and channel-health counts match
   SQL-seeded episodes and runs. Add or extend these tests whenever a route or data path is introduced.
   M3 adds: caption and credit waits resume without owner action and a fresh no-caption answer is re-fetched at or

@@ -90,7 +90,9 @@ web `EpisodeItem`, fixtures and tests.
 
 - `packages/shared`: `EpisodeSummary.takeaways` becomes `{ text: string; startSec: number | null }[]`; `Episode`
   gains `summaryAvailableAt: UnixMs | null` (the first `processed_at`, null until available); `CatalogSchema` gains
-  `transcripts: { remainingCredits: number | null, status: "ok" | "auth_failed" | "unreachable" }`.
+  `transcripts: { remainingCredits: number | null, status: "ok" | "auth_failed" | "unreachable" }`; the retry
+  route's response becomes `RetryEpisodeResponse { episode, start }` with `start` a discriminated union on
+  `outcome`, `started` carrying the run and `provider_blocked` carrying the provider status (Step 7).
   `IngestionRunStatusSchema`'s description says `queued`, `failed`, and `cancelled` exist only because the CHECK is
   frozen and are never written: a run is `running` and then `completed`; `IngestionRunEpisodeStatusSchema` says the
   same of `not_attempted`. No legacy normalisation: there is no
@@ -202,7 +204,15 @@ the schema after `0002` already holds every column this step writes.
     | `technical`, `deterministic`, `failEpisode`, `closeLostRunEpisode`, `recordCreateFailure` | `attempt_count + 1`, `failure_code`, `failure_detail`, `transcript_checked_at` where a fetch happened | `waiting_code` | |
     | `skipped` | skip fields, `transcript_checked_at` | `waiting_code`, `failure_code`, `failure_detail` | `attempt_count` |
     | `completeEpisode` | availability fields, `processed_at` once | `waiting_code`, `failure_code`, `failure_detail` | `attempt_count`, as how many tries it took |
-    | owner Retry (exists) | `pending`, `attempt_count` 0 | every wait, failure, and skip field | |
+    | owner Retry (exists) | `pending`, `attempt_count` 0 | every wait, failure, and skip field | availability fields and `processed_at`, the summary row |
+  - **Retry from any state** (owner decision 2026-09-11). `retryEpisode` drops its `failed`-or-`skipped` guard and
+    accepts `pending` and `available` too; from `available` it leaves `chunk_count`, `vectorized_at`, `processed_at`,
+    and the summary row in place, since only the status change hides the summary from readers and `completeEpisode`
+    replaces the row when the new one lands. `markTranscript`'s `captions` answer returns the previous `chunk_count`
+    so the instance can trim stale vectors, and `completeEpisode` upserts the summary row. Read receipts live in the
+    User DOs and are never touched. Tests: retry from `available` hides the summary from `listDigest` and
+    `listByChannel` for readers, keeps `processed_at`, and a subsequent `completeEpisode` replaces the summary and
+    leaves `processed_at` unchanged; retry from `pending` clears the wait and starts at once.
   - **Close check:** when no run-episode of the run is still `selected`, the run closes `completed` with
     `finished_at` set and `failure_code` null; it touches no channel column, since `completeEpisode` already moved
     `last_ingested_at`. `recordCreateFailure(runId, videoId)` marks a run-episode `failed WORKFLOW_LOST` for a `create()`
@@ -271,8 +281,11 @@ only whether one Step 6 test goes through a real instance.
   Registry stub. Nothing in the instance fetches the feed, selects, touches a User DO, or touches channel status.
 - Steps in order: `stagger` (sleep `startDelaySec`), `transcript`, `classify` (the `markTranscript` write; any
   outcome but `captions` ends the instance), `embed[i]` and `upsert[i]` per batch of ≤ 20 chunks, `verify`
-  (batched `getByIds`, its own retry policy of three from five seconds), `summarize[s]` per section, `reduce` when
-  there is more than one section, `related`, `publish` (the `completeEpisode` write).
+  (batched `getByIds`, its own retry policy of three from five seconds), `trim` (only when `classify` reported a
+  previous `chunk_count` above the new one: `deleteByIds` in `shared-catalog` for the ids from the new count to the
+  old, so a retried episode leaves no stale chunk behind), `summarize[s]` per section, `reduce` when there is more
+  than one section, `related`, `publish` (the `completeEpisode` write). Test: a retry that produces fewer chunks
+  than before deletes exactly the surplus ids and the fake store holds only the new set.
 - `NonRetryableError` for `UNPLAYABLE`, `PROVIDER_AUTH`, `PROVIDER_LIMIT`, `TRANSCRIPT_TOO_LARGE`, and a refused
   Registry write. Step retries and timeouts per spec §3. The episode's `attempt_count` is the cross-run retry; step
   retries are within one instance.
@@ -336,9 +349,13 @@ entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
   and `POST /channels/:id/approve` on first approval resolve to `initial` with `ignorePause`, run after the approval
   has committed, and answer with the channel as usual whatever the outcome; on `provider_blocked` the channel simply
   has no run row and reads "approved, never started" until the key or the balance is fixed.
-  `POST /channels/:id/episodes/:videoId/retry` passes the one video (`owner_retry`, `ignorePause`, no feed) and on
-  `provider_blocked` answers with the episode, now `pending` with attempts cleared, which the next unblocked start
-  picks up. Cron (Step 8) logs each outcome and moves on.
+  `POST /channels/:id/episodes/:videoId/retry` passes the one video (`owner_retry`, `ignorePause`, no feed). Its
+  response grows a second field beside the episode, shared `RetryEpisodeResponse { episode, start }`, where `start`
+  is `{ outcome: "started", run }` or `{ outcome: "provider_blocked", status }`: the reset always happens and the
+  answer is always 200, but a Retry made under a rejected key or zero credits would otherwise look like a success
+  while the episode quietly leaves Needs attention with nothing running (reviewer finding, 2026-09-11). A 502 after
+  the reset was rejected because it would invite an immediate second Retry that then fails on a `pending` episode.
+  The route description says so; the web copy is in Step 9. Cron (Step 8) logs each outcome and moves on.
 - **Plan decision:** add `POST /channels/:id/runs` (owner; channel must be `approved`, else 409 `INVALID_STATE`)
   creating a run now, ignoring pause, `initial` or `scheduled` by the rule above. Responses:
   - 200 `{ run }` for `started`; a run with no run-episodes and status `completed` tells the owner the feed had
@@ -375,7 +392,9 @@ entries), `vitest.config.ts`, `packages/shared/src/index.ts`, tests.
   transcripts fake reports `auth_failed` or zero credits, while under that same blocked provider a Start on a
   requested channel, on a declined channel, and on a channel with an open run still answers 409, and on an unknown
   id 404, exactly as with a healthy provider; under that same fake an approve still approves and leaves
-  the channel never-started, and a retry leaves the episode `pending` with attempts cleared and no run; the catalog
+  the channel never-started, and a retry leaves the episode `pending` with attempts cleared and no run while its
+  response carries `start.outcome = "provider_blocked"` with the status, and `"started"` with the run once the
+  provider is healthy; the catalog
   carries credits (`null` and `unreachable` with the fake, the seeded values otherwise); the first-approval run is
   created while the channel is
   system-paused; a `create()` that `WORKFLOW_FAKE` is
@@ -425,7 +444,12 @@ unmoved; a channel whose runs never selected anything gets an
   appears wherever that component renders: the catalog table, the owner channel detail header, and the never-started
   rows in `AttentionList`. "Never started" stays an attention category, not the rule for showing the button; the
   rule is the route's own precondition, which is what lets the owner rescue a channel whose approval-time feed fetch
-  failed and that is system-paused for having no followers, where cron will never come. Start calls
+  failed and that is system-paused for having no followers, where cron will never come. Retry appears on every
+  episode row of an approved channel, not only failed and skipped ones; on an `available` row it reads "Retry
+  (redo the summary)" and, once pressed, the row says "Summary hidden until the retry lands". Retry reads its
+  `start.outcome`: "Retrying: run started" for `started`, and for `provider_blocked` the row keeps a line the
+  reload does not clear, "Queued; ingestion is blocked by the transcript key" or "… by transcript credits", so the
+  owner knows the episode left Needs attention without anything running. Start calls
   `POST /channels/:id/runs` and shows the run on the row: "Started, N episodes", or "Nothing new to import" when the run came back with no
   episodes, and the API's message for 409 and 502 through the existing row error, so "YouTube did not answer" reads
   the same as it does when adding a channel; the runs list renders an empty run as one quiet line, since a channel
@@ -453,7 +477,9 @@ unmoved; a channel whose runs never selected anything gets an
   staggered runs → credits shown on the catalog → a channel approved while its feed answers 500 shows an empty
   run reading "no episodes · feed never read successfully", and the next tick with the feed back gives it an
   `initial` run; then a channel with a caption wait whose feed answers 500 still relaunches that episode and its
-  run reads "1 waiting · feed could not be read since …".
+  run reads "1 waiting · feed could not be read since …"; then, with the key in `.dev.vars` broken, Retry on a
+  failed episode answers 200, the episode reads `pending` with the row saying "Queued; ingestion is blocked by the
+  transcript key", and fixing the key and pressing Start runs it.
 - Docs: PRD §4.2 and §4.4 wording for the digest basis; PRD §7 Screens (Start on never-started rows, the health
   strip's credits and key status, the empty-run line in the runs list) and the PRD §7 route table
   (`POST /channels/:id/runs` with its three answers, `GET /catalog`'s `transcripts` block); AGENTS.md's API table,

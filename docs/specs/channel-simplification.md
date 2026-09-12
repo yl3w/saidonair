@@ -206,7 +206,9 @@ Classification, carrying the 2026-09-08 rules onto the new statuses:
 Owner actions, both requiring an `approved` channel with no queued or running run, else 409:
 
 - `POST /channels/:id/episodes/:videoId/retry`: from `failed` or `skipped` to `pending`, attempts and skip fields
-  cleared, one-episode `owner_retry` run. Siblings and their summaries are untouched.
+  cleared, one-episode `owner_retry` run. Siblings and their summaries are untouched. Widened on 2026-09-11 to any
+  state: from `available` the summary is redone, its availability time and read receipts kept
+  (`m3-ingestion.md` §2 "Owner episode actions").
 - `POST /channels/:id/episodes/:videoId/skip`: from `failed` to `skipped OWNER`.
 
 ### 3.4 Scheduling
@@ -255,7 +257,7 @@ Entity-based as before: no `/owner/*`, authorization per operation, `management`
 | `POST /channels/:id/pause`, `POST /channels/:id/resume` | owner | new | Owner pause; resume clears any pause. `approved` only |
 | `POST /channels/:id/retry` | owner | **removed** | |
 | `GET /channels/:id/episodes?limit=` | anyone | changed | Episode `status` takes the new values; `skipReason`, `waitingCode`, `attemptCount` in the owner's `processing` block |
-| `POST /channels/:id/episodes/:videoId/retry` | owner | as planned | From `failed` or `skipped` |
+| `POST /channels/:id/episodes/:videoId/retry` | owner | as planned | From `failed` or `skipped`; widened to any state on 2026-09-11 (`m3-ingestion.md` §2) |
 | `POST /channels/:id/episodes/:videoId/skip` | owner | new | From `failed` |
 | `GET /channels/:id/ingestion-runs` | owner | unchanged | |
 | `GET /channels/:id/followers` | owner | new, replaces `/requests` | Emails and `followedAt` of active followers; the UI shows emails only in the queue and counts elsewhere |

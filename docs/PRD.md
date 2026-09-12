@@ -161,9 +161,12 @@ import outcome, so a channel whose every episode is skipped is an approved chann
   one attempt; there is no separate account-level outcome and no run-level failure code. Every start, cron's or the owner's, first calls the
   transcript provider's status endpoint and launches nothing when the key is rejected or the credits are gone, so
   neither reaches an episode as an attempt (decided 2026-09-11, evening).
-- Owner retry moves a `failed` or `skipped` episode back to `pending`, clearing attempts and skip fields, and owner
-  skip moves a `failed` one to `skipped OWNER`. Both need an approved channel with no queued or running run. Sibling
-  episodes and their summaries are untouched. There is no channel-level retry.
+- Owner retry moves an episode in any state back to `pending`, clearing attempts and wait and skip fields, and starts
+  a one-episode run (decided 2026-09-11). From `available` the existing summary leaves readers' view until the new
+  one replaces it, the availability time and every read receipt stay, and vectors beyond the new chunk count are
+  deleted. The promise is a retry, not a better summary. Owner skip moves a `failed` one to `skipped OWNER`. Both
+  need an approved channel with no queued or running run. Sibling episodes and their summaries are untouched. There
+  is no channel-level retry.
 - Cron selects approved, non-paused channels with no queued or running run, every 6 hours (decided 2026-09-08), and
   per channel takes the new feed entries, meaning untracked ones published after the channel's first approval, plus
   every `pending` episode that is waiting or below three attempts. Follower count reaches selection only through the
