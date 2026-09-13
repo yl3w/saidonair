@@ -239,6 +239,20 @@ export function setPause(
   );
 }
 
+/**
+ * The channels the discovery cron checks: approved and not paused (docs/PRD.md §4.2 rule 4), on the
+ * `channels(status, paused_by)` index, in a stable order so a tick's log reads the same way twice.
+ */
+export function listDiscoverable(sql: SqlStorage): CatalogChannel[] {
+  return sql
+    .exec<ChannelRow>(
+      `SELECT * FROM channels WHERE status = 'approved' AND paused_by IS NULL
+       ORDER BY title COLLATE NOCASE, channel_id`,
+    )
+    .toArray()
+    .map(toChannel);
+}
+
 /** A successful feed read moves `last_checked_at`; an unavailable one does not (docs/PRD.md §4.2 rule 4). */
 export function markChecked(
   sql: SqlStorage,

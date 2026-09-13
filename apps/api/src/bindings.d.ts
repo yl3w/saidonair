@@ -30,9 +30,10 @@ declare namespace Cloudflare {
      */
     WEB_ORIGINS?: string;
     /**
-     * Test only (vitest.config.ts): JSON of channel id → canned feed title, or null for "no such
-     * channel", served by `lib/youtube/rss.ts` feedFetcher instead of fetching YouTube. Never set
-     * in `.dev.vars` or deployed.
+     * Test only (vitest.config.ts, from test/fixtures/feeds.ts): JSON of channel id → a canned feed
+     * title, null for "no such channel", or `{ title, entries }` rendered as Atom, served by
+     * `lib/youtube/rss.ts` feedFetcher instead of fetching YouTube. Never set in `.dev.vars` or
+     * deployed.
      */
     YOUTUBE_FEEDS_FAKE?: string;
     /**

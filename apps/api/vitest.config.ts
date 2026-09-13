@@ -3,6 +3,7 @@ import {
   cloudflareTest,
 } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
+import { FAKE_FEEDS } from "./test/fixtures/feeds";
 import { FAKE_TRANSCRIPTS } from "./test/fixtures/transcripts";
 
 const workersOptions = {
@@ -30,15 +31,10 @@ const workersOptions = {
       VECTORIZE_FAKE: "{}",
       // An exact origin and a subdomain wildcard, so test/cors.test.ts covers both forms.
       WEB_ORIGINS: "http://localhost:5173,https://*.example.pages.dev",
-      // Canned YouTube feeds so no test reaches the network (see lib/youtube/rss.ts feedFetcher).
-      // Keys are the helpers' CHANNEL_A…E; E has no feed, like YouTube's 404 for an unknown id.
-      YOUTUBE_FEEDS_FAKE: JSON.stringify({
-        UCAAAAAAAAAAAAAAAAAAAAAA: "Feed A",
-        UCBBBBBBBBBBBBBBBBBBBBBB: "Feed B",
-        UCCCCCCCCCCCCCCCCCCCCCCC: "Feed C",
-        UCDDDDDDDDDDDDDDDDDDDDDD: "Feed D",
-        UCEEEEEEEEEEEEEEEEEEEEEE: null,
-      }),
+      // Canned YouTube feeds so no test reaches the network (test/fixtures/feeds.ts; see
+      // lib/youtube/rss.ts feedFetcher). CHANNEL_A…D are title-only feeds, E has no feed like
+      // YouTube's 404 for an unknown id, F carries fifteen entries for the discovery tests.
+      YOUTUBE_FEEDS_FAKE: JSON.stringify(FAKE_FEEDS),
     },
   },
 };

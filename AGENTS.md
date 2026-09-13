@@ -92,7 +92,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── lib/validation.ts     # validate(target, schema): hono-openapi validator with the INVALID_INPUT 400 contract
 │   │   │   ├── lib/openapi.ts        # the document's fixed parts (info, tags, security) and describeRoute response helpers
 │   │   │   ├── lib/cors.ts           # browser origins allowed to call the API, from vars.WEB_ORIGINS
-│   │   │   ├── lib/ingestion.ts      # independent discovery and episode-attempt start points (log-only until M3)
+│   │   │   ├── lib/ingestion.ts      # startDiscovery, the discovery tick, the scheduled dispatch; startEpisodeAttempts
+│   │   │   │                         # (log-only until M3.5 gives it pre-flight, the ledger write, and the launch)
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
 │   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC; codes are the shared ErrorCode enum
 │   │   │   ├── lib/sql.ts            # bound-parameter chunking for DO SQLite
@@ -287,8 +288,10 @@ Discovery runs, episode attempts, recovery, transcripts, and generation-safe pub
 `docs/PRD.md` §4.2 (numbered rules) and §6. In code:
 
 - `lib/ingestion.ts` holds the independent discovery and episode-attempt start points shared by first approval, the
-  Start route, the two crons, and owner Retry. Until M3 lands they emit structured logs only, visible under
-  `wrangler dev`.
+  Start route, the two crons, and owner Retry. Discovery is live since M3.4: `startDiscovery` reads the feed (a 404
+  or an unreachable YouTube is an `unavailable` run, never an error), records the run through the Registry, and
+  hands the new episodes to `startEpisodeAttempts`, which logs one line per episode until M3.5. `runScheduled(cron,
+  env)` dispatches the crons; `index.ts` exports the typed `ExportedHandler` and the Hono `app` by name.
 - `workflows/ingest.ts` is the per-episode Workflow, one instance per attempt. Keep each external call (transcript,
   AI, Vectorize) in its own `step.do()` for granular retries; the verify step's retry policy absorbs Vectorize's
   asynchronous upserts before it reports `VECTORIZE_INCOMPLETE`. Instances never fetch RSS or write channel or run
@@ -296,7 +299,8 @@ Discovery runs, episode attempts, recovery, transcripts, and generation-safe pub
 - `lib/workflows.ts` `ingestLauncher(env)` is the one path to the `INGEST_WORKFLOW` binding (create, status);
   `WORKFLOW_FAKE` replaces it in tests.
 - `lib/youtube/ids.ts` and `lib/youtube/rss.ts` are the only code that talks to YouTube. `feedFetcher(env)` serves
-  canned feeds when `YOUTUBE_FEEDS_FAKE` is set.
+  canned feeds when `YOUTUBE_FEEDS_FAKE` is set: a title-only feed, YouTube's 404, or `{ title, entries }` rendered as
+  Atom so the parser path is production's (`test/fixtures/feeds.ts`; channel F carries the entries).
 - `lib/chunk.ts` implements the PRD §6 chunking contract as a pure function. `lib/vectorize.ts` owns namespaced
   upsert, query, `getByIds`, and delete; hard rule 3 is enforced there.
 

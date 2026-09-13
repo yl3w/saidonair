@@ -5,8 +5,8 @@
 **Parent:** `docs/specs/m3-ingestion.md` §2 (Which channels discovery touches, Which episodes discovery creates,
 On-demand start, Latest run on catalog rows, Crons), §3 "channel discovery"; PRD §4.2 rules 1–5 and 27. Acceptance
 1, 7 (discovery half), 8, and 9 of the parent.
-**Status:** approved with the split of 2026-09-13; not started. Plan: `docs/specs/m3-4-discovery-plan.md`. Needs
-M3.2 (`recordDiscovery`). No new dependencies.
+**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green; the `wrangler
+dev` walkthrough on a real channel is recorded in `docs/specs/m3-4-discovery-plan.md`. No new dependencies.
 
 ## 1. Summary
 
@@ -26,7 +26,7 @@ registered, and the Worker gains its `scheduled` handler with the discovery cron
 | The attempt start seam | `startEpisodeAttempts(env, episodes, trigger)` exists from this chunk and logs `ingestion.attempt_start_requested` per episode; M3.5 replaces its body. | M3.5 then changes one function and no call site. |
 | Cron selection | New Registry read `listDiscoveryChannels()`: `status = 'approved' AND paused_by IS NULL` on the `channels(status, paused_by)` index. | One query, on the index PRD §5.3 reserves for it. |
 | Feed override for tests | `startDiscovery(env, channelId, { feed? })` accepts a `ChannelFeed \| null` in place of the fetch. | Static fixtures cannot change between two runs; "a new upload after approval" needs two feeds for one channel. |
-| Fake feed shape | `YOUTUBE_FEEDS_FAKE` values become `string \| null \| { title, entries: FeedEntry[] }`; the string form stays. | Existing tests keep their fixtures; discovery tests get entries. |
+| Fake feed shape | `YOUTUBE_FEEDS_FAKE` values become `string \| null \| { title, entries: FeedEntry[] }`; the string form stays. The content lives in `test/fixtures/feeds.ts`; a sixth channel, `CHANNEL_F`, carries the fifteen entries, so the existing fixtures A–E and the tests over them are untouched (built this way rather than adding entries to A and B as the plan first said). | Existing tests keep their fixtures; discovery tests get entries. |
 | A feed that answers 404 | Recorded `unavailable`; Start answers 502. | The history says the feed could not be read; the row shows it. |
 | The tick is sequential | The discovery tick awaits one channel at a time; a channel's error is caught, logged, and does not stop the others. | Tens of channels at most; sequential keeps logs readable and avoids a burst against YouTube. |
 

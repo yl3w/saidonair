@@ -4,8 +4,9 @@ import {
 } from "@media-digest/shared";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
-import type { AppEnv } from "./env";
+import type { AppEnv, Env } from "./env";
 import { corsMiddleware } from "./lib/cors";
+import { runScheduled } from "./lib/ingestion";
 import { jsonResponse, openApiDocument } from "./lib/openapi";
 import { onError } from "./middleware/errors";
 import { requireIdentity } from "./middleware/user";
@@ -20,7 +21,7 @@ import { meRoutes } from "./routes/me";
 export { RegistryDO } from "./do/registry";
 export { UserDO } from "./do/user";
 
-const app = new Hono<AppEnv>();
+export const app = new Hono<AppEnv>();
 
 app.onError(onError);
 
@@ -63,4 +64,16 @@ app.route("/channels", channelRoutes);
 app.route("/follows", followRoutes);
 app.route("/digest", digestRoutes);
 
-export default app;
+/**
+ * The Worker: HTTP through Hono, and the cron triggers of `env.production` (`wrangler.jsonc`)
+ * dispatched by expression in `lib/ingestion.ts`. Locally `wrangler dev --test-scheduled` exposes
+ * `GET /__scheduled?cron=<expression>` to fire one.
+ */
+const worker: ExportedHandler<Env> = {
+  fetch: app.fetch,
+  async scheduled(controller, env) {
+    await runScheduled(controller.cron, env);
+  },
+};
+
+export default worker;

@@ -32,43 +32,76 @@ export function feedUrl(channelId: string): string {
   return `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
 }
 
+type FakeFeed =
+  | string
+  | null
+  | {
+      title: string;
+      entries: { videoId: string; title: string; publishedAt: number }[];
+    };
+
 /**
  * The fetch the routes hand to `fetchChannelFeed`. Real `fetch` unless the test-only
- * `YOUTUBE_FEEDS_FAKE` binding is set (vitest.config.ts): a JSON object of channel id → feed
- * title, or null for "YouTube has no such channel". Ids outside the map answer 500 so a test that
- * forgot to register one fails loudly (502) instead of reaching the network. Same pattern as the
- * fakes for Workers AI and Vectorize (AGENTS.md → Testing); never set in `.dev.vars` or deployed.
+ * `YOUTUBE_FEEDS_FAKE` binding is set (vitest.config.ts, from test/fixtures/feeds.ts): a JSON object
+ * of channel id → a feed title (no entries), null for "YouTube has no such channel", or
+ * `{ title, entries }` rendered as an Atom document so the parser path is production's. Ids outside
+ * the map answer 500 so a test that forgot to register one fails loudly (502) instead of reaching the
+ * network. Same pattern as the fakes for Workers AI and Vectorize (AGENTS.md → Testing); never set
+ * in `.dev.vars` or deployed.
  */
 export function feedFetcher(env: { YOUTUBE_FEEDS_FAKE?: string }): FetchLike {
   if (env.YOUTUBE_FEEDS_FAKE === undefined) {
     return (input, init) => fetch(input, init);
   }
-  const canned = JSON.parse(env.YOUTUBE_FEEDS_FAKE) as Record<
-    string,
-    string | null
-  >;
+  const canned = JSON.parse(env.YOUTUBE_FEEDS_FAKE) as Record<string, FakeFeed>;
   return async (input) => {
     const channelId = new URL(input).searchParams.get("channel_id") ?? "";
     if (!(channelId in canned))
       return new Response("unregistered", { status: 500 });
-    const title = canned[channelId];
-    if (title === null || title === undefined) {
+    const feed = canned[channelId];
+    if (feed === null || feed === undefined) {
       return new Response("<html>Error 404</html>", { status: 404 });
     }
-    return new Response(fakeFeedXml(channelId, title), {
+    const xml =
+      typeof feed === "string"
+        ? fakeFeedXml(channelId, feed, [])
+        : fakeFeedXml(channelId, feed.title, feed.entries);
+    return new Response(xml, {
       status: 200,
       headers: { "content-type": "application/xml" },
     });
   };
 }
 
-function fakeFeedXml(channelId: string, title: string): string {
+function fakeFeedXml(
+  channelId: string,
+  title: string,
+  entries: readonly { videoId: string; title: string; publishedAt: number }[],
+): string {
+  const items = entries
+    .map(
+      (entry) => `
+ <entry>
+  <yt:videoId>${entry.videoId}</yt:videoId>
+  <title>${escapeXml(entry.title)}</title>
+  <published>${new Date(entry.publishedAt).toISOString()}</published>
+ </entry>`,
+    )
+    .join("");
   return `<?xml version="1.0"?>
 <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom">
  <yt:channelId>${channelId.slice(2)}</yt:channelId>
- <title>${title}</title>
- <link rel="alternate" href="https://www.youtube.com/channel/${channelId}"/>
+ <title>${escapeXml(title)}</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/${channelId}"/>${items}
 </feed>`;
+}
+
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**

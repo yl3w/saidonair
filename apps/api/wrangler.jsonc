@@ -63,8 +63,9 @@
           { "name": "REGISTRY_DO", "class_name": "RegistryDO" },
           { "name": "USER_DO", "class_name": "UserDO" }
         ]
-      }
-      // triggers.crons: discovery `0 */6 * * *` lands with M3.4 and recovery `30 */6 * * *` with M3.6, here only.
+      },
+      // The crons live here only (AGENTS.md → Environments): discovery on the hour; recovery at :30 lands with M3.6.
+      "triggers": { "crons": ["0 */6 * * *"] }
     }
   }
 }

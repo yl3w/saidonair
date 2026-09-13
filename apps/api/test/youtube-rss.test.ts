@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { domainErrorCode } from "../src/lib/errors";
 import {
   type ChannelFeed,
+  feedFetcher,
   feedUrl,
   fetchChannelFeed,
   parseFeed,
@@ -147,5 +148,60 @@ describe("youtube rss", () => {
       expect(domainErrorCode(error)).toBe("UPSTREAM_UNAVAILABLE");
       expect((error as Error).message).toContain("503");
     }
+  });
+});
+
+describe("the feed fake", () => {
+  it("renders a title-only feed, a 404, and a feed with entries the parser reads back", async () => {
+    const fetchImpl = feedFetcher({
+      YOUTUBE_FEEDS_FAKE: JSON.stringify({
+        [CHANNEL_A]: "Only a title",
+        [CHANNEL_B]: {
+          title: "Tom & Jerry",
+          entries: [
+            {
+              videoId: "aaaaaaaaaaa",
+              title: "First <b>one</b>",
+              publishedAt: 1_700_000_000_000,
+            },
+            {
+              videoId: "bbbbbbbbbbb",
+              title: "Second",
+              publishedAt: 1_600_000_000_000,
+            },
+          ],
+        },
+        UCCCCCCCCCCCCCCCCCCCCCCC: null,
+      }),
+    });
+    expect(await fetchChannelFeed(CHANNEL_A, fetchImpl)).toEqual({
+      channelId: CHANNEL_A,
+      title: "Only a title",
+      entries: [],
+    });
+    expect(await fetchChannelFeed(CHANNEL_B, fetchImpl)).toEqual({
+      channelId: CHANNEL_B,
+      title: "Tom & Jerry",
+      entries: [
+        {
+          videoId: "aaaaaaaaaaa",
+          title: "First <b>one</b>",
+          publishedAt: 1_700_000_000_000,
+        },
+        {
+          videoId: "bbbbbbbbbbb",
+          title: "Second",
+          publishedAt: 1_600_000_000_000,
+        },
+      ],
+    });
+    expect(
+      await fetchChannelFeed("UCCCCCCCCCCCCCCCCCCCCCCC", fetchImpl),
+    ).toBeNull();
+    // An unregistered id is a 500 from the fake, so a forgotten fixture fails loudly as 502.
+    await expectDomainError(
+      fetchChannelFeed("UCDDDDDDDDDDDDDDDDDDDDDD", fetchImpl),
+      "UPSTREAM_UNAVAILABLE",
+    );
   });
 });

@@ -17,6 +17,8 @@ import {
   EpisodesResponseSchema,
   type FollowersResponse,
   FollowersResponseSchema,
+  type IngestionRunResponse,
+  IngestionRunResponseSchema,
   type IngestionRunsResponse,
   IngestionRunsResponseSchema,
   LimitQuerySchema,
@@ -29,7 +31,7 @@ import type { AppEnv } from "../env";
 import { toChannel } from "../lib/channel-view";
 import { toEpisode } from "../lib/episode-view";
 import { DomainError, domainErrorCode } from "../lib/errors";
-import { requestIngestion } from "../lib/ingestion";
+import { startDiscovery } from "../lib/ingestion";
 import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
 import { extractChannelId } from "../lib/youtube/ids";
@@ -173,7 +175,7 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["channels"],
       summary: "Approve a channel",
       description:
-        "`requested` or `declined` → `approved`. Sets `approvedAt` the first time and starts the initial import only then; a re-approved channel waits for the next scheduled discovery. Recomputes the pause from the follower count. The caller is recorded as the reviewer; the web offers this to the owner.",
+        "`requested` or `declined` → `approved`. Sets `approvedAt` the first time and performs the initial discovery run only then, even when the new channel is paused for having no followers; the run is complete when this answers, so `management.latestRun` already reports it, and a feed that could not be read is recorded as `unavailable` without failing the approval. A re-approved channel waits for the next scheduled discovery. Recomputes the pause from the follower count. The caller is recorded as the reviewer; the web offers this to the owner.",
       responses: {
         200: jsonResponse(ChannelResponseSchema, "The approved channel."),
         ...errorResponses({
@@ -190,7 +192,18 @@ export const channelRoutes = new Hono<AppEnv>()
         c.req.valid("param").id,
         c.req.valid("json"),
       );
-      if (importStarts) requestIngestion(channel.channelId, "channel_approved");
+      // First approval discovers now (docs/PRD.md §4.2 rules 1 and 4); RSS can never fail an approval.
+      if (importStarts) {
+        try {
+          await startDiscovery(c.env, channel.channelId);
+        } catch (error) {
+          console.log({
+            event: "discovery.failed_after_approval",
+            channelId: channel.channelId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       return c.json<ChannelResponse>({
         channel: await fullChannel(c, channel.channelId),
       });
@@ -371,8 +384,8 @@ export const channelRoutes = new Hono<AppEnv>()
     validate("param", EpisodeParamsSchema),
     async (c) => {
       const { id, videoId } = c.req.valid("param");
+      // M3.5 adds the pre-flight and the attempt start here; the window re-opens today.
       const record = await c.var.registry.retryEpisode(id, videoId);
-      requestIngestion(id, "episode_retry");
       return c.json<EpisodeResponse>({ episode: toEpisode(record) });
     },
   )
@@ -420,6 +433,45 @@ export const channelRoutes = new Hono<AppEnv>()
     async (c) => {
       const runs = await c.var.registry.listRuns(c.req.valid("param").id);
       return c.json<IngestionRunsResponse>({ runs });
+    },
+  )
+
+  .post(
+    "/:id/runs",
+    describeRoute({
+      tags: ["runs"],
+      summary: "Check the feed now",
+      description:
+        "One discovery run of an approved channel, paused or not: reads the RSS feed, records the completed run, creates the untracked entries as pending episodes, and starts their attempts. Answers the completed run, including one that found nothing new. 409 `INVALID_STATE` for a requested or declined channel. When YouTube does not answer, the `unavailable` run is recorded first and the response is 502 `UPSTREAM_UNAVAILABLE`. Never touches the transcript provider. The web offers this to the owner.",
+      responses: {
+        200: jsonResponse(
+          IngestionRunResponseSchema,
+          "The completed discovery run.",
+        ),
+        ...errorResponses({
+          notFound: true,
+          conflict: "Only an approved channel is checked",
+          upstream: true,
+        }),
+      },
+    }),
+    validate("param", ChannelParamsSchema),
+    async (c) => {
+      const channel = await requireChannel(c, c.req.valid("param").id);
+      if (channel.status !== "approved") {
+        throw new DomainError(
+          "INVALID_STATE",
+          `only an approved channel is checked (status: ${channel.status})`,
+        );
+      }
+      const { run } = await startDiscovery(c.env, channel.channelId);
+      if (run.feedStatus === "unavailable") {
+        throw new DomainError(
+          "UPSTREAM_UNAVAILABLE",
+          "YouTube did not answer; the unavailable run is recorded",
+        );
+      }
+      return c.json<IngestionRunResponse>({ run });
     },
   )
 

@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import app from "../src/index";
+import { app } from "../src/index";
 import { SCALAR_CDN } from "../src/routes/docs";
 
 type Operation = {
@@ -43,6 +43,7 @@ const OPERATIONS = [
   "post /channels/{id}/episodes/{videoId}/retry",
   "post /channels/{id}/episodes/{videoId}/skip",
   "get /channels/{id}/runs",
+  "post /channels/{id}/runs",
   "get /follows",
   "put /follows/{channelId}",
   "delete /follows/{channelId}",

@@ -108,6 +108,11 @@ export class RegistryDO extends DurableObject<Env> {
     return channels.listChannels(this.#sql);
   }
 
+  /** What the discovery cron checks: approved and unpaused channels (docs/PRD.md §4.2 rule 4). */
+  listDiscoveryChannels(): CatalogChannel[] {
+    return channels.listDiscoverable(this.#sql);
+  }
+
   /**
    * Creates a `requested` channel for whoever asks: there is no owner shortcut, approval is always
    * `approveChannel` (owner decision 2026-09-12). Create-only: `INVALID_STATE` when the id exists,
