@@ -9,7 +9,8 @@ it restates product behaviour it summarises this document and defers to it. The 
 design reasoning, wireframes, acceptance criteria, and implementation plans behind these requirements:
 `home-read-experience` for the Home and Owner screens (decided 2026-09-07), `channel-simplification` for channel
 statuses, follows, and episode states (decided 2026-09-10), `m3-ingestion` for discovery, recovery, and transcripts
-(revised 2026-09-12), and `api-reference` for the generated API document (decided 2026-09-07, contract restated and approved 2026-09-12). Where a spec and this
+(revised 2026-09-12), `api-reference` for the generated API document (decided 2026-09-07, contract restated and approved 2026-09-12), and
+`follows-single-owner` for follows living only in the Registry (decided 2026-09-13). Where a spec and this
 document disagree, this document governs and the spec is due for revision.
 **Implementation status:** This document defines the target requirements and logical schema, not completed
 features. Items marked M3 or M4 are not yet built (§10).
@@ -74,10 +75,11 @@ deployment, and general admin dashboards beyond owner catalog management.
   returns it for the web's rendering, and the acting email is recorded as reviewer, skipper, or requester whoever it
   is. The owner email is never committed. The management interface is the Owner screens in §7, which the web shows
   to the owner role only. This does not introduce authentication.
-- Chats, preferences, and read receipts are private to the User DO. Global identity, the catalog, and a follower
-  record per channel and email live in the Registry, so it can count a channel's followers and list who is waiting on
-  a requested one (decided 2026-09-10). Every channel in the catalog is visible to everyone. Another user's private DO
-  data is never exposed.
+- Chats, preferences, and read receipts are private to the User DO. Global identity, the catalog, and every follow
+  live in the Registry: one follower record per channel and email is the only record of who follows what (decided
+  2026-09-13, replacing the two-store model of 2026-09-10), so the Registry can list a user's own follows, count a
+  channel's followers, list who is waiting on a requested one, and compute eligibility in one place. Every channel in
+  the catalog is visible to everyone. Another user's private DO data is never exposed.
 
 ## 3. Architecture
 
@@ -92,7 +94,7 @@ Cloudflare Pages: Vite + Preact + TypeScript
        +-----------------+------------------+
        |                                    |
 Global Registry DO                    User DO per email
-catalog, followers, episodes,          follows, read receipts,
+catalog, follows, episodes,            read receipts,
 shared summaries, discovery runs,      chats/messages/sources, preferences
 episode processing attempts
        |
@@ -351,11 +353,11 @@ episode's row, phrased from its latest attempt.
 
 - Explicit follow/refollow is allowed for any `requested` or `approved` channel; following a `declined` one is refused
   with the owner's note, and the interface offers Request again instead. Unfollow works on a channel in any status.
-- Follow membership is recorded twice: the User DO's follow row is what the user's own list shows, and the Registry
-  keeps a follower record per channel and email so it can count followers, list who is waiting on a requested channel,
-  and pause a channel nobody follows. A follow writes the User DO first and then the Registry; both writes are
-  idempotent, and a pair left inconsistent by a failure is corrected by the next follow or unfollow of that pair and
-  never reverses an explicit unfollow. Adding a channel and requesting one again perform the same two writes.
+- Follow membership is recorded once, in the Registry's follower record per channel and email (decided 2026-09-13).
+  The same row serves the user's own list, the follower count, the owner's queue, the automatic pause, and
+  eligibility, so there is nothing to keep in step and no failure can leave a follow half-recorded. A follow or
+  unfollow is one Registry write; adding a channel and requesting one again perform that same write. The User DO
+  holds no follow rows.
 - Unfollow retains a tombstone using `unfollowed_at`, which an explicit refollow clears. It neither deletes global
   content nor changes other users.
 - There is no automatic following. Adding a channel or requesting one again follows the caller in the same call, so
@@ -441,8 +443,9 @@ Tables and columns are `snake_case`.
 | `ingestion_runs` | `run_id`, `channel_id`, `kind`, `feed_status`, `discovered_count DEFAULT 0`, `episode_limit?`, `started_at`, `finished_at` | PK `run_id`; FK `channel_id → channels.channel_id`; a completed feed-discovery record, so no status or Workflow columns |
 | `episode_ingestion_attempts` | `attempt_id`, `video_id`, `trigger`, `intent`, `generation_id?`, `staged_chunk_count?`, `workflow_id?`, `requested_by_email?`, `status`, `outcome_code?`, `failure_detail?`, `started_at`, `finished_at?` | PK `attempt_id`; unique nullable `workflow_id`; FKs to episode and optional owner; all episode executions |
 
-`channel_followers` mirrors the User DO's follow rows so the Registry can count followers, list who is waiting on a
-requested channel, and pause a channel nobody follows; the User DO stays the source of truth for a user's own list.
+`channel_followers` is the only record of follows: a user's own list is `WHERE user_email = ? AND unfollowed_at IS
+NULL`, eligibility joins it to approved channels, and the same rows count followers, list who is waiting on a
+requested channel, and pause a channel nobody follows.
 `approved_at` is set at the first approval and never reset; the review fields hold the latest review only and are kept
 when a declined channel is requested again. An episode's `discovered_by_run_id` is immutable and supplies the exact
 membership of a discovery run. Processing history is entirely in `episode_ingestion_attempts`; `staged_chunk_count`
@@ -453,15 +456,15 @@ is set when embedding starts so the next attempt can delete an abandoned generat
 
 | Table | Columns in addition to `created_at` | Keys and relationships |
 |---|---|---|
-| `channel_follows` | `channel_id`, `followed_at`, `unfollowed_at?`, `updated_at` | PK `channel_id`; a retained row with `unfollowed_at` set records the unfollow |
 | `summary_reads` | `video_id`, `read_at` | PK `video_id`; no row means unread |
 | `chats` | `chat_id`, `title?`, `updated_at` | PK `chat_id` |
 | `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
 | `chat_message_sources` | `source_id`, `message_id`, `position`, `video_id`, `channel_id`, `video_title`, `channel_title`, `start_sec` | PK `source_id`; FK to message; unique `(message_id, position)` |
 | `user_preferences` | `id`, `system_rules`, `updated_at` | Singleton PK constrained to `id = 'default'` |
 
-Email is implicit in the owning User DO, not repeated in each row. Shared channel and video IDs are cross-DO
-references validated through Registry methods, not SQLite foreign keys. A reply must belong to the same chat as its
+Email is implicit in the owning User DO, not repeated in each row. The User DO holds no follows: those are Registry
+rows (§5.1, decided 2026-09-13). Shared channel and video IDs are cross-DO references validated through Registry
+methods, not SQLite foreign keys. A reply must belong to the same chat as its
 referenced message. The nullable `chat_messages.channel_id` is retained for a possible future scoped view and stays
 null for current global chats; it does not define retrieval scope. Sources capture the actual per-reply channel IDs.
 Message content may be empty while an assistant reply is pending. Update chat ordering when messages are added.
@@ -517,12 +520,13 @@ for real, and until then the enum is the contract.
   transaction after vector completion. SQLite cannot atomically commit with Vectorize.
 - Registry indexes: `channels(status, paused_by)` for cron selection;
   `channel_followers(channel_id, unfollowed_at)` for follower counts and the owner queue;
+  `channel_followers(user_email, unfollowed_at)` for a user's own list and eligibility;
   `episodes(channel_id, status, published_at)`; `episodes(next_attempt_at)` for recovery;
   `episodes(discovered_by_run_id)`; `episodes(channel_id, processed_at)` for the derived ingestion time;
   `ingestion_runs(channel_id, created_at)`; `episode_ingestion_attempts(video_id, created_at)` and
   `episode_ingestion_attempts(status, started_at)`. No index on open runs: a discovery run exists only once complete.
-- User indexes: `channel_follows(unfollowed_at)` and `chats(updated_at)`. The unique chat/message sequence and
-  message/source position indexes also support ordered reads.
+- User indexes: `chats(updated_at)`. The unique chat/message sequence and message/source position indexes also
+  support ordered reads.
 
 ### 5.4 Migration governance
 
@@ -539,7 +543,8 @@ for real, and until then the enum is the contract.
   2026-09-12, when the owner chose to start over on the schema, the Registry DO's store modules, and the API contract
   for M3 rather than carry deprecated tables, columns, and enum values (`docs/specs/m3-ingestion-plan.md` Step 4);
   `0002_drop_lifecycle_version.sql` of 2026-09-11 was folded into that rewrite and deleted. The Registry lists
-  `0001_init` alone and the User DO's file is unchanged; no rule now prevents a further edit.
+  `0001_init` alone; the User DO's file was edited on 2026-09-13 to drop `channel_follows` (§9). No rule prevents a
+  further edit.
 - Retention: chats, messages, follow tombstones, episodes, summaries, and vectors are all retained. Deletion is soft
   where it exists at all; channels are never deleted.
 
@@ -700,7 +705,7 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | `POST /channels/:id/runs` | anyone; UI: owner | M3. Checks an approved channel's feed now, ignoring pause (409 `INVALID_STATE` for any other status): 200 with the completed discovery run, including nothing new; 502 `UPSTREAM_UNAVAILABLE` when YouTube does not answer, after the `feed unavailable` run is recorded |
 | `GET /channels/:id/followers` | anyone; UI: owner | Emails and follow times of the channel's active followers |
 | `GET /follows` | anyone (own) | Own active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
-| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for a declined one) / retain an unfollow tombstone on a channel in any status; both also write the Registry follower record |
+| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for a declined one) / retain an unfollow tombstone on a channel in any status; the Registry's follower record is the follow |
 | `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt` (M3; publication time until then); default last 24h, clamped to 7 days; marks returned items read and reports `wasUnread` per item |
 | `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats |
 | `GET /chats/:id/messages?limit=50` | anyone (own) | Selected chat history with citation snapshots |
@@ -721,9 +726,9 @@ deletion, and per-channel chats. There is no route that starts a discovery run o
 - Approve, decline, pause, resume, episode retry, and skip are accepted from any identity and offered by the web to
   the owner only; the acting email is recorded; handles and ids with no feed are rejected. Requesters follow at the moment they request, so several followers share one ingestion pipeline and
   nothing is auto-followed later. Adding an existing channel follows the caller and creates nothing; a declined id is
-  409 with the note, and requesting again makes it requested and follows the caller. A failure between the User DO
-  write and the Registry follower record is corrected by the next follow or unfollow of that pair and never reverses
-  an explicit unfollow; `followerCount` matches the Registry follower record.
+  409 with the note, and requesting again makes it requested and follows the caller. A follow is one Registry write, so
+  `following`, `followerCount`, the owner's follower list, and eligibility always agree; there is no second store to
+  drift.
 - Initial discovery selects five episodes by default and runs once, at the first approval, whether or not anyone
   follows yet; later approvals start none and leave `approved_at` alone. The first-approval discovery ignores pause
   while later discovery skips paused channels; the first scheduled discovery after approval imports nothing published
@@ -772,6 +777,14 @@ deletion, and per-channel chats. There is no route that starts a discovery run o
 
 ## 9. Decisions and retention
 
+- **Follows have one owner — decided 2026-09-13.** The Registry's `channel_followers` is the only record of follows;
+  the User DO's `channel_follows` table is dropped (its `0001` edited in place, local state wiped). Since 2026-09-10
+  every follow was written twice, User DO first, with the promise that a failed second write would be corrected by
+  the next write of the same pair. That left two silent failure modes, a followed channel that stays system-paused
+  and never discovers, and a phantom follower that keeps a channel discovering for nobody, with nothing detecting
+  either. The copy bought nothing: both rows carried the same two timestamps, follows were already Registry data by
+  design, and every Home load already goes through the Registry. Eligibility becomes one SQL join there. Read
+  receipts, chats, and preferences stay private to the User DO. Spec: `docs/specs/follows-single-owner.md`.
 - **Channel state simplification — decided 2026-09-10** (`docs/specs/channel-simplification.md`). A channel is an
   approval container with three statuses, `requested`, `approved`, and `declined`, and carries no import outcome.
   Anyone adds a channel by pasting its id, which also follows it; the owner approves or declines. Declining is the one

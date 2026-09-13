@@ -432,11 +432,10 @@ attempt ledger on the rewritten schema, which has no run-episode table.
 
 ### 9.3 What the DOs cannot tell us, and what we show instead
 
-- **Follower counts** are real since 2026-09-10. Follows still live in each User DO, but every follow write
-  also records the follower in the Registry's `channel_followers` table: the route writes the User DO first,
-  then the Registry, so a Registry failure leaves the user's own view correct and the count at worst one low
-  until the next follow or unfollow. The Registry uses the same record to pause a channel nobody follows. The
-  2026-09-07 substitute, a requester count from `channel_requests`, is gone with that table.
+- **Follower counts** are real since 2026-09-10, and since 2026-09-13 the Registry's `channel_followers` is the
+  only record of follows (`docs/specs/follows-single-owner.md`), so the user's own list, the count, the owner's
+  queue, the automatic pause, and eligibility read one table and cannot disagree. The 2026-09-07 substitute, a
+  requester count from `channel_requests`, is gone with that table.
 - **Read and chat activity.** Private to User DOs by design (`AGENTS.md`: never expose another user's
   private DO data). The owner view never shows who has read what.
 - **Whether ingestion is enabled.** The Registry does not know that the Workflow is not yet deployed.
@@ -495,8 +494,8 @@ owner queue, and the approve form all show a name rather than an opaque id.
   with `status: "declined"`, its note, and `approvedAt` (null for "Declined", set for "Withdrawn"); `GET /digest`
   and unread counts exclude it. Re-approval makes it eligible again with no user action. Explicit unfollow
   stays unfollowed.
-- **Follow writes go User DO first, then Registry.** The user's own list is the source of truth for what they
-  follow; the Registry's follower record drives counts and the automatic pause.
+- **A follow is one Registry write** (2026-09-13; it was User DO first, then Registry, until then). The same row
+  is the user's own list, the count, and the automatic pause.
 - **Read marking is a side effect of reading.** Every Home load marks the returned digest items read, per
   `AGENTS.md`. The NEW marker and the load order in §6.3 make that visible and consistent.
 - **The owner is a normal reader.** Owner-only data comes only from owner-checked operations and the

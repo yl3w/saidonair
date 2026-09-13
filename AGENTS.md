@@ -57,7 +57,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 ├── .cursor/rules/            # pointer to AGENTS.md
 ├── docs/PRD.md               # canonical product specification
 ├── docs/specs/               # design reasoning and plans behind the PRD, each with its -plan.md: home-read-experience,
-│                             # api-reference, m3-ingestion, channel-simplification
+│                             # api-reference, m3-ingestion, channel-simplification, follows-single-owner
 ├── package.json              # workspace root: volta.node, packageManager, turbo scripts
 ├── pnpm-workspace.yaml
 ├── .npmrc                    # engine-strict=true
@@ -73,14 +73,14 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, chat, ...);
 │   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page
 │   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
-│   │   │   ├── do/registry/          # Registry store modules: users, channels, followers, episodes, runs, attempts (read side), catalog, types
+│   │   │   ├── do/registry/          # Registry store modules: users, channels, followers (the one record of follows, and
+│   │   │   │                         # the one implementation of eligibility), episodes, runs, attempts (read side), catalog, types
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
 │   │   │   ├── do/user.ts            # Per-user Durable Object (RPC facade)
-│   │   │   ├── do/user/              # User store modules: follows, reads, chats, preferences, types
+│   │   │   ├── do/user/              # User store modules: reads, chats, preferences, types (follows live in the Registry)
 │   │   │   ├── workflows/ingest.ts   # per-episode ingestion Workflow: one instance per episode attempt
 │   │   │   ├── lib/youtube/          # ids.ts (id validation, /channel/UC… extraction), rss.ts (feed verification,
 │   │   │   │                         # title, episodes); nothing else in the codebase talks to YouTube
-│   │   │   ├── lib/eligibility.ts    # the one implementation of active follows ∩ approved channels
 │   │   │   ├── lib/channel-view.ts   # the one projection from the Registry channel onto the shared Channel (+ management)
 │   │   │   ├── lib/episode-view.ts   # the one projection from the Registry episode onto the shared Episode
 │   │   │   ├── lib/validation.ts     # validate(target, schema): hono-openapi validator with the INVALID_INPUT 400 contract
@@ -228,10 +228,12 @@ frozen-file rule since 2026-09-12; retention) are `docs/PRD.md` §5. In code:
   `do/registry/` and `do/user/`. Enforce local foreign keys and transactions there. Cross-DO references are validated
   through DO methods, never SQL joins.
 - `createChannel` in the Registry is create-only (`db26c74`); the route handles an existing id by following it
-  (PRD §4.1). `recordFollow` and `recordUnfollow` own the Registry follower record and the automatic pause, counting
-  followers inside the same call (PRD §4.3).
+  (PRD §4.1). The Registry's `channel_followers` is the only record of follows (PRD §4.3, decided 2026-09-13):
+  `recordFollow` and `recordUnfollow` own it and the automatic pause, counting followers inside the same call, and
+  `followers.ts` also answers a user's own list and eligibility (active follows ∩ approved). The User DO holds no
+  follow rows.
 - `lib/channel-view.ts` and `lib/episode-view.ts` are the only projections from Registry rows onto the shared
-  `Channel` and `Episode` types; `lib/eligibility.ts` is the only implementation of eligibility.
+  `Channel` and `Episode` types; `do/registry/followers.ts` `listEligible` is the only implementation of eligibility.
 - Never log transcript text or chat content, and never copy shared episodes or summaries into a User DO.
 
 ## Ingestion implementation

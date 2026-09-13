@@ -132,6 +132,10 @@ Rules:
 
 ### 3.2 Follows and followers
 
+**Superseded 2026-09-13** (`docs/specs/follows-single-owner.md`, PRD §9): follows now live only in the Registry's
+`channel_followers`; the User DO's `channel_follows` table and the two-write rule below are gone. The follower
+record, the automatic pause, and the eligibility definition stand.
+
 Follows stay in the User DO (`channel_follows`), reduced to what they are: the channel id, when the follow started,
 and when it ended. The `origin` and `origin_request_id` columns go with the automatic follow (§6). The Registry gains
 `channel_followers`: one row per channel and email with `followed_at` and nullable `unfollowed_at`. It exists so the
@@ -471,6 +475,9 @@ CREATE TABLE ingestion_run_episodes (
 ```
 
 ### 6.2 `apps/api/migrations/user/0001_init.sql`, the one table that changes
+
+_Superseded 2026-09-13: `channel_follows` is dropped from the User DO altogether (`docs/specs/follows-single-owner.md`); the
+listing below is the 2026-09-10 shape, kept as history._
 
 ```sql
 -- Follow state. A retained row with unfollowed_at set records the unfollow; an active follow is
