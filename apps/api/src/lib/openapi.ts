@@ -33,10 +33,15 @@ export function jsonResponse(
 /**
  * The error responses an operation can produce. 400 is always possible: the header may be missing
  * or the input invalid. Owner-only operations add 403; lookups add 404; state rules add 409 with
- * the rule spelled out.
+ * the rule spelled out; operations that call YouTube add 502.
  */
 export function errorResponses(
-  options: { owner?: boolean; notFound?: boolean; conflict?: string } = {},
+  options: {
+    owner?: boolean;
+    notFound?: boolean;
+    conflict?: string;
+    upstream?: boolean;
+  } = {},
 ): Responses {
   const responses: Responses = {
     400: jsonResponse(
@@ -62,24 +67,33 @@ export function errorResponses(
       `${options.conflict} (\`INVALID_STATE\`).`,
     );
   }
+  if (options.upstream) {
+    responses[502] = jsonResponse(
+      ErrorResponseSchema,
+      "YouTube did not answer usably (`UPSTREAM_UNAVAILABLE`).",
+    );
+  }
   return responses;
 }
 
 const documentation: GenerateSpecOptions["documentation"] = {
   openapi: "3.1.0",
   info: {
-    title: "Media Digest API",
+    title: "Said on Air API",
     version: pkg.version,
     description: [
-      "A personal, multi-user tool with an owner-managed catalog of YouTube channels. Each episode",
-      "is summarized once and shared; follows, read receipts, and chats are per user.",
+      "Said on Air is a personal tool for a small, trusted set of users: what was said on the air, in",
+      "text, with the minute it was said. One shared catalog of YouTube channels, added by anyone and",
+      "approved by the owner; each episode is transcribed, summarized, and vectorized once and shared,",
+      "while follows, read receipts, and chats stay per user.",
       "",
       "**Identity, not authentication.** Every request except `/health`, `/openapi.json`, and `/docs`",
-      "carries `X-User-Email`. Unknown emails are registered on first use. The owner is whoever holds",
-      "the `owner` role; owner-only operations answer 403 to everyone else.",
+      "carries `X-User-Email`, trimmed and lowercased. Unknown emails are registered on first use.",
+      "`GET /me` reports the caller's role so the web can decide what to offer.",
       "",
-      "**Entities, not roles.** The owner receives the same representations as everyone plus a",
-      "`management` block on channels, and `?scope=all` widens a collection to everything the system holds.",
+      "**Entities, not roles.** Resources are the system's nouns: channels, episodes, runs, follows, the",
+      "digest, the catalog. `?scope=all` widens a collection to everything the system holds, and a",
+      "channel's `management` block carries the fields the owner screens show.",
     ].join("\n"),
   },
   tags: [
@@ -100,8 +114,9 @@ const documentation: GenerateSpecOptions["documentation"] = {
         "Episodes of a channel. Followers and the owner receive the shared summaries.",
     },
     {
-      name: "ingestion-runs",
-      description: "Per-channel ingestion history (owner).",
+      name: "runs",
+      description:
+        "A channel's RSS discovery runs: when its feed was checked and what was found (owner).",
     },
     { name: "follows", description: "The caller's follows." },
     {

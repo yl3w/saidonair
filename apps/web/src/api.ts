@@ -144,10 +144,7 @@ export const api = {
       `/channels/${enc(channelId)}/episodes/${enc(videoId)}/skip`,
     ),
   listIngestionRuns: (channelId: string) =>
-    request<IngestionRunsResponse>(
-      "GET",
-      `/channels/${enc(channelId)}/ingestion-runs`,
-    ),
+    request<IngestionRunsResponse>("GET", `/channels/${enc(channelId)}/runs`),
   listFollowers: (channelId: string) =>
     request<FollowersResponse>("GET", `/channels/${enc(channelId)}/followers`),
 

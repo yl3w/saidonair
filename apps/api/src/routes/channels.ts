@@ -115,7 +115,7 @@ export const channelRoutes = new Hono<AppEnv>()
           ChannelResponseSchema,
           "The existing channel, now followed by the caller; the owner also receives `management`.",
         ),
-        ...errorResponses(),
+        ...errorResponses({ upstream: true }),
         409: jsonResponse(
           ChannelDeclinedResponseSchema,
           "The channel was declined by the owner (`INVALID_STATE`); request it again.",
@@ -493,11 +493,12 @@ export const channelRoutes = new Hono<AppEnv>()
   )
 
   .get(
-    "/:id/ingestion-runs",
+    "/:id/runs",
     describeRoute({
-      tags: ["ingestion-runs"],
-      summary: "List a channel's ingestion runs (owner)",
-      description: "Runs newest first, each with its per-episode outcomes.",
+      tags: ["runs"],
+      summary: "List a channel's discovery runs (owner)",
+      description:
+        "RSS discovery runs newest first. Renamed from `ingestion-runs` on 2026-09-12.",
       responses: {
         200: jsonResponse(IngestionRunsResponseSchema, "Runs, newest first."),
         ...errorResponses({ owner: true, notFound: true }),

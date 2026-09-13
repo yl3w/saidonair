@@ -17,7 +17,7 @@ export const docsPage = Scalar<AppEnv>({
   cdn: SCALAR_CDN,
   // Empty on purpose: the default would route try-it requests through proxy.scalar.com.
   proxyUrl: "",
-  pageTitle: "Media Digest API",
+  pageTitle: "Said on Air API",
   // The email is an identity, not a secret; keeping it across reloads is the point.
   persistAuth: true,
   hideClientButton: true,

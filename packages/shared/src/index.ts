@@ -479,12 +479,12 @@ export const IngestionRunSchema = z
   .meta({ id: "IngestionRun", description: "One ingestion run of a channel." });
 export type IngestionRun = z.infer<typeof IngestionRunSchema>;
 
-/** `GET /channels/:id/ingestion-runs` (owner) — newest first. */
+/** `GET /channels/:id/runs` (owner) — newest first. */
 export const IngestionRunsResponseSchema = z
   .object({ runs: z.array(IngestionRunSchema) })
   .meta({
     id: "IngestionRunsResponse",
-    description: "`GET /channels/:id/ingestion-runs` (owner) — newest first.",
+    description: "`GET /channels/:id/runs` (owner) — newest first.",
   });
 export type IngestionRunsResponse = z.infer<typeof IngestionRunsResponseSchema>;
 

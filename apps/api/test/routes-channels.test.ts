@@ -93,7 +93,7 @@ describe("channel and catalog routes", () => {
     const ownerOnly: [string, string, unknown?][] = [
       ["GET", "/catalog"],
       ["GET", "/channels?scope=all"],
-      ["GET", `/channels/${CHANNEL_A}/ingestion-runs`],
+      ["GET", `/channels/${CHANNEL_A}/runs`],
       ["GET", `/channels/${CHANNEL_A}/followers`],
       ["POST", `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`],
       ["POST", `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/skip`],
@@ -427,11 +427,7 @@ describe("channel and catalog routes", () => {
       finishedAt: 5,
     });
 
-    const runs = await call(
-      OWNER,
-      "GET",
-      `/channels/${CHANNEL_A}/ingestion-runs`,
-    );
+    const runs = await call(OWNER, "GET", `/channels/${CHANNEL_A}/runs`);
     expectShape(IngestionRunsResponseSchema, runs.json);
     expect(runs.status).toBe(200);
     expect(runs.json.runs).toEqual([
@@ -442,8 +438,7 @@ describe("channel and catalog routes", () => {
       }),
     ]);
     expect(
-      (await call(OWNER, "GET", `/channels/${CHANNEL_D}/ingestion-runs`))
-        .status,
+      (await call(OWNER, "GET", `/channels/${CHANNEL_D}/runs`)).status,
     ).toBe(404);
   });
 
