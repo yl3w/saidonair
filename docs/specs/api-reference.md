@@ -2,8 +2,10 @@
 
 **Written:** 2026-09-07, against commit `82a4557`. **Rewritten:** 2026-09-12, against PRD v4 (Said on Air) as revised
 that day (working copy after `a94921d`), as a new implementation of the contract the document describes.
-**Status:** approved by the owner on 2026-09-12; the plan was restructured the same day to depend on nothing in M3
-(§8). Implementation not started. Plan: `docs/specs/api-reference-plan.md`.
+**Status:** complete 2026-09-12. Approved by the owner that day, restructured to depend on nothing in M3 (§8), and
+implemented in five commits on `main` (`201ee3e`, `11c74ef`, `22c01ca`, `4871782`, and the documentation commit);
+`pnpm check` green after each (122 tests at the end). The `curl` legs of §10 are recorded in the plan; the browser
+leg is the owner's. Plan: `docs/specs/api-reference-plan.md`.
 **History:** the 2026-09-07 version was implemented and merged (`db4777f` … `1e31974`; its `curl` walkthrough is in
 `0215d54`). Its mechanism — Zod schemas in `packages/shared`, `hono-openapi`, Scalar at `GET /docs` — is on `main` and
 is kept. Its contract described a route table that no longer exists (channel requests, channel restore and retry, per-run

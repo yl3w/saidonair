@@ -3,8 +3,12 @@
 **Implements:** `docs/specs/api-reference.md` (rewritten 2026-09-12) under the rules in `AGENTS.md`.
 **Written:** 2026-09-12, against the PRD working copy after `a94921d`. Supersedes the 2026-09-07 plan, which completed in five commits
 (`db4777f` … `1e31974`); its `curl` walkthrough is preserved in `0215d54`.
-**Status:** approved by the owner on 2026-09-12; restructured the same day, at the owner's request, to depend on nothing
-in `m3-ingestion-plan.md`. Implementation not started. No new dependencies.
+**Status:** complete 2026-09-12, five commits on `main` (`201ee3e` Step 1, `11c74ef` Step 2, `22c01ca` Step 3,
+`4871782` Step 4, then this documentation commit), `pnpm check` green after each (95, 106, 117, 122 tests). No new
+dependencies. Two facts learned on the way: DownSub's status body wraps the credits in a `data` envelope
+(`{ status, data: { remainingCredits, … } }`), which the 2026-09-08 probe notes had dropped, so `status.ts` reads
+`data.remainingCredits`; and every episode row must name a run, so `seedEpisode` shares one seed run per channel at
+t=0, which means a channel with seeded episodes is never "never started" in a test.
 **Shape:** five steps, each one commit ending with `pnpm check` green, in order. Steps 1 to 3 are small and independent
 of each other. Step 4 is one large commit: the Registry schema rewrite, its read model, and the restated contract are
 one unit because the stores return records typed against the shared module and the old shapes have no source in the
@@ -316,4 +320,26 @@ Each adds its parse assertion (`expectShape`) in its route test and, for M4, its
 
 ## Walkthrough record
 
-_Filled in at Step 5. Until then the 2026-09-07 record in `0215d54` describes the mechanism's last verified state._
+Every leg ran under `wrangler dev` with `--persist-to` pointing at a scratch directory under `apps/api/.wrangler/`
+(`walkthrough/` for Steps 1–3, `walkthrough-step4/` for the fresh-schema run), so the owner's default Durable Object
+state, wiped before Step 1, stayed empty for the rewritten `0001` to run on the next `pnpm dev`. The scratch
+directories can stay or go at the owner's discretion; they hold nothing the app needs.
+
+| Step | Request | Result |
+|---|---|---|
+| 1 | `GET /openapi.json` | `info.title` "Said on Air API"; 8 tags (`catalog`, `channels`, `digest`, `episodes`, `follows`, `health`, `me`, `runs`), every one used; `get /channels/{id}/runs` present and no `ingestion-runs` path; `POST /channels` responses 200, 201, 400, 409, 502; 18 paths |
+| 1 | `GET /docs` | 200 `text/html`, `<title>Said on Air API</title>`, zero occurrences of `proxy.scalar.com` |
+| 2 | `GET /me` (no header) | 400 `{"error":"X-User-Email header is missing or malformed","code":"INVALID_INPUT"}` |
+| 2 | `GET /catalog`, `GET /channels?scope=all` as `alice@example.com` | 200, 200: no role check anywhere |
+| 2 | `GET /openapi.json` | 0 operations document a 403; `ErrorCode` enum is the four codes |
+| 3 | `GET /catalog` with `DOWNSUB_API_KEY` in `.dev.vars` | `transcripts: { remainingCredits: 2143, status: "ok" }`; the live status call answered in about 0.95 s and cost nothing |
+| 3 | `GET /catalog` with `--var DOWNSUB_API_KEY:` (empty) | `transcripts: { remainingCredits: null, status: "unreachable" }` |
+| 4 | first request on fresh state | `registry.migrations_applied` with `versions: ['0001_init']` alone |
+| 4 | `GET /channels`, `/catalog`, `/follows`, `/digest`, `/channels?scope=all` as `alice@example.com` | 200 each on the empty Registry; catalog keys `attention`, `channels`, `episodes`, `lastSuccessfulIngestionAt`, `transcripts`; episodes `{ available: 0, pending: 0, failed: 0, skipped: 0 }` |
+| 4 | `GET /openapi.json` | 29 components, 18 paths; all sixteen of spec §10.3 present, none of §5.11 present; `EpisodeSkipReason` is the four values; `AttemptOutcomeCode` has 15; `EpisodeCounts` has exactly `available`, `pending`, `failed`, `skipped` |
+| 4 | `pnpm build` | `grep -ril zod apps/web/dist` finds nothing |
+
+**Browser leg (owner):** `pnpm dev`, open `http://127.0.0.1:8787/docs`, enter an email in the auth field, run
+`GET /me`, `GET /channels`, and `POST /channels` with `@veritasium` (expect the 400 with "Copy channel ID"); confirm
+the network tab shows requests to `127.0.0.1:8787` only. The four web screens should load against the empty Registry;
+the owner's add box should create a requested channel and approve it in one gesture.

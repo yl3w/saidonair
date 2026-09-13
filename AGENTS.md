@@ -73,7 +73,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, chat, ...);
 │   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page
 │   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
-│   │   │   ├── do/registry/          # Registry store modules: users, channels, followers, episodes, runs, catalog, types
+│   │   │   ├── do/registry/          # Registry store modules: users, channels, followers, episodes, runs, attempts (read side), catalog, types
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
 │   │   │   ├── do/user.ts            # Per-user Durable Object (RPC facade)
 │   │   │   ├── do/user/              # User store modules: follows, reads, chats, preferences, types
@@ -88,7 +88,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── lib/cors.ts           # browser origins allowed to call the API, from vars.WEB_ORIGINS
 │   │   │   ├── lib/ingestion.ts      # independent discovery and episode-attempt start points (log-only until M3)
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
-│   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC
+│   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC; codes are the shared ErrorCode enum
 │   │   │   ├── lib/sql.ts            # bound-parameter chunking for DO SQLite
 │   │   │   ├── lib/chunk.ts          # transcript chunking (pure)
 │   │   │   ├── lib/ai.ts             # Workers AI wrappers: embed, summarize, chat
@@ -99,7 +99,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   │                         # credits and key status, cached; serves GET /catalog and M3 pre-flight)
 │   │   │   └── prompts/              # prompt templates as .ts exporting functions; summary.ts carries prompt_version
 │   │   ├── migrations/               # DO SQLite migrations: registry/ and user/ (see Data & schema)
-│   │   ├── test/                     # setup.ts wipes the Registry after each test; helpers.ts expectShape
+│   │   ├── test/                     # setup.ts wipes the Registry after each test; helpers.ts expectShape and the seed
+│   │   │                             # fixtures (channels, runs, episodes naming a run, attempts, summaries)
 │   │   ├── .dev.vars.example         # copy to .dev.vars (gitignored) for OWNER_EMAIL and DOWNSUB_API_KEY
 │   │   ├── wrangler.jsonc
 │   │   └── vitest.config.ts
@@ -118,7 +119,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │       └── vite.config.ts
 └── packages/
     └── shared/               # Zod schemas for every API request/response shape (XSchema) and the types inferred
-                              # from them (X); api validates and documents with the schemas, web imports the types only
+                              # from them (X); api validates and documents with the schemas, web imports the types only.
+                              # Sections follow docs/specs/api-reference.md §5; no legacy member of the 2026-09-12 restart
 ```
 
 If a file doesn't exist yet, create it at the path above rather than inventing a new location.
@@ -303,8 +305,13 @@ contract". In code:
 - Every handler carries `describeRoute` (one entity tag, a summary, the success schema, and the error responses it
   can produce via `lib/openapi.ts`) and validates body, query, and params with `validate(...)` from
   `lib/validation.ts` against the `packages/shared` schemas. `GET /openapi.json` is generated from those at request
-  time; `test/openapi.test.ts` fails when a registered route is missing from it.
-- Optional text fields use the shared `optionalText` helper, which rejects blanks as `INVALID_INPUT`.
+  time; `test/openapi.test.ts` fails when a registered route is missing from it, when a route is not in its literal
+  operation list, when a declared tag has no operation, or when a member removed by the 2026-09-12 restart reappears
+  (`docs/specs/api-reference.md` §5.11). The document's title follows the product name (PRD §9).
+- `lib/errors.ts` infers `DomainErrorCode` from the shared `ErrorCodeSchema`; to add a code, add it there, and to
+  `middleware/errors.ts`'s status table.
+- Optional text fields use the shared `optionalText` helper, which rejects blanks as `INVALID_INPUT`. Every 400 the API
+  produces, the missing-header one included, is `{ error, code: "INVALID_INPUT" }`.
 - Throw `DomainError` (`lib/errors.ts`) in `do/` and `lib/`; `middleware/errors.ts` maps codes to HTTP and also turns
   Hono's malformed-JSON error into 400. Codes survive the RPC boundary as the message prefix; recover them with
   `domainErrorCode`.
@@ -350,7 +357,7 @@ Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`; bind
   lifecycle, every mutation accepted from any identity, pure functions (chunking edge cases, RSS parsing, channel URL resolution, summary
   JSON validation), migrations (a fresh DO runs them idempotently; the check constraints reject what they should), and
   the API document (`test/openapi.test.ts`; each route test parses one response per shared schema with `expectShape`
-  from `test/helpers.ts`). Add or extend tests whenever a route or data path is introduced.
+  from `test/helpers.ts`; `test/validation.test.ts` pins the 400 contract in one place). Add or extend tests whenever a route or data path is introduced.
 - Tests are focused, not exhaustive. Don't write tests for Hono plumbing, Preact components, or Workflow step
   ordering.
 
