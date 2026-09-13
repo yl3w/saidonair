@@ -4,6 +4,13 @@ declare namespace Cloudflare {
   interface Env {
     REGISTRY_DO: DurableObjectNamespace<import("./do/registry").RegistryDO>;
     USER_DO: DurableObjectNamespace<import("./do/user").UserDO>;
+    /** Workers AI, `remote: true` in every environment; `lib/ai.ts` is the only caller. */
+    AI: Ai;
+    /**
+     * The Vectorize index of this environment (`media-rag`, `-staging`, `-dev`), `remote: true`;
+     * `lib/vectorize.ts` is the only caller and enforces the `shared-catalog` namespace (hard rule 3).
+     */
+    VECTORS: Vectorize;
     /**
      * Secret, never a `vars` entry. Normalized and seeded as the `owner` role each time the
      * Registry DO starts; absent or malformed means no owner is seeded (logged as a warning).
@@ -35,5 +42,16 @@ declare namespace Cloudflare {
      * set in `.dev.vars` or deployed.
      */
     TRANSCRIPTS_FAKE?: string;
+    /**
+     * Test only (vitest.config.ts): JSON options for the deterministic Workers AI fake in
+     * `lib/ai.ts` (`{}` for defaults). Never set in `.dev.vars` or deployed.
+     */
+    AI_FAKE?: string;
+    /**
+     * Test only (vitest.config.ts): JSON options for the in-memory vector store in
+     * `lib/vectorize.ts` (`{ visibilityDelayReads?, throwOn? }`; `{}` for defaults). Never set in
+     * `.dev.vars` or deployed.
+     */
+    VECTORIZE_FAKE?: string;
   }
 }

@@ -97,8 +97,10 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC; codes are the shared ErrorCode enum
 │   │   │   ├── lib/sql.ts            # bound-parameter chunking for DO SQLite
 │   │   │   ├── lib/chunk.ts          # transcript chunking (pure)
-│   │   │   ├── lib/ai.ts             # Workers AI wrappers: embed, summarize, chat
-│   │   │   ├── lib/vectorize.ts      # namespaced upsert/query/getByIds/delete helpers
+│   │   │   ├── lib/ai.ts             # Workers AI wrappers: embed, summarize (map and reduce), later chat; AI_FAKE in tests
+│   │   │   ├── lib/summary.ts        # pure: [h:mm:ss] transcript formatting, 45-minute sections, summary JSON validation
+│   │   │   ├── lib/vectorize.ts      # the namespaced vector store (upsert/getByIds/query/deleteByIds), generation ids,
+│   │   │   │                         # hard rule 3 in code; VECTORIZE_FAKE in tests
 │   │   │   ├── lib/workflows.ts      # ingestLauncher(env): the one path to INGEST_WORKFLOW (create, status); WORKFLOW_FAKE in tests
 │   │   │   ├── lib/transcripts/      # index.ts transcriptSource(env): fake | downsub; downsub.ts adapter; vtt.ts cue
 │   │   │   │                         # parser; types.ts (TranscriptSource, TranscriptError); status.ts (DownSub /status:

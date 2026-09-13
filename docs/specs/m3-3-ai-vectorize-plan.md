@@ -4,7 +4,9 @@
 `docs/specs/m3-ingestion-plan.md`. Carries Step 5 of the 2026-09-12 plan except the Workflow binding (M3.5) and the
 retrieval generation-check test (M4).
 **Written:** 2026-09-13, against `main` at `e37181c`.
-**Status:** approved; not started. No new dependencies.
+**Status:** complete 2026-09-13 in the working tree on `main` (uncommitted until the owner asks): the four steps
+landed together, `pnpm check` green with 31 test files and 242 tests (28 and 207 before), the probe run and removed.
+No new dependencies.
 **Shape:** three code steps and one probe step, each ending with `pnpm check` green and one commit when the owner
 asks. Steps 1 to 3 are independent of each other. Decisions this plan makes are marked **plan decision** and stand
 unless vetoed.
@@ -73,4 +75,30 @@ would).
 
 ## Walkthrough record
 
-_Filled in during Step 4._
+Run on 2026-09-13 against the working tree after `afb2b02`, under `wrangler dev --env dev` (so `media-rag-dev` and
+the account's Workers AI through the dev environment's `remote: true` bindings; the log showed both as `remote` and
+`⎔ Establishing remote connection...`). Two temporary routes, deleted afterwards; `index.ts` is back at its committed
+content.
+
+| Leg | Observation |
+|---|---|
+| `embed` of one sentence | 768 dimensions in 427 ms; first values `0.0228, 0.0047, 0.0003`. |
+| `upsert` of one probe vector (`probe000001:probe-gen:0`, namespace `shared-catalog`, full `ChunkMetadata`) | Accepted in 1.1 s with a mutation id. `getByIds` then saw nothing for 20 reads over 23 s, so the probe's `deleteByIds` correctly deleted nothing. `wrangler vectorize info` later showed the mutation processed at 18:02:34 UTC, about 80 s after the upsert, and `get-vectors` returned the vector **with its `namespace` field and metadata**, so the ownership filter in `getByIds` is sound. A second vector inserted through the CLI at 18:04:0x was processed at 18:04:14, about 10 s later. Visibility latency on this fresh index was 10–80 s, not the "few seconds" the docs give; M3.5's verify step (eight retries, exponential from 5 s, about 21 minutes in total) absorbs that with room. |
+| cleanup route: `getByIds` → `query` → `deleteByIds` → `getByIds` | Both probe vectors present on the first read; `query` with the channel filter and the second vector's own values ranked it first at 0.999999 and the other at 0.032, both with metadata intact; `deleteByIds` confirmed both and deleted them in 1.0 s; `getByIds` reported them gone after 19 reads, 21 s. `info` still counted 2 a few seconds later: the delete mutation is asynchronous too. |
+| `summarizeSection` of the ten-minute English fixture (one section of 12 chunks, prompt 12,552 characters) | 9.2 s; the model answered fenced JSON (```` ```json ```` … ```` ``` ````) of 1,070 characters, three sentences, five takeaways, four tags; `parseSummary(raw, 600)` accepted it. Every takeaway carried `[0:00:00]`: the fixture repeats ten sentences, so the model chose the first marker for all; the tags came back lower-case already, one as a joined word (`softwaredevelopment`). |
+
+Decisions made while implementing (plan decisions, stand unless vetoed):
+
+- Batch constants: `UPSERT_BATCH = 200` (the binding allows 1000; a chunk's metadata is a few KiB, so 200 keeps a
+  request small), `GET_BY_IDS_BATCH = 20`, `DELETE_BATCH = 1000`, `QUERY_TOP_K_MAX = 50` (the documented cap when
+  metadata is returned). The limits page (read 2026-09-13) does not state a `getByIds` or `deleteByIds` ceiling.
+- The fake is a stub `Vectorize` behind `realStore`, so the namespace filter, the id-ownership check, and the
+  batching run the same code in tests as in production; `throwOn` was added to the fake's options for M3.5's
+  failure paths; `fakeVectorIds()` is exported for assertions.
+- `upsert` refuses a record whose id does not parse as `${videoId}:${generationId}:${index}` or whose metadata names
+  a different video: nothing but our own ids is ever written.
+- `embed` also refuses an empty batch; a vector with a non-finite value is `EMBEDDING_FAILED`.
+- The fake summarizer's takeaways reuse the first three `[h:mm:ss]` markers of the prompt, so M3.5's tests get
+  `startSec` values that map back to real chunk times; `resetAiFake()` clears its once-only memory.
+- `countSentences` treats a run of terminal punctuation as one boundary, so "Ends with dots..." is one sentence.
+- Vectorize's `query` is called with `returnValues: false` and `returnMetadata: "all"`.

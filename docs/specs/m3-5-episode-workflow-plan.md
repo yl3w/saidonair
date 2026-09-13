@@ -35,11 +35,14 @@ reset between tests.
 - 2.1 `classify` per spec §2, pure.
 - 2.2 `ingestAttempt(step, env, params)` per spec §3.4; `StepLike = { do<T>(name, options, fn): Promise<T>;
   sleep(name, duration) }`. Each step's retry and timeout options as spec §2 lists; the option objects are exported
-  constants.
+  constants. The verify step's schedule is two phases (constant 10 s, then exponential), which Workflows' single
+  retry policy per `step.do` does not express directly: **plan decision:** verify is a loop of `step.do` calls, one
+  per check, each named `verify:<n>` with no retries of its own, sleeping between them with `step.sleep`, so a replay
+  resumes at the check it reached and the count of missing ids is the only value that crosses each boundary.
 - 2.3 The sections: `sectionize` over the chunks; `formatTranscript` per section; `parseSummary` with `durationSec`
   from the transcript's last segment when the provider gave none.
-- 2.4 The related step: centroid from the per-batch sums, `query(topK: 20)`, dedupe by `videoId` excluding the
-  episode's own, candidates to `completeAttempt`.
+- 2.4 The related step: centroid from the per-batch sums, `query(topK: 50)` (spec §2 "Related query width"), dedupe
+  by `videoId` excluding the episode's own, candidates to `completeAttempt`.
 - 2.5 **Plan decision:** the test step runner (`test/fake-step.ts`) runs `do` inline, honours `retries.limit` by
   re-invoking the callback on a throw, and records step names, so a test can assert which steps ran and how often.
   When M3.1 Step 0.1 found the pool runs Workflows, one additional test creates a real instance through the binding

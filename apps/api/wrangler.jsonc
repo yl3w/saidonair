@@ -16,6 +16,10 @@
     // TODO(owner): WEB_ORIGINS for the deployed staging web (the Pages preview origin) once it exists. Unset, CORS
     // allows only the local Vite origins (lib/cors.ts), which is enough to drive staging from a local web.
   },
+  "ai": { "binding": "AI", "remote": true },
+  "vectorize": [
+    { "binding": "VECTORS", "index_name": "media-rag-staging", "remote": true }
+  ],
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "durable_objects": {
     "bindings": [
@@ -34,6 +38,10 @@
       "vars": {
         "WEB_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173"
       },
+      "ai": { "binding": "AI", "remote": true },
+      "vectorize": [
+        { "binding": "VECTORS", "index_name": "media-rag-dev", "remote": true }
+      ],
       "durable_objects": {
         "bindings": [
           { "name": "REGISTRY_DO", "class_name": "RegistryDO" },
@@ -46,6 +54,10 @@
       "vars": {
         // TODO(owner): WEB_ORIGINS for the production web (the Pages production origin) before the first deploy.
       },
+      "ai": { "binding": "AI", "remote": true },
+      "vectorize": [
+        { "binding": "VECTORS", "index_name": "media-rag", "remote": true }
+      ],
       "durable_objects": {
         "bindings": [
           { "name": "REGISTRY_DO", "class_name": "RegistryDO" },

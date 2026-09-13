@@ -10,7 +10,8 @@ preserved in git history at `a94921d` and `16949b3`.
 on the account, that the pool runs Workflows, that `remoteBindings: false` keeps tests offline, and that test-side
 `env` assignments reach `SELF`); M3.2 complete the same day (`620fe88`). Also 2026-09-13: three Wrangler environments
 (`AGENTS.md` → Environments), so M3.3 and M3.5 declare their bindings per environment with tier-named resources, and
-the crons of M3.4 and M3.6 go into `env.production` only. No new dependencies anywhere in M3.
+the crons of M3.4 and M3.6 go into `env.production` only. M3.3 implemented later that day, awaiting commit; its
+probe measured 10–80 s before a Vectorize write is readable on a fresh index. No new dependencies anywhere in M3.
 
 `docs/specs/m3-ingestion.md` stays the one decision record for M3. A child spec adds only the decisions its chunk
 needs, names the parent §2 rows it implements, and never restates them. Where a child and the parent disagree, the
@@ -22,7 +23,7 @@ parent governs and the child is the one to fix; where the parent and PRD disagre
 |---|---|---|---|---|---|---|
 | M3.1 | `m3-1-transcripts-chunking.md`, `-plan.md` | Steps 0, 1, 2 | M | nothing | no | complete 2026-09-13 (`5a73f18`) |
 | M3.2 | `m3-2-attempt-ledger.md`, `-plan.md` | Step 4 (the writes) | L | nothing in M3 (`4871782`) | no | complete 2026-09-13 (`620fe88`) |
-| M3.3 | `m3-3-ai-vectorize.md`, `-plan.md` | Step 5 minus the Workflow binding and the retrieval test | L | M3.1 (`TranscriptChunk`) | no | approved, not started |
+| M3.3 | `m3-3-ai-vectorize.md`, `-plan.md` | Step 5 minus the Workflow binding and the retrieval test | L | M3.1 (`TranscriptChunk`) | no | implemented 2026-09-13, awaiting commit |
 | M3.4 | `m3-4-discovery.md`, `-plan.md` | Step 7 discovery half, Step 8 discovery cron | M | M3.2 | yes: runs and pending episodes | approved, not started |
 | M3.5 | `m3-5-episode-workflow.md`, `-plan.md` | Step 6, Step 7 episode half, Step 5's Workflow binding, the digest basis | L | M3.1–M3.4 | yes: summaries | approved, not started |
 | M3.6 | `m3-6-recovery.md`, `-plan.md` | Step 8 minus discovery cron and the lost-attempt helper | M | M3.5 | yes: six-hourly recovery | approved, not started |

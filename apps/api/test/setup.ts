@@ -6,6 +6,8 @@ import {
 import { env } from "cloudflare:workers";
 import { afterEach } from "vitest";
 import { getRegistry } from "../src/do/registry";
+import { resetAiFake } from "../src/lib/ai";
+import { resetVectorFake } from "../src/lib/vectorize";
 
 // Every test starts from an empty Registry and no User DOs. The pool's `reset()` does not clear this
 // SQLite-backed DO in the pinned version, so wipe it explicitly, then abort the instance so
@@ -21,4 +23,7 @@ afterEach(async () => {
     );
   }
   await abortAllDurableObjects();
+  // The fakes keep module-level state for the isolate; every test starts with an empty store.
+  resetVectorFake();
+  resetAiFake();
 });
