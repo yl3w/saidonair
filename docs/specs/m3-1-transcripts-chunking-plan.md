@@ -3,7 +3,9 @@
 **Implements:** `docs/specs/m3-1-transcripts-chunking.md` under `AGENTS.md`; parent decisions in
 `docs/specs/m3-ingestion.md` §2; roadmap `docs/specs/m3-ingestion-plan.md`.
 **Written:** 2026-09-13, against `main` at `e37181c`.
-**Status:** approved; not started. No new dependencies.
+**Status:** complete 2026-09-13 in the working tree on `main` (uncommitted until the owner asks): Steps 0, 1, and 2
+done, `pnpm check` green with 25 test files, the probe route removed, the scratch files deleted. The one open item is
+the owner's: the `media-rag` index does not exist yet (Step 0.4). No new dependencies.
 **Shape:** one verification step and two code steps, each ending with `pnpm check` green and one commit when the owner
 asks. Steps 1 and 2 are independent of each other. Nothing here touches the Registry, routes, or web. Decisions this
 plan makes are marked **plan decision** and stand unless vetoed.
@@ -79,5 +81,47 @@ Spec §4, all seven criteria.
 
 ## Walkthrough record
 
-_Filled in during implementation: the four Step 0 answers; then the probe observations (state values seen, the live
-and duration field names, the credit balance from `/status` before and after)._
+Run on 2026-09-13 against `main` at `e37181c` with `@cloudflare/vitest-pool-workers` 0.22.0, `wrangler` 4.129.0,
+`miniflare` 5.20260815.0-alpha, the owner's DownSub key (plan `pro`) in `.dev.vars`. Scratch files lived under
+`apps/api/scratch/` and were deleted; nothing of them is in the tree.
+
+### Step 0 answers
+
+| Check | Answer |
+|---|---|
+| 0.1 Workflows in the pool | **Yes.** A scratch `WorkflowEntrypoint` with a `workflows` binding: `create()` answered `status: "running"`, then `"complete"` within a few 250 ms polls; the status object has `status`, `output`, `error`, and `__LOCAL_DEV_STEP_OUTPUTS`; `get("does-not-exist").status()` throws `Error: instance.not_found`. `cloudflare:test` also exports `introspectWorkflowInstance(workflow, id)` and `introspectWorkflow(workflow)` with `modify(m => m.disableSleeps() / mockStepResult / forceStepTimeout)`, `waitForStatus`, `waitForStepResult`, `getOutput`, `getError`, and `dispose`. Noise: miniflare logs `Error: Engine was never started` and a "code had hung" cancellation after the test ends; the test passes. M3.5 can test the real class through the binding, with `disableSleeps()` for the stagger. |
+| 0.2 `remote: true` beside local Durable Objects | **Yes, with a switch.** Any `remote: true` binding makes the pool open a remote proxy session at start (`⎔ Establishing remote connection...`), which needs login and the resource: with Vectorize `media-rag` declared the pool failed to start (`Failed to start the remote proxy session … edge-preview … vectorize/get-started`) because the index does not exist. With AI alone remote, the local DO worked and one real `@cf/baai/bge-base-en-v1.5` call returned shape `[1, 768]`. With `remoteBindings: false` in `cloudflarePool({ wrangler, … })` the pool starts offline, the DO works, and touching AI throws `Error: Binding AI needs to be run remotely`. **M3.3 sets `remoteBindings: false` in `vitest.config.ts`** and keeps `remote: true` in `wrangler.jsonc` for `wrangler dev`; the fakes cover tests. |
+| 0.3 `env` assignment under `SELF` | **Visible.** `env.WEB_ORIGINS = "http://other.test"` from `cloudflare:test`, then a `SELF` preflight from that origin answered `access-control-allow-origin: http://other.test` (null before the assignment). A route-level test can therefore reassign `env.TRANSCRIPTS_FAKE` for one case; the value persists for the file's isolate, so such a test restores it (M3.5 decides whether `test/setup.ts` does that for everyone). |
+| 0.4 `media-rag` | **Does not exist.** `wrangler vectorize list` (read-only): "You haven't created any indexes on this account." The owner runs the three one-time setup commands of `AGENTS.md` before M3.3 Step 4 and M3.5 Step 5; M3.1, M3.2, and M3.4 need nothing from it. |
+
+### Probe observations (Step 1.6)
+
+Two `subtitles_found` calls cost one credit each (one direct, one through the Worker); every error call and `/status`
+cost nothing. `/status` read `{ status: "success", data: { remainingCredits: 2142, monthlyCredits: 1999, bonusCredits:
+143, expiresAt, plan: "pro" } }` before the probes.
+
+| Video | Direct `curl` | Through the Worker (`transcriptSource(env).fetch`) |
+|---|---|---|
+| `dQw4w9WgXcQ` (captioned) | `state: subtitles_found`, `duration: 213`, tracks by `code`: `en`, `en_auto`, `de-DE` (label `undefined`), more; `formats: [{ format: srt\|vtt\|txt, url }]`; `metadata.isLiveContent: false`, `metadata.availability: { isAvailable, reason, status: "OK", isLiveContent }`; 2.3 s | `english`, 61 segments (the count the InnerTube parse gave on 2026-09-08), first cue 1.36 s, last end 211.32 s, `durationSec: 213`; 2.0 s |
+| `jfKfPfyJRdk` (24/7 live radio) | `state: error`, `duration: 36712`, `title` set, `metadata` with `author`, `channelId`, `publishDate`, `keywords`, `thumbnail` (`…maxresdefault_live.jpg`), **no playability field**, `subtitles: []`; 25.5 s | `isLive: true`, `captionStatus: none`, `durationSec: 36712`; 16.5 s and 29.0 s |
+| `zzzzzzzzzzz` (bogus) | First call: `state: error`, `duration: 0`, `title: ""`, `metadata.playabilityStatus: "ERROR"`, `playabilityReason: "This video is unavailable"`, `isLiveContent: false`. Second and third calls minutes later (and `aaaaaaaaaaa`): `metadata: {}`. 6.7–8.7 s | With the first classifier ("no reason → live") it read `isLive: true`, wrong. With the final rule (§ below) `UNPLAYABLE: This video is unavailable`; 8.5 s |
+| captionless upload | not probed: no fresh captionless video was at hand; `no_subtitles` is known from the 2026-09-08 probe and covered by the fixture and adapter tests. M3.5's walkthrough needs one. | |
+
+The body shape, confirmed: `{ status: "success", data: { state, title, thumbnail, duration (seconds), metadata,
+source, subtitles: [{ language, code, formats }], translatedSubtitles, url? } }`. Live and upcoming carry no explicit
+flag in the error body; duration and title are what distinguish them from a video YouTube does not have.
+
+### Decisions made while implementing (plan decisions, stand unless vetoed)
+
+- **Error classification** (spec §3.3 rows rewritten): live metadata (`isLiveContent`, a `_live.jpg` thumbnail) →
+  waiting; else a `playabilityReason` → `UNPLAYABLE`; else a body that still describes a video (title, positive
+  duration, or `channelId`) → waiting, since that is how a live or upcoming video reads; else `UNPLAYABLE` ("no video
+  metadata"). The provider's inconsistency about the reason made the planned "reason or live" rule unsafe: a bogus id
+  would have waited 48 hours and timed out as `LIVE_OR_UPCOMING`.
+- A network failure on the download request is `PROVIDER_HTTP` with the message (the table had no row for it).
+- The fake's content and its eleven-character video ids live in `test/fixtures/transcripts.ts`, imported by
+  `vitest.config.ts` (Node) and the tests (Workers), so one object defines both.
+- `vtt.ts` also exports `parseTimestamp`; `downsub.ts` exports `chooseTrack`, `watchUrl`, and `DOWNSUB_DOWNLOAD_URL`
+  for their tests.
+- Chunking overlap: one segment when the previous chunk's last segment is longer than 20 s, two otherwise, and the
+  overlap shrinks to whatever still lets the next chunk make progress (never a chunk that adds no new segment).

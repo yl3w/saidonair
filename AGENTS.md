@@ -103,7 +103,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   └── prompts/              # prompt templates as .ts exporting functions; summary.ts carries prompt_version
 │   │   ├── migrations/               # DO SQLite migrations: registry/ and user/ (see Data & schema)
 │   │   ├── test/                     # setup.ts wipes the Registry after each test; helpers.ts expectShape and the seed
-│   │   │                             # fixtures (channels, runs, episodes naming a run, attempts, summaries)
+│   │   │                             # fixtures (channels, runs, episodes naming a run, attempts, summaries);
+│   │   │                             # fixtures/transcripts.ts is the TRANSCRIPTS_FAKE content and its video ids
 │   │   ├── .dev.vars.example         # copy to .dev.vars (gitignored) for OWNER_EMAIL and DOWNSUB_API_KEY
 │   │   ├── wrangler.jsonc
 │   │   └── vitest.config.ts
@@ -278,15 +279,20 @@ export class TranscriptError extends Error { readonly reason: TranscriptFailure 
 // `transcriptFailure(error)` recovers it the way `domainErrorCode` does.
 ```
 
-- `index.ts` exports `transcriptSource(env)`: the test-only `TRANSCRIPTS_FAKE` binding wins (canned complete
-  `TranscriptResult` values or a failure reason per video id, the `YOUTUBE_FEEDS_FAKE` pattern); otherwise the DownSub
-  adapter.
+- `index.ts` exports `transcriptSource(env)`: the test-only `TRANSCRIPTS_FAKE` binding wins (JSON `{ status?, videos }`:
+  the provider's health plus a canned complete `TranscriptResult` or `{ failure }` per video id, built from
+  `test/fixtures/transcripts.ts`, the `YOUTUBE_FEEDS_FAKE` pattern; `status.ts` answers the fake's health too); otherwise
+  the DownSub adapter. With neither the fake nor `DOWNSUB_API_KEY`, `fetch` throws `PROVIDER_AUTH` without calling out.
 - `downsub.ts`: `GET https://api.downsub.com/download?url=https://www.youtube.com/watch?v=<id>` with
   `Authorization: Bearer <DOWNSUB_API_KEY>`. `data.state` is `subtitles_found` (choose a track by its `code`, never its
-  label; GET its VTT; parse cues with `vtt.ts`), `no_subtitles`, or `error` (`metadata.playabilityReason` is the
-  detail, unless live/upcoming metadata says the video is waiting). Discard the `translatedSubtitles` array (most of
-  the ~400 KB body). The adapter never retries; the Workflow step does, with a timeout generous enough for the
-  provider's slow error states (up to a minute).
+  label; GET its VTT; parse cues with `vtt.ts`), `no_subtitles`, or `error`. An `error` is classified from what the
+  body still says (verified 2026-09-13; the provider is inconsistent about `metadata.playabilityReason`, the same
+  bogus id carried it once and an empty `metadata` minutes later): live metadata (`metadata.isLiveContent`, a
+  `_live.jpg` thumbnail) → waiting; else a `playabilityReason` → `UNPLAYABLE` with it as the detail; else a body that
+  still describes a video (title, positive `duration`, or `channelId`) → waiting, since that is how a live or upcoming
+  video reads; else `UNPLAYABLE`. Discard the `translatedSubtitles` array (most of the ~400 KB body). The adapter never
+  retries; the Workflow step does, with a timeout generous enough for the provider's slow error states (up to a
+  minute).
 - Do not reintroduce the InnerTube path (PRD §4.2 rule 19). It survives only on the throwaway branch
   `spike/transcript-remote`.
 
@@ -349,10 +355,15 @@ Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`; bind
 `apps/web` has typecheck and lint only.
 
 - Workers AI, Vectorize, DownSub, Workflows, and YouTube's feed are not available locally. Fakes are selected by
-  test-only env bindings — `AI_FAKE`, `VECTORIZE_FAKE`, `TRANSCRIPTS_FAKE`, `WORKFLOW_FAKE` (answers `active`, `gone`,
-  or `missing` per instance id and can make `create()` throw), `YOUTUBE_FEEDS_FAKE` — set in `vitest.config.ts`. This
-  is the only seam that works end to end: the pinned pool has no `fetchMock`, and `vi.mock` does not reach modules
-  the Worker loads for `SELF` requests. No test reaches the network.
+  test-only env bindings — `AI_FAKE`, `VECTORIZE_FAKE`, `TRANSCRIPTS_FAKE` (transcripts and the provider's health),
+  `WORKFLOW_FAKE` (answers `active`, `gone`, or `missing` per instance id and can make `create()` throw),
+  `YOUTUBE_FEEDS_FAKE` — set in `vitest.config.ts`. This is the only seam that works end to end: the pinned pool has
+  no `fetchMock`, and `vi.mock` does not reach modules the Worker loads for `SELF` requests. No test reaches the
+  network. Verified 2026-09-13 (`docs/specs/m3-1-transcripts-chunking-plan.md` Step 0): a value assigned to `env.X`
+  from `cloudflare:test` is visible to the Worker under `SELF` in the same test, so a route-level test may swap a
+  fake's content for one case; the pool runs Workflows (`introspectWorkflowInstance` in `cloudflare:test`); and a
+  `remote: true` binding makes the pool open a remote proxy session at start unless `remoteBindings: false` is set
+  in `cloudflarePool(...)`, in which case the binding throws `needs to be run remotely` if anything touches it.
 - Don't mock what you can run for real: Durable Object storage and SQLite are real in tests.
 - Every test starts with an empty Registry and no User DOs: `test/setup.ts` wipes each object and aborts the
   instances after every test, because the pinned pool's `reset()` does not clear SQLite-backed Durable Objects.

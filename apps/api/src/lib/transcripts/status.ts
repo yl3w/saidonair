@@ -1,11 +1,13 @@
 import type { TranscriptProviderHealth } from "@media-digest/shared";
+import { fakeProviderHealth } from "./index";
 
 /**
  * The transcript provider's health, from DownSub's status endpoint: remaining credits and whether
  * the key is accepted (docs/specs/api-reference.md §5.8, m3-ingestion.md §2). `GET /catalog` shows it
  * on the health strip; M3's episode pre-flight reads the same wrapper. The call sends nothing but the
  * key, costs no credits, and is cached per isolate so Home never waits on a third party twice in five
- * minutes. It can only ever answer, never throw: a failure of any kind is `unreachable`.
+ * minutes. It can only ever answer, never throw: a failure of any kind is `unreachable`. With the
+ * test-only `TRANSCRIPTS_FAKE` binding set, the fake's `status` answers instead and nothing is fetched.
  */
 
 export const DOWNSUB_STATUS_URL = "https://api.downsub.com/status";
@@ -41,7 +43,10 @@ export function providerHealthReader(deps: ProviderHealthDeps = {}) {
 
   return async function transcriptProviderHealth(env: {
     DOWNSUB_API_KEY?: string;
+    TRANSCRIPTS_FAKE?: string;
   }): Promise<TranscriptProviderHealth> {
+    const fake = fakeProviderHealth(env);
+    if (fake) return fake;
     const key = env.DOWNSUB_API_KEY?.trim();
     // No key configured (tests, a fresh checkout): nothing to ask, and nothing to cache.
     if (!key) return UNREACHABLE;

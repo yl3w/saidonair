@@ -6,7 +6,9 @@ recovery; **2026-09-13** split into seven child specs and plans, each a chunk th
 through on its own. This file is now the roadmap: the order, the dependencies, the status of each chunk, and the
 decisions the split itself made. The step-by-step detail lives in the child plans; the 2026-09-12 single plan is
 preserved in git history at `a94921d` and `16949b3`.
-**Status:** roadmap; runtime implementation has not started. No new dependencies anywhere in M3.
+**Status:** roadmap; M3.1 implemented 2026-09-13 (its Step 0 found that the `media-rag` index does not exist on the
+account, that the pool runs Workflows, that `remoteBindings: false` keeps tests offline, and that test-side `env`
+assignments reach `SELF`). No new dependencies anywhere in M3.
 
 `docs/specs/m3-ingestion.md` stays the one decision record for M3. A child spec adds only the decisions its chunk
 needs, names the parent §2 rows it implements, and never restates them. Where a child and the parent disagree, the
@@ -16,7 +18,7 @@ parent governs and the child is the one to fix; where the parent and PRD disagre
 
 | # | Spec and plan | Carries from the 2026-09-12 plan | Size | Depends on | Product-visible | Status |
 |---|---|---|---|---|---|---|
-| M3.1 | `m3-1-transcripts-chunking.md`, `-plan.md` | Steps 0, 1, 2 | M | nothing | no | approved, not started |
+| M3.1 | `m3-1-transcripts-chunking.md`, `-plan.md` | Steps 0, 1, 2 | M | nothing | no | implemented 2026-09-13, awaiting commit |
 | M3.2 | `m3-2-attempt-ledger.md`, `-plan.md` | Step 4 (the writes) | L | nothing in M3 (`4871782`) | no | approved, not started |
 | M3.3 | `m3-3-ai-vectorize.md`, `-plan.md` | Step 5 minus the Workflow binding and the retrieval test | L | M3.1 (`TranscriptChunk`) | no | approved, not started |
 | M3.4 | `m3-4-discovery.md`, `-plan.md` | Step 7 discovery half, Step 8 discovery cron | M | M3.2 | yes: runs and pending episodes | approved, not started |

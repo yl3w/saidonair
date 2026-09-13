@@ -28,5 +28,12 @@ declare namespace Cloudflare {
      * in `.dev.vars` or deployed.
      */
     YOUTUBE_FEEDS_FAKE?: string;
+    /**
+     * Test only (vitest.config.ts): JSON `{ status?, videos }` of the transcript provider's health
+     * and a canned `TranscriptResult` or `{ failure }` per video id, served by
+     * `lib/transcripts/index.ts` instead of calling DownSub (test/fixtures/transcripts.ts). Never
+     * set in `.dev.vars` or deployed.
+     */
+    TRANSCRIPTS_FAKE?: string;
   }
 }

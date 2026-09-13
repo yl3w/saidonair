@@ -5,8 +5,9 @@
 **Parent:** `docs/specs/m3-ingestion.md` is the decision record for all of M3. This spec adds nothing to its §2 and
 carries only the contract, acceptance criteria, and scope lines this chunk needs. Implements PRD §4.2 rules 19–23 and
 the chunking contract of PRD §6.
-**Status:** approved for implementation with the split of 2026-09-13; not started. Plan:
-`docs/specs/m3-1-transcripts-chunking-plan.md`. No new dependencies.
+**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green; the Step 0 answers
+and the DownSub probe are recorded in `docs/specs/m3-1-transcripts-chunking-plan.md`. §3.3's error rows were rewritten
+from what the probe showed (the plan's walkthrough record explains). No new dependencies.
 
 ## 1. Summary
 
@@ -50,13 +51,16 @@ Mapping (parent §2 "DownSub specifics", PRD rule 22):
 
 | Response | Result |
 |---|---|
+| request throws (network) | throw `PROVIDER_HTTP` with the message |
 | 401 | throw `PROVIDER_AUTH` |
 | 403 | throw `PROVIDER_LIMIT` |
 | 429 | throw `PROVIDER_RATE_LIMIT` |
 | other non-2xx | throw `PROVIDER_HTTP` |
 | body not JSON, or JSON without `data.state` | throw `PROVIDER_PARSE` |
-| `state: error`, live or upcoming metadata | `{ segments: null, durationSec, isLive: true, captionStatus: "none" }` |
-| `state: error` otherwise | throw `UNPLAYABLE` with `metadata.playabilityReason` as detail |
+| `state: error`, live metadata (`metadata.isLiveContent`, a `_live.jpg` thumbnail) | `{ segments: null, durationSec, isLive: true, captionStatus: "none" }` |
+| `state: error` with `metadata.playabilityReason` | throw `UNPLAYABLE` with the reason as detail |
+| `state: error`, no reason, body still describes a video (title, positive `duration`, or `channelId`) | `isLive: true` as above: a live or upcoming video reads this way (verified 2026-09-13) |
+| `state: error`, no reason, no video described | throw `UNPLAYABLE` ("no video metadata"): the provider answers a bogus id this way, sometimes with a reason and sometimes with an empty `metadata` |
 | `state: no_subtitles` | `captionStatus: "none"`, `isLive: false` |
 | `state: subtitles_found`, no English track by `code` | `captionStatus: "non_english"`, nothing downloaded |
 | English track whose VTT parses to one cue or more | `captionStatus: "english"`, the segments |
