@@ -4,6 +4,8 @@ import {
   BOB,
   CHANNEL_A,
   expectDomainError,
+  registry,
+  seedApprovedChannel,
   userDO,
   VIDEO_A,
   VIDEO_B,
@@ -33,10 +35,12 @@ describe("user read receipts", () => {
   });
 
   it("keeps receipts through unfollow and isolates them per user", async () => {
+    // Follows live in the Registry; receipts stay here and outlive them.
+    await seedApprovedChannel(CHANNEL_A, "Channel A");
     const alice = userDO(ALICE);
-    await alice.follow(CHANNEL_A);
+    await registry().recordFollow(ALICE, CHANNEL_A);
     await alice.markRead([VIDEO_A]);
-    await alice.unfollow(CHANNEL_A);
+    await registry().recordUnfollow(ALICE, CHANNEL_A);
 
     expect(await alice.readVideoIds([VIDEO_A])).toEqual([VIDEO_A]);
     expect(await userDO(BOB).readVideoIds([VIDEO_A])).toEqual([]);

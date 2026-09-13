@@ -2,19 +2,9 @@
 -- One object per normalized email; the email is implicit and never stored here.
 -- Rewritten 2026-09-10 before first deployment, with owner approval. Migration governance is open (docs/PRD.md
 -- §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be wiped for an edit to run.
+-- Edited 2026-09-13: channel_follows removed. Follows have one record, the Registry's channel_followers
+-- (docs/specs/follows-single-owner.md); this object holds only what is private to the user.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
-
--- Follow state. A retained row with unfollowed_at set records the unfollow; an active follow is
--- unfollowed_at IS NULL. The Registry's channel_followers mirrors this for counts and the owner queue.
-CREATE TABLE channel_follows (
-  channel_id TEXT PRIMARY KEY,
-  followed_at INTEGER NOT NULL CHECK (followed_at >= 0),
-  unfollowed_at INTEGER CHECK (unfollowed_at IS NULL OR unfollowed_at >= 0),
-  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
-  created_at INTEGER NOT NULL CHECK (created_at >= 0)
-);
-
-CREATE INDEX channel_follows_unfollowed_at ON channel_follows (unfollowed_at);
 
 -- Read receipts for shared summaries. No row means unread.
 CREATE TABLE summary_reads (
@@ -33,7 +23,7 @@ CREATE TABLE chats (
 CREATE INDEX chats_updated_at ON chats (updated_at);
 
 -- channel_id is reserved for a possible scoped view and stays NULL for global chats;
--- retrieval scope comes from current follows, never from this column.
+-- retrieval scope comes from the Registry's follower record, never from this column.
 CREATE TABLE chat_messages (
   message_id TEXT PRIMARY KEY,
   chat_id TEXT NOT NULL REFERENCES chats (chat_id),

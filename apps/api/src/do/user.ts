@@ -5,16 +5,13 @@ import { normalizeEmail } from "../lib/email";
 import { DomainError } from "../lib/errors";
 import { applyMigrations } from "./migrations";
 import * as chats from "./user/chats";
-import * as follows from "./user/follows";
 import * as preferences from "./user/preferences";
 import * as reads from "./user/reads";
 import type {
-  ChannelFollow,
   Chat,
   ChatMessage,
   ChatMessageSourceInput,
   Exchange,
-  ListFollowsOptions,
   UserPreferences,
 } from "./user/types";
 
@@ -29,14 +26,16 @@ export function getUserDO(env: Env, email: string): DurableObjectStub<UserDO> {
 }
 
 /**
- * Per-user Durable Object: follows, read receipts, chats with messages and citation
- * snapshots, and chat preferences. The email is implicit in the object's name and is
- * never stored or logged here. Every method is scoped to that one user by construction,
- * so a chat or follow that belongs to someone else is simply NOT_FOUND.
+ * Per-user Durable Object: read receipts, chats with messages and citation snapshots, and
+ * chat preferences, the state that is private to one user. Follows are not here: the
+ * Registry's follower record is their one record (docs/specs/follows-single-owner.md), and
+ * it answers the user's list, `following`, and eligibility. The email is implicit in the
+ * object's name and is never stored or logged here. Every method is scoped to that one user
+ * by construction, so a chat that belongs to someone else is simply NOT_FOUND.
  *
- * Cross-DO rules (follow eligibility, unread counts, chat retrieval scope) are composed by
- * `lib/` services against the Registry; this object owns row semantics only. Methods are
- * synchronous; multi-statement writes run in `transactionSync`.
+ * Cross-DO rules (unread counts, chat retrieval scope) are composed by the routes against
+ * the Registry; this object owns row semantics only. Methods are synchronous;
+ * multi-statement writes run in `transactionSync`.
  */
 export class UserDO extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -47,26 +46,6 @@ export class UserDO extends DurableObject<Env> {
         console.log({ event: "user.migrations_applied", versions: applied });
       }
     });
-  }
-
-  // --- follows ----------------------------------------------------------------
-
-  /** Explicit follow or refollow. The caller has already checked catalog eligibility. */
-  follow(channelId: string): ChannelFollow {
-    return follows.follow(this.#sql, channelId, Date.now());
-  }
-
-  /** Retains a tombstone. */
-  unfollow(channelId: string): ChannelFollow {
-    return follows.unfollow(this.#sql, channelId, Date.now());
-  }
-
-  listFollows(options: ListFollowsOptions = {}): ChannelFollow[] {
-    return follows.listFollows(this.#sql, options);
-  }
-
-  activeChannelIds(): string[] {
-    return follows.activeChannelIds(this.#sql);
   }
 
   // --- read receipts ----------------------------------------------------------

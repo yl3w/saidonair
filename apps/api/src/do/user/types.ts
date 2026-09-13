@@ -1,19 +1,5 @@
 import type { ChatMessageStatus, ChatRole } from "@media-digest/shared";
 
-export type ChannelFollow = {
-  channelId: string;
-  followedAt: number;
-  /** Set on unfollow and retained as a tombstone; null while the follow is active. */
-  unfollowedAt: number | null;
-  createdAt: number;
-  updatedAt: number;
-};
-
-export type ListFollowsOptions = {
-  /** Include unfollow tombstones. Defaults to active follows only. */
-  includeUnfollowed?: boolean;
-};
-
 export type Chat = {
   chatId: string;
   title: string | null;

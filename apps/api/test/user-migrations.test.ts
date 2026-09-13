@@ -9,33 +9,26 @@ describe("user migrations", () => {
     const stub = userDO(ALICE);
     await stub.getPreferences();
 
-    const { tables, versions, follows } = await runInDurableObject(
-      stub,
-      (_, state) => ({
-        tables: state.storage.sql
-          .exec<{ name: string }>(
-            `SELECT name FROM sqlite_master
+    const { tables, versions } = await runInDurableObject(stub, (_, state) => ({
+      tables: state.storage.sql
+        .exec<{ name: string }>(
+          `SELECT name FROM sqlite_master
            WHERE type = 'table' AND substr(name, 1, 4) <> '_cf_'
            ORDER BY name`,
-          )
-          .toArray()
-          .map((row) => row.name),
-        versions: state.storage.sql
-          .exec<{ version: string }>(
-            "SELECT version FROM _migrations ORDER BY version",
-          )
-          .toArray()
-          .map((row) => row.version),
-        follows: state.storage.sql
-          .exec<{ name: string }>("PRAGMA table_info(channel_follows)")
-          .toArray()
-          .map((row) => row.name),
-      }),
-    );
+        )
+        .toArray()
+        .map((row) => row.name),
+      versions: state.storage.sql
+        .exec<{ version: string }>(
+          "SELECT version FROM _migrations ORDER BY version",
+        )
+        .toArray()
+        .map((row) => row.version),
+    }));
 
+    // No follows table: the Registry's channel_followers is the one record of follows.
     expect(tables).toEqual([
       "_migrations",
-      "channel_follows",
       "chat_message_sources",
       "chat_messages",
       "chats",
@@ -43,13 +36,6 @@ describe("user migrations", () => {
       "user_preferences",
     ]);
     expect(versions).toEqual(["0001_init"]);
-    expect(follows).toEqual([
-      "channel_id",
-      "followed_at",
-      "unfollowed_at",
-      "updated_at",
-      "created_at",
-    ]);
   });
 
   it("is a no-op when run a second time", async () => {
