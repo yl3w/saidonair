@@ -77,7 +77,10 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page
 │   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
 │   │   │   ├── do/registry/          # Registry store modules: users, channels, followers (the one record of follows, and
-│   │   │   │                         # the one implementation of eligibility), episodes, runs, attempts (read side), catalog, types
+│   │   │   │                         # the one implementation of eligibility), episodes, runs (feed history and recordDiscovery),
+│   │   │   │                         # attempts (ledger rows), processing (the attempt state machine: begin, stage, finish,
+│   │   │   │                         # block, complete; the one implementation of the six-hour/deadline rule), summaries
+│   │   │   │                         # (publication write and related-id validation), catalog, types
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
 │   │   │   ├── do/user.ts            # Per-user Durable Object (RPC facade)
 │   │   │   ├── do/user/              # User store modules: reads, chats, preferences, types (follows live in the Registry)

@@ -5,9 +5,9 @@
 **Parent:** `docs/specs/m3-ingestion.md` §2 (Attempt gate, Universal recovery rule, Pre-flight gate, Owner episode
 actions, Publishing) and §3.3–3.4; PRD §4.2 rules 1–3, 5–7, 9–18, 24–26. This spec restates none of them; it fixes
 the Registry contract that implements them.
-**Status:** approved with the split of 2026-09-13; not started. Plan: `docs/specs/m3-2-attempt-ledger-plan.md`.
-Depends on nothing in M3: the schema, read model, and route-driven writes landed in `4871782`
-(`docs/specs/api-reference-plan.md` Step 4). No new dependencies.
+**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green. Plan and
+record: `docs/specs/m3-2-attempt-ledger-plan.md`. Depends on nothing in M3: the schema, read model, and route-driven
+writes landed in `4871782` (`docs/specs/api-reference-plan.md` Step 4). No new dependencies.
 
 ## 1. Summary
 
@@ -88,4 +88,5 @@ Fetching RSS (M3.4); pre-flight, launching, the Workflow (M3.5); the due-episode
 ## 6. `AGENTS.md` and PRD alignment
 
 No PRD change: PRD §4.2 already states every rule this chunk enforces. `AGENTS.md` → repo layout: the `do/registry/`
-line drops "(read side)" from `attempts` and lists `summaries` when the plan adds that module.
+line names `runs` (feed history and `recordDiscovery`), `attempts` (ledger rows), `processing` (the state machine and
+the one implementation of the six-hour/deadline rule), and `summaries` (publication write and related-id validation).

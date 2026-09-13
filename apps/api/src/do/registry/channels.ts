@@ -239,6 +239,20 @@ export function setPause(
   );
 }
 
+/** A successful feed read moves `last_checked_at`; an unavailable one does not (docs/PRD.md §4.2 rule 4). */
+export function markChecked(
+  sql: SqlStorage,
+  channelId: string,
+  now: number,
+): void {
+  sql.exec(
+    "UPDATE channels SET last_checked_at = ?, updated_at = ? WHERE channel_id = ?",
+    now,
+    now,
+    channelId,
+  );
+}
+
 export function requireChannel(
   sql: SqlStorage,
   channelId: string,

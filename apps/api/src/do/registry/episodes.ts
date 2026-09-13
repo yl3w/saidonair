@@ -10,6 +10,7 @@ import type {
 } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
 import { chunk, MAX_BOUND_PARAMS, placeholders } from "../../lib/sql";
+import type { FeedEntry } from "../../lib/youtube/rss";
 import { hasRunning, latestByVideo } from "./attempts";
 import { requireChannel } from "./channels";
 import type { EpisodeRecord, ListEpisodesOptions } from "./types";
@@ -61,6 +62,281 @@ export const DEFAULT_EPISODE_LIMIT = 20;
 export const MAX_EPISODE_LIMIT = 200;
 /** The one processing window every episode gets, from creation and again on Retry (docs/PRD.md §4.2 rule 13). */
 export const PROCESSING_WINDOW_MS = 48 * 60 * 60 * 1000;
+/** An unfinished attempt makes the episode due again this much later, capped at the deadline (rule 13). */
+export const RETRY_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The columns the state machine reads before it writes (`processing.ts`): content state and the open
+ * window, without the joins the API record carries.
+ */
+export type EpisodeState = {
+  videoId: string;
+  channelId: string;
+  status: EpisodeStatus;
+  intent: ProcessingIntent | null;
+  windowStartedAt: number | null;
+  windowDeadlineAt: number | null;
+  nextAttemptAt: number | null;
+  attemptCount: number;
+  stagedVectorGeneration: string | null;
+  activeVectorGeneration: string | null;
+  chunkCount: number | null;
+  processedAt: number | null;
+};
+
+export function getState(
+  sql: SqlStorage,
+  videoId: string,
+): EpisodeState | null {
+  const row = sql
+    .exec<{
+      video_id: string;
+      channel_id: string;
+      status: string;
+      intent: string | null;
+      window_started_at: number | null;
+      window_deadline_at: number | null;
+      next_attempt_at: number | null;
+      attempt_count: number;
+      staged_vector_generation: string | null;
+      active_vector_generation: string | null;
+      chunk_count: number | null;
+      processed_at: number | null;
+    }>(
+      `SELECT video_id, channel_id, status, intent, window_started_at, window_deadline_at, next_attempt_at,
+         attempt_count, staged_vector_generation, active_vector_generation, chunk_count, processed_at
+       FROM episodes WHERE video_id = ?`,
+      videoId,
+    )
+    .toArray()[0];
+  if (!row) return null;
+  return {
+    videoId: row.video_id,
+    channelId: row.channel_id,
+    status: toStatus(row.status),
+    intent: toIntent(row.intent),
+    windowStartedAt: row.window_started_at,
+    windowDeadlineAt: row.window_deadline_at,
+    nextAttemptAt: row.next_attempt_at,
+    attemptCount: row.attempt_count,
+    stagedVectorGeneration: row.staged_vector_generation,
+    activeVectorGeneration: row.active_vector_generation,
+    chunkCount: row.chunk_count,
+    processedAt: row.processed_at,
+  };
+}
+
+export function requireState(sql: SqlStorage, videoId: string): EpisodeState {
+  const state = getState(sql, videoId);
+  if (!state) throw new DomainError("NOT_FOUND", "episode not found");
+  return state;
+}
+
+/** Whether any run of this channel has ever created an episode: the run kind rule (docs/PRD.md §4.2 rule 2). */
+export function hasAnyEpisode(sql: SqlStorage, channelId: string): boolean {
+  return (
+    sql
+      .exec<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM (SELECT 1 FROM episodes WHERE channel_id = ? LIMIT 1)",
+        channelId,
+      )
+      .one().n > 0
+  );
+}
+
+/** Which of the given ids already exist anywhere in the Registry; discovery never selects them. */
+export function existingVideoIds(
+  sql: SqlStorage,
+  videoIds: readonly string[],
+): Set<string> {
+  const existing = new Set<string>();
+  for (const batch of chunk(videoIds)) {
+    for (const row of sql.exec<{ video_id: string }>(
+      `SELECT video_id FROM episodes WHERE video_id IN (${placeholders(batch.length)})`,
+      ...batch,
+    )) {
+      existing.add(row.video_id);
+    }
+  }
+  return existing;
+}
+
+/**
+ * The episodes one feed check creates: `pending`, intent `publish`, the 48-hour window open from
+ * now, due at once, naming the run that discovered them (docs/PRD.md §4.2 rules 3 and 5).
+ */
+export function insertDiscovered(
+  sql: SqlStorage,
+  channelId: string,
+  runId: string,
+  entries: readonly FeedEntry[],
+  now: number,
+): void {
+  for (const entry of entries) {
+    sql.exec(
+      `INSERT INTO episodes
+         (video_id, channel_id, discovered_by_run_id, title, published_at, status,
+          intent, window_started_at, window_deadline_at, next_attempt_at, attempt_count,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'pending', 'publish', ?, ?, ?, 0, ?, ?)`,
+      entry.videoId,
+      channelId,
+      runId,
+      entry.title,
+      entry.publishedAt,
+      now,
+      now + PROCESSING_WINDOW_MS,
+      now,
+      now,
+      now,
+    );
+  }
+}
+
+/** Records the generation a new attempt will stage and counts the launch (rule 13). */
+export function openStaged(
+  sql: SqlStorage,
+  videoId: string,
+  generationId: string,
+  now: number,
+): void {
+  sql.exec(
+    `UPDATE episodes SET staged_vector_generation = ?, attempt_count = attempt_count + 1, updated_at = ?
+     WHERE video_id = ?`,
+    generationId,
+    now,
+    videoId,
+  );
+}
+
+export function scheduleNextAttempt(
+  sql: SqlStorage,
+  videoId: string,
+  nextAttemptAt: number,
+  now: number,
+): void {
+  sql.exec(
+    "UPDATE episodes SET next_attempt_at = ?, updated_at = ? WHERE video_id = ?",
+    nextAttemptAt,
+    now,
+    videoId,
+  );
+}
+
+const CLOSE_WINDOW = `intent = NULL, window_started_at = NULL, window_deadline_at = NULL,
+  next_attempt_at = NULL, staged_vector_generation = NULL`;
+
+/** Closes the window and forgets the staged generation; content state is untouched. */
+export function closeWindow(
+  sql: SqlStorage,
+  videoId: string,
+  now: number,
+): void {
+  sql.exec(
+    `UPDATE episodes SET ${CLOSE_WINDOW}, updated_at = ? WHERE video_id = ?`,
+    now,
+    videoId,
+  );
+}
+
+/** A deterministic result under intent `publish`: skipped, reversibly, with the window closed (rule 12). */
+export function markSkipped(
+  sql: SqlStorage,
+  videoId: string,
+  reason: "SHORT" | "NON_ENGLISH" | "UNPLAYABLE",
+  now: number,
+): void {
+  sql.exec(
+    `UPDATE episodes SET status = 'skipped', skip_reason = ?, skipped_at = ?, skipped_by_email = NULL,
+       failure_code = NULL, failure_detail = NULL, ${CLOSE_WINDOW}, updated_at = ?
+     WHERE video_id = ?`,
+    reason,
+    now,
+    now,
+    videoId,
+  );
+}
+
+/** A publication that exhausted its window: the one time `failure_code` is written (rule 14). */
+export function markTimedOut(
+  sql: SqlStorage,
+  videoId: string,
+  detail: string,
+  now: number,
+): void {
+  sql.exec(
+    `UPDATE episodes SET status = 'failed', failure_code = 'INGESTION_TIMEOUT', failure_detail = ?,
+       skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL, ${CLOSE_WINDOW}, updated_at = ?
+     WHERE video_id = ?`,
+    detail,
+    now,
+    videoId,
+  );
+}
+
+/** The provider answered about this video (a transcript result or a deterministic classification). */
+export function markTranscriptChecked(
+  sql: SqlStorage,
+  videoId: string,
+  now: number,
+): void {
+  sql.exec(
+    "UPDATE episodes SET transcript_checked_at = ?, updated_at = ? WHERE video_id = ?",
+    now,
+    now,
+    videoId,
+  );
+}
+
+/**
+ * Publication (rules 25–26): the staged generation becomes active, the window closes, `processed_at`
+ * is set only when null so first availability is never reset. The summary row is written beside it
+ * by `summaries.ts`, in the same transaction.
+ */
+export function publish(
+  sql: SqlStorage,
+  videoId: string,
+  chunkCount: number,
+  now: number,
+): void {
+  sql.exec(
+    `UPDATE episodes SET status = 'available', chunk_count = ?, vectorized_at = ?,
+       processed_at = COALESCE(processed_at, ?), transcript_checked_at = ?,
+       active_vector_generation = staged_vector_generation,
+       failure_code = NULL, failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL,
+       ${CLOSE_WINDOW}, updated_at = ?
+     WHERE video_id = ?`,
+    chunkCount,
+    now,
+    now,
+    now,
+    now,
+    videoId,
+  );
+}
+
+/** Episodes by id, in the order given, with processing detail and no related titles. */
+export function listByVideoIds(
+  sql: SqlStorage,
+  videoIds: readonly string[],
+): EpisodeRecord[] {
+  const rows: EpisodeRow[] = [];
+  for (const batch of chunk(videoIds)) {
+    rows.push(
+      ...sql
+        .exec<EpisodeRow>(
+          `${EPISODE_SELECT} WHERE e.video_id IN (${placeholders(batch.length)})`,
+          ...batch,
+        )
+        .toArray(),
+    );
+  }
+  const order = new Map(videoIds.map((id, index) => [id, index]));
+  rows.sort(
+    (a, b) => (order.get(a.video_id) ?? 0) - (order.get(b.video_id) ?? 0),
+  );
+  return complete(sql, rows, []);
+}
 
 /** Available episodes per channel; callers derive counts and unread state from these. */
 export function listAvailableVideoIds(

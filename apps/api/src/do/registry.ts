@@ -1,5 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
-import type { EpisodeCounts } from "@media-digest/shared";
+import type {
+  AttemptTrigger,
+  EpisodeCounts,
+  EpisodeIngestionAttempt,
+} from "@media-digest/shared";
 import { registryMigrations } from "../../migrations/registry";
 import type { Env } from "../env";
 import { normalizeEmail } from "../lib/email";
@@ -9,22 +13,31 @@ import {
   requireChannelIds,
   requireVideoId,
 } from "../lib/youtube/ids";
+import type { ChannelFeed } from "../lib/youtube/rss";
 import { applyMigrations } from "./migrations";
 import * as catalog from "./registry/catalog";
 import * as channels from "./registry/channels";
 import * as episodes from "./registry/episodes";
 import * as followers from "./registry/followers";
+import * as processing from "./registry/processing";
 import * as runs from "./registry/runs";
 import type {
+  AttemptOutcome,
+  AttemptResult,
+  AttemptStart,
+  BlockReason,
   CatalogChannel,
   CatalogSummary,
   ChannelManagementRecord,
   CreateChannelInput,
+  DiscoveryResult,
   EpisodeRecord,
+  EpisodeSummaryInput,
   FollowerRecord,
   FollowRecord,
   IngestionRunRecord,
   ListEpisodesOptions,
+  PublicationResult,
   RegistryUser,
   ReviewInput,
 } from "./registry/types";
@@ -39,7 +52,7 @@ export function getRegistry(env: Env): DurableObjectStub<RegistryDO> {
 
 /**
  * Global Registry Durable Object: identities, the shared channel catalog, episodes with their
- * shared summaries, and discovery runs (reads only until M3 writes them).
+ * shared summaries, discovery runs, and the episode attempt ledger.
  *
  * Every public method is an RPC endpoint, and none checks a role: the API enforces no
  * authorization (docs/PRD.md §2, §9). Methods that record who acted (approve, decline, skip) take
@@ -272,6 +285,115 @@ export class RegistryDO extends DurableObject<Env> {
   listRuns(channelId: string): IngestionRunRecord[] {
     this.#requireChannel(channelId);
     return runs.listByChannel(this.#sql, requireChannelId(channelId));
+  }
+
+  /**
+   * One completed feed check of an approved channel: the run and the episodes it created, with
+   * their 48-hour windows open (docs/PRD.md §4.2 rules 1–5). `feed` is null when the feed could
+   * not be read. The caller starts the new episodes' attempts afterwards.
+   */
+  recordDiscovery(
+    channelId: string,
+    feed: ChannelFeed | null,
+  ): DiscoveryResult {
+    const id = requireChannelId(channelId);
+    return this.#transaction(() =>
+      runs.recordDiscovery(this.#sql, id, feed, Date.now()),
+    );
+  }
+
+  // --- episode attempts (docs/specs/m3-2-attempt-ledger.md §3) ---------------
+
+  /**
+   * Starts an attempt on an episode whose window is open, or reports the one still running. Owner
+   * Retry passes the requester; the automatic triggers pass nothing. Channel state is never read.
+   */
+  beginAttempt(
+    videoId: string,
+    trigger: AttemptTrigger,
+    requestedByEmail?: string,
+  ): AttemptStart {
+    const video = requireVideoId(videoId);
+    const requester =
+      requestedByEmail === undefined
+        ? null
+        : users.requireEmail(requestedByEmail);
+    return this.#transaction(() => {
+      const now = Date.now();
+      if (requester) users.ensureUser(this.#sql, requester, now);
+      return processing.beginAttempt(
+        this.#sql,
+        video,
+        processing.requireTrigger(trigger),
+        requester,
+        now,
+      );
+    });
+  }
+
+  /** How many vectors the current attempt is about to write, recorded before the first upsert. */
+  markStaged(attemptId: string, chunkCount: number): EpisodeIngestionAttempt {
+    const id = processing.requireAttemptId(attemptId);
+    return this.#transaction(() =>
+      processing.markStaged(this.#sql, id, chunkCount, Date.now()),
+    );
+  }
+
+  /** Ends the current attempt without publishing: waiting, failed, or a deterministic skip. */
+  finishAttempt(attemptId: string, outcome: AttemptOutcome): AttemptResult {
+    const id = processing.requireAttemptId(attemptId);
+    return this.#transaction(() =>
+      processing.finishAttempt(this.#sql, id, outcome, Date.now()),
+    );
+  }
+
+  /** A start that pre-flight refused: one finished `blocked` row, no launch, no count. */
+  recordBlockedAttempt(
+    videoId: string,
+    trigger: AttemptTrigger,
+    reason: BlockReason,
+    requestedByEmail?: string,
+  ): AttemptResult {
+    const video = requireVideoId(videoId);
+    const requester =
+      requestedByEmail === undefined
+        ? null
+        : users.requireEmail(requestedByEmail);
+    return this.#transaction(() => {
+      const now = Date.now();
+      if (requester) users.ensureUser(this.#sql, requester, now);
+      return processing.recordBlockedAttempt(
+        this.#sql,
+        video,
+        processing.requireTrigger(trigger),
+        reason,
+        requester,
+        now,
+      );
+    });
+  }
+
+  /**
+   * Publication: the summary, the content columns, the staged generation made active, the window
+   * closed, in one transaction. Returns the previously active generation for the cleanup step.
+   */
+  completeAttempt(
+    attemptId: string,
+    chunkCount: number,
+    summary: EpisodeSummaryInput,
+    relatedCandidates: string[],
+  ): PublicationResult {
+    const id = processing.requireAttemptId(attemptId);
+    return this.#transaction(() =>
+      processing.completeAttempt(
+        this.#sql,
+        id,
+        chunkCount,
+        summary,
+        relatedCandidates,
+        Date.now(),
+      ),
+    );
   }
 
   // --- follows (the one record: docs/PRD.md §4.3, 2026-09-13) ----------------

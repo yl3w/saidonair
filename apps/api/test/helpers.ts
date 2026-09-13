@@ -10,6 +10,7 @@ import type {
 import { expect } from "vitest";
 import { z } from "zod";
 import { getRegistry } from "../src/do/registry";
+import { upsertSummary } from "../src/do/registry/summaries";
 import { getUserDO } from "../src/do/user";
 import { type DomainErrorCode, domainErrorCode } from "../src/lib/errors";
 
@@ -263,29 +264,37 @@ export async function seedSummary(
   videoId: string,
   seed: SummarySeed = {},
 ): Promise<void> {
-  const related = JSON.stringify(seed.relatedVideoIds ?? []);
+  // The product's own write (do/registry/summaries.ts), so the seed and completeAttempt cannot drift.
+  const related = seed.relatedVideoIds ?? [];
   await runInDurableObject(registry(), (_, ctx) => {
     if (seed.format === "raw_fallback") {
-      ctx.storage.sql.exec(
-        `INSERT INTO episode_summaries
-           (video_id, format, raw_text, related_video_ids_json, model, prompt_version, created_at)
-         VALUES (?, 'raw_fallback', ?, ?, 'test-model', 'v0', 1)`,
+      upsertSummary(
+        ctx.storage.sql,
         videoId,
-        seed.rawText ?? `Raw summary of ${videoId}`,
+        {
+          format: "raw_fallback",
+          rawText: seed.rawText ?? `Raw summary of ${videoId}`,
+          model: "test-model",
+          promptVersion: "v0",
+        },
         related,
+        1,
       );
       return;
     }
-    ctx.storage.sql.exec(
-      `INSERT INTO episode_summaries
-         (video_id, format, executive_summary, takeaways_json, topic_tags_json,
-          related_video_ids_json, model, prompt_version, created_at)
-       VALUES (?, 'structured', ?, ?, ?, ?, 'test-model', 'v0', 1)`,
+    upsertSummary(
+      ctx.storage.sql,
       videoId,
-      seed.executiveSummary ?? `Summary of ${videoId}`,
-      JSON.stringify(seed.takeaways ?? [{ text: "takeaway", startSec: 12 }]),
-      JSON.stringify(seed.topicTags ?? ["tag"]),
+      {
+        format: "structured",
+        executiveSummary: seed.executiveSummary ?? `Summary of ${videoId}`,
+        takeaways: seed.takeaways ?? [{ text: "takeaway", startSec: 12 }],
+        topicTags: seed.topicTags ?? ["tag"],
+        model: "test-model",
+        promptVersion: "v0",
+      },
       related,
+      1,
     );
   });
 }

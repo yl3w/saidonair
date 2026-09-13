@@ -1,7 +1,9 @@
 import type {
+  AttemptOutcomeCode,
   Catalog,
   ChannelStatus,
   EpisodeCounts,
+  EpisodeIngestionAttempt,
   EpisodeProcessing,
   EpisodeSkipReason,
   EpisodeStatus,
@@ -109,3 +111,92 @@ export type ChannelManagementRecord = {
   /** Approved and no run row exists at all. */
   neverStarted: boolean;
 };
+
+// --- ingestion writes (docs/specs/m3-2-attempt-ledger.md §3) ---------------------------------
+
+/** What one feed check recorded: the completed run and the episodes it created, newest first. */
+export type DiscoveryResult = {
+  run: IngestionRunRecord;
+  created: EpisodeRecord[];
+};
+
+/** A vector generation an attempt staged, with how many ids it wrote, so a later attempt can delete it. */
+export type StagedGeneration = { generationId: string; chunkCount: number };
+
+/**
+ * `beginAttempt`'s answer: a new running attempt, with the abandoned staged generation of the
+ * episode's previous attempt when it left one; or the attempt that is still running, so the caller
+ * can reconcile it (a `DomainError` carries only a code across RPC).
+ */
+export type AttemptStart =
+  | {
+      kind: "started";
+      attempt: EpisodeIngestionAttempt;
+      abandonedGeneration: StagedGeneration | null;
+    }
+  | { kind: "running"; attempt: EpisodeIngestionAttempt };
+
+/** Reasons an attempt finishes `waiting`: the episode stays in its window (docs/PRD.md §4.2 rule 11). */
+export const WAITING_CODES = [
+  "CAPTIONS",
+  "LIVE_OR_UPCOMING",
+  "PROVIDER_LIMIT",
+] as const satisfies readonly AttemptOutcomeCode[];
+/** Deterministic content results: skip a publication, leave a replacement's content alone (rule 12). */
+export const DETERMINISTIC_SKIP_CODES = [
+  "SHORT",
+  "NON_ENGLISH",
+  "UNPLAYABLE",
+] as const satisfies readonly AttemptOutcomeCode[];
+/** Technical results: the attempt failed, the episode stays in its window (rule 13; PRD §5.3). */
+export const TECHNICAL_CODES = [
+  "PROVIDER_AUTH",
+  "PROVIDER_RATE_LIMIT",
+  "PROVIDER_HTTP",
+  "PROVIDER_PARSE",
+  "TRANSCRIPT_TOO_LARGE",
+  "EMBEDDING_FAILED",
+  "VECTORIZE_INCOMPLETE",
+  "SUMMARY_FAILED",
+  "WORKFLOW_LOST",
+] as const satisfies readonly AttemptOutcomeCode[];
+
+export type WaitingCode = (typeof WAITING_CODES)[number];
+export type DeterministicSkipCode = (typeof DETERMINISTIC_SKIP_CODES)[number];
+export type TechnicalCode = (typeof TECHNICAL_CODES)[number];
+
+/** How an attempt ended without publishing. */
+export type AttemptOutcome =
+  | { status: "waiting"; code: WaitingCode }
+  | { status: "failed"; code: TechnicalCode; detail?: string }
+  | { status: "skipped"; code: DeterministicSkipCode };
+
+/** Why pre-flight refused a start (docs/PRD.md §4.2 rule 9). */
+export type BlockReason = "PROVIDER_AUTH" | "PROVIDER_LIMIT";
+
+export type AttemptResult = {
+  attempt: EpisodeIngestionAttempt;
+  episode: EpisodeRecord;
+};
+
+/** `completeAttempt`'s answer: the generation that was active before, for the cleanup step, or null on first publication. */
+export type PublicationResult = AttemptResult & {
+  previousGeneration: StagedGeneration | null;
+};
+
+/** The summary an attempt publishes, validated by shape at the Registry boundary (docs/PRD.md §4.4). */
+export type EpisodeSummaryInput =
+  | {
+      format: "structured";
+      executiveSummary: string;
+      takeaways: { text: string; startSec: number | null }[];
+      topicTags: string[];
+      model: string;
+      promptVersion: string;
+    }
+  | {
+      format: "raw_fallback";
+      rawText: string;
+      model: string;
+      promptVersion: string;
+    };
