@@ -17,14 +17,13 @@ type ChannelRow = {
   paused_by: string | null;
   paused_at: number | null;
   last_checked_at: number | null;
-  last_ingested_at: number | null;
   created_at: number;
   updated_at: number;
 };
 
 const CHANNEL_COLUMNS = `channel_id, title, canonical_url, status, initial_import_count, approved_at,
   reviewed_at, reviewed_by_email, review_note, paused_by, paused_at, last_checked_at,
-  last_ingested_at, created_at, updated_at`;
+  created_at, updated_at`;
 
 export function canonicalChannelUrl(channelId: string): string {
   return `https://www.youtube.com/channel/${channelId}`;
@@ -43,7 +42,7 @@ export function getChannel(
   return row ? toChannel(row) : null;
 }
 
-/** Owner view: every status, newest first. */
+/** Every status, newest first. */
 export function listChannels(sql: SqlStorage): CatalogChannel[] {
   return sql
     .exec<ChannelRow>(
@@ -292,7 +291,6 @@ function toChannel(row: ChannelRow): CatalogChannel {
     pausedBy: toPausedBy(row.paused_by),
     pausedAt: row.paused_at,
     lastCheckedAt: row.last_checked_at,
-    lastIngestedAt: row.last_ingested_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

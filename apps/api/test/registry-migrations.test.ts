@@ -5,13 +5,14 @@ import { applyMigrations } from "../src/do/migrations";
 import {
   ALICE,
   CHANNEL_A,
-  OWNER,
   registry,
   seedApprovedChannel,
+  seedRun,
 } from "./helpers";
 
+/** The rewritten 0001 (2026-09-12) applies alone and its table checks reject what PRD §5.3 says they reject. */
 describe("registry migrations", () => {
-  it("creates every Registry table on first access and records both versions", async () => {
+  it("creates every Registry table on first access and records 0001_init alone", async () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
     const columnsOf = (sql: SqlStorage, table: string) =>
@@ -19,7 +20,7 @@ describe("registry migrations", () => {
         .exec<{ name: string }>(`PRAGMA table_info(${table})`)
         .toArray()
         .map((row) => row.name);
-    const { tables, versions, channelColumns, runColumns } =
+    const { tables, versions, channelColumns, episodeColumns, runColumns } =
       await runInDurableObject(stub, (_, state) => ({
         tables: state.storage.sql
           .exec<{ name: string }>(
@@ -34,24 +35,46 @@ describe("registry migrations", () => {
           .toArray()
           .map((row) => row.version),
         channelColumns: columnsOf(state.storage.sql, "channels"),
+        episodeColumns: columnsOf(state.storage.sql, "episodes"),
         runColumns: columnsOf(state.storage.sql, "ingestion_runs"),
       }));
     expect(tables).toEqual([
       "_migrations",
       "channel_followers",
       "channels",
+      "episode_ingestion_attempts",
       "episode_summaries",
       "episodes",
       "global_users",
-      "ingestion_run_episodes",
       "ingestion_runs",
     ]);
-    expect(versions).toEqual(["0001_init", "0002_drop_lifecycle_version"]);
-    // 0002 is the one owner-approved DROP COLUMN (2026-09-11): the fence is gone from both tables.
+    expect(versions).toEqual(["0001_init"]);
+    // Gone with the 2026-09-12 restart: the run fence, the stored ingestion time, the waiting code,
+    // and every run status or Workflow column.
     expect(channelColumns).not.toContain("lifecycle_version");
-    expect(runColumns).not.toContain("lifecycle_version");
-    expect(channelColumns).toContain("paused_by");
-    expect(runColumns).toContain("workflow_id");
+    expect(channelColumns).not.toContain("last_ingested_at");
+    expect(episodeColumns).not.toContain("waiting_code");
+    expect(episodeColumns).toEqual(
+      expect.arrayContaining([
+        "discovered_by_run_id",
+        "recovery_mode",
+        "recovery_deadline_at",
+        "next_attempt_at",
+        "active_vector_generation",
+        "recovery_vector_generation",
+      ]),
+    );
+    expect(runColumns).toEqual([
+      "run_id",
+      "channel_id",
+      "kind",
+      "feed_status",
+      "discovered_count",
+      "episode_limit",
+      "started_at",
+      "finished_at",
+      "created_at",
+    ]);
   });
 
   it("ties channel columns to status", async () => {
@@ -87,9 +110,6 @@ describe("registry migrations", () => {
           "UPDATE channels SET paused_by = 'owner' WHERE channel_id = 'UCx'",
         ),
       ).toThrow(/CHECK/i);
-
-      // Isolates the pause-pair check on an approved row: paused_by alone must fail,
-      // paused_by with paused_at must pass.
       insert(
         "UCz",
         "status, approved_at, reviewed_at, reviewed_by_email",
@@ -109,32 +129,59 @@ describe("registry migrations", () => {
   it("is a no-op when run a second time", async () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
-
     const applied = await runInDurableObject(stub, (_, state) =>
       applyMigrations(state.storage, registryMigrations),
     );
-
     expect(applied).toEqual([]);
   });
 
-  it("ties episode columns to status", async () => {
+  it("ties a discovery run's count to its feed status", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
+    await expect(
+      seedRun(CHANNEL_A, { feedStatus: "unavailable", discoveredCount: 2 }),
+    ).rejects.toThrow(/CHECK/i);
+    await seedRun(CHANNEL_A, { feedStatus: "unavailable" });
+    await seedRun(CHANNEL_A, { feedStatus: "read", discoveredCount: 2 });
+    expect(await stub.listRuns(CHANNEL_A)).toHaveLength(2);
+  });
+
+  it("ties episode columns to status and the recovery window to itself", async () => {
+    const stub = registry();
+    await seedApprovedChannel(CHANNEL_A, "A");
+    const runId = await seedRun(CHANNEL_A);
     await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;
       const insert = (cols: string, vals: string) =>
         sql.exec(
-          `INSERT INTO episodes (video_id, channel_id, title, published_at, ${cols}, updated_at, created_at) VALUES ('v', ?, 't', 1, ${vals}, 1, 1)`,
+          `INSERT INTO episodes (video_id, channel_id, discovered_by_run_id, title, published_at, ${cols}, updated_at, created_at)
+           VALUES ('v', ?, ?, 't', 1, ${vals}, 1, 1)`,
           CHANNEL_A,
+          runId,
         );
+      const available =
+        "chunk_count, vectorized_at, processed_at, active_vector_generation";
       expect(() => insert("status", "'processed'")).toThrow(/CHECK/i);
+      // Available needs chunks, timestamps, and an active generation.
       expect(() => insert("status", "'available'")).toThrow(/CHECK/i);
+      expect(() =>
+        insert(`status, ${available}`, "'available', 0, 1, 1, 'g1'"),
+      ).toThrow(/CHECK/i);
       expect(() =>
         insert(
           "status, chunk_count, vectorized_at, processed_at",
-          "'available', 0, 1, 1",
+          "'available', 2, 1, 1",
         ),
       ).toThrow(/CHECK/i);
+      // failed is INGESTION_TIMEOUT exactly.
+      expect(() => insert("status", "'failed'")).toThrow(/CHECK/i);
+      expect(() =>
+        insert("status, failure_code", "'failed', 'PROVIDER_HTTP'"),
+      ).toThrow(/CHECK/i);
+      expect(() =>
+        insert("status, failure_code", "'pending', 'INGESTION_TIMEOUT'"),
+      ).toThrow(/CHECK/i);
+      // Skips: reason and status imply each other, dated, OWNER names who.
       expect(() => insert("status", "'skipped'")).toThrow(/CHECK/i);
       expect(() =>
         insert("status, skip_reason, skipped_at", "'skipped', 'OWNER', 1"),
@@ -142,27 +189,143 @@ describe("registry migrations", () => {
       expect(() => insert("status, skip_reason", "'pending', 'SHORT'")).toThrow(
         /CHECK/i,
       );
-      expect(() => insert("status", "'failed'")).toThrow(/CHECK/i);
       expect(() =>
         insert(
-          "status, waiting_code, chunk_count, vectorized_at, processed_at",
-          "'available', 'CAPTIONS', 1, 1, 1",
+          "status, skip_reason, skipped_at",
+          "'skipped', 'NO_CAPTIONS', 1",
         ),
       ).toThrow(/CHECK/i);
-      insert("status, waiting_code", "'pending', 'CAPTIONS'");
-      sql.exec(
-        "UPDATE episodes SET status = 'skipped', waiting_code = NULL, skip_reason = 'SHORT', skipped_at = 1 WHERE video_id = 'v'",
+      expect(() =>
+        insert("status, skipped_by_email", "'pending', 'alice@example.com'"),
+      ).toThrow(/CHECK/i);
+      // The recovery window: all four set or all null, publication on pending, replacement on available.
+      expect(() =>
+        insert("status, recovery_mode", "'pending', 'publication'"),
+      ).toThrow(/CHECK/i);
+      expect(() =>
+        insert(
+          "status, recovery_mode, recovery_started_at, recovery_deadline_at",
+          "'pending', 'publication', 1, 2",
+        ),
+      ).toThrow(/CHECK/i);
+      expect(() =>
+        insert(
+          "status, recovery_mode, recovery_started_at, recovery_deadline_at, next_attempt_at",
+          "'pending', 'replacement', 1, 2, 1",
+        ),
+      ).toThrow(/CHECK/i);
+      expect(() =>
+        insert(
+          `status, ${available}, recovery_mode, recovery_started_at, recovery_deadline_at, next_attempt_at`,
+          "'available', 2, 1, 1, 'g1', 'publication', 1, 2, 1",
+        ),
+      ).toThrow(/CHECK/i);
+      expect(() =>
+        insert("status, recovery_vector_generation", "'pending', 'g2'"),
+      ).toThrow(/CHECK/i);
+      // And the shapes that are allowed.
+      insert(
+        "status, recovery_mode, recovery_started_at, recovery_deadline_at, next_attempt_at, recovery_vector_generation",
+        "'pending', 'publication', 1, 2, 1, 'g2'",
       );
       sql.exec(
-        "UPDATE episodes SET status = 'available', skip_reason = NULL, skipped_at = NULL, chunk_count = 2, vectorized_at = 1, processed_at = 1 WHERE video_id = 'v'",
+        `UPDATE episodes SET status = 'skipped', recovery_mode = NULL, recovery_started_at = NULL,
+           recovery_deadline_at = NULL, next_attempt_at = NULL, recovery_vector_generation = NULL,
+           skip_reason = 'SHORT', skipped_at = 1 WHERE video_id = 'v'`,
       );
+      sql.exec(
+        `UPDATE episodes SET status = 'available', skip_reason = NULL, skipped_at = NULL,
+           chunk_count = 2, vectorized_at = 1, processed_at = 1, active_vector_generation = 'g1',
+           recovery_mode = 'replacement', recovery_started_at = 5, recovery_deadline_at = 6, next_attempt_at = 5
+         WHERE video_id = 'v'`,
+      );
+      sql.exec(
+        `UPDATE episodes SET status = 'failed', failure_code = 'INGESTION_TIMEOUT', failure_detail = 'CAPTIONS',
+           recovery_mode = NULL, recovery_started_at = NULL, recovery_deadline_at = NULL, next_attempt_at = NULL
+         WHERE video_id = 'v'`,
+      );
+    });
+  });
+
+  it("ties attempt columns to status and trigger", async () => {
+    const stub = registry();
+    await seedApprovedChannel(CHANNEL_A, "A");
+    const runId = await seedRun(CHANNEL_A);
+    await stub.ensureUser(ALICE);
+    await runInDurableObject(stub, (_, state) => {
+      const sql = state.storage.sql;
+      sql.exec(
+        `INSERT INTO episodes (video_id, channel_id, discovered_by_run_id, title, published_at, status, updated_at, created_at)
+         VALUES ('v', ?, ?, 't', 1, 'pending', 1, 1)`,
+        CHANNEL_A,
+        runId,
+      );
+      const insert = (id: string, cols: string, vals: string) =>
+        sql.exec(
+          `INSERT INTO episode_ingestion_attempts (attempt_id, video_id, recovery_mode, started_at, created_at, ${cols})
+           VALUES ('${id}', 'v', 'publication', 1, 1, ${vals})`,
+        );
+      // Running has no end; every other status has one.
+      expect(() =>
+        insert(
+          "a1",
+          "trigger, status, finished_at",
+          "'channel_ingestion', 'running', 2",
+        ),
+      ).toThrow(/CHECK/i);
+      expect(() =>
+        insert("a1", "trigger, status", "'channel_ingestion', 'waiting'"),
+      ).toThrow(/CHECK/i);
+      // A blocked start never launched an instance.
+      expect(() =>
+        insert(
+          "a1",
+          "trigger, status, finished_at, workflow_id",
+          "'scheduled_recovery', 'blocked', 2, 'wf'",
+        ),
+      ).toThrow(/CHECK/i);
+      // Owner Retry names who asked; the automatic triggers name nobody.
+      expect(() =>
+        insert(
+          "a1",
+          "trigger, status, finished_at",
+          "'owner_retry', 'waiting', 2",
+        ),
+      ).toThrow(/CHECK/i);
+      expect(() =>
+        insert(
+          "a1",
+          "trigger, status, finished_at, requested_by_email",
+          "'scheduled_recovery', 'waiting', 2, 'alice@example.com'",
+        ),
+      ).toThrow(/CHECK/i);
+      expect(() =>
+        insert("a1", "trigger, status", "'channel_ingestion', 'started'"),
+      ).toThrow(/CHECK/i);
+      insert(
+        "a1",
+        "trigger, status, workflow_id",
+        "'channel_ingestion', 'running', 'wf-1'",
+      );
+      insert(
+        "a2",
+        "trigger, status, finished_at, requested_by_email",
+        "'owner_retry', 'blocked', 2, 'alice@example.com'",
+      );
+      // Workflow ids are unique across attempts.
+      expect(() =>
+        insert(
+          "a3",
+          "trigger, status, workflow_id",
+          "'channel_ingestion', 'running', 'wf-1'",
+        ),
+      ).toThrow(/UNIQUE/i);
     });
   });
 
   it("enforces foreign keys and CHECK constraints", async () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
-
     await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;
       expect(() =>

@@ -1,10 +1,13 @@
--- Global Registry DO — initial schema (docs/PRD.md §5.1, §5.3; docs/specs/channel-simplification.md §3, §6).
--- Rewritten 2026-09-10 before first deployment, with owner approval. Migration governance is open (docs/PRD.md
--- §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be wiped for an edit to run.
+-- Global Registry DO — initial schema (docs/PRD.md §5.1, §5.3; docs/specs/api-reference-plan.md Step 4).
+-- Rewritten 2026-09-10 and again 2026-09-12 before first deployment, with owner approval, to the M3 model:
+-- discovery runs are completed feed history, one attempt ledger records every episode execution, episodes
+-- carry a recovery window and vector generations, and reasons live on attempts. Migration governance is open
+-- (docs/PRD.md §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be
+-- wiped for an edit to run.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
 
--- Identities. `role` is the owner mechanism decided in AGENTS.md → Identity model:
--- the deployment seeds OWNER_EMAIL as `owner`; everyone else auto-registers as `user`.
+-- Identities. `role` is read by GET /me for the web's rendering; the API itself enforces no authorization
+-- (docs/PRD.md §2, §9). The deployment seeds OWNER_EMAIL as `owner`; everyone else auto-registers as `user`.
 CREATE TABLE global_users (
   email TEXT PRIMARY KEY,
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('owner', 'user')),
@@ -12,8 +15,10 @@ CREATE TABLE global_users (
   created_at INTEGER NOT NULL CHECK (created_at >= 0)
 );
 
--- Shared catalog. `status` is the owner's answer; import outcomes live on episodes. Nothing is deleted:
--- a declined channel keeps every episode, summary, vector, follow, and read receipt, and can be approved again.
+-- Shared catalog. `status` is the owner's answer about membership; import outcomes live on episodes. Nothing
+-- is deleted: a declined channel keeps every episode, summary, vector, follow, and read receipt, and can be
+-- approved or requested again. There is no stored ingestion timestamp: the API derives `lastIngestedAt` from
+-- episodes.processed_at (docs/PRD.md §4.2 rule 27).
 CREATE TABLE channels (
   channel_id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -23,18 +28,16 @@ CREATE TABLE channels (
   -- Set at the first approval, never reset. Decides whether a later approval starts an initial import
   -- and whether a declined channel reads "Declined" or "Withdrawn".
   approved_at INTEGER CHECK (approved_at IS NULL OR approved_at >= 0),
-  -- Latest review only: approve, decline, and owner add write these. Kept when a declined channel is re-requested.
+  -- Latest review only: approve and decline write these. Kept when a declined channel is re-requested.
   reviewed_at INTEGER CHECK (reviewed_at IS NULL OR reviewed_at >= 0),
   reviewed_by_email TEXT REFERENCES global_users (email),
   review_note TEXT,
-  -- Pause stops new runs on an approved channel. `system` = no active followers; `owner` = explicit and
-  -- cleared only by the owner.
+  -- Pause stops scheduled discovery on an approved channel. `system` = no active followers; `owner` =
+  -- explicit and cleared only by resume.
   paused_by TEXT CHECK (paused_by IS NULL OR paused_by IN ('owner', 'system')),
   paused_at INTEGER CHECK (paused_at IS NULL OR paused_at >= 0),
+  -- When the feed was last read successfully; an unavailable feed does not move it.
   last_checked_at INTEGER CHECK (last_checked_at IS NULL OR last_checked_at >= 0),
-  last_ingested_at INTEGER CHECK (last_ingested_at IS NULL OR last_ingested_at >= 0),
-  -- Fence for run writes; bumped when an approved channel is declined.
-  lifecycle_version INTEGER NOT NULL DEFAULT 1 CHECK (lifecycle_version > 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
   CHECK (status <> 'approved' OR approved_at IS NOT NULL),
@@ -46,9 +49,9 @@ CREATE TABLE channels (
 -- Cron selection: approved and not paused.
 CREATE INDEX channels_status_paused_by ON channels (status, paused_by);
 
--- Who follows what, shared so the Registry can list requesters, count followers, and pause a channel nobody
--- follows. The User DO's channel_follows stays the source of truth for the user's own list; this record is kept
--- in step by the follow routes (docs/specs/channel-simplification.md §3.2). An active follow is unfollowed_at IS NULL.
+-- Who follows what, shared so the Registry can count followers, list who is waiting on a requested channel,
+-- and pause a channel nobody follows. The User DO's channel_follows stays the source of truth for the user's
+-- own list; the follow routes keep the two in step. An active follow is unfollowed_at IS NULL.
 CREATE TABLE channel_followers (
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
   user_email TEXT NOT NULL REFERENCES global_users (email),
@@ -61,45 +64,92 @@ CREATE TABLE channel_followers (
 
 CREATE INDEX channel_followers_channel_id_unfollowed_at ON channel_followers (channel_id, unfollowed_at);
 
--- Episodes carry the state machine. `pending` may be waiting; `failed` is a technical error that survived three
--- attempts; `skipped` is a deliberate, reversible outcome by the system or the owner.
+-- Discovery runs: one completed RSS feed check of one channel (docs/PRD.md §4.2 rules 1–4). A run exists only
+-- once complete, so it has no status, Workflow, or failure columns; episode processing history is on
+-- episode_ingestion_attempts, and an episode names the run that discovered it (no run-episode table).
+CREATE TABLE ingestion_runs (
+  run_id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL REFERENCES channels (channel_id),
+  kind TEXT NOT NULL CHECK (kind IN ('initial', 'scheduled')),
+  feed_status TEXT NOT NULL CHECK (feed_status IN ('read', 'unavailable')),
+  discovered_count INTEGER NOT NULL DEFAULT 0 CHECK (discovered_count >= 0),
+  -- The initial run's initial_import_count; null for a scheduled run.
+  episode_limit INTEGER CHECK (episode_limit IS NULL OR episode_limit > 0),
+  started_at INTEGER NOT NULL CHECK (started_at >= 0),
+  finished_at INTEGER NOT NULL CHECK (finished_at >= started_at),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0),
+  -- An unavailable feed discovers nothing.
+  CHECK (feed_status = 'read' OR discovered_count = 0)
+);
+
+CREATE INDEX ingestion_runs_channel_id_created_at ON ingestion_runs (channel_id, created_at);
+
+-- Episodes carry the state machine (`pending`, `available`, `failed`, `skipped`) and, separately, the recovery
+-- window: `recovery_mode` with its start, 48-hour deadline, and next attempt time (docs/PRD.md §4.2 rules 5,
+-- 10, 13–14). Reasons live on attempts: the row carries no waiting or technical code during recovery, and
+-- failure_code is written once, at the timeout, as INGESTION_TIMEOUT with the latest attempt's reason as detail.
 CREATE TABLE episodes (
   video_id TEXT PRIMARY KEY,
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
+  -- Immutable: the run that created this row, so a run's episodes are a join, not a table.
+  discovered_by_run_id TEXT NOT NULL REFERENCES ingestion_runs (run_id),
   title TEXT NOT NULL,
   published_at INTEGER NOT NULL CHECK (published_at >= 0),
   status TEXT NOT NULL CHECK (status IN ('pending', 'available', 'failed', 'skipped')),
-  waiting_code TEXT CHECK (waiting_code IS NULL OR waiting_code IN ('CAPTIONS', 'LIVE_OR_UPCOMING', 'PROVIDER_LIMIT')),
+  recovery_mode TEXT CHECK (recovery_mode IS NULL OR recovery_mode IN ('publication', 'replacement')),
+  recovery_started_at INTEGER CHECK (recovery_started_at IS NULL OR recovery_started_at >= 0),
+  recovery_deadline_at INTEGER CHECK (recovery_deadline_at IS NULL OR recovery_deadline_at >= 0),
+  next_attempt_at INTEGER CHECK (next_attempt_at IS NULL OR next_attempt_at >= 0),
+  -- Attempts that launched a Workflow since the window last started; blocked attempts never count. Diagnostic.
   attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-  failure_code TEXT,
+  failure_code TEXT CHECK (failure_code IS NULL OR failure_code = 'INGESTION_TIMEOUT'),
   failure_detail TEXT,
-  skip_reason TEXT CHECK (
-    skip_reason IS NULL
-    OR skip_reason IN ('SHORT', 'NON_ENGLISH', 'NO_CAPTIONS', 'LIVE_OR_UPCOMING', 'UNPLAYABLE', 'OWNER')
-  ),
+  skip_reason TEXT CHECK (skip_reason IS NULL OR skip_reason IN ('SHORT', 'NON_ENGLISH', 'UNPLAYABLE', 'OWNER')),
   skipped_at INTEGER CHECK (skipped_at IS NULL OR skipped_at >= 0),
   skipped_by_email TEXT REFERENCES global_users (email),
   transcript_checked_at INTEGER CHECK (transcript_checked_at IS NULL OR transcript_checked_at >= 0),
   chunk_count INTEGER CHECK (chunk_count IS NULL OR chunk_count >= 0),
   vectorized_at INTEGER CHECK (vectorized_at IS NULL OR vectorized_at >= 0),
+  -- First availability; never reset (the API's summaryAvailableAt and the digest's basis).
   processed_at INTEGER CHECK (processed_at IS NULL OR processed_at >= 0),
+  -- The vector generation retrieval may use, and the one an attempt is staging (docs/PRD.md §4.2 rules 24–26).
+  active_vector_generation TEXT,
+  recovery_vector_generation TEXT,
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  -- Available means the full vector set is retrievable and a summary exists.
+  -- Available means a verified generation is active and a summary exists.
   CHECK (
     status <> 'available'
-    OR (chunk_count IS NOT NULL AND chunk_count > 0 AND vectorized_at IS NOT NULL AND processed_at IS NOT NULL)
+    OR (chunk_count IS NOT NULL AND chunk_count > 0 AND vectorized_at IS NOT NULL AND processed_at IS NOT NULL
+        AND active_vector_generation IS NOT NULL)
   ),
-  CHECK (waiting_code IS NULL OR status = 'pending'),
-  CHECK (status <> 'failed' OR failure_code IS NOT NULL),
+  -- failure_code is INGESTION_TIMEOUT exactly when failed, null otherwise.
+  CHECK ((status = 'failed') = (failure_code IS NOT NULL)),
+  -- The recovery mode and its three timestamps are all set or all null.
+  CHECK ((recovery_mode IS NULL) = (recovery_started_at IS NULL)),
+  CHECK ((recovery_mode IS NULL) = (recovery_deadline_at IS NULL)),
+  CHECK ((recovery_mode IS NULL) = (next_attempt_at IS NULL)),
+  CHECK (recovery_mode IS NULL OR recovery_deadline_at >= recovery_started_at),
+  -- Publication recovery belongs to a pending episode, replacement recovery to an available one.
+  CHECK (recovery_mode IS NOT 'publication' OR status = 'pending'),
+  CHECK (recovery_mode IS NOT 'replacement' OR status = 'available'),
+  -- A staged generation exists only with an active recovery.
+  CHECK (recovery_vector_generation IS NULL OR recovery_mode IS NOT NULL),
+  -- Skips: reason and status imply each other, a skipped episode is dated, and OWNER names who skipped.
   CHECK ((status = 'skipped') = (skip_reason IS NOT NULL)),
   CHECK (status <> 'skipped' OR skipped_at IS NOT NULL),
-  CHECK (skipped_by_email IS NULL OR skip_reason = 'OWNER'),
-  CHECK (skip_reason IS NULL OR skip_reason <> 'OWNER' OR skipped_by_email IS NOT NULL)
+  CHECK ((skip_reason IS 'OWNER') = (skipped_by_email IS NOT NULL))
 );
 
 CREATE INDEX episodes_channel_id_status_published_at ON episodes (channel_id, status, published_at);
+-- Recovery selection: everything due.
+CREATE INDEX episodes_next_attempt_at ON episodes (next_attempt_at);
+-- A discovery run's episodes.
+CREATE INDEX episodes_discovered_by_run_id ON episodes (discovered_by_run_id);
+-- The derived per-channel ingestion time.
+CREATE INDEX episodes_channel_id_processed_at ON episodes (channel_id, processed_at);
 
+-- One shared summary per episode. takeaways_json is an array of { text, startSec } objects (docs/PRD.md §4.4).
 CREATE TABLE episode_summaries (
   video_id TEXT PRIMARY KEY REFERENCES episodes (video_id),
   format TEXT NOT NULL CHECK (format IN ('structured', 'raw_fallback')),
@@ -118,35 +168,34 @@ CREATE TABLE episode_summaries (
   )
 );
 
-CREATE TABLE ingestion_runs (
-  run_id TEXT PRIMARY KEY,
-  channel_id TEXT NOT NULL REFERENCES channels (channel_id),
-  workflow_id TEXT NOT NULL UNIQUE,
-  kind TEXT NOT NULL CHECK (kind IN ('initial', 'scheduled', 'owner_retry')),
-  status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
-  lifecycle_version INTEGER NOT NULL CHECK (lifecycle_version > 0),
-  episode_limit INTEGER CHECK (episode_limit IS NULL OR episode_limit > 0),
-  started_at INTEGER CHECK (started_at IS NULL OR started_at >= 0),
-  finished_at INTEGER CHECK (finished_at IS NULL OR finished_at >= 0),
-  failure_code TEXT,
-  failure_detail TEXT,
-  created_at INTEGER NOT NULL CHECK (created_at >= 0)
-);
-
-CREATE INDEX ingestion_runs_channel_id_created_at ON ingestion_runs (channel_id, created_at);
--- At most one queued/running run per channel.
-CREATE UNIQUE INDEX ingestion_runs_one_active_per_channel
-  ON ingestion_runs (channel_id) WHERE status IN ('queued', 'running');
-
--- Per-run outcomes stay historical even after a later retry changes the episode's current status.
--- `selected` is the row's state until the run reaches the episode; `not_attempted` is a run that ended early.
-CREATE TABLE ingestion_run_episodes (
-  run_id TEXT NOT NULL REFERENCES ingestion_runs (run_id),
+-- The one execution ledger: first processing, scheduled recovery, and owner Retry are each one row, and each
+-- launched row is one Workflow instance (docs/PRD.md §4.2 rules 6–9). A `blocked` row records a start that
+-- pre-flight refused and never launched. outcome_code is the AttemptOutcomeCode enum of the API contract;
+-- its CHECK lands at the end of M3 (docs/specs/m3-ingestion-plan.md Step 9), once every outcome has run for real.
+CREATE TABLE episode_ingestion_attempts (
+  attempt_id TEXT PRIMARY KEY,
   video_id TEXT NOT NULL REFERENCES episodes (video_id),
-  status TEXT NOT NULL CHECK (status IN ('selected', 'available', 'failed', 'skipped', 'waiting', 'not_attempted')),
-  failure_code TEXT,
-  started_at INTEGER CHECK (started_at IS NULL OR started_at >= 0),
-  finished_at INTEGER CHECK (finished_at IS NULL OR finished_at >= 0),
+  trigger TEXT NOT NULL CHECK (trigger IN ('channel_ingestion', 'scheduled_recovery', 'owner_retry')),
+  recovery_mode TEXT NOT NULL CHECK (recovery_mode IN ('publication', 'replacement')),
+  generation_id TEXT,
+  -- Set when embedding begins, so the next attempt can delete an abandoned staged generation.
+  staged_chunk_count INTEGER CHECK (staged_chunk_count IS NULL OR staged_chunk_count >= 0),
+  workflow_id TEXT UNIQUE,
+  requested_by_email TEXT REFERENCES global_users (email),
+  status TEXT NOT NULL CHECK (status IN ('running', 'available', 'waiting', 'failed', 'skipped', 'blocked')),
+  outcome_code TEXT,
+  failure_detail TEXT,
+  started_at INTEGER NOT NULL CHECK (started_at >= 0),
+  finished_at INTEGER CHECK (finished_at IS NULL OR finished_at >= started_at),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  PRIMARY KEY (run_id, video_id)
+  -- Running has no end; every other status has one.
+  CHECK ((status = 'running') = (finished_at IS NULL)),
+  -- A blocked start never launched an instance.
+  CHECK (status <> 'blocked' OR workflow_id IS NULL),
+  -- Owner Retry names who asked; the automatic triggers name nobody.
+  CHECK ((trigger = 'owner_retry') = (requested_by_email IS NOT NULL))
 );
+
+CREATE INDEX episode_ingestion_attempts_video_id_created_at ON episode_ingestion_attempts (video_id, created_at);
+-- Reconciliation: running attempts older than an hour.
+CREATE INDEX episode_ingestion_attempts_status_started_at ON episode_ingestion_attempts (status, started_at);

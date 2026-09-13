@@ -4,7 +4,7 @@ import type {
   ChannelManagementRecord,
 } from "../do/registry/types";
 
-/** The only status whose episodes are ingested and readable. */
+/** The only status whose episodes are discovered and readable. */
 export function isApproved(channel: CatalogChannel): boolean {
   return channel.status === "approved";
 }
@@ -35,7 +35,7 @@ export function toChannel(
     approvedAt: channel.approvedAt,
     reviewedAt: channel.reviewedAt,
     reviewNote: channel.reviewNote,
-    lastIngestedAt: channel.lastIngestedAt,
+    lastIngestedAt: record.lastIngestedAt,
     episodes: record.episodes,
     following: view.following,
     followerCount: view.followerCount,
@@ -53,10 +53,9 @@ export function toManagement(
     pausedBy: channel.pausedBy,
     pausedAt: channel.pausedAt,
     lastCheckedAt: channel.lastCheckedAt,
-    createdAt: channel.createdAt,
-    updatedAt: channel.updatedAt,
-    episodes: record.episodes,
     latestRun: record.latestRun,
     neverStarted: record.neverStarted,
+    createdAt: channel.createdAt,
+    updatedAt: channel.updatedAt,
   };
 }

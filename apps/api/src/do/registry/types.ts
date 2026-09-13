@@ -2,14 +2,11 @@ import type {
   Catalog,
   ChannelStatus,
   EpisodeCounts,
+  EpisodeProcessing,
   EpisodeSkipReason,
   EpisodeStatus,
   EpisodeSummary,
-  EpisodeWaitingCode,
-  IngestionRunEpisodeStatus,
-  IngestionRunKind,
-  IngestionRunStatus,
-  IngestionRunSummary,
+  IngestionRun,
   PausedBy,
   RelatedEpisode,
   UserRole,
@@ -25,6 +22,10 @@ export type RegistryUser = {
   lastSeenAt: number;
 };
 
+/**
+ * A channel row. There is no ingestion timestamp here: the API's `lastIngestedAt` is derived from
+ * `episodes.processed_at` (docs/PRD.md §4.2 rule 27), so episode work never writes a channel.
+ */
 export type CatalogChannel = {
   channelId: string;
   title: string;
@@ -38,7 +39,6 @@ export type CatalogChannel = {
   pausedBy: PausedBy | null;
   pausedAt: number | null;
   lastCheckedAt: number | null;
-  lastIngestedAt: number | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -59,26 +59,13 @@ export type ReviewInput = {
 /** One active or former follower of a channel, as the owner's queue shows it. */
 export type FollowerRecord = { email: string; followedAt: number };
 
-/** Processing detail of an episode, returned to every caller (the API enforces no authorization). */
-export type EpisodeProcessingRecord = {
-  attemptCount: number;
-  failureCode: string | null;
-  failureDetail: string | null;
-  waitingCode: EpisodeWaitingCode | null;
-  skipReason: EpisodeSkipReason | null;
-  skippedAt: number | null;
-  skippedByEmail: string | null;
-  transcriptCheckedAt: number | null;
-  chunkCount: number | null;
-  vectorizedAt: number | null;
-  processedAt: number | null;
-  createdAt: number;
-  updatedAt: number;
-};
+/** Processing detail of an episode: the shared shape itself, returned to every caller. */
+export type EpisodeProcessingRecord = EpisodeProcessing;
 
 /**
- * One episode with its shared summary (null until processed) and related titles already
- * filtered to the channel scope the caller passed, so ineligible titles never leave the DO.
+ * One episode with its shared summary (null unless available), related titles already filtered to
+ * the channel scope the caller passed so ineligible titles never leave the DO, and its processing
+ * detail with the latest attempt.
  */
 export type EpisodeRecord = {
   videoId: string;
@@ -87,6 +74,9 @@ export type EpisodeRecord = {
   title: string;
   publishedAt: number;
   status: EpisodeStatus;
+  skipReason: EpisodeSkipReason | null;
+  /** First `processed_at`; never reset. */
+  summaryAvailableAt: number | null;
   summary: EpisodeSummary | null;
   related: RelatedEpisode[];
   processing: EpisodeProcessingRecord;
@@ -99,33 +89,16 @@ export type ListEpisodesOptions = {
   relatedScope: readonly string[];
 };
 
-export type IngestionRunEpisodeRecord = {
-  videoId: string;
-  status: IngestionRunEpisodeStatus;
-  failureCode: string | null;
-  startedAt: number | null;
-  finishedAt: number | null;
-};
-
-export type IngestionRunRecord = {
-  runId: string;
-  channelId: string;
-  kind: IngestionRunKind;
-  status: IngestionRunStatus;
-  episodeLimit: number | null;
-  startedAt: number | null;
-  finishedAt: number | null;
-  failureCode: string | null;
-  failureDetail: string | null;
-  createdAt: number;
-  episodes: IngestionRunEpisodeRecord[];
-};
+/** A completed discovery run: the shared shape itself. */
+export type IngestionRunRecord = IngestionRun;
 
 /** A channel with the management facts the catalog table and detail header show. */
 export type ChannelManagementRecord = {
   channel: CatalogChannel;
   episodes: EpisodeCounts;
-  latestRun: IngestionRunSummary | null;
+  /** `MAX(processed_at)` over the channel's episodes; null before any is available. */
+  lastIngestedAt: number | null;
+  latestRun: IngestionRun | null;
   /** Approved and no run row exists at all. */
   neverStarted: boolean;
 };

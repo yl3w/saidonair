@@ -21,6 +21,33 @@ type Document = {
 
 /** Hidden from the document on purpose: the document itself and the page that renders it. */
 const HIDDEN = new Set(["/openapi.json", "/docs"]);
+
+/**
+ * Every operation registered so far, as docs/specs/api-reference.md §3.3 lists it. Adding or removing
+ * a route is a deliberate edit here, and a PRD row that never registered is visible.
+ */
+const OPERATIONS = [
+  "get /health",
+  "get /me",
+  "get /catalog",
+  "get /channels",
+  "post /channels",
+  "get /channels/{id}",
+  "post /channels/{id}/request",
+  "post /channels/{id}/approve",
+  "post /channels/{id}/decline",
+  "post /channels/{id}/pause",
+  "post /channels/{id}/resume",
+  "get /channels/{id}/followers",
+  "get /channels/{id}/episodes",
+  "post /channels/{id}/episodes/{videoId}/retry",
+  "post /channels/{id}/episodes/{videoId}/skip",
+  "get /channels/{id}/runs",
+  "get /follows",
+  "put /follows/{channelId}",
+  "delete /follows/{channelId}",
+  "get /digest",
+].sort();
 const METHODS = new Set(["GET", "POST", "PUT", "DELETE", "PATCH"]);
 
 /** Hono's `/:id` is OpenAPI's `/{id}`. */
@@ -53,7 +80,7 @@ describe("GET /openapi.json", () => {
       ),
     );
     expect([...documented].sort()).toEqual([...registered].sort());
-    expect(registered.size).toBeGreaterThan(15);
+    expect([...registered].sort()).toEqual(OPERATIONS);
   });
 
   it("is titled after the product and names the run collection `runs`", async () => {
@@ -137,19 +164,91 @@ describe("GET /openapi.json", () => {
     // Zod extracts the schemas an operation's body refers to; the body's own root stays inline. So
     // the entities are components and the response envelopes and ErrorResponse are not.
     for (const name of [
+      "ErrorCode",
       "Channel",
       "ChannelManagement",
+      "EpisodeCounts",
       "Episode",
       "EpisodeSummary",
+      "Takeaway",
+      "EpisodeWaitReason",
+      "AttemptOutcomeCode",
+      "EpisodeIngestionAttempt",
+      "EpisodeProcessing",
+      "IngestionRun",
       "Follow",
       "Follower",
       "Catalog",
-      "IngestionRun",
+      "TranscriptProviderHealth",
     ]) {
       expect(doc.components.schemas, name).toHaveProperty(name);
     }
     // Zod emits `$defs`; hono-openapi lifts them into components. A leftover ref would not resolve.
     expect(JSON.stringify(doc)).not.toContain("#/$defs/");
+  });
+});
+
+describe("the 2026-09-12 restart", () => {
+  type Component = { enum?: string[]; properties?: Record<string, unknown> };
+  const component = (doc: Document, name: string) =>
+    doc.components.schemas[name] as Component | undefined;
+
+  it("carries no removed member (docs/specs/api-reference.md §5.11)", async () => {
+    const doc = await fetchDocument();
+    for (const gone of [
+      "EpisodeWaitingCode",
+      "IngestionRunStatus",
+      "IngestionRunEpisode",
+      "IngestionRunEpisodeStatus",
+      "IngestionRunSummary",
+      "ChannelRequest",
+      "RequestOutcome",
+      "FollowOrigin",
+      "CatalogState",
+      "ChannelFailureCode",
+      "ChannelAlreadyAvailableResponse",
+    ]) {
+      expect(doc.components.schemas, gone).not.toHaveProperty(gone);
+    }
+    expect(component(doc, "EpisodeSkipReason")?.enum).toEqual([
+      "SHORT",
+      "NON_ENGLISH",
+      "UNPLAYABLE",
+      "OWNER",
+    ]);
+    expect(component(doc, "IngestionRunKind")?.enum).toEqual([
+      "initial",
+      "scheduled",
+    ]);
+    expect(component(doc, "AttemptOutcomeCode")?.enum).toHaveLength(15);
+    const properties = (name: string) =>
+      Object.keys(component(doc, name)?.properties ?? {});
+    expect(properties("EpisodeCounts")).toEqual([
+      "available",
+      "pending",
+      "failed",
+      "skipped",
+    ]);
+    expect(properties("EpisodeProcessing")).not.toContain("waitingCode");
+    expect(properties("EpisodeProcessing")).not.toContain("processedAt");
+    expect(properties("ChannelManagement")).not.toContain("episodes");
+    for (const gone of [
+      "status",
+      "workflowId",
+      "failureCode",
+      "failureDetail",
+      "episodes",
+    ]) {
+      expect(properties("IngestionRun"), gone).not.toContain(gone);
+    }
+    expect(properties("Catalog")).not.toContain("runs");
+    expect(properties("Episode")).toEqual(
+      expect.arrayContaining([
+        "waitReason",
+        "summaryAvailableAt",
+        "processing",
+      ]),
+    );
   });
 });
 

@@ -304,7 +304,7 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["episodes"],
       summary: "List a channel's episodes",
       description:
-        "Newest first, each with its summary, related titles filtered to the caller's eligible channels, and `processing`. An eligible caller, an active follower of an approved channel, also receives `wasUnread`, and the summaries returned to them are marked read; nobody else's receipts are touched.",
+        "Newest first, each with its summary, related titles filtered to the caller's eligible channels, `waitReason` on a pending one, and `processing` with the recovery window and the latest attempt. An eligible caller, an active follower of an approved channel, also receives `wasUnread`, and the summaries returned to them are marked read; nobody else's receipts are touched.",
       responses: {
         200: jsonResponse(EpisodesResponseSchema, "Episodes, newest first."),
         ...errorResponses({ notFound: true }),
@@ -356,15 +356,14 @@ export const channelRoutes = new Hono<AppEnv>()
     "/:id/episodes/:videoId/retry",
     describeRoute({
       tags: ["episodes"],
-      summary: "Retry a failed or skipped episode",
+      summary: "Retry an episode",
       description:
-        "Back to `pending` with attempts reset; starts a one-episode run. Refused while a run is active on the channel or the channel is not approved. The web offers this to the owner.",
+        "Any episode state, in any channel status. A `pending`, `failed`, or `skipped` episode returns to pending publication with a fresh 48-hour recovery window; an `available` one enters replacement recovery with its summary and vectors untouched until a replacement succeeds. Refused only while an attempt is running. Until M3 lands the attempt starter, nothing launches and the response is the episode alone. The web offers this to the owner.",
       responses: {
         200: jsonResponse(EpisodeResponseSchema, "The episode, pending again."),
         ...errorResponses({
           notFound: true,
-          conflict:
-            "The episode is not failed or skipped, the channel is not approved, or a run is active",
+          conflict: "An attempt is running for this episode",
         }),
       },
     }),
@@ -383,13 +382,12 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["episodes"],
       summary: "Skip a failed episode",
       description:
-        "`failed → skipped`, recorded with skip reason `OWNER` and the caller's email. Refused while a run is active on the channel or the channel is not approved. The web offers this to the owner.",
+        "`failed → skipped`, recorded with skip reason `OWNER` and the caller's email, in any channel status. The web offers this to the owner.",
       responses: {
         200: jsonResponse(EpisodeResponseSchema, "The episode, now skipped."),
         ...errorResponses({
           notFound: true,
-          conflict:
-            "The episode is not failed, the channel is not approved, or a run is active",
+          conflict: "The episode is not failed",
         }),
       },
     }),
@@ -411,7 +409,7 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["runs"],
       summary: "List a channel's discovery runs",
       description:
-        "RSS discovery runs newest first. Renamed from `ingestion-runs` on 2026-09-12. The web shows them on the Owner screens.",
+        "Completed RSS discovery runs newest first: kind, whether the feed was read, and how many episodes were created. An episode names the run that discovered it in `processing.discoveredByRunId`. Renamed from `ingestion-runs` on 2026-09-12. The web shows them on the Owner screens.",
       responses: {
         200: jsonResponse(IngestionRunsResponseSchema, "Runs, newest first."),
         ...errorResponses({ notFound: true }),

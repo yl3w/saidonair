@@ -23,7 +23,7 @@ export function AttentionList({
   act: Act;
 }) {
   const failedChannels = channels.filter(
-    (c) => c.status === "approved" && (c.management?.episodes.failed ?? 0) > 0,
+    (c) => c.status === "approved" && c.episodes.failed > 0,
   );
   const neverStarted = channels.filter(
     (c) => c.status === "approved" && c.management?.neverStarted,
@@ -78,7 +78,7 @@ function FailedEpisodes({
   actionError: string | undefined;
   act: Act;
 }) {
-  const failedCount = c.management?.episodes.failed ?? 0;
+  const failedCount = c.episodes.failed;
   const [load, reload] = useLoad(
     () =>
       api

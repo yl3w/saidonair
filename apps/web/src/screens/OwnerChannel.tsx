@@ -11,8 +11,10 @@ import { Time } from "../components/Time";
 import {
   channelStateCopy,
   EPISODE_STATUS_COPY,
+  OUTCOME_CODE_COPY,
+  runResultCopy,
   SKIP_REASON_COPY,
-  WAITING_CODE_COPY,
+  WAIT_REASON_COPY,
 } from "../lib/copy";
 import { type Load, useLoad } from "../lib/use-load";
 import { Guard } from "../session";
@@ -103,40 +105,20 @@ function OwnerChannelScreen() {
       </Section>
 
       <h2>Runs</h2>
-      <Section load={runs} label="ingestion runs" reload={reloadRuns}>
+      <Section load={runs} label="discovery runs" reload={reloadRuns}>
         {({ runs: list }) =>
           list.length === 0 ? (
             <p class="muted">No runs yet.</p>
           ) : (
-            <div>
+            <ul>
               {list.map((run) => (
-                <details key={run.runId}>
-                  <summary>
-                    {run.kind} · {run.status} · started{" "}
-                    <Time at={run.startedAt} /> · finished{" "}
-                    <Time at={run.finishedAt} />
-                    {run.failureCode && ` · ${run.failureCode}`}
-                    {run.episodeLimit !== null &&
-                      ` · limit ${run.episodeLimit}`}
-                  </summary>
-                  {run.failureDetail && (
-                    <p class="muted">{run.failureDetail}</p>
-                  )}
-                  {run.episodes.length === 0 ? (
-                    <p class="muted">No episode outcomes recorded.</p>
-                  ) : (
-                    <ul>
-                      {run.episodes.map((re) => (
-                        <li key={re.videoId}>
-                          {re.videoId} · {re.status.replace("_", " ")}
-                          {re.failureCode && ` · ${re.failureCode}`}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </details>
+                <li key={run.runId}>
+                  {run.kind} · {runResultCopy(run)} · checked{" "}
+                  <Time at={run.finishedAt} />
+                  {run.episodeLimit !== null && ` · limit ${run.episodeLimit}`}
+                </li>
               ))}
-            </div>
+            </ul>
           )
         }
       </Section>
@@ -250,7 +232,7 @@ function EpisodesTable({
             <th>Reason</th>
             <th>Chunks</th>
             <th>Summary</th>
-            <th>Processed</th>
+            <th>Available since</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -266,19 +248,13 @@ function EpisodesTable({
                   <Time at={e.publishedAt} />
                 </td>
                 <td>{EPISODE_STATUS_COPY[e.status]}</td>
-                <td>
-                  {p?.waitingCode ? WAITING_CODE_COPY[p.waitingCode] : "—"}
-                </td>
-                <td>{p?.attemptCount ?? "—"}</td>
-                <td>
-                  {p?.skipReason
-                    ? SKIP_REASON_COPY[p.skipReason]
-                    : (p?.failureCode ?? "—")}
-                </td>
-                <td>{p?.chunkCount ?? "—"}</td>
+                <td>{e.waitReason ? WAIT_REASON_COPY[e.waitReason] : "—"}</td>
+                <td>{p.attemptCount}</td>
+                <td>{reasonCopy(e)}</td>
+                <td>{p.chunkCount ?? "—"}</td>
                 <td>{e.summary?.format ?? "—"}</td>
                 <td>
-                  <Time at={p?.processedAt ?? null} />
+                  <Time at={e.summaryAvailableAt} />
                 </td>
                 <td>
                   <EpisodeActions
@@ -337,6 +313,19 @@ function EpisodeActions({
       )}
     </div>
   );
+}
+
+/** Skip reason, timeout detail, or the latest attempt's outcome, whichever explains the row. */
+function reasonCopy(e: Episode): string {
+  if (e.skipReason) return SKIP_REASON_COPY[e.skipReason];
+  const p = e.processing;
+  if (p.failureCode) {
+    return p.failureDetail
+      ? `${p.failureCode} (${p.failureDetail})`
+      : p.failureCode;
+  }
+  const code = p.latestAttempt?.outcomeCode;
+  return code ? OUTCOME_CODE_COPY[code] : "—";
 }
 
 function followerLabel(count: number): string {

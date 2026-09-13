@@ -18,6 +18,7 @@ export function CatalogHealth({
 }) {
   const c = catalog.channels;
   const e = catalog.episodes;
+  const t = catalog.transcripts;
   const count = (label: string, n: number, filter: CatalogFilter) => (
     <button
       id={`filter-${filter}`}
@@ -34,10 +35,17 @@ export function CatalogHealth({
       {count("Paused", c.paused, "paused")}
       {count("Declined", c.declined, "declined")}
       <span>
-        Episodes {e.available} summarised · {e.pending} pending ({e.waiting}{" "}
-        waiting) · {e.failed} failed · {e.skipped} skipped
+        Episodes {e.available} summarised · {e.pending} pending · {e.failed}{" "}
+        failed · {e.skipped} skipped
       </span>
-      <span>Runs active {catalog.runs.active}</span>
+      <span>
+        Transcript credits{" "}
+        {t.status === "ok"
+          ? t.remainingCredits
+          : t.status === "auth_failed"
+            ? "key rejected"
+            : "unknown"}
+      </span>
       <span>
         Last ingestion{" "}
         <Time at={catalog.lastSuccessfulIngestionAt} fallback="never" />

@@ -1,5 +1,12 @@
 import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
+import type {
+  AttemptOutcomeCode,
+  AttemptStatus,
+  AttemptTrigger,
+  RecoveryMode,
+  Takeaway,
+} from "@media-digest/shared";
 import { expect } from "vitest";
 import { z } from "zod";
 import { getRegistry } from "../src/do/registry";
@@ -108,26 +115,86 @@ export async function setChannelState(
 }
 
 // --- ingestion fixtures ----------------------------------------------------------------------
-// Ingestion (M3) does not exist yet, so tests seed episodes, summaries, and runs with real SQL,
-// the same way `setChannelState` drives channel state. The channel row must already exist.
+// The pipeline (M3) does not exist yet, so tests seed runs, episodes, attempts, and summaries with
+// real SQL, the same way `setChannelState` drives channel state. The channel row must already exist.
+
+const RUN_COLUMNS = `run_id, channel_id, kind, feed_status, discovered_count, episode_limit,
+  started_at, finished_at, created_at`;
+
+type RunSeed = {
+  runId?: string;
+  kind?: "initial" | "scheduled";
+  feedStatus?: "read" | "unavailable";
+  discoveredCount?: number;
+  episodeLimit?: number;
+  startedAt?: number;
+  finishedAt?: number;
+  createdAt?: number;
+};
+
+/** One completed discovery run. Defaults: scheduled, feed read, nothing discovered, at t=1. */
+export async function seedRun(
+  channelId: string,
+  seed: RunSeed = {},
+): Promise<string> {
+  const runId = seed.runId ?? crypto.randomUUID();
+  const createdAt = seed.createdAt ?? 1;
+  const startedAt = seed.startedAt ?? createdAt;
+  await runInDurableObject(registry(), (_, ctx) => {
+    ctx.storage.sql.exec(
+      `INSERT INTO ingestion_runs (${RUN_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      runId,
+      channelId,
+      seed.kind ?? "scheduled",
+      seed.feedStatus ?? "read",
+      seed.discoveredCount ?? 0,
+      seed.episodeLimit ?? null,
+      startedAt,
+      seed.finishedAt ?? startedAt,
+      createdAt,
+    );
+  });
+  return runId;
+}
+
+/**
+ * Every episode names the run that discovered it. Seeds without a run share one per channel,
+ * created at t=0 so an explicitly seeded run is always the newest.
+ */
+async function seedRunFor(channelId: string): Promise<string> {
+  const runId = `seed-run-${channelId}`;
+  await runInDurableObject(registry(), (_, ctx) => {
+    ctx.storage.sql.exec(
+      `INSERT OR IGNORE INTO ingestion_runs (${RUN_COLUMNS})
+       VALUES (?, ?, 'initial', 'read', 0, 5, 0, 0, 0)`,
+      runId,
+      channelId,
+    );
+  });
+  return runId;
+}
+
+const RECOVERY_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 type EpisodeSeed = {
   title?: string;
   publishedAt?: number;
   status?: "pending" | "available" | "failed" | "skipped";
-  waitingCode?: "CAPTIONS" | "LIVE_OR_UPCOMING" | "PROVIDER_LIMIT";
-  skipReason?:
-    | "SHORT"
-    | "NON_ENGLISH"
-    | "NO_CAPTIONS"
-    | "LIVE_OR_UPCOMING"
-    | "UNPLAYABLE"
-    | "OWNER";
+  skipReason?: "SHORT" | "NON_ENGLISH" | "UNPLAYABLE" | "OWNER";
   skippedByEmail?: string;
   attemptCount?: number;
-  failureCode?: string;
+  /** The latest attempt's reason a timed-out publication keeps; `failed` only. */
+  failureDetail?: string;
   chunkCount?: number;
   processedAt?: number;
+  runId?: string;
+  /** An active recovery window: `publication` needs `pending`, `replacement` needs `available`. */
+  recovery?: {
+    mode: "publication" | "replacement";
+    startedAt?: number;
+    deadlineAt?: number;
+    nextAttemptAt?: number;
+  };
 };
 
 export async function seedEpisode(
@@ -137,34 +204,45 @@ export async function seedEpisode(
 ): Promise<void> {
   const status = seed.status ?? "available";
   const available = status === "available";
+  const pending = status === "pending";
   const failed = status === "failed";
   const skipped = status === "skipped";
   const skipReason = skipped ? (seed.skipReason ?? "SHORT") : null;
   const at = seed.processedAt ?? seed.publishedAt ?? 1;
+  const runId = seed.runId ?? (await seedRunFor(channelId));
+  const recovery = seed.recovery ?? null;
+  const recoveryStart = recovery ? (recovery.startedAt ?? at) : null;
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episodes
-         (video_id, channel_id, title, published_at, status, waiting_code, attempt_count,
-          failure_code, skip_reason, skipped_at, skipped_by_email, transcript_checked_at,
-          chunk_count, vectorized_at, processed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (video_id, channel_id, discovered_by_run_id, title, published_at, status,
+          recovery_mode, recovery_started_at, recovery_deadline_at, next_attempt_at, attempt_count,
+          failure_code, failure_detail, skip_reason, skipped_at, skipped_by_email, transcript_checked_at,
+          chunk_count, vectorized_at, processed_at, active_vector_generation, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       videoId,
       channelId,
+      runId,
       seed.title ?? `Episode ${videoId}`,
       seed.publishedAt ?? 1,
       status,
-      status === "pending" ? (seed.waitingCode ?? null) : null,
-      seed.attemptCount ?? (status === "pending" ? 0 : 1),
-      failed
-        ? (seed.failureCode ?? "PROVIDER_HTTP")
-        : (seed.failureCode ?? null),
+      recovery?.mode ?? null,
+      recoveryStart,
+      recovery && recoveryStart !== null
+        ? (recovery.deadlineAt ?? recoveryStart + RECOVERY_WINDOW_MS)
+        : null,
+      recovery ? (recovery.nextAttemptAt ?? recoveryStart) : null,
+      seed.attemptCount ?? (pending ? 0 : 1),
+      failed ? "INGESTION_TIMEOUT" : null,
+      failed ? (seed.failureDetail ?? "PROVIDER_HTTP") : null,
       skipReason,
       skipped ? at : null,
       skipReason === "OWNER" ? (seed.skippedByEmail ?? OWNER) : null,
-      status === "pending" ? null : at,
+      pending ? null : at,
       available ? (seed.chunkCount ?? 3) : null,
       available ? at : null,
       available ? at : null,
+      available ? `gen-${videoId}` : null,
       at,
       at,
     );
@@ -175,7 +253,7 @@ type SummarySeed =
   | {
       format?: "structured";
       executiveSummary?: string;
-      takeaways?: string[];
+      takeaways?: Takeaway[];
       topicTags?: string[];
       relatedVideoIds?: string[];
     }
@@ -205,75 +283,75 @@ export async function seedSummary(
        VALUES (?, 'structured', ?, ?, ?, ?, 'test-model', 'v0', 1)`,
       videoId,
       seed.executiveSummary ?? `Summary of ${videoId}`,
-      JSON.stringify(seed.takeaways ?? ["takeaway"]),
+      JSON.stringify(seed.takeaways ?? [{ text: "takeaway", startSec: 12 }]),
       JSON.stringify(seed.topicTags ?? ["tag"]),
       related,
     );
   });
 }
 
-type RunSeed = {
-  runId?: string;
-  kind?: "initial" | "scheduled" | "owner_retry";
-  status?: "queued" | "running" | "completed" | "failed" | "cancelled";
-  episodeLimit?: number;
+type AttemptSeed = {
+  attemptId?: string;
+  trigger?: AttemptTrigger;
+  recoveryMode?: RecoveryMode;
+  status?: AttemptStatus;
+  /** Defaults per status: waiting CAPTIONS, failed PROVIDER_HTTP, skipped SHORT, blocked PROVIDER_LIMIT, else null. */
+  outcomeCode?: AttemptOutcomeCode | null;
+  failureDetail?: string;
+  workflowId?: string | null;
+  requestedByEmail?: string;
+  stagedChunkCount?: number;
   startedAt?: number;
   finishedAt?: number;
-  failureCode?: string;
   createdAt?: number;
-  episodes?: {
-    videoId: string;
-    status:
-      | "selected"
-      | "available"
-      | "failed"
-      | "skipped"
-      | "waiting"
-      | "not_attempted";
-    failureCode?: string;
-  }[];
 };
 
-export async function seedRun(
-  channelId: string,
-  seed: RunSeed = {},
+const DEFAULT_OUTCOME: Record<AttemptStatus, AttemptOutcomeCode | null> = {
+  running: null,
+  available: null,
+  waiting: "CAPTIONS",
+  failed: "PROVIDER_HTTP",
+  skipped: "SHORT",
+  blocked: "PROVIDER_LIMIT",
+};
+
+/** One row of the attempt ledger. The episode row must already exist. */
+export async function seedAttempt(
+  videoId: string,
+  seed: AttemptSeed = {},
 ): Promise<string> {
-  const runId = seed.runId ?? crypto.randomUUID();
-  const createdAt = seed.createdAt ?? 1;
+  const attemptId = seed.attemptId ?? crypto.randomUUID();
+  const status = seed.status ?? "waiting";
+  const trigger = seed.trigger ?? "channel_ingestion";
+  const startedAt = seed.startedAt ?? 1;
   await runInDurableObject(registry(), (_, ctx) => {
-    const sql = ctx.storage.sql;
-    sql.exec(
-      `INSERT INTO ingestion_runs
-         (run_id, channel_id, workflow_id, kind, status, episode_limit,
-          started_at, finished_at, failure_code, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      runId,
-      channelId,
-      `wf-${runId}`,
-      seed.kind ?? "initial",
-      seed.status ?? "completed",
-      seed.episodeLimit ?? null,
-      seed.startedAt ?? null,
-      seed.finishedAt ?? null,
-      seed.failureCode ?? null,
-      createdAt,
+    ctx.storage.sql.exec(
+      `INSERT INTO episode_ingestion_attempts
+         (attempt_id, video_id, trigger, recovery_mode, staged_chunk_count, workflow_id,
+          requested_by_email, status, outcome_code, failure_detail, started_at, finished_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      attemptId,
+      videoId,
+      trigger,
+      seed.recoveryMode ?? "publication",
+      seed.stagedChunkCount ?? null,
+      seed.workflowId === undefined
+        ? status === "blocked"
+          ? null
+          : `wf-${attemptId}`
+        : seed.workflowId,
+      trigger === "owner_retry" ? (seed.requestedByEmail ?? OWNER) : null,
+      status,
+      seed.outcomeCode === undefined
+        ? DEFAULT_OUTCOME[status]
+        : seed.outcomeCode,
+      seed.failureDetail ?? null,
+      startedAt,
+      status === "running" ? null : (seed.finishedAt ?? startedAt),
+      seed.createdAt ?? startedAt,
     );
-    for (const episode of seed.episodes ?? []) {
-      sql.exec(
-        `INSERT INTO ingestion_run_episodes
-           (run_id, video_id, status, failure_code, started_at, finished_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        runId,
-        episode.videoId,
-        episode.status,
-        episode.failureCode ?? null,
-        createdAt,
-        createdAt,
-        createdAt,
-      );
-    }
   });
-  return runId;
+  return attemptId;
 }
 
 /** Asserts a response body matches the shared schema that documents it, i.e. the API does what `/docs` says. */

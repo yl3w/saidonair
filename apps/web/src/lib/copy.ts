@@ -1,13 +1,15 @@
 // The user-facing phrases from docs/specs/channel-simplification.md §4 and §7, in one place so
 // screens never invent their own wording.
 import type {
+  AttemptOutcomeCode,
   Channel,
   ChannelDeclinedResponse,
   ChannelStatus,
   Episode,
   EpisodeSkipReason,
   EpisodeStatus,
-  EpisodeWaitingCode,
+  EpisodeWaitReason,
+  IngestionRun,
 } from "@media-digest/shared";
 import { ApiError } from "../api";
 import { absoluteTime } from "./time";
@@ -51,24 +53,48 @@ export const EPISODE_STATUS_COPY: Record<EpisodeStatus, string> = {
 export const SKIP_REASON_COPY: Record<EpisodeSkipReason, string> = {
   SHORT: "under three minutes",
   NON_ENGLISH: "no English captions",
-  NO_CAPTIONS: "no captions",
-  LIVE_OR_UPCOMING: "live or upcoming",
   UNPLAYABLE: "video unavailable",
   OWNER: "skipped by the owner",
 };
 
-export const WAITING_CODE_COPY: Record<EpisodeWaitingCode, string> = {
+/** Why a pending episode is not summarised yet, from `Episode.waitReason` (every caller sees it). */
+export const WAIT_REASON_COPY: Record<EpisodeWaitReason, string> = {
   CAPTIONS: "waiting for captions",
   LIVE_OR_UPCOMING: "waiting for the stream to end",
   PROVIDER_LIMIT: "waiting for transcript credits",
 };
 
+/** The owner's phrase for an attempt's outcome. Exhaustive: a new code is a compile error here first. */
+export const OUTCOME_CODE_COPY: Record<AttemptOutcomeCode, string> = {
+  CAPTIONS: "no captions yet",
+  LIVE_OR_UPCOMING: "live or upcoming",
+  PROVIDER_LIMIT: "transcript credits exhausted",
+  SHORT: "under three minutes",
+  NON_ENGLISH: "no English captions",
+  UNPLAYABLE: "video unavailable",
+  PROVIDER_AUTH: "transcript key rejected",
+  PROVIDER_RATE_LIMIT: "transcript provider rate-limited",
+  PROVIDER_HTTP: "transcript provider error",
+  PROVIDER_PARSE: "transcript could not be parsed",
+  TRANSCRIPT_TOO_LARGE: "transcript too large",
+  EMBEDDING_FAILED: "embedding failed",
+  VECTORIZE_INCOMPLETE: "vector store incomplete",
+  SUMMARY_FAILED: "summary failed",
+  WORKFLOW_LOST: "processing was lost",
+};
+
+/** What a discovery run found: the owner's latest-run phrase (PRD §7). */
+export function runResultCopy(run: IngestionRun): string {
+  if (run.feedStatus === "unavailable") return "feed unavailable";
+  if (run.discoveredCount === 0) return "nothing new";
+  return `${run.discoveredCount} episode${run.discoveredCount === 1 ? "" : "s"} discovered`;
+}
+
 /** The phrase under an episode title when there is no summary to show; null for an available one. */
 export function episodePhrase(episode: Episode): string | null {
   if (episode.status === "available") return null;
-  const waiting = episode.processing?.waitingCode;
-  if (episode.status === "pending" && waiting)
-    return WAITING_CODE_COPY[waiting];
+  if (episode.status === "pending" && episode.waitReason)
+    return WAIT_REASON_COPY[episode.waitReason];
   const reason = episode.skipReason;
   if (episode.status === "skipped" && reason)
     return `No summary: ${SKIP_REASON_COPY[reason]}`;

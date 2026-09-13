@@ -1,5 +1,11 @@
-import { countByChannel, zeroCounts } from "./episodes";
-import { countActive, lastCompletedFinishedAt, latestByChannel } from "./runs";
+import {
+  countAll,
+  countByChannel,
+  lastProcessedAt,
+  lastProcessedAtByChannel,
+  zeroCounts,
+} from "./episodes";
+import { latestByChannel } from "./runs";
 import type {
   CatalogChannel,
   CatalogSummary,
@@ -7,8 +13,10 @@ import type {
 } from "./types";
 
 /**
- * The catalog's aggregate state for the owner's attention card and health strip. An approved
- * channel counts as `paused` rather than `approved` while a pause is set.
+ * The catalog's aggregate state for the attention card and health strip. An approved channel counts
+ * as `paused` rather than `approved` while a pause is set. Episode counts are a plain group-by on
+ * status (no `waiting`: wait reasons live on episode rows), and the last successful ingestion is the
+ * newest first availability anywhere (docs/PRD.md §4.2 rule 27).
  */
 export function summarize(sql: SqlStorage): CatalogSummary {
   const channels = { requested: 0, approved: 0, paused: 0, declined: 0 };
@@ -20,35 +28,13 @@ export function summarize(sql: SqlStorage): CatalogSummary {
     else if (row.paused) channels.paused += row.n;
     else channels.approved += row.n;
   }
-
-  const episodes = {
-    available: 0,
-    pending: 0,
-    waiting: 0,
-    failed: 0,
-    skipped: 0,
-  };
-  for (const row of sql.exec<{ status: string; waiting: number; n: number }>(
-    `SELECT status, (waiting_code IS NOT NULL) AS waiting, COUNT(*) AS n FROM episodes GROUP BY status, waiting`,
-  )) {
-    if (row.status === "available") episodes.available += row.n;
-    else if (row.status === "pending") episodes.pending += row.n;
-    else if (row.status === "failed") episodes.failed += row.n;
-    else if (row.status === "skipped") episodes.skipped += row.n;
-    if (row.waiting) episodes.waiting += row.n;
-  }
-
+  const episodes = countAll(sql);
   return {
     channels,
     episodes,
-    runs: { active: countActive(sql) },
-    lastSuccessfulIngestionAt: lastCompletedFinishedAt(sql),
+    lastSuccessfulIngestionAt: lastProcessedAt(sql),
     attention: {
-      failedEpisodes: sql
-        .exec<{ n: number }>(
-          "SELECT COUNT(*) AS n FROM episodes WHERE status = 'failed'",
-        )
-        .one().n,
+      failedEpisodes: episodes.failed,
       neverStarted: sql
         .exec<{ n: number }>(
           `SELECT COUNT(*) AS n FROM channels WHERE status = 'approved'
@@ -60,7 +46,7 @@ export function summarize(sql: SqlStorage): CatalogSummary {
   };
 }
 
-/** Joins channels to the owner-only facts in a handful of grouped queries, never per channel. */
+/** Joins channels to their management facts in a handful of grouped queries, never per channel. */
 export function withManagement(
   sql: SqlStorage,
   channels: readonly CatalogChannel[],
@@ -68,9 +54,11 @@ export function withManagement(
   const ids = channels.map((channel) => channel.channelId);
   const counts = countByChannel(sql, ids);
   const latest = latestByChannel(sql, ids);
+  const ingested = lastProcessedAtByChannel(sql, ids);
   return channels.map((channel) => ({
     channel,
     episodes: counts[channel.channelId] ?? zeroCounts(),
+    lastIngestedAt: ingested[channel.channelId] ?? null,
     latestRun: latest[channel.channelId] ?? null,
     neverStarted:
       channel.status === "approved" && !(channel.channelId in latest),

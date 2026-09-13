@@ -19,8 +19,8 @@ import {
 } from "./helpers";
 
 /**
- * A: approved, two available and one failed episode, a completed run.
- * B: approved with a queued run. C: approved with no run (never started). D: requested.
+ * A: approved, two available and one failed episode, two runs plus the seed run its episodes name.
+ * B: approved with one unavailable-feed run. C: approved with no run (never started). D: requested.
  * E: approved but paused by the owner (counts only as paused).
  */
 async function seedCatalog() {
@@ -46,17 +46,20 @@ async function seedCatalog() {
   await seedEpisode(VIDEO_C, CHANNEL_A, { status: "failed", publishedAt: 4 });
   await seedRun(CHANNEL_A, {
     kind: "scheduled",
-    status: "completed",
+    feedStatus: "read",
+    discoveredCount: 1,
     createdAt: 100,
     finishedAt: 150,
   });
   await seedRun(CHANNEL_A, {
     kind: "initial",
-    status: "completed",
+    feedStatus: "read",
+    discoveredCount: 2,
+    episodeLimit: 5,
     createdAt: 50,
     finishedAt: 60,
   });
-  await seedRun(CHANNEL_B, { status: "queued", createdAt: 200 });
+  await seedRun(CHANNEL_B, { feedStatus: "unavailable", createdAt: 200 });
 
   return stub;
 }
@@ -67,9 +70,9 @@ describe("registry catalog summary and management", () => {
 
     expect(await stub.getCatalogSummary()).toEqual({
       channels: { requested: 1, approved: 3, paused: 1, declined: 0 },
-      episodes: { available: 2, pending: 0, waiting: 0, failed: 1, skipped: 0 },
-      runs: { active: 1 },
-      lastSuccessfulIngestionAt: 150,
+      episodes: { available: 2, pending: 0, failed: 1, skipped: 0 },
+      // The newest first availability anywhere: VIDEO_B was processed at 3.
+      lastSuccessfulIngestionAt: 3,
       // One failed episode (VIDEO_C on A). Approved with no run row: C, and E (paused channels
       // keep channels.status = 'approved'). `requested` reuses the `channels.requested` total.
       attention: { failedEpisodes: 1, neverStarted: 2, requested: 1 },
@@ -79,8 +82,7 @@ describe("registry catalog summary and management", () => {
   it("is empty-safe before anything exists", async () => {
     expect(await registry().getCatalogSummary()).toEqual({
       channels: { requested: 0, approved: 0, paused: 0, declined: 0 },
-      episodes: { available: 0, pending: 0, waiting: 0, failed: 0, skipped: 0 },
-      runs: { active: 0 },
+      episodes: { available: 0, pending: 0, failed: 0, skipped: 0 },
       lastSuccessfulIngestionAt: null,
       attention: { failedEpisodes: 0, neverStarted: 0, requested: 0 },
     });
@@ -95,16 +97,24 @@ describe("registry catalog summary and management", () => {
 
     expect(byId.get(CHANNEL_A)).toMatchObject({
       episodes: { available: 2, failed: 1, pending: 0 },
-      latestRun: { kind: "scheduled", status: "completed", finishedAt: 150 },
+      lastIngestedAt: 3,
+      latestRun: {
+        kind: "scheduled",
+        feedStatus: "read",
+        discoveredCount: 1,
+        finishedAt: 150,
+      },
       neverStarted: false,
     });
     expect(byId.get(CHANNEL_B)).toMatchObject({
-      latestRun: { status: "queued" },
+      lastIngestedAt: null,
+      latestRun: { feedStatus: "unavailable", discoveredCount: 0 },
       neverStarted: false,
     });
     // Approved with no run row at all.
     expect(byId.get(CHANNEL_C)).toMatchObject({
       episodes: { available: 0 },
+      lastIngestedAt: null,
       latestRun: null,
       neverStarted: true,
     });

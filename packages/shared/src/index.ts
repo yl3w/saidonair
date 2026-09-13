@@ -2,22 +2,28 @@ import { z } from "zod";
 
 /**
  * Every API request and response shape, as Zod schemas with the TypeScript types inferred beside
- * them (`XSchema` / `X`). `apps/api` validates requests and documents responses with the schemas;
- * `apps/web` imports the types only, so Zod never enters its bundle. `.meta({ id })` names a schema as
- * an OpenAPI component wherever another schema refers to it (a response envelope's own root stays
- * inline); `.describe()` is the text readers see in `/docs`. Schemas that carry an id must not be
- * re-described where they are used, or the registry would hold two schemas with one id.
+ * them (`XSchema` / `X`): the whole contract of docs/PRD.md §7, restated on 2026-09-12 with no legacy
+ * member (docs/specs/api-reference.md §5). `apps/api` validates requests and documents responses with
+ * the schemas; `apps/web` imports the types only, so Zod never enters its bundle. `.meta({ id })` names
+ * a schema as an OpenAPI component wherever another schema refers to it (a response envelope's own
+ * root stays inline); `.describe()` is the text readers see in `/docs`. A schema that carries an id is
+ * never re-described where it is used, or the registry would hold two schemas with one id.
+ *
+ * The API enforces no authorization (PRD §2, §9): every caller receives every shape in full, and only
+ * the caller's own relationships (`following`, `unreadCount`, `wasUnread`) vary.
  */
 
 /** Unix time in milliseconds, as every timestamp in the API. */
 const UnixMs = z.number().int().describe("Unix time, milliseconds");
 const Count = z.number().int().nonnegative();
+/** A non-empty id; the format is the Registry's check (400 when malformed). */
+const Id = z.string().min(1);
 
 /**
- * Optional free text (`title`, `explanation`). Omit the field to mean "not provided"; a present
- * value must be non-blank and is trimmed. Empty, whitespace-only, and null are `INVALID_INPUT`
- * (owner decision 2026-09-08, `docs/specs/api-reference.md` §2): the API validates and clients
- * normalise, so a blank never silently becomes a default. The web app strips blanks before sending.
+ * Optional free text (`title`, `explanation`, a chat's `title`). Omit the field to mean "not
+ * provided"; a present value must be non-blank and is trimmed. Empty, whitespace-only, and null are
+ * `INVALID_INPUT` (owner decision 2026-09-08): the API validates and clients normalise, so a blank
+ * never silently becomes a default.
  */
 const optionalText = (description: string) =>
   z
@@ -26,6 +32,8 @@ const optionalText = (description: string) =>
     .min(1, "must be omitted or non-blank")
     .describe(description)
     .optional();
+
+// --- common (PRD §2, §7) --------------------------------------------------------------------------
 
 export const HealthResponseSchema = z
   .object({ service: z.literal("api"), status: z.literal("ok") })
@@ -59,11 +67,10 @@ export const ErrorResponseSchema = z
   });
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
-/** Registry role. `owner` manages the shared catalog; everyone else is `user`. */
 export const UserRoleSchema = z.enum(["owner", "user"]).meta({
   id: "UserRole",
   description:
-    "`owner` manages the shared catalog; everyone else is `user`. Identity, not authentication.",
+    "`owner` is the identity the web offers catalog management to; everyone else is `user`. Rendering only: the API enforces no authorization.",
 });
 export type UserRole = z.infer<typeof UserRoleSchema>;
 
@@ -75,21 +82,21 @@ export const MeResponseSchema = z
   .meta({ id: "MeResponse", description: "`GET /me`" });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 
-// --- enums (mirror the CHECK constraints in the Registry schema) -----------------------------------
+// --- enums (PRD §5.3, §7): each mirrors a CHECK constraint or a fixed contract set ---------------
 
 export const ChannelStatusSchema = z
   .enum(["requested", "approved", "declined"])
   .meta({
     id: "ChannelStatus",
     description:
-      "The owner's answer. `requested` awaits review; `approved` is ingested and readable; `declined` is hidden from the catalog list, keeps everything, and can be approved or requested again.",
+      "The owner's answer about catalog membership. `requested` awaits review; `approved` is discovered and readable; `declined` is hidden from the catalog list, keeps everything, and can be approved or requested again.",
   });
 export type ChannelStatus = z.infer<typeof ChannelStatusSchema>;
 
 export const PausedBySchema = z.enum(["owner", "system"]).meta({
   id: "PausedBy",
   description:
-    "`system` when no one follows the channel; `owner` when the owner paused it.",
+    "`system` when no one follows the channel; `owner` when the owner paused it. Pause stops scheduled discovery only.",
 });
 export type PausedBy = z.infer<typeof PausedBySchema>;
 
@@ -98,65 +105,112 @@ export const EpisodeStatusSchema = z
   .meta({
     id: "EpisodeStatus",
     description:
-      "`pending` may be waiting; `available` has verified vectors and a summary; `failed` is a technical error after three attempts; `skipped` is deliberate and reversible.",
+      "`pending` is being processed or recovering; `available` has a verified vector generation and a summary; `failed` is a publication that exhausted its 48-hour recovery window; `skipped` is deliberate and reversible.",
   });
 export type EpisodeStatus = z.infer<typeof EpisodeStatusSchema>;
 
-export const EpisodeWaitingCodeSchema = z
-  .enum(["CAPTIONS", "LIVE_OR_UPCOMING", "PROVIDER_LIMIT"])
-  .meta({
-    id: "EpisodeWaitingCode",
-    description: "Why a pending episode is waiting for a later run.",
-  });
-export type EpisodeWaitingCode = z.infer<typeof EpisodeWaitingCodeSchema>;
+export const RecoveryModeSchema = z.enum(["publication", "replacement"]).meta({
+  id: "RecoveryMode",
+  description:
+    "`publication` recovers a pending episode toward its first summary; `replacement` re-processes an available one while its current summary and vectors stay readable.",
+});
+export type RecoveryMode = z.infer<typeof RecoveryModeSchema>;
+
+export const EpisodeFailureCodeSchema = z.enum(["INGESTION_TIMEOUT"]).meta({
+  id: "EpisodeFailureCode",
+  description:
+    "The one episode failure: a publication that did not succeed within its 48-hour window. The latest attempt's reason is in `failureDetail`.",
+});
+export type EpisodeFailureCode = z.infer<typeof EpisodeFailureCodeSchema>;
 
 export const EpisodeSkipReasonSchema = z
-  .enum([
-    "SHORT",
-    "NON_ENGLISH",
-    "NO_CAPTIONS",
-    "LIVE_OR_UPCOMING",
-    "UNPLAYABLE",
-    "OWNER",
-  ])
+  .enum(["SHORT", "NON_ENGLISH", "UNPLAYABLE", "OWNER"])
   .meta({
     id: "EpisodeSkipReason",
     description:
-      "Why an episode was skipped; `OWNER` carries the owner's email.",
+      "Why an episode was skipped: under three minutes, no English caption track, unplayable, or by the owner by hand (`OWNER`, which names who).",
   });
 export type EpisodeSkipReason = z.infer<typeof EpisodeSkipReasonSchema>;
+
+export const EpisodeWaitReasonSchema = z
+  .enum(["CAPTIONS", "LIVE_OR_UPCOMING", "PROVIDER_LIMIT"])
+  .meta({
+    id: "EpisodeWaitReason",
+    description:
+      "Why a pending episode is waiting for a later attempt, derived from its latest attempt: no captions yet, the video is live or scheduled, or transcript credits are exhausted.",
+  });
+export type EpisodeWaitReason = z.infer<typeof EpisodeWaitReasonSchema>;
 
 export const SummaryFormatSchema = z
   .enum(["structured", "raw_fallback"])
   .meta({ id: "SummaryFormat" });
 export type SummaryFormat = z.infer<typeof SummaryFormatSchema>;
 
-export const IngestionRunKindSchema = z
-  .enum(["initial", "scheduled", "owner_retry"])
-  .meta({ id: "IngestionRunKind" });
+export const IngestionRunKindSchema = z.enum(["initial", "scheduled"]).meta({
+  id: "IngestionRunKind",
+  description:
+    "`initial` until a run of the channel has created an episode (imports the newest `initialImportCount` entries); `scheduled` afterwards (imports untracked entries published after first approval).",
+});
 export type IngestionRunKind = z.infer<typeof IngestionRunKindSchema>;
 
-export const IngestionRunStatusSchema = z
-  .enum(["queued", "running", "completed", "failed", "cancelled"])
-  .meta({ id: "IngestionRunStatus" });
-export type IngestionRunStatus = z.infer<typeof IngestionRunStatusSchema>;
+export const FeedStatusSchema = z.enum(["read", "unavailable"]).meta({
+  id: "FeedStatus",
+  description: "Whether the channel's RSS feed was read on this run.",
+});
+export type FeedStatus = z.infer<typeof FeedStatusSchema>;
 
-export const IngestionRunEpisodeStatusSchema = z
+export const AttemptTriggerSchema = z
+  .enum(["channel_ingestion", "scheduled_recovery", "owner_retry"])
+  .meta({
+    id: "AttemptTrigger",
+    description:
+      "What started the attempt: a discovery run creating the episode, the recovery schedule, or Retry (which names who asked).",
+  });
+export type AttemptTrigger = z.infer<typeof AttemptTriggerSchema>;
+
+export const AttemptStatusSchema = z
+  .enum(["running", "available", "failed", "skipped", "waiting", "blocked"])
+  .meta({
+    id: "AttemptStatus",
+    description:
+      "`running` while the Workflow instance is alive; `available` published; `waiting` finished with a recoverable wait; `failed` finished with a technical error (recoverable until the deadline); `skipped` classified the video deterministically; `blocked` was refused by the provider pre-flight and never launched.",
+  });
+export type AttemptStatus = z.infer<typeof AttemptStatusSchema>;
+
+export const AttemptOutcomeCodeSchema = z
   .enum([
-    "selected",
-    "available",
-    "failed",
-    "skipped",
-    "waiting",
-    "not_attempted",
+    "CAPTIONS",
+    "LIVE_OR_UPCOMING",
+    "PROVIDER_LIMIT",
+    "SHORT",
+    "NON_ENGLISH",
+    "UNPLAYABLE",
+    "PROVIDER_AUTH",
+    "PROVIDER_RATE_LIMIT",
+    "PROVIDER_HTTP",
+    "PROVIDER_PARSE",
+    "TRANSCRIPT_TOO_LARGE",
+    "EMBEDDING_FAILED",
+    "VECTORIZE_INCOMPLETE",
+    "SUMMARY_FAILED",
+    "WORKFLOW_LOST",
   ])
   .meta({
-    id: "IngestionRunEpisodeStatus",
+    id: "AttemptOutcomeCode",
     description:
-      "Per-run outcome; `selected` until the run reaches the episode, `not_attempted` when it ended early.",
+      "The attempt's reason, by status: `waiting` → CAPTIONS, LIVE_OR_UPCOMING, PROVIDER_LIMIT; `skipped` → SHORT, NON_ENGLISH, UNPLAYABLE; `blocked` → PROVIDER_AUTH, PROVIDER_LIMIT; `failed` → PROVIDER_AUTH, PROVIDER_RATE_LIMIT, PROVIDER_HTTP, PROVIDER_PARSE, TRANSCRIPT_TOO_LARGE, EMBEDDING_FAILED, VECTORIZE_INCOMPLETE, SUMMARY_FAILED, WORKFLOW_LOST. `running` and `available` attempts carry null.",
   });
-export type IngestionRunEpisodeStatus = z.infer<
-  typeof IngestionRunEpisodeStatusSchema
+export type AttemptOutcomeCode = z.infer<typeof AttemptOutcomeCodeSchema>;
+
+export const TranscriptProviderStatusSchema = z
+  .enum(["ok", "auth_failed", "unreachable"])
+  .meta({
+    id: "TranscriptProviderStatus",
+    description:
+      "`ok`: the key is accepted and the credit count is current; `auth_failed`: the provider rejected the key; `unreachable`: no key is configured, or the call failed, timed out, or answered unusably.",
+  });
+export type TranscriptProviderStatus = z.infer<
+  typeof TranscriptProviderStatusSchema
 >;
 
 export const ChatRoleSchema = z
@@ -166,58 +220,107 @@ export type ChatRole = z.infer<typeof ChatRoleSchema>;
 
 export const ChatMessageStatusSchema = z
   .enum(["pending", "completed", "failed"])
-  .meta({ id: "ChatMessageStatus" });
+  .meta({
+    id: "ChatMessageStatus",
+    description:
+      "`pending` while the assistant's reply is being produced; `completed` or `failed` afterwards.",
+  });
 export type ChatMessageStatus = z.infer<typeof ChatMessageStatusSchema>;
 
-// --- channels ---------------------------------------------------------------------------------------
+// --- discovery runs (PRD §4.2 rules 1–4) ----------------------------------------------------------
+
+/**
+ * One completed RSS feed check of one channel. A run exists only once complete and reports only what
+ * the feed check found; the episodes it discovered are those whose `processing.discoveredByRunId`
+ * names it, and their processing history is on their attempts.
+ */
+export const IngestionRunSchema = z
+  .object({
+    runId: Id,
+    channelId: Id,
+    kind: IngestionRunKindSchema,
+    feedStatus: FeedStatusSchema,
+    discoveredCount: Count.describe(
+      'Episodes this run created; 0 for "nothing new" and for an unavailable feed.',
+    ),
+    episodeLimit: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .describe(
+        "The initial run's `initialImportCount`; null for a scheduled run.",
+      ),
+    startedAt: UnixMs,
+    finishedAt: UnixMs,
+  })
+  .meta({
+    id: "IngestionRun",
+    description:
+      "One completed RSS discovery run of a channel: kind, whether the feed was read, and how many episodes were created. Episode outcomes are not here; each episode names the run that discovered it.",
+  });
+export type IngestionRun = z.infer<typeof IngestionRunSchema>;
+
+/** `GET /channels/:id/runs` — newest first. */
+export const IngestionRunsResponseSchema = z
+  .object({ runs: z.array(IngestionRunSchema) })
+  .meta({
+    id: "IngestionRunsResponse",
+    description: "`GET /channels/:id/runs` — newest first.",
+  });
+export type IngestionRunsResponse = z.infer<typeof IngestionRunsResponseSchema>;
+
+/** `POST /channels/:id/runs` (M3) — the discovery run just performed. */
+export const IngestionRunResponseSchema = z
+  .object({ run: IngestionRunSchema })
+  .meta({
+    id: "IngestionRunResponse",
+    description:
+      "`POST /channels/:id/runs` — the completed discovery run, including one that found nothing new.",
+  });
+export type IngestionRunResponse = z.infer<typeof IngestionRunResponseSchema>;
+
+// --- channels (PRD §4.1, §4.3, §7) ----------------------------------------------------------------
 
 export const EpisodeCountsSchema = z
   .object({
-    tracked: Count,
     available: Count,
     pending: Count,
-    waiting: Count,
     failed: Count,
     skipped: Count,
   })
   .meta({
     id: "EpisodeCounts",
     description:
-      "Episodes of a channel by status; `waiting` is the subset of `pending` with a wait reason.",
+      "Episodes by status. The four add up to every tracked episode; there is no `waiting` count, the reason a pending episode is not summarised yet is on its row.",
   });
 export type EpisodeCounts = z.infer<typeof EpisodeCountsSchema>;
-
-/** The newest run for a channel, as shown in catalog rows. */
-export const IngestionRunSummarySchema = z
-  .object({
-    runId: z.string(),
-    kind: IngestionRunKindSchema,
-    status: IngestionRunStatusSchema,
-    startedAt: UnixMs.nullable(),
-    finishedAt: UnixMs.nullable(),
-    failureCode: z.string().nullable(),
-  })
-  .meta({
-    id: "IngestionRunSummary",
-    description: "The newest run for a channel, as shown in catalog rows.",
-  });
-export type IngestionRunSummary = z.infer<typeof IngestionRunSummarySchema>;
 
 /** The management facts of a channel, present for every caller; the web shows them on the Owner screens. */
 export const ChannelManagementSchema = z
   .object({
-    initialImportCount: z.number().int(),
-    reviewedByEmail: z.string().nullable(),
+    initialImportCount: z
+      .number()
+      .int()
+      .positive()
+      .describe("How many of the newest feed entries the initial run imports."),
+    reviewedByEmail: z
+      .string()
+      .nullable()
+      .describe("Who approved or declined last; any identity may."),
     pausedBy: PausedBySchema.nullable(),
     pausedAt: UnixMs.nullable(),
-    lastCheckedAt: UnixMs.nullable(),
-    createdAt: UnixMs,
-    updatedAt: UnixMs,
-    episodes: EpisodeCountsSchema,
-    latestRun: IngestionRunSummarySchema.nullable(),
+    lastCheckedAt: UnixMs.nullable().describe(
+      "When the feed was last read successfully; an unavailable read does not move it.",
+    ),
+    latestRun: IngestionRunSchema.nullable().describe(
+      "The newest completed discovery run, or null before the first.",
+    ),
     neverStarted: z
       .boolean()
-      .describe("Approved, yet no ingestion run has ever been recorded."),
+      .describe("Approved, yet no discovery run has ever been recorded."),
+    createdAt: UnixMs,
+    updatedAt: UnixMs,
   })
   .meta({
     id: "ChannelManagement",
@@ -232,14 +335,16 @@ export type ChannelManagement = z.infer<typeof ChannelManagementSchema>;
  */
 export const ChannelSchema = z
   .object({
-    channelId: z.string().describe("Canonical `UC…` id."),
+    channelId: Id.describe("Canonical `UC…` id."),
     title: z.string(),
     canonicalUrl: z.string(),
     status: ChannelStatusSchema,
     paused: z
       .boolean()
-      .describe("No new ingestion runs while true. Approved channels only."),
-    approvedAt: UnixMs.nullable().describe("First approval; never reset."),
+      .describe("No scheduled discovery while true. Approved channels only."),
+    approvedAt: UnixMs.nullable().describe(
+      'First approval; never reset. A declined channel with a value reads "Withdrawn".',
+    ),
     reviewedAt: UnixMs.nullable(),
     reviewNote: z
       .string()
@@ -247,7 +352,9 @@ export const ChannelSchema = z
       .describe(
         "The owner's latest note, shown to followers of a declined channel.",
       ),
-    lastIngestedAt: UnixMs.nullable(),
+    lastIngestedAt: UnixMs.nullable().describe(
+      "The newest first availability among the channel's episodes; derived, never stored.",
+    ),
     episodes: EpisodeCountsSchema,
     following: z.boolean().describe("Whether the caller follows this channel."),
     followerCount: Count.describe(
@@ -289,13 +396,15 @@ export const CreateChannelBodySchema = z
       .min(1)
       .describe("A bare `UC…` id or any URL containing `/channel/UC…`."),
     title: optionalText(
-      "Overrides the title read from the channel's RSS feed.",
+      "Overrides the title read from the channel's RSS feed. Honoured from any caller; the web offers it to the owner.",
     ),
     initialImportCount: z
       .number()
       .int()
       .positive()
-      .describe("Recent episodes to import first; defaults to five.")
+      .describe(
+        "Recent episodes to import first; defaults to five. Honoured from any caller; the web offers it to the owner.",
+      )
       .optional(),
   })
   .meta({
@@ -336,14 +445,50 @@ export const DeclineChannelBodySchema = z
   });
 export type DeclineChannelBody = z.infer<typeof DeclineChannelBodySchema>;
 
-// --- episodes ---------------------------------------------------------------------------------------
+/** 409 body when the channel is declined: the client shows the note and offers Request again. */
+export const ChannelDeclinedResponseSchema = z
+  .object({
+    error: z.string(),
+    code: z.literal("INVALID_STATE"),
+    channelId: Id,
+    status: z.literal("declined"),
+    reviewNote: z.string().nullable(),
+    reviewedAt: UnixMs.nullable(),
+  })
+  .meta({
+    id: "ChannelDeclinedResponse",
+    description:
+      "409 body for `POST /channels` and `PUT /follows/:channelId` when the channel is declined; the client shows the note and offers Request again.",
+  });
+export type ChannelDeclinedResponse = z.infer<
+  typeof ChannelDeclinedResponseSchema
+>;
+
+// --- episodes, attempts, and the digest (PRD §4.2, §4.4, §7) -------------------------------------
+
+export const TakeawaySchema = z
+  .object({
+    text: z.string(),
+    startSec: z
+      .number()
+      .nonnegative()
+      .nullable()
+      .describe(
+        "The moment the takeaway comes from, for a `https://youtu.be/<videoId>?t=<startSec>` link; null when the model gave no usable marker.",
+      ),
+  })
+  .meta({
+    id: "Takeaway",
+    description: "One takeaway with the moment it comes from.",
+  });
+export type Takeaway = z.infer<typeof TakeawaySchema>;
 
 export const EpisodeSummarySchema = z
   .discriminatedUnion("format", [
     z.object({
       format: z.literal("structured"),
       executiveSummary: z.string(),
-      takeaways: z.array(z.string()),
+      takeaways: z.array(TakeawaySchema),
       topicTags: z.array(z.string()),
     }),
     z.object({
@@ -354,32 +499,86 @@ export const EpisodeSummarySchema = z
   .meta({
     id: "EpisodeSummary",
     description:
-      "The shared per-episode summary: structured when the model returned valid JSON, otherwise the raw text it produced.",
+      "The shared per-episode summary: structured when the model returned valid JSON (after one retry), otherwise the raw text it produced.",
   });
 export type EpisodeSummary = z.infer<typeof EpisodeSummarySchema>;
 
 export const RelatedEpisodeSchema = z
-  .object({ videoId: z.string(), title: z.string() })
+  .object({ videoId: Id, title: z.string() })
   .meta({
     id: "RelatedEpisode",
-    description: "Another episode whose transcript is close to this one.",
+    description:
+      "Another available episode whose transcript is close to this one, already filtered to the caller's eligible channels.",
   });
 export type RelatedEpisode = z.infer<typeof RelatedEpisodeSchema>;
+
+/** One execution of an episode: one Workflow instance, or one start that pre-flight blocked. */
+export const EpisodeIngestionAttemptSchema = z
+  .object({
+    attemptId: Id,
+    videoId: Id,
+    trigger: AttemptTriggerSchema,
+    requestedByEmail: z
+      .string()
+      .nullable()
+      .describe("Who asked; set exactly for `owner_retry`."),
+    recoveryMode: RecoveryModeSchema,
+    status: AttemptStatusSchema,
+    outcomeCode: AttemptOutcomeCodeSchema.nullable(),
+    failureDetail: z.string().nullable(),
+    workflowId: z
+      .string()
+      .nullable()
+      .describe(
+        "The Workflow instance; null for a `blocked` attempt, which never launched.",
+      ),
+    stagedChunkCount: Count.nullable().describe(
+      "How many vectors this attempt staged, set when embedding began.",
+    ),
+    startedAt: UnixMs,
+    finishedAt: UnixMs.nullable().describe("Null only while `running`."),
+  })
+  .meta({
+    id: "EpisodeIngestionAttempt",
+    description:
+      "One execution of an episode: first processing, scheduled recovery, or Retry. Where an episode's reason lives.",
+  });
+export type EpisodeIngestionAttempt = z.infer<
+  typeof EpisodeIngestionAttemptSchema
+>;
 
 /** Processing detail of an episode, present for every caller; the web shows it on the Owner screens. */
 export const EpisodeProcessingSchema = z
   .object({
-    attemptCount: Count,
-    failureCode: z.string().nullable(),
+    discoveredByRunId: Id.describe(
+      "The discovery run that created the episode; immutable.",
+    ),
+    recoveryMode: RecoveryModeSchema.nullable().describe(
+      "Set, with the three timestamps, while a recovery window is active.",
+    ),
+    recoveryStartedAt: UnixMs.nullable(),
+    recoveryDeadlineAt: UnixMs.nullable().describe(
+      "48 hours after the window started.",
+    ),
+    nextAttemptAt: UnixMs.nullable(),
+    attemptCount: Count.describe(
+      "Attempts that launched since the window last started; a blocked start never counts. Diagnostic only.",
+    ),
+    latestAttempt: EpisodeIngestionAttemptSchema.nullable().describe(
+      "Where the reason lives; null before the first start.",
+    ),
+    failureCode: EpisodeFailureCodeSchema.nullable().describe(
+      "Written once, at the timeout, with the latest attempt's reason in `failureDetail`.",
+    ),
     failureDetail: z.string().nullable(),
-    waitingCode: EpisodeWaitingCodeSchema.nullable(),
-    skipReason: EpisodeSkipReasonSchema.nullable(),
     skippedAt: UnixMs.nullable(),
-    skippedByEmail: z.string().nullable(),
+    skippedByEmail: z
+      .string()
+      .nullable()
+      .describe("Set exactly for an `OWNER` skip."),
     transcriptCheckedAt: UnixMs.nullable(),
     chunkCount: Count.nullable(),
     vectorizedAt: UnixMs.nullable(),
-    processedAt: UnixMs.nullable(),
     createdAt: UnixMs,
     updatedAt: UnixMs,
   })
@@ -397,14 +596,20 @@ export type EpisodeProcessing = z.infer<typeof EpisodeProcessingSchema>;
  */
 export const EpisodeSchema = z
   .object({
-    videoId: z.string(),
-    channelId: z.string(),
+    videoId: Id,
+    channelId: Id,
     channelTitle: z.string(),
     title: z.string(),
     publishedAt: UnixMs,
     status: EpisodeStatusSchema,
     skipReason: EpisodeSkipReasonSchema.nullable().describe(
       "Why there is no summary, when the episode was skipped.",
+    ),
+    waitReason: EpisodeWaitReasonSchema.nullable().describe(
+      "Why a pending episode is not summarised yet, from its latest attempt; null otherwise.",
+    ),
+    summaryAvailableAt: UnixMs.nullable().describe(
+      "When the summary first became available; never reset. The digest's window and order.",
     ),
     summary: EpisodeSummarySchema.nullable(),
     related: z
@@ -425,21 +630,37 @@ export const EpisodeSchema = z
   });
 export type Episode = z.infer<typeof EpisodeSchema>;
 
-/** `POST /channels/:id/episodes/:videoId/retry|skip` (owner). */
-export const EpisodeResponseSchema = z.object({ episode: EpisodeSchema }).meta({
-  id: "EpisodeResponse",
-  description: "`POST /channels/:id/episodes/:videoId/retry|skip`",
-});
-export type EpisodeResponse = z.infer<typeof EpisodeResponseSchema>;
-
 /** `GET /channels/:id/episodes?limit=` — newest first, with summaries and processing detail for every caller. */
 export const EpisodesResponseSchema = z
   .object({ episodes: z.array(EpisodeSchema) })
   .meta({
     id: "EpisodesResponse",
-    description: "`GET /channels/:id/episodes?limit=` — newest first.",
+    description:
+      "`GET /channels/:id/episodes?limit=` — newest first, with summaries and processing detail for every caller.",
   });
 export type EpisodesResponse = z.infer<typeof EpisodesResponseSchema>;
+
+/** `POST /channels/:id/episodes/:videoId/skip`, and Retry until M3 returns the attempt. */
+export const EpisodeResponseSchema = z.object({ episode: EpisodeSchema }).meta({
+  id: "EpisodeResponse",
+  description: "`POST /channels/:id/episodes/:videoId/skip`",
+});
+export type EpisodeResponse = z.infer<typeof EpisodeResponseSchema>;
+
+/** `POST /channels/:id/episodes/:videoId/retry` (M3) — the episode and the attempt just started, or blocked. */
+export const EpisodeRetryResponseSchema = z
+  .object({
+    episode: EpisodeSchema,
+    attempt: EpisodeIngestionAttemptSchema.describe(
+      "`running` when work started, `blocked` when the provider pre-flight refused it.",
+    ),
+  })
+  .meta({
+    id: "EpisodeRetryResponse",
+    description:
+      "`POST /channels/:id/episodes/:videoId/retry` — the episode and the attempt just started, or blocked.",
+  });
+export type EpisodeRetryResponse = z.infer<typeof EpisodeRetryResponseSchema>;
 
 /** `GET /digest?since=<iso>` — available episodes from eligible follows, newest first; returned summaries are marked read. */
 export const DigestResponseSchema = z
@@ -456,65 +677,19 @@ export const DigestResponseSchema = z
   });
 export type DigestResponse = z.infer<typeof DigestResponseSchema>;
 
-// --- ingestion runs ---------------------------------------------------------------------------------
-
-export const IngestionRunEpisodeSchema = z
-  .object({
-    videoId: z.string(),
-    status: IngestionRunEpisodeStatusSchema,
-    failureCode: z.string().nullable(),
-    startedAt: UnixMs.nullable(),
-    finishedAt: UnixMs.nullable(),
-  })
-  .meta({
-    id: "IngestionRunEpisode",
-    description: "One episode's outcome within one run.",
-  });
-export type IngestionRunEpisode = z.infer<typeof IngestionRunEpisodeSchema>;
-
-export const IngestionRunSchema = z
-  .object({
-    runId: z.string(),
-    channelId: z.string(),
-    kind: IngestionRunKindSchema,
-    status: IngestionRunStatusSchema,
-    episodeLimit: z.number().int().nullable(),
-    startedAt: UnixMs.nullable(),
-    finishedAt: UnixMs.nullable(),
-    failureCode: z.string().nullable(),
-    failureDetail: z.string().nullable(),
-    createdAt: UnixMs,
-    episodes: z
-      .array(IngestionRunEpisodeSchema)
-      .describe(
-        "Historical per-run outcomes; a later retry does not rewrite them.",
-      ),
-  })
-  .meta({ id: "IngestionRun", description: "One ingestion run of a channel." });
-export type IngestionRun = z.infer<typeof IngestionRunSchema>;
-
-/** `GET /channels/:id/runs` — newest first. */
-export const IngestionRunsResponseSchema = z
-  .object({ runs: z.array(IngestionRunSchema) })
-  .meta({
-    id: "IngestionRunsResponse",
-    description: "`GET /channels/:id/runs` — newest first.",
-  });
-export type IngestionRunsResponse = z.infer<typeof IngestionRunsResponseSchema>;
-
-// --- follows ----------------------------------------------------------------------------------------
+// --- follows and followers (PRD §4.3) -------------------------------------------------------------
 
 /** One of the caller's follows, with its channel embedded. */
 export const FollowSchema = z
   .object({
-    channelId: z.string(),
+    channelId: Id,
     followedAt: UnixMs,
     unfollowedAt: UnixMs.nullable().describe(
       "Set on unfollow and retained as a tombstone; null while the follow is active.",
     ),
     channel: ChannelSchema,
     unreadCount: Count.describe(
-      "Available episodes the caller has no read receipt for.",
+      "Available episodes the caller has no read receipt for; 0 unless the channel is approved.",
     ),
   })
   .meta({
@@ -559,37 +734,7 @@ export const FollowersResponseSchema = z
   });
 export type FollowersResponse = z.infer<typeof FollowersResponseSchema>;
 
-/** 409 body when the channel is declined: the client shows the note and offers Request again. */
-export const ChannelDeclinedResponseSchema = z
-  .object({
-    error: z.string(),
-    code: z.literal("INVALID_STATE"),
-    channelId: z.string(),
-    status: z.literal("declined"),
-    reviewNote: z.string().nullable(),
-    reviewedAt: UnixMs.nullable(),
-  })
-  .meta({
-    id: "ChannelDeclinedResponse",
-    description:
-      "409 body for `POST /channels` and `PUT /follows/:channelId` when the channel is declined; the client shows the note and offers Request again.",
-  });
-export type ChannelDeclinedResponse = z.infer<
-  typeof ChannelDeclinedResponseSchema
->;
-
-// --- catalog ----------------------------------------------------------------------------------------
-
-export const TranscriptProviderStatusSchema = z
-  .enum(["ok", "auth_failed", "unreachable"])
-  .meta({
-    id: "TranscriptProviderStatus",
-    description:
-      "`ok`: the key is accepted and the credit count is current; `auth_failed`: the provider rejected the key; `unreachable`: no key is configured, or the call failed, timed out, or answered unusably.",
-  });
-export type TranscriptProviderStatus = z.infer<
-  typeof TranscriptProviderStatusSchema
->;
+// --- catalog (PRD §7 `GET /catalog`) --------------------------------------------------------------
 
 /** The transcript provider's health, from its status endpoint, cached for five minutes per isolate. */
 export const TranscriptProviderHealthSchema = z
@@ -608,31 +753,30 @@ export type TranscriptProviderHealth = z.infer<
   typeof TranscriptProviderHealthSchema
 >;
 
-/** The catalog's aggregate state. */
+/** The catalog's aggregate state, for the attention card and health strip. */
 export const CatalogSchema = z
   .object({
     channels: z.object({
       requested: Count,
-      approved: Count,
-      paused: Count,
+      approved: Count.describe("Approved and not paused."),
+      paused: Count.describe(
+        "Approved and paused, by the owner or the system.",
+      ),
       declined: Count,
     }),
-    episodes: z.object({
-      available: Count,
-      pending: Count,
-      waiting: Count,
-      failed: Count,
-      skipped: Count,
-    }),
-    runs: z.object({ active: Count }),
-    lastSuccessfulIngestionAt: UnixMs.nullable(),
+    episodes: EpisodeCountsSchema,
     attention: z.object({
-      failedEpisodes: Count,
-      neverStarted: Count.describe(
-        "Approved channels with no ingestion run row at all.",
+      failedEpisodes: Count.describe(
+        "Publications that exhausted their 48-hour window.",
       ),
-      requested: Count,
+      neverStarted: Count.describe(
+        "Approved channels with no discovery run row at all.",
+      ),
+      requested: Count.describe("Channels awaiting review."),
     }),
+    lastSuccessfulIngestionAt: UnixMs.nullable().describe(
+      "The newest first availability anywhere in the catalog; derived, never stored.",
+    ),
     transcripts: TranscriptProviderHealthSchema,
   })
   .meta({ id: "Catalog", description: "The catalog's aggregate state." });
@@ -644,9 +788,149 @@ export const CatalogResponseSchema = z
   .meta({ id: "CatalogResponse", description: "`GET /catalog`" });
 export type CatalogResponse = z.infer<typeof CatalogResponseSchema>;
 
+// --- chats and preferences (PRD §4.5, §7; M4 registers the routes) --------------------------------
+// Written now so the M4 routes confirm these rather than redesign them (docs/specs/api-reference.md
+// §5.9). They mirror the User DO's stored records. Unreferenced by any route until M4, so absent from
+// the document until then.
+
+export const ChatSchema = z
+  .object({
+    chatId: Id,
+    title: z.string().nullable(),
+    createdAt: UnixMs,
+    updatedAt: UnixMs.describe("Moves when a message is added."),
+  })
+  .meta({
+    id: "Chat",
+    description:
+      "One of the caller's independent conversations. Every chat searches all channels the caller currently follows that are approved.",
+  });
+export type Chat = z.infer<typeof ChatSchema>;
+
+export const ChatSourceSchema = z
+  .object({
+    position: Count,
+    videoId: Id,
+    channelId: Id,
+    videoTitle: z.string(),
+    channelTitle: z.string(),
+    startSec: z
+      .number()
+      .nonnegative()
+      .describe("Link: `https://youtu.be/<videoId>?t=<startSec>`."),
+  })
+  .meta({
+    id: "ChatSource",
+    description:
+      "A citation snapshot taken when the reply was produced; later catalog changes never rewrite it.",
+  });
+export type ChatSource = z.infer<typeof ChatSourceSchema>;
+
+export const ChatMessageSchema = z
+  .object({
+    messageId: Id,
+    chatId: Id,
+    sequenceNumber: Count,
+    role: ChatRoleSchema,
+    content: z.string().describe("Empty while an assistant reply is pending."),
+    status: ChatMessageStatusSchema,
+    failureCode: z.string().nullable(),
+    replyToMessageId: Id.nullable().describe("Set on every assistant message."),
+    sources: z.array(ChatSourceSchema),
+    createdAt: UnixMs,
+    updatedAt: UnixMs,
+  })
+  .meta({ id: "ChatMessage", description: "One message in a chat." });
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+
+/** `GET /chats` — most recently updated first. */
+export const ChatsResponseSchema = z
+  .object({ chats: z.array(ChatSchema) })
+  .meta({
+    id: "ChatsResponse",
+    description: "`GET /chats` — most recently updated first.",
+  });
+export type ChatsResponse = z.infer<typeof ChatsResponseSchema>;
+
+/** `POST /chats` */
+export const ChatResponseSchema = z
+  .object({ chat: ChatSchema })
+  .meta({ id: "ChatResponse", description: "`POST /chats`" });
+export type ChatResponse = z.infer<typeof ChatResponseSchema>;
+
+/** `GET /chats/:id/messages?limit=` — ascending sequence. */
+export const ChatMessagesResponseSchema = z
+  .object({ chat: ChatSchema, messages: z.array(ChatMessageSchema) })
+  .meta({
+    id: "ChatMessagesResponse",
+    description: "`GET /chats/:id/messages?limit=` — ascending sequence.",
+  });
+export type ChatMessagesResponse = z.infer<typeof ChatMessagesResponseSchema>;
+
+/** `POST /chats/:id/messages` — the stored question and its reply. */
+export const ChatExchangeResponseSchema = z
+  .object({
+    chat: ChatSchema,
+    userMessage: ChatMessageSchema,
+    assistantMessage: ChatMessageSchema,
+  })
+  .meta({
+    id: "ChatExchangeResponse",
+    description:
+      "`POST /chats/:id/messages` — the stored question and its reply.",
+  });
+export type ChatExchangeResponse = z.infer<typeof ChatExchangeResponseSchema>;
+
+/** `POST /chats` */
+export const CreateChatBodySchema = z
+  .object({ title: optionalText("An optional title for the chat.") })
+  .meta({ id: "CreateChatBody", description: "`POST /chats`" });
+export type CreateChatBody = z.infer<typeof CreateChatBodySchema>;
+
+/** `POST /chats/:id/messages` */
+export const SendMessageBodySchema = z
+  .object({
+    message: z
+      .string()
+      .trim()
+      .min(1, "must be non-blank")
+      .describe("The question, answered from the caller's eligible follows."),
+  })
+  .meta({ id: "SendMessageBody", description: "`POST /chats/:id/messages`" });
+export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
+
+export const PreferencesSchema = z
+  .object({
+    systemRules: z
+      .string()
+      .describe(
+        "Rules applied to chat answers only, never to shared summaries.",
+      ),
+    updatedAt: UnixMs.nullable().describe("Null until first saved."),
+  })
+  .meta({ id: "Preferences", description: "The caller's chat preferences." });
+export type Preferences = z.infer<typeof PreferencesSchema>;
+
+/** `GET /preferences`, `PUT /preferences` */
+export const PreferencesResponseSchema = z
+  .object({ preferences: PreferencesSchema })
+  .meta({
+    id: "PreferencesResponse",
+    description: "`GET /preferences`, `PUT /preferences`",
+  });
+export type PreferencesResponse = z.infer<typeof PreferencesResponseSchema>;
+
+/** `PUT /preferences` */
+export const UpdatePreferencesBodySchema = z
+  .object({
+    systemRules: z.string().trim().describe("Trimmed; empty clears the rules."),
+  })
+  .meta({ id: "UpdatePreferencesBody", description: "`PUT /preferences`" });
+export type UpdatePreferencesBody = z.infer<typeof UpdatePreferencesBodySchema>;
+
 // --- query and path parameters (API only; documented and validated from the same schema) ------------
 
-/** `?scope=` — absent for the caller's own view, exactly `all` for the owner's. */
+/** `?scope=` — absent for the browsable catalog, exactly `all` for every status. */
 export const ScopeQuerySchema = z.object({
   scope: z
     .enum(["all"])
@@ -663,7 +947,7 @@ export const LimitQuerySchema = z.object({
     .number()
     .int()
     .positive()
-    .describe("Maximum episodes to return, newest first.")
+    .describe("Maximum items to return, newest first.")
     .optional(),
 });
 export type LimitQuery = z.infer<typeof LimitQuerySchema>;
@@ -685,19 +969,25 @@ export type SinceQuery = z.infer<typeof SinceQuerySchema>;
 
 /** `/channels/:id` and its sub-resources. Format is checked by the Registry (400 when malformed). */
 export const ChannelParamsSchema = z.object({
-  id: z.string().min(1).describe("Canonical `UC…` channel id."),
+  id: Id.describe("Canonical `UC…` channel id."),
 });
 export type ChannelParams = z.infer<typeof ChannelParamsSchema>;
 
 /** `/channels/:id/episodes/:videoId/retry|skip`. */
 export const EpisodeParamsSchema = z.object({
-  id: z.string().min(1).describe("Canonical `UC…` channel id."),
-  videoId: z.string().min(1).describe("YouTube video id."),
+  id: Id.describe("Canonical `UC…` channel id."),
+  videoId: Id.describe("YouTube video id."),
 });
 export type EpisodeParams = z.infer<typeof EpisodeParamsSchema>;
 
 /** `/follows/:channelId`. */
 export const FollowParamsSchema = z.object({
-  channelId: z.string().min(1).describe("Canonical `UC…` channel id."),
+  channelId: Id.describe("Canonical `UC…` channel id."),
 });
 export type FollowParams = z.infer<typeof FollowParamsSchema>;
+
+/** `/chats/:id/messages` (M4). */
+export const ChatParamsSchema = z.object({
+  id: Id.describe("Chat id."),
+});
+export type ChatParams = z.infer<typeof ChatParamsSchema>;

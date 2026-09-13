@@ -22,6 +22,7 @@ import {
   OWNER,
   registry,
   seedApprovedChannel,
+  seedAttempt,
   seedEpisode,
   seedRun,
   seedSummary,
@@ -106,11 +107,12 @@ describe("channel and catalog routes", () => {
     const catalog = await call(ALICE, "GET", "/catalog");
     expectShape(CatalogResponseSchema, catalog.json);
     expect(catalog.status).toBe(200);
-    // VIDEO_C went failed → skipped → pending through the calls above.
+    // VIDEO_C went failed → skipped → pending through the calls above. A's episodes name a run, so
+    // nothing approved is "never started".
     expect(catalog.json.catalog).toMatchObject({
       channels: { requested: 1, approved: 1, paused: 0, declined: 1 },
-      episodes: { available: 2, pending: 1, waiting: 0, failed: 0, skipped: 0 },
-      attention: { failedEpisodes: 0, neverStarted: 1, requested: 1 },
+      episodes: { available: 2, pending: 1, failed: 0, skipped: 0 },
+      attention: { failedEpisodes: 0, neverStarted: 0, requested: 1 },
       // vitest.config.ts pins the key empty, so no test reaches DownSub and the provider reads as away.
       transcripts: { remainingCredits: null, status: "unreachable" },
     });
@@ -366,7 +368,7 @@ describe("channel and catalog routes", () => {
     await seedEpisode(VIDEO_SKIPPED, CHANNEL_A, {
       publishedAt: 500,
       status: "skipped",
-      skipReason: "NO_CAPTIONS",
+      skipReason: "UNPLAYABLE",
     });
     const withSkipped = await call(
       ALICE,
@@ -377,9 +379,9 @@ describe("channel and catalog routes", () => {
     expect(skippedEpisode).toMatchObject({
       videoId: VIDEO_SKIPPED,
       status: "skipped",
-      skipReason: "NO_CAPTIONS",
+      skipReason: "UNPLAYABLE",
       summary: null,
-      processing: expect.objectContaining({ skipReason: "NO_CAPTIONS" }),
+      processing: expect.objectContaining({ skippedAt: expect.any(Number) }),
     });
 
     expect(
@@ -425,22 +427,24 @@ describe("channel and catalog routes", () => {
 
   it("exposes discovery runs as a channel sub-resource", async () => {
     await seedCatalog();
-    await seedRun(CHANNEL_A, {
+    const runId = await seedRun(CHANNEL_A, {
       kind: "scheduled",
-      status: "completed",
+      feedStatus: "read",
+      discoveredCount: 2,
+      createdAt: 5,
       finishedAt: 5,
     });
 
-    const runs = await call(OWNER, "GET", `/channels/${CHANNEL_A}/runs`);
+    const runs = await call(ALICE, "GET", `/channels/${CHANNEL_A}/runs`);
     expectShape(IngestionRunsResponseSchema, runs.json);
     expect(runs.status).toBe(200);
-    expect(runs.json.runs).toEqual([
-      expect.objectContaining({
-        kind: "scheduled",
-        status: "completed",
-        episodes: [],
-      }),
-    ]);
+    // Newest first: the explicit run, then the seed run A's episodes name.
+    expect((runs.json.runs as Json[])[0]).toMatchObject({
+      runId,
+      kind: "scheduled",
+      feedStatus: "read",
+      discoveredCount: 2,
+    });
     expect(
       (await call(OWNER, "GET", `/channels/${CHANNEL_D}/runs`)).status,
     ).toBe(404);
@@ -458,7 +462,7 @@ describe("channel and catalog routes", () => {
     expectShape(EpisodeResponseSchema, skip.json);
     const skipped = skip.json.episode as Json;
     expect(skipped.status).toBe("skipped");
-    expect((skipped.processing as Json).skipReason).toBe("OWNER");
+    expect(skipped.skipReason).toBe("OWNER");
 
     const retry = await call(
       OWNER,
@@ -469,15 +473,97 @@ describe("channel and catalog routes", () => {
     expectShape(EpisodeResponseSchema, retry.json);
     const retried = retry.json.episode as Json;
     expect(retried.status).toBe("pending");
-    expect((retried.processing as Json).attemptCount).toBe(0);
+    expect(retried.processing).toMatchObject({
+      attemptCount: 0,
+      recoveryMode: "publication",
+    });
 
-    await seedRun(CHANNEL_A, { status: "queued" });
+    // Only a running attempt refuses Retry.
+    await seedAttempt(VIDEO_C, { status: "running" });
     const blocked = await call(
       OWNER,
       "POST",
       `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`,
     );
     expect(blocked.status).toBe(409);
+  });
+
+  it("derives a pending episode's waitReason from its latest attempt, for every caller", async () => {
+    await seedCatalog();
+    const cases: [
+      string,
+      Parameters<typeof seedAttempt>[1] | null,
+      string | null,
+    ][] = [
+      [
+        "waitcaptio0",
+        { status: "waiting", outcomeCode: "CAPTIONS" },
+        "CAPTIONS",
+      ],
+      [
+        "waitlive000",
+        { status: "waiting", outcomeCode: "LIVE_OR_UPCOMING" },
+        "LIVE_OR_UPCOMING",
+      ],
+      [
+        "waitblocked",
+        { status: "blocked", outcomeCode: "PROVIDER_LIMIT" },
+        "PROVIDER_LIMIT",
+      ],
+      [
+        "waitauth000",
+        { status: "blocked", outcomeCode: "PROVIDER_AUTH" },
+        null,
+      ],
+      ["waitfailed0", { status: "failed", outcomeCode: "PROVIDER_HTTP" }, null],
+      ["waitrunning", { status: "running" }, null],
+      ["waitnoatmpt", null, null],
+    ];
+    let published = 100;
+    for (const [videoId, attempt] of cases) {
+      await seedEpisode(videoId, CHANNEL_A, {
+        status: "pending",
+        publishedAt: published++,
+        recovery: { mode: "publication" },
+      });
+      if (attempt) await seedAttempt(videoId, attempt);
+    }
+
+    // Bob follows nothing and still reads the reason and the attempt (no authorization).
+    const bob = await call(BOB, "GET", `/channels/${CHANNEL_A}/episodes`);
+    expect(bob.status).toBe(200);
+    const byId = new Map(
+      (bob.json.episodes as Json[]).map((e) => [e.videoId as string, e]),
+    );
+    for (const [videoId, attempt, expected] of cases) {
+      const episode = byId.get(videoId) as Json;
+      expect(episode.waitReason, videoId).toBe(expected);
+      const processing = episode.processing as Json;
+      if (attempt) {
+        expect(processing.latestAttempt, videoId).toMatchObject({
+          status: attempt.status,
+        });
+      } else {
+        expect(processing.latestAttempt, videoId).toBeNull();
+      }
+      expect(processing.recoveryMode, videoId).toBe("publication");
+    }
+    // A summarised episode never waits.
+    expect((byId.get(VIDEO_A) as Json).waitReason).toBeNull();
+  });
+
+  it("honours title and initialImportCount from any caller", async () => {
+    const created = await call(ALICE, "POST", "/channels", {
+      channelId: `https://www.youtube.com/channel/${CHANNEL_D}`,
+      title: "Given by a user",
+      initialImportCount: 2,
+    });
+    expect(created.status).toBe(201);
+    expect(created.json.channel).toMatchObject({
+      title: "Given by a user",
+      status: "requested",
+      management: { initialImportCount: 2 },
+    });
   });
 
   it("a user's add creates a requested channel and follows them; an existing one is followed; a declined one is 409 with the note", async () => {

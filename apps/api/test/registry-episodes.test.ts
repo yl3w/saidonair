@@ -8,8 +8,8 @@ import {
   OWNER,
   registry,
   seedApprovedChannel,
+  seedAttempt,
   seedEpisode,
-  seedRun,
   seedSummary,
   VIDEO_A,
   VIDEO_B,
@@ -29,7 +29,10 @@ describe("registry episodes", () => {
     const stub = await twoChannels();
     await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: 3_000 });
     await seedSummary(VIDEO_A, {
-      takeaways: ["one", "two"],
+      takeaways: [
+        { text: "one", startSec: 5 },
+        { text: "two", startSec: null },
+      ],
       relatedVideoIds: [VIDEO_B, VIDEO_C, VIDEO_A],
     });
     await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: 2_000 });
@@ -50,9 +53,13 @@ describe("registry episodes", () => {
     expect(digest[0]).toMatchObject({
       channelTitle: "A",
       status: "available",
+      summaryAvailableAt: 3_000,
       summary: {
         format: "structured",
-        takeaways: ["one", "two"],
+        takeaways: [
+          { text: "one", startSec: 5 },
+          { text: "two", startSec: null },
+        ],
         topicTags: ["tag"],
       },
       // VIDEO_C belongs to channel B, outside the scope; the episode never relates to itself.
@@ -82,10 +89,7 @@ describe("registry episodes", () => {
       });
     }
     await seedEpisode(VIDEO_A, CHANNEL_B, { status: "failed" });
-    await seedEpisode(VIDEO_B, CHANNEL_B, {
-      status: "pending",
-      waitingCode: "CAPTIONS",
-    });
+    await seedEpisode(VIDEO_B, CHANNEL_B, { status: "pending" });
 
     // 1,000 channel ids, most of them absent: the IN lists are chunked under the 100-binding cap.
     const many = [...channelIds(998), CHANNEL_A, CHANNEL_B];
@@ -97,19 +101,15 @@ describe("registry episodes", () => {
 
     const counts = await stub.countEpisodesByChannel(many);
     expect(counts[CHANNEL_A]).toEqual({
-      tracked: 120,
       available: 110,
       pending: 0,
-      waiting: 0,
       failed: 10,
       skipped: 0,
     });
-    // The pending episode's wait reason counts in both `pending` and `waiting`.
+    // A plain group-by on status: no `waiting` count (wait reasons live on episode rows).
     expect(counts[CHANNEL_B]).toEqual({
-      tracked: 2,
       available: 0,
       pending: 1,
-      waiting: 1,
       failed: 1,
       skipped: 0,
     });
@@ -127,7 +127,7 @@ describe("registry episodes", () => {
     await seedEpisode(VIDEO_B, CHANNEL_A, {
       publishedAt: 2_000,
       status: "failed",
-      failureCode: "FETCH_FAILED",
+      failureDetail: "CAPTIONS",
       attemptCount: 3,
     });
     await seedEpisode(VIDEO_C, CHANNEL_B, { publishedAt: 1_000 });
@@ -151,20 +151,25 @@ describe("registry episodes", () => {
       related: [{ videoId: VIDEO_C }],
       processing: { chunkCount: 7, attemptCount: 1 },
     });
+    // A timed-out publication: the one failure code, with the latest attempt's reason as detail.
     expect(all[1]).toMatchObject({
       status: "failed",
       summary: null,
       related: [],
+      summaryAvailableAt: null,
       processing: {
-        failureCode: "FETCH_FAILED",
+        failureCode: "INGESTION_TIMEOUT",
+        failureDetail: "CAPTIONS",
         attemptCount: 3,
         chunkCount: null,
+        latestAttempt: null,
       },
     });
     // An owner-skip records the reason and, by the CHECK's own contract, the owner's email.
     expect(all[2]).toMatchObject({
       status: "skipped",
-      processing: { skipReason: "OWNER", skippedByEmail: OWNER },
+      skipReason: "OWNER",
+      processing: { skippedByEmail: OWNER },
     });
 
     // Related titles outside the scope are dropped, not exposed.
@@ -196,7 +201,7 @@ describe("registry episodes", () => {
     await seedEpisode(VIDEO_A, CHANNEL_A, {
       status: "failed",
       attemptCount: 3,
-      failureCode: "PROVIDER_HTTP",
+      failureDetail: "PROVIDER_HTTP",
     });
     await seedEpisode(VIDEO_B, CHANNEL_A, {
       status: "skipped",
@@ -208,19 +213,27 @@ describe("registry episodes", () => {
     // No role is checked: whoever skips is recorded (PRD §9).
     const skipped = await stub.skipEpisode(ALICE, CHANNEL_A, VIDEO_A);
     expect(skipped.status).toBe("skipped");
-    expect(skipped.processing).toMatchObject({
-      skipReason: "OWNER",
-      skippedByEmail: ALICE,
-    });
+    expect(skipped.skipReason).toBe("OWNER");
+    expect(skipped.processing).toMatchObject({ skippedByEmail: ALICE });
+    // Retry re-arms a fresh 48-hour publication window; nothing launches until M3.
     const retried = await stub.retryEpisode(CHANNEL_A, VIDEO_A);
     expect(retried.status).toBe("pending");
+    expect(retried.skipReason).toBeNull();
     expect(retried.processing).toMatchObject({
       attemptCount: 0,
       failureCode: null,
-      skipReason: null,
+      failureDetail: null,
       skippedAt: null,
       skippedByEmail: null,
+      recoveryMode: "publication",
+      recoveryStartedAt: expect.any(Number),
+      recoveryDeadlineAt: expect.any(Number),
+      nextAttemptAt: expect.any(Number),
     });
+    expect(
+      (retried.processing.recoveryDeadlineAt ?? 0) -
+        (retried.processing.recoveryStartedAt ?? 0),
+    ).toBe(48 * 60 * 60 * 1000);
     expect((await stub.retryEpisode(CHANNEL_A, VIDEO_B)).status).toBe(
       "pending",
     );
@@ -237,22 +250,31 @@ describe("registry episodes", () => {
       stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_C),
       "INVALID_STATE",
     );
-    await expectDomainError(
-      stub.retryEpisode(CHANNEL_A, VIDEO_C),
-      "INVALID_STATE",
-    );
+    // Retry of an available episode starts replacement and leaves its content in place.
+    const replacing = await stub.retryEpisode(CHANNEL_A, VIDEO_C);
+    expect(replacing).toMatchObject({
+      status: "available",
+      summary: { format: "structured" },
+      summaryAvailableAt: 1,
+      processing: { recoveryMode: "replacement", attemptCount: 0 },
+    });
     await expectDomainError(stub.retryEpisode(CHANNEL_B, VIDEO_A), "NOT_FOUND");
 
+    // A running attempt is the one thing that refuses Retry; channel status never does, and Skip
+    // works in any channel status too (PRD §4.2 rules 16–18).
     await seedEpisode("ddddddddddd", CHANNEL_A, { status: "failed" });
-    await seedRun(CHANNEL_A, { status: "running" });
+    await seedAttempt("ddddddddddd", { status: "running" });
     await expectDomainError(
       stub.retryEpisode(CHANNEL_A, "ddddddddddd"),
       "INVALID_STATE",
     );
     await stub.declineChannel(OWNER, CHANNEL_A);
-    await expectDomainError(
-      stub.skipEpisode(OWNER, CHANNEL_A, "ddddddddddd"),
-      "INVALID_STATE",
+    expect(
+      (await stub.skipEpisode(OWNER, CHANNEL_A, "ddddddddddd")).status,
+    ).toBe("skipped");
+    await seedEpisode("eeeeeeeeeee", CHANNEL_A, { status: "skipped" });
+    expect((await stub.retryEpisode(CHANNEL_A, "eeeeeeeeeee")).status).toBe(
+      "pending",
     );
   });
 });

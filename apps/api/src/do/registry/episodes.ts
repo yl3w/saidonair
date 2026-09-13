@@ -1,15 +1,17 @@
 import type {
   EpisodeCounts,
+  EpisodeFailureCode,
   EpisodeSkipReason,
   EpisodeStatus,
   EpisodeSummary,
-  EpisodeWaitingCode,
+  RecoveryMode,
   RelatedEpisode,
+  Takeaway,
 } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
 import { chunk, MAX_BOUND_PARAMS, placeholders } from "../../lib/sql";
+import { hasRunning, latestByVideo } from "./attempts";
 import { requireChannel } from "./channels";
-import { hasActiveRun } from "./runs";
 import type { EpisodeRecord, ListEpisodesOptions } from "./types";
 
 type EpisodeRow = {
@@ -19,10 +21,14 @@ type EpisodeRow = {
   title: string;
   published_at: number;
   status: string;
+  discovered_by_run_id: string;
+  recovery_mode: string | null;
+  recovery_started_at: number | null;
+  recovery_deadline_at: number | null;
+  next_attempt_at: number | null;
   attempt_count: number;
   failure_code: string | null;
   failure_detail: string | null;
-  waiting_code: string | null;
   skip_reason: string | null;
   skipped_at: number | null;
   skipped_by_email: string | null;
@@ -41,9 +47,10 @@ type EpisodeRow = {
 };
 
 const EPISODE_SELECT = `SELECT e.video_id, e.channel_id, c.title AS channel_title, e.title, e.published_at,
-    e.status, e.attempt_count, e.failure_code, e.failure_detail, e.waiting_code, e.skip_reason,
-    e.skipped_at, e.skipped_by_email, e.transcript_checked_at,
-    e.chunk_count, e.vectorized_at, e.processed_at, e.created_at, e.updated_at,
+    e.status, e.discovered_by_run_id, e.recovery_mode, e.recovery_started_at, e.recovery_deadline_at,
+    e.next_attempt_at, e.attempt_count, e.failure_code, e.failure_detail, e.skip_reason, e.skipped_at,
+    e.skipped_by_email, e.transcript_checked_at, e.chunk_count, e.vectorized_at, e.processed_at,
+    e.created_at, e.updated_at,
     s.format AS summary_format, s.executive_summary, s.takeaways_json, s.topic_tags_json,
     s.raw_text, s.related_video_ids_json
   FROM episodes e
@@ -52,6 +59,8 @@ const EPISODE_SELECT = `SELECT e.video_id, e.channel_id, c.title AS channel_titl
 
 export const DEFAULT_EPISODE_LIMIT = 20;
 export const MAX_EPISODE_LIMIT = 200;
+/** The one recovery window every unfinished, non-deterministic outcome gets (docs/PRD.md §4.2 rule 13). */
+export const RECOVERY_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /** Available episodes per channel; callers derive counts and unread state from these. */
 export function listAvailableVideoIds(
@@ -72,7 +81,7 @@ export function listAvailableVideoIds(
   return ids;
 }
 
-/** Episode counts by status, zero-filled for every requested channel. */
+/** Episode counts by status, zero-filled for every requested channel. A plain group-by: no `waiting`. */
 export function countByChannel(
   sql: SqlStorage,
   channelIds: readonly string[],
@@ -83,27 +92,63 @@ export function countByChannel(
     for (const row of sql.exec<{
       channel_id: string;
       status: string;
-      waiting: number;
       n: number;
     }>(
-      `SELECT channel_id, status, (waiting_code IS NOT NULL) AS waiting, COUNT(*) AS n FROM episodes
+      `SELECT channel_id, status, COUNT(*) AS n FROM episodes
        WHERE channel_id IN (${placeholders(batch.length)})
-       GROUP BY channel_id, status, waiting`,
+       GROUP BY channel_id, status`,
       ...batch,
     )) {
       const entry = counts[row.channel_id];
-      if (!entry) continue;
-      entry.tracked += row.n;
-      addCount(entry, toStatus(row.status), row.n);
-      if (row.waiting) entry.waiting += row.n;
+      if (entry) addCount(entry, toStatus(row.status), row.n);
     }
   }
   return counts;
 }
 
+/** The four episode counts across the whole catalog. */
+export function countAll(sql: SqlStorage): EpisodeCounts {
+  const counts = zeroCounts();
+  for (const row of sql.exec<{ status: string; n: number }>(
+    "SELECT status, COUNT(*) AS n FROM episodes GROUP BY status",
+  )) {
+    addCount(counts, toStatus(row.status), row.n);
+  }
+  return counts;
+}
+
+/**
+ * `MAX(processed_at)` per channel: the API's derived `lastIngestedAt` (docs/PRD.md §4.2 rule 27).
+ * Channels with nothing available yet are absent.
+ */
+export function lastProcessedAtByChannel(
+  sql: SqlStorage,
+  channelIds: readonly string[],
+): Record<string, number> {
+  const latest: Record<string, number> = {};
+  for (const batch of chunk(channelIds)) {
+    for (const row of sql.exec<{ channel_id: string; at: number | null }>(
+      `SELECT channel_id, MAX(processed_at) AS at FROM episodes
+       WHERE channel_id IN (${placeholders(batch.length)}) GROUP BY channel_id`,
+      ...batch,
+    )) {
+      if (row.at !== null) latest[row.channel_id] = row.at;
+    }
+  }
+  return latest;
+}
+
+/** `MAX(processed_at)` across the Registry: the catalog's `lastSuccessfulIngestionAt`. */
+export function lastProcessedAt(sql: SqlStorage): number | null {
+  return sql
+    .exec<{ at: number | null }>("SELECT MAX(processed_at) AS at FROM episodes")
+    .one().at;
+}
+
 /**
  * The digest: available episodes with a stored summary, published at or after `sinceMs`, in the
- * given channels, newest first. Related titles are resolved within the same channels.
+ * given channels, newest first. Publication time is the basis until M3 switches it to first
+ * availability (docs/PRD.md §4.4). Related titles are resolved within the same channels.
  */
 export function listDigest(
   sql: SqlStorage,
@@ -126,10 +171,10 @@ export function listDigest(
     );
   }
   rows.sort(byNewest);
-  return attachRelated(sql, rows, channelIds);
+  return complete(sql, rows, channelIds);
 }
 
-/** Every episode of one channel in every status, newest first, with its summary when present. */
+/** Every episode of one channel in every status, newest first, with its summary when available. */
 export function listByChannel(
   sql: SqlStorage,
   channelId: string,
@@ -146,7 +191,7 @@ export function listByChannel(
       limit,
     )
     .toArray();
-  return attachRelated(sql, rows, options.relatedScope);
+  return complete(sql, rows, options.relatedScope);
 }
 
 /** One episode of one channel, with processing detail but no related titles. */
@@ -162,34 +207,59 @@ export function getEpisode(
       videoId,
     )
     .toArray()[0];
-  return row ? toRecord(row, []) : null;
+  return row ? (complete(sql, [row], [])[0] ?? null) : null;
 }
 
-/** `failed | skipped → pending`, attempts and skip fields cleared. The caller starts the one-episode run. */
+/**
+ * Retry re-arms the episode's recovery (docs/PRD.md §4.2 rule 16): a `pending`, `failed`, or
+ * `skipped` episode returns to pending publication with a fresh 48-hour window; an `available` one
+ * enters replacement recovery with its summary, active generation, and first availability untouched.
+ * Refused only while an attempt is running (rule 17). Channel status is never consulted. No attempt
+ * is written and nothing launches here: the starter and pre-flight arrive with M3.
+ */
 export function retryEpisode(
   sql: SqlStorage,
   channelId: string,
   videoId: string,
   now: number,
 ): EpisodeRecord {
-  const episode = requireActionableEpisode(sql, channelId, videoId);
-  if (episode.status !== "failed" && episode.status !== "skipped") {
+  const episode = requireEpisode(sql, channelId, videoId);
+  if (hasRunning(sql, videoId)) {
     throw new DomainError(
       "INVALID_STATE",
-      `only failed or skipped episodes can be retried (status: ${episode.status})`,
+      "an attempt is running for this episode",
     );
   }
-  sql.exec(
-    `UPDATE episodes SET status = 'pending', attempt_count = 0, failure_code = NULL, failure_detail = NULL,
-       skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL, waiting_code = NULL, updated_at = ?
-     WHERE video_id = ?`,
-    now,
-    videoId,
-  );
-  return getEpisode(sql, channelId, videoId) ?? episode;
+  const deadline = now + RECOVERY_WINDOW_MS;
+  if (episode.status === "available") {
+    sql.exec(
+      `UPDATE episodes SET recovery_mode = 'replacement', recovery_started_at = ?, recovery_deadline_at = ?,
+         next_attempt_at = ?, attempt_count = 0, recovery_vector_generation = NULL, updated_at = ?
+       WHERE video_id = ?`,
+      now,
+      deadline,
+      now,
+      now,
+      videoId,
+    );
+  } else {
+    sql.exec(
+      `UPDATE episodes SET status = 'pending', recovery_mode = 'publication', recovery_started_at = ?,
+         recovery_deadline_at = ?, next_attempt_at = ?, attempt_count = 0, failure_code = NULL,
+         failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL,
+         recovery_vector_generation = NULL, updated_at = ?
+       WHERE video_id = ?`,
+      now,
+      deadline,
+      now,
+      now,
+      videoId,
+    );
+  }
+  return requireEpisode(sql, channelId, videoId);
 }
 
-/** `failed → skipped OWNER`, recording whoever skipped it. */
+/** `failed → skipped OWNER`, recording whoever skipped it, in any channel status (docs/PRD.md §4.2 rule 18). */
 export function skipEpisode(
   sql: SqlStorage,
   channelId: string,
@@ -197,7 +267,7 @@ export function skipEpisode(
   actorEmail: string,
   now: number,
 ): EpisodeRecord {
-  const episode = requireActionableEpisode(sql, channelId, videoId);
+  const episode = requireEpisode(sql, channelId, videoId);
   if (episode.status !== "failed") {
     throw new DomainError(
       "INVALID_STATE",
@@ -212,39 +282,23 @@ export function skipEpisode(
     now,
     videoId,
   );
-  return getEpisode(sql, channelId, videoId) ?? episode;
+  return requireEpisode(sql, channelId, videoId);
 }
 
-/** An approved channel, no active run, and an episode that belongs to it. */
-function requireActionableEpisode(
+/** An episode that belongs to the named channel; channel status is not consulted. */
+function requireEpisode(
   sql: SqlStorage,
   channelId: string,
   videoId: string,
 ): EpisodeRecord {
-  const channel = requireChannel(sql, channelId);
-  if (channel.status !== "approved") {
-    throw new DomainError(
-      "INVALID_STATE",
-      "episode actions need an approved channel",
-    );
-  }
-  if (hasActiveRun(sql, channelId)) {
-    throw new DomainError("INVALID_STATE", "a run is active on this channel");
-  }
+  requireChannel(sql, channelId);
   const episode = getEpisode(sql, channelId, videoId);
   if (!episode) throw new DomainError("NOT_FOUND", "episode not found");
   return episode;
 }
 
 export function zeroCounts(): EpisodeCounts {
-  return {
-    tracked: 0,
-    available: 0,
-    pending: 0,
-    waiting: 0,
-    failed: 0,
-    skipped: 0,
-  };
+  return { available: 0, pending: 0, failed: 0, skipped: 0 };
 }
 
 function addCount(counts: EpisodeCounts, status: EpisodeStatus, n: number) {
@@ -282,11 +336,11 @@ function byNewest(a: EpisodeRow, b: EpisodeRow): number {
 }
 
 /**
- * Resolves each row's related video ids to titles, keeping only available episodes whose channel
- * is in `scope` and never the episode itself. docs/PRD.md §4.4: referenced titles are filtered to the
- * reader's eligible channels.
+ * Turns rows into records: resolves each row's related video ids to titles, keeping only available
+ * episodes whose channel is in `scope` and never the episode itself (docs/PRD.md §4.4), and attaches
+ * each episode's latest attempt, where its reason lives.
  */
-function attachRelated(
+function complete(
   sql: SqlStorage,
   rows: EpisodeRow[],
   scope: readonly string[],
@@ -320,6 +374,11 @@ function attachRelated(
     }
   }
 
+  const latest = latestByVideo(
+    sql,
+    rows.map((row) => row.video_id),
+  );
+
   return rows.map((row) => {
     const related: RelatedEpisode[] = [];
     for (const videoId of relatedIds.get(row.video_id) ?? []) {
@@ -328,32 +387,43 @@ function attachRelated(
         related.push({ videoId, title });
       }
     }
-    return toRecord(row, related);
+    return toRecord(row, related, latest[row.video_id] ?? null);
   });
 }
 
-function toRecord(row: EpisodeRow, related: RelatedEpisode[]): EpisodeRecord {
+function toRecord(
+  row: EpisodeRow,
+  related: RelatedEpisode[],
+  latestAttempt: EpisodeRecord["processing"]["latestAttempt"],
+): EpisodeRecord {
+  const status = toStatus(row.status);
   return {
     videoId: row.video_id,
     channelId: row.channel_id,
     channelTitle: row.channel_title,
     title: row.title,
     publishedAt: row.published_at,
-    status: toStatus(row.status),
-    summary: toSummary(row),
-    related,
+    status,
+    skipReason: toSkipReason(row.skip_reason),
+    summaryAvailableAt: row.processed_at,
+    // Summary and related data leave the Registry only for an available episode.
+    summary: status === "available" ? toSummary(row) : null,
+    related: status === "available" ? related : [],
     processing: {
+      discoveredByRunId: row.discovered_by_run_id,
+      recoveryMode: toRecoveryMode(row.recovery_mode),
+      recoveryStartedAt: row.recovery_started_at,
+      recoveryDeadlineAt: row.recovery_deadline_at,
+      nextAttemptAt: row.next_attempt_at,
       attemptCount: row.attempt_count,
-      failureCode: row.failure_code,
+      latestAttempt,
+      failureCode: toFailureCode(row.failure_code),
       failureDetail: row.failure_detail,
-      waitingCode: toWaitingCode(row.waiting_code),
-      skipReason: toSkipReason(row.skip_reason),
       skippedAt: row.skipped_at,
       skippedByEmail: row.skipped_by_email,
       transcriptCheckedAt: row.transcript_checked_at,
       chunkCount: row.chunk_count,
       vectorizedAt: row.vectorized_at,
-      processedAt: row.processed_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     },
@@ -371,7 +441,7 @@ function toSummary(row: EpisodeRow): EpisodeSummary | null {
           row.executive_summary,
           "executive_summary",
         ),
-        takeaways: parseStringArray(row.takeaways_json, "takeaways_json"),
+        takeaways: parseTakeaways(row.takeaways_json),
         topicTags: parseStringArray(row.topic_tags_json, "topic_tags_json"),
       };
     case "raw_fallback":
@@ -398,27 +468,23 @@ function toStatus(value: string): EpisodeStatus {
   }
 }
 
-function toWaitingCode(value: string | null): EpisodeWaitingCode | null {
-  switch (value) {
-    case null:
-      return null;
-    case "CAPTIONS":
-    case "LIVE_OR_UPCOMING":
-    case "PROVIDER_LIMIT":
-      return value;
-    default:
-      throw new Error(`unexpected episodes.waiting_code: ${value}`);
+function toRecoveryMode(value: string | null): RecoveryMode | null {
+  if (value === null || value === "publication" || value === "replacement") {
+    return value;
   }
+  throw new Error(`unexpected episodes.recovery_mode: ${value}`);
+}
+
+function toFailureCode(value: string | null): EpisodeFailureCode | null {
+  if (value === null || value === "INGESTION_TIMEOUT") return value;
+  throw new Error(`unexpected episodes.failure_code: ${value}`);
 }
 
 function toSkipReason(value: string | null): EpisodeSkipReason | null {
   switch (value) {
     case null:
-      return null;
     case "SHORT":
     case "NON_ENGLISH":
-    case "NO_CAPTIONS":
-    case "LIVE_OR_UPCOMING":
     case "UNPLAYABLE":
     case "OWNER":
       return value;
@@ -444,4 +510,25 @@ function parseStringArray(value: string | null, column: string): string[] {
     throw new Error(`episode_summaries.${column} is not a string array`);
   }
   return parsed;
+}
+
+/** `[{ text, startSec }]`, `startSec` null when the model gave no usable marker (docs/PRD.md §4.4). */
+function parseTakeaways(value: string | null): Takeaway[] {
+  const parsed: unknown = JSON.parse(requireText(value, "takeaways_json"));
+  if (!Array.isArray(parsed) || !parsed.every(isTakeaway)) {
+    throw new Error(
+      "episode_summaries.takeaways_json is not an array of { text, startSec }",
+    );
+  }
+  return parsed;
+}
+
+function isTakeaway(item: unknown): item is Takeaway {
+  if (typeof item !== "object" || item === null) return false;
+  const { text, startSec } = item as Record<string, unknown>;
+  return (
+    typeof text === "string" &&
+    (startSec === null ||
+      (typeof startSec === "number" && Number.isFinite(startSec)))
+  );
 }

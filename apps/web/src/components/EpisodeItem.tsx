@@ -7,6 +7,16 @@ import { Time } from "./Time";
  * API returned one, related titles (already filtered to the reader's eligible channels). Text only;
  * youtube.com is the only host ever linked (docs/PRD.md §7).
  */
+/** `h:mm:ss` or `m:ss` for a takeaway's moment. */
+function offsetLabel(seconds: number): string {
+  const whole = Math.floor(seconds);
+  const h = Math.floor(whole / 3600);
+  const m = Math.floor((whole % 3600) / 60);
+  const s = whole % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  return `${h > 0 ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
+}
+
 export function EpisodeItem({
   episode,
   showChannel = true,
@@ -38,7 +48,19 @@ export function EpisodeItem({
           <p>{summary.executiveSummary}</p>
           <ul>
             {summary.takeaways.map((takeaway) => (
-              <li key={takeaway}>{takeaway}</li>
+              <li key={takeaway.text}>
+                {takeaway.text}
+                {takeaway.startSec !== null && (
+                  <>
+                    {" "}
+                    <a
+                      href={`https://youtu.be/${episode.videoId}?t=${Math.floor(takeaway.startSec)}`}
+                    >
+                      {offsetLabel(takeaway.startSec)}
+                    </a>
+                  </>
+                )}
+              </li>
             ))}
           </ul>
           {summary.topicTags.length > 0 && (

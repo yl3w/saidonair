@@ -1,6 +1,6 @@
 import type { Channel } from "@media-digest/shared";
 import { useState } from "preact/hooks";
-import { channelStateCopy } from "../lib/copy";
+import { channelStateCopy, runResultCopy } from "../lib/copy";
 import { type Act, AttentionList } from "./AttentionList";
 import type { CatalogFilter } from "./CatalogHealth";
 import { ChannelStatusActions } from "./ChannelStatusActions";
@@ -118,7 +118,11 @@ function AllChannelsTable({
                   </td>
                   <td>{channelStateCopy(c)}</td>
                   <td>
-                    {c.episodes.available} / {c.episodes.tracked}
+                    {c.episodes.available} /{" "}
+                    {c.episodes.available +
+                      c.episodes.pending +
+                      c.episodes.failed +
+                      c.episodes.skipped}
                     {c.episodes.skipped > 0 && (
                       <span class="muted"> · {c.episodes.skipped} skipped</span>
                     )}
@@ -130,8 +134,8 @@ function AllChannelsTable({
                     <Time at={c.lastIngestedAt} />
                   </td>
                   <td>
-                    {m?.latestRun
-                      ? `${m.latestRun.kind} · ${m.latestRun.status}`
+                    {m.latestRun
+                      ? `${m.latestRun.kind} · ${runResultCopy(m.latestRun)}`
                       : "—"}
                   </td>
                   <td>{c.followerCount}</td>
