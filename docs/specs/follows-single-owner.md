@@ -1,8 +1,9 @@
 # Feature spec — Follows have one owner
 
 **Written:** 2026-09-13, against `main` at `16949b3`.
-**Status:** proposed; the decision itself is made (PRD §9, 2026-09-13) and the PRD and `AGENTS.md` edits in §8 are
-applied with this spec. Plan: `docs/specs/follows-single-owner-plan.md`.
+**Status:** complete 2026-09-13. Implemented on `main` in `7a630fc` (Registry side), `092ef97` (routes), and
+`b04c81e` (User DO); the `wrangler dev` legs are recorded in `docs/specs/follows-single-owner-plan.md`. The PRD and
+`AGENTS.md` edits in §8 were applied with this spec.
 **Owner decision 2026-09-13:** the Registry's `channel_followers` is the only record of follows; the User DO's
 `channel_follows` table goes.
 

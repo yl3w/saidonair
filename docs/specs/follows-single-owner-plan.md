@@ -2,7 +2,9 @@
 
 **Implements:** `docs/specs/follows-single-owner.md` under the rules in `AGENTS.md`.
 **Written:** 2026-09-13, against `main` at `16949b3`.
-**Status:** proposed; awaiting the owner's go. No new dependencies.
+**Status:** complete 2026-09-13. Steps 1–3 landed as `7a630fc`, `092ef97`, `b04c81e`; the walkthrough record is
+below. The owner's default local Durable Object state predates Step 3 and needs `/clean-local-do`, on the owner's word,
+before the next `pnpm dev`. No new dependencies.
 **Shape:** three code steps and one documentation step, each one commit ending with `pnpm check` green. Step 1 adds
 the Registry side (additive, nothing else changes). Step 2 moves every route onto it (the User DO's follow methods
 become unused but still exist, so the gate stays green). Step 3 removes the User DO's follows and edits its `0001`,
@@ -95,4 +97,31 @@ the User DOs recorded `0001_init` with the old table) before the walkthrough.
 
 ## Walkthrough record
 
-_Filled in at Step 4._
+Every leg ran on 2026-09-13 under `wrangler dev --port 8799 --persist-to <scratch directory outside the repo>` on
+empty state, so the owner's default local state stayed untouched. Identities: `alice@example.com`, `bob@example.com`,
+`carol@example.com`. The channel: Veritasium, `UCHnyfMqiRRG1u-2MsSQLbXA`, verified against YouTube's feed on add.
+
+| Leg | Request | Result |
+|---|---|---|
+| fresh state | first `GET /channels` | `registry.migrations_applied` with `versions: ['0001_init']` alone; `GET /channels`, `/follows`, `/digest` 200 and empty |
+| add | `POST /channels` as alice | 201; `status: "requested"`, `following: true`, `followerCount: 1` |
+| approve | `POST /channels/{id}/approve` as alice | 200; `approved`, `paused: false` (no authorization anywhere) |
+| follow | `PUT /follows/{id}` as bob | 200; `followedAt` set, `unfollowedAt: null`, `unreadCount: 0`, channel `following: true`, `followerCount: 2` |
+| agreement (§6.2) | `GET /channels` as bob, then as alice | both rows `following: true`, `followerCount: 2`; `GET /channels/{id}/followers` lists alice and bob |
+| unfollow | `DELETE /follows/{id}` as alice, then as bob | 200 each; after alice `followerCount: 1`, still unpaused; after bob `followerCount: 0`, `paused: true`, `management.pausedBy: "system"`; followers `[]` |
+| refollow | `PUT /follows/{id}` as bob | 200; `unfollowedAt: null`, `paused: false`, `pausedBy: null`, `followerCount: 1`; carol reads `following: false`, `followerCount: 1` |
+| never followed (§6.3) | `DELETE /follows/{id}` as carol | 404 `NOT_FOUND` "channel is not followed" |
+| unknown channel | `DELETE` and `PUT /follows/UCBBBBBBBBBBBBBBBBBBBBBB` | 404 `NOT_FOUND` "channel not found" |
+| tombstone (§6.3) | second `DELETE /follows/{id}` as alice | 200 with the tombstone; `followerCount` unchanged at 1 |
+| lists (§6.5) | `GET /follows` as bob; as alice | bob: one follow, `unreadCount: 0`, channel `approved`; alice: `[]` |
+| reads (§6.6) | `GET /digest` as bob and as carol; `GET /channels/{id}/episodes` as bob | 200 each, empty: nothing produces episodes before M3 |
+| OpenAPI (§6.8) | `GET /openapi.json` | 18 paths, 29 components; `Follow` has `channel`, `channelId`, `followedAt`, `unfollowedAt`, `unreadCount` |
+| storage (§6.1) | Registry SQLite file, read with `sqlite3 -readonly` | `_migrations` = `0001_init`; indexes `channel_followers_channel_id_unfollowed_at` and `channel_followers_user_email_unfollowed_at` both present |
+| storage (§6.1) | User DO | no object was created: every User DO call in the routes sits behind a non-empty list of available episodes (read receipts), and nothing produces episodes before M3. The User DO half of §6.1 is verified by `test/user-migrations.test.ts` in real Durable Object SQLite under the workers pool. |
+
+Observed, not changed: a `DomainError` thrown inside a Durable Object RPC method is logged by workerd as
+`Uncaught DomainError` even though the Worker answers the documented 404. This predates this work (the test output
+shows the same line for every DO-thrown `DomainError`) and is noted for the owner.
+
+**Browser leg (owner):** after `/clean-local-do` and `pnpm dev`, the four web screens load against the empty Registry;
+following and unfollowing from Home moves `followerCount` in the same refresh, and the owner's queue agrees.

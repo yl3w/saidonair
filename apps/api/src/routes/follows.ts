@@ -180,7 +180,8 @@ async function followView(c: Ctx, follow: FollowRecord): Promise<Follow> {
 
 /**
  * Available episodes minus the caller's read receipts, per channel. Absent means zero. Callers pass
- * approved channel ids only: episodes of any other status are not readable (`lib/eligibility.ts`).
+ * approved channel ids only: episodes of any other status are not readable (the Registry's
+ * `listEligibleChannels` is the one implementation of that rule).
  */
 async function unreadByChannel(
   c: Ctx,
