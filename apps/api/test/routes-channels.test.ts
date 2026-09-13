@@ -475,7 +475,7 @@ describe("channel and catalog routes", () => {
     expect(retried.status).toBe("pending");
     expect(retried.processing).toMatchObject({
       attemptCount: 0,
-      recoveryMode: "publication",
+      intent: "publish",
     });
 
     // Only a running attempt refuses Retry.
@@ -524,7 +524,7 @@ describe("channel and catalog routes", () => {
       await seedEpisode(videoId, CHANNEL_A, {
         status: "pending",
         publishedAt: published++,
-        recovery: { mode: "publication" },
+        window: { intent: "publish" },
       });
       if (attempt) await seedAttempt(videoId, attempt);
     }
@@ -546,7 +546,7 @@ describe("channel and catalog routes", () => {
       } else {
         expect(processing.latestAttempt, videoId).toBeNull();
       }
-      expect(processing.recoveryMode, videoId).toBe("publication");
+      expect(processing.intent, videoId).toBe("publish");
     }
     // A summarised episode never waits.
     expect((byId.get(VIDEO_A) as Json).waitReason).toBeNull();

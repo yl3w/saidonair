@@ -8,7 +8,11 @@
 dependencies. Two facts learned on the way: DownSub's status body wraps the credits in a `data` envelope
 (`{ status, data: { remainingCredits, … } }`), which the 2026-09-08 probe notes had dropped, so `status.ts` reads
 `data.remainingCredits`; and every episode row must name a run, so `seedEpisode` shares one seed run per channel at
-t=0, which means a channel with seeded episodes is never "never started" in a test.
+t=0, which means a channel with seeded episodes is never "never started" in a test. Later the same day the owner
+renamed the window vocabulary (PRD §9): `recovery_mode` → `intent` (`publish` | `replace`), `recovery_started_at`
+→ `window_started_at`, `recovery_deadline_at` → `window_deadline_at`, `recovery_vector_generation` →
+`staged_vector_generation`, `RecoveryMode` → `ProcessingIntent`; `0001` was edited in place, and this plan's text
+carries the new names.
 **Shape:** five steps, each one commit ending with `pnpm check` green, in order. Steps 1 to 3 are small and independent
 of each other. Step 4 is one large commit: the Registry schema rewrite, its read model, and the restated contract are
 one unit because the stores return records typed against the shared module and the old shapes have no source in the
@@ -189,21 +193,21 @@ projections and routes; seeds and route tests; web.
   - `global_users`, `channel_followers`, `episode_summaries`: unchanged from the 2026-09-10 file.
   - `channels`: unchanged minus `lifecycle_version` and `last_ingested_at`.
   - `episodes`: `video_id` PK, `channel_id` FK, `discovered_by_run_id` FK to `ingestion_runs` (NOT NULL), `title`,
-    `published_at`, `status IN ('pending','available','failed','skipped')`, nullable `recovery_mode IN
-    ('publication','replacement')`, `recovery_started_at?`, `recovery_deadline_at?`, `next_attempt_at?`,
+    `published_at`, `status IN ('pending','available','failed','skipped')`, nullable `intent IN
+    ('publish','replace')`, `window_started_at?`, `window_deadline_at?`, `next_attempt_at?`,
     `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, nullable `skip_reason IN
     ('SHORT','NON_ENGLISH','UNPLAYABLE','OWNER')`, `skipped_at?`, `skipped_by_email?` FK, `transcript_checked_at?`,
-    `chunk_count?`, `vectorized_at?`, `processed_at?`, `active_vector_generation?`, `recovery_vector_generation?`,
+    `chunk_count?`, `vectorized_at?`, `processed_at?`, `active_vector_generation?`, `staged_vector_generation?`,
     `updated_at`, `created_at`. No `waiting_code`. Checks: `available` requires positive `chunk_count`,
     `vectorized_at`, `processed_at`, and `active_vector_generation`; `failure_code` is `INGESTION_TIMEOUT` exactly when
-    `failed` and null otherwise; `recovery_mode` and its three timestamps all set or all null; `publication` requires
-    `pending` and `replacement` requires `available`; `recovery_vector_generation` only with an active recovery;
+    `failed` and null otherwise; `intent` and its three timestamps all set or all null; `publication` requires
+    `pending` and `replacement` requires `available`; `staged_vector_generation` only while a window is open;
     `skipped` and `skip_reason` imply each other, `skipped_at` when skipped, `skipped_by_email` exactly for `OWNER`.
   - `ingestion_runs`: `run_id` PK, `channel_id` FK, `kind IN ('initial','scheduled')`, `feed_status IN
     ('read','unavailable')`, `discovered_count DEFAULT 0`, `episode_limit?`, `started_at`, `finished_at`, `created_at`.
     No status, `workflow_id`, `failure_code`, or `failure_detail`; no run-episode table.
   - `episode_ingestion_attempts`: `attempt_id` PK, `video_id` FK, `trigger IN
-    ('channel_ingestion','scheduled_recovery','owner_retry')`, `recovery_mode IN ('publication','replacement')`,
+    ('channel_ingestion','scheduled_recovery','owner_retry')`, `intent IN ('publish','replace')`,
     `generation_id?`, `staged_chunk_count?`, `workflow_id?` UNIQUE, `requested_by_email?` FK, `status IN
     ('running','available','waiting','failed','skipped','blocked')`, `outcome_code?`, `failure_detail?`, `started_at`,
     `finished_at?`, `created_at`. Checks: `running` has no `finished_at` and every other status has one; `blocked` has
@@ -225,9 +229,9 @@ projections and routes; seeds and route tests; web.
 - 4.3 **Route-driven writes on the new tables**, the same operations the registered routes perform today: channel
   create (always `requested`, Step 2), request, approve (first approval sets `approved_at`, review fields, pause
   recomputed), decline, pause, resume; follower records; Skip (`failed → skipped OWNER`, `skipped_by_email` = the
-  acting email); Retry re-arms recovery: a `pending`, `failed`, or `skipped` episode returns to pending publication with
+  acting email); Retry re-arms recovery: a `pending`, `failed`, or `skipped` episode returns to `pending` with intent `publish` with
   a fresh 48-hour window, `next_attempt_at` now, `attempt_count` 0, and the skip and failure fields cleared; an
-  `available` episode enters replacement recovery with its content untouched; refused with `INVALID_STATE` only while
+  `available` episode enters `replace` window with its content untouched; refused with `INVALID_STATE` only while
   the episode has a `running` attempt. No attempt row is written and nothing is launched: the starter, pre-flight, the
   one-hour reconcile, and every ingestion write are M3 Step 4 and Step 7, and the existing `requestIngestion` log line
   stays until then.
@@ -235,7 +239,7 @@ projections and routes; seeds and route tests; web.
   than edited in place, each section headed by the PRD section it mirrors. Every §5.11 member is gone. M4 shapes (§5.9)
   are written now, unreferenced by any route. **Plan decision:** `ChatExchangeResponse` is `{ chat, userMessage,
   assistantMessage }` as the spec sketches; the M4 plan may change it before any route references it.
-- 4.5 `do/registry/types.ts`: `EpisodeProcessingRecord` takes the `EpisodeProcessing` shape (recovery fields,
+- 4.5 `do/registry/types.ts`: `EpisodeProcessingRecord` takes the `EpisodeProcessing` shape (window fields,
   `latestAttempt`, `discoveredByRunId`; no `waitingCode`, no `processedAt`); `IngestionRunRecord` is `IngestionRun`;
   `IngestionRunEpisodeRecord` is deleted; `ChannelManagementRecord` keeps `episodes` (the projection needs it for
   `Channel`) and `latestRun: IngestionRun | null`; `CatalogChannel` loses `lastIngestedAt` and the store returns the
@@ -256,12 +260,12 @@ projections and routes; seeds and route tests; web.
   `ChannelList.tsx` drop `waiting` and `tracked` (summing the four where a total is shown) and read
   `latestRun.feedStatus` / `discoveredCount`. `apps/web` stays typecheck and lint only.
 - 4.9 `test/helpers.ts`: `seedRun` writes `kind`, `feed_status`, `discovered_count`, `episode_limit`, `started_at`,
-  `finished_at`; `seedEpisode` requires or creates a run for `discovered_by_run_id`, seeds recovery fields, and loses
+  `finished_at`; `seedEpisode` requires or creates a run for `discovered_by_run_id`, seeds window fields, and loses
   `waitingCode`; new `seedAttempt(videoId, { trigger, status, outcomeCode, … })`. `setChannelState` is unchanged.
 - 4.10 `test/registry-migrations.test.ts`: a fresh Registry lists `["0001_init"]` alone; no `ingestion_run_episodes`
   table, no `waiting_code` or `last_ingested_at` column, no `lifecycle_version`; each table check above rejects the
-  write it forbids: an approved channel without `approved_at`, a paused channel that is not approved, a replacement
-  recovery on a `pending` row, a half-set recovery window, a `failed` row without `INGESTION_TIMEOUT`, a skipped
+  write it forbids: an approved channel without `approved_at`, a paused channel that is not approved, a `replace`
+  window on a `pending` row, a half-set window, a `failed` row without `INGESTION_TIMEOUT`, a skipped
   episode without a reason, an `OWNER` skip without an email, a `running` attempt with `finished_at`, a `blocked`
   attempt with a `workflow_id`, an `owner_retry` attempt without a requester. Store tests: the latest attempt is the
   newest per episode; counts are a plain group-by on status; derived ingestion times equal the `processed_at` maxima;

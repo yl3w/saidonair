@@ -8,7 +8,7 @@ episode recovery.
 
 This revision supersedes the earlier hybrid design. An `ingestion_run` is completed RSS discovery history. An
 `episode_ingestion_attempt` is the only execution ledger for first processing, automatic recovery, and Owner Retry.
-Every unfinished, non-deterministic episode condition shares one 48-hour recovery window, regardless of attempt count
+Every unfinished, non-deterministic episode condition shares one 48-hour processing window, regardless of attempt count
 or channel state.
 
 **Starting over (owner decision 2026-09-12).** The Registry schema, the Registry DO's store modules, and the API contract are redesigned from scratch to this model rather than evolved under compatibility rules: the Registry's `0001_init.sql` is rewritten a second time before first deployment, `0002_drop_lifecycle_version.sql` is deleted, there is no `0003`, local Durable Object state is wiped, and no shared schema, reader, or route keeps a legacy table, column, or enum value alive. The User DO and its migration are untouched. Neither an additive-only nor a frozen-file rule applies; both were withdrawn on 2026-09-12 (PRD §5.4). The schema, the read model, and the writes the existing routes perform land with `docs/specs/api-reference-plan.md` Step 4 (moved there on 2026-09-12 so that plan depends on nothing here); this plan's Step 4 adds the ingestion writes on top.
@@ -76,7 +76,7 @@ that stood here differed from that spec (`IngestionRunSummary`, `tracked`, `Chan
 **Files:** Registry episode/run/attempt stores and facade, tests.
 
 **Precondition:** `docs/specs/api-reference-plan.md` Step 4 has landed: the rewritten `0001`, the read model, the
-route-driven writes (channel transitions, follower records, Skip, Retry's re-arm of recovery), and the seeds. This
+route-driven writes (channel transitions, follower records, Skip, Retry's re-opening of the window), and the seeds. This
 step adds the ingestion writes and their state-machine rules on top; it creates no table and changes no column.
 
 ### Schema (moved)
@@ -89,7 +89,7 @@ the logical schema is PRD §5. Nothing about the schema remains to do here.
 - `recordDiscovery(channelId, kind, feedResult, selectedEntries, ignorePause)` validates the channel rules and writes
   one already-completed run.
 - On a successful read, update `last_checked_at`, select only eligible untracked entries, and insert each episode with
-  immutable `discovered_by_run_id` and publication recovery initialized for 48 hours.
+  immutable `discovered_by_run_id` and `publish` window initialized for 48 hours.
 - On feed failure, write `feed_status = unavailable`, `discovered_count = 0`, leave `last_checked_at` unchanged, and
   create no episodes.
 - The first successful discovery uses `initial_import_count`; later successful discoveries use entries newer than
@@ -102,7 +102,7 @@ the logical schema is PRD §5. Nothing about the schema remains to do here.
   episode's last staged generation with its recorded chunk count when that generation never became active, so the
   instance can delete it before writing.
 - `markStaged(attemptId, chunkCount)` records how many ids the attempt is about to write, before the first upsert.
-- First processing uses `recovery_mode = publication`. Retry on available content uses `replacement` and leaves all
+- First processing uses `intent = publish`. Retry on available content uses `replacement` and leaves all
   current content fields intact.
 - `finishAttempt` records one of available, waiting, failed, skipped, or blocked and updates only the matching
   episode recovery. The reason stays on the attempt: the schema has no `waiting_code` column, and
@@ -112,22 +112,22 @@ the logical schema is PRD §5. Nothing about the schema remains to do here.
   controls status.
 - `recordBlockedAttempt(videoId, trigger, reason, requestedByEmail?)` writes one finished `blocked` attempt with
   `PROVIDER_AUTH` or `PROVIDER_LIMIT` for every blocked start, automatic or owner (2026-09-12 review); for an automatic
-  block it also moves `next_attempt_at` six hours later or, at the deadline, settles the recovery.
+  block it also moves `next_attempt_at` six hours later or, at the deadline, closes the window.
 - Non-deterministic unfinished outcomes finish the attempt with the reason and set the episode's `next_attempt_at`
   six hours later, capped at the deadline. This includes captions, live/upcoming, provider failures/limits, transcript size, AI, Vectorize, and
   `WORKFLOW_LOST`.
 - At/after the deadline, pre-flight permits one final attempt. A provider block first records its `blocked` attempt;
   that block or an unsuccessful final attempt then sets publication to `failed INGESTION_TIMEOUT`, copying the latest
   attempt's reason into `failure_detail`, which therefore always exists. Replacement
-  simply stops recovery and leaves the available content active.
-- Deterministic `SHORT`, `NON_ENGLISH`, and `UNPLAYABLE` outcomes are recovery-mode-aware (2026-09-12 review): under
+  simply closes the window and leaves the available content active.
+- Deterministic `SHORT`, `NON_ENGLISH`, and `UNPLAYABLE` outcomes are intent-aware (2026-09-12 review): under
   `publication` they set the episode `skipped` with the reason; under `replacement` they finish the attempt `skipped`,
-  clear the recovery fields, and leave the episode `available` with every content field intact. Owner Skip sets
+  clear the window fields, and leave the episode `available` with every content field intact. Owner Skip sets
   `OWNER`.
-- Retry's re-arm of recovery and the Skip transition exist from `api-reference-plan.md` Step 4.3; this step adds the
-  pre-flight and running-attempt behaviour around them. When its pre-flight permits work, Owner Retry resets recovery
+- Retry's re-opening of the window and the Skip transition exist from `api-reference-plan.md` Step 4.3; this step adds the
+  pre-flight and running-attempt behaviour around them. When its pre-flight permits work, Owner Retry resets the window's
   start/deadline and attempt count. A blocked Retry
-  records the action but changes no episode/recovery field. Owner Skip is `failed → skipped OWNER`. Both work under
+  records the action but changes no episode or window field. Owner Skip is `failed → skipped OWNER`. Both work under
   any channel status; Retry is refused only while that episode has a running attempt, and `beginAttempt` reports
   that attempt's id and age so the caller can reconcile an old one inline (Step 7).
 
@@ -249,7 +249,7 @@ stale attempt; and a Workflow fake round trip if supported.
   - Otherwise create a running attempt and launch the Workflow.
 - `POST /channels/:id/episodes/:videoId/retry` validates episode/channel identity, but not channel status or the
   caller's role (the API enforces no authorization, PRD §9). When pre-flight permits, it resets the 48-hour window; it always returns `{ episode, attempt }`, including
-  a blocked attempt that leaves recovery unchanged. A running attempt refuses it with 409 `INVALID_STATE`, except
+  a blocked attempt that leaves the window unchanged. A running attempt refuses it with 409 `INVALID_STATE`, except
   that when the attempt is older than one hour the route first asks `ingestLauncher(env).status(attemptId)`:
   `active` keeps the 409; `gone` or `missing` calls the Step 8 `closeLostEpisodeAttempt` helper and the Retry
   proceeds (owner decision 2026-09-12), so a dead instance never holds Retry until the next recovery tick. Under
@@ -284,7 +284,7 @@ no RSS request on recovery/Retry; and no channel/run mutation from an episode ac
 - For a due episode at/after its deadline, make the final attempt when pre-flight permits; do not fail captions/live
   from elapsed time alone.
 - Before the deadline, a provider block records one `blocked` attempt per due episode with the provider reason and
-  schedules the next check. At the deadline it records that attempt and settles the recovery rather than scheduling
+  schedules the next check. At the deadline it records that attempt and closes the window rather than scheduling
   beyond 48 hours, so `failure_detail` names the block.
 - Keep “approved, never started” as discovery information for channels with no run row.
 

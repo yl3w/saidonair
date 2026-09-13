@@ -304,7 +304,7 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["episodes"],
       summary: "List a channel's episodes",
       description:
-        "Newest first, each with its summary, related titles filtered to the caller's eligible channels, `waitReason` on a pending one, and `processing` with the recovery window and the latest attempt. An eligible caller, an active follower of an approved channel, also receives `wasUnread`, and the summaries returned to them are marked read; nobody else's receipts are touched.",
+        "Newest first, each with its summary, related titles filtered to the caller's eligible channels, `waitReason` on a pending one, and `processing` with the open window (intent, start, deadline, next attempt) and the latest attempt. An eligible caller, an active follower of an approved channel, also receives `wasUnread`, and the summaries returned to them are marked read; nobody else's receipts are touched.",
       responses: {
         200: jsonResponse(EpisodesResponseSchema, "Episodes, newest first."),
         ...errorResponses({ notFound: true }),
@@ -358,7 +358,7 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["episodes"],
       summary: "Retry an episode",
       description:
-        "Any episode state, in any channel status. A `pending`, `failed`, or `skipped` episode returns to pending publication with a fresh 48-hour recovery window; an `available` one enters replacement recovery with its summary and vectors untouched until a replacement succeeds. Refused only while an attempt is running. Until M3 lands the attempt starter, nothing launches and the response is the episode alone. The web offers this to the owner.",
+        "Any episode state, in any channel status. A `pending`, `failed`, or `skipped` episode returns to `pending` with intent `publish` and a fresh 48-hour window; an `available` one gets intent `replace`, its summary and vectors untouched until the replacement succeeds. Refused only while an attempt is running. Until M3 lands the attempt starter, nothing launches and the response is the episode alone. The web offers this to the owner.",
       responses: {
         200: jsonResponse(EpisodeResponseSchema, "The episode, pending again."),
         ...errorResponses({

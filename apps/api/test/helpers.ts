@@ -4,7 +4,7 @@ import type {
   AttemptOutcomeCode,
   AttemptStatus,
   AttemptTrigger,
-  RecoveryMode,
+  ProcessingIntent,
   Takeaway,
 } from "@media-digest/shared";
 import { expect } from "vitest";
@@ -174,7 +174,7 @@ async function seedRunFor(channelId: string): Promise<string> {
   return runId;
 }
 
-const RECOVERY_WINDOW_MS = 48 * 60 * 60 * 1000;
+const WINDOW_MS = 48 * 60 * 60 * 1000;
 
 type EpisodeSeed = {
   title?: string;
@@ -188,9 +188,9 @@ type EpisodeSeed = {
   chunkCount?: number;
   processedAt?: number;
   runId?: string;
-  /** An active recovery window: `publication` needs `pending`, `replacement` needs `available`. */
-  recovery?: {
-    mode: "publication" | "replacement";
+  /** An open processing window: `publish` needs `pending`, `replace` needs `available`. */
+  window?: {
+    intent: "publish" | "replace";
     startedAt?: number;
     deadlineAt?: number;
     nextAttemptAt?: number;
@@ -210,13 +210,13 @@ export async function seedEpisode(
   const skipReason = skipped ? (seed.skipReason ?? "SHORT") : null;
   const at = seed.processedAt ?? seed.publishedAt ?? 1;
   const runId = seed.runId ?? (await seedRunFor(channelId));
-  const recovery = seed.recovery ?? null;
-  const recoveryStart = recovery ? (recovery.startedAt ?? at) : null;
+  const window = seed.window ?? null;
+  const windowStart = window ? (window.startedAt ?? at) : null;
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episodes
          (video_id, channel_id, discovered_by_run_id, title, published_at, status,
-          recovery_mode, recovery_started_at, recovery_deadline_at, next_attempt_at, attempt_count,
+          intent, window_started_at, window_deadline_at, next_attempt_at, attempt_count,
           failure_code, failure_detail, skip_reason, skipped_at, skipped_by_email, transcript_checked_at,
           chunk_count, vectorized_at, processed_at, active_vector_generation, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -226,12 +226,12 @@ export async function seedEpisode(
       seed.title ?? `Episode ${videoId}`,
       seed.publishedAt ?? 1,
       status,
-      recovery?.mode ?? null,
-      recoveryStart,
-      recovery && recoveryStart !== null
-        ? (recovery.deadlineAt ?? recoveryStart + RECOVERY_WINDOW_MS)
+      window?.intent ?? null,
+      windowStart,
+      window && windowStart !== null
+        ? (window.deadlineAt ?? windowStart + WINDOW_MS)
         : null,
-      recovery ? (recovery.nextAttemptAt ?? recoveryStart) : null,
+      window ? (window.nextAttemptAt ?? windowStart) : null,
       seed.attemptCount ?? (pending ? 0 : 1),
       failed ? "INGESTION_TIMEOUT" : null,
       failed ? (seed.failureDetail ?? "PROVIDER_HTTP") : null,
@@ -293,7 +293,7 @@ export async function seedSummary(
 type AttemptSeed = {
   attemptId?: string;
   trigger?: AttemptTrigger;
-  recoveryMode?: RecoveryMode;
+  intent?: ProcessingIntent;
   status?: AttemptStatus;
   /** Defaults per status: waiting CAPTIONS, failed PROVIDER_HTTP, skipped SHORT, blocked PROVIDER_LIMIT, else null. */
   outcomeCode?: AttemptOutcomeCode | null;
@@ -327,13 +327,13 @@ export async function seedAttempt(
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episode_ingestion_attempts
-         (attempt_id, video_id, trigger, recovery_mode, staged_chunk_count, workflow_id,
+         (attempt_id, video_id, trigger, intent, staged_chunk_count, workflow_id,
           requested_by_email, status, outcome_code, failure_detail, started_at, finished_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       attemptId,
       videoId,
       trigger,
-      seed.recoveryMode ?? "publication",
+      seed.intent ?? "publish",
       seed.stagedChunkCount ?? null,
       seed.workflowId === undefined
         ? status === "blocked"

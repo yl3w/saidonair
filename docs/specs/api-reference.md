@@ -28,7 +28,7 @@ The API describes itself and can be exercised from a browser:
 Every request and response shape is a Zod schema in `packages/shared`, with its TypeScript type inferred beside it. The
 API validates requests and documents responses from the same schema; the web app imports the types only. This revision
 restates that module from PRD v4 §5.3 and §7 with no legacy member: the enums mirror the rewritten Registry schema, the
-episode carries recovery state and its latest attempt instead of a waiting code, a discovery run is completed feed
+episode carries its processing window and its latest attempt instead of a waiting code, a discovery run is completed feed
 history, Retry returns the attempt it started, and the M4 chat and preference shapes are specified so their routes do
 not redesign them later. There is no 403 in the document: the API enforces no authorization, and every caller receives
 every entity's full representation. What changed in the PRD since 2026-09-07 and why is PRD §9.
@@ -41,11 +41,12 @@ every entity's full representation. What changed in the PRD since 2026-09-07 and
 | Where shapes live | **`packages/shared/src/index.ts`**, one module, as `XSchema` values with `export type X = z.infer<typeof XSchema>` beside each (kept). **The module is the whole contract of PRD §7**, M3 and M4 shapes included, written now. | The web needs the types before the routes exist, and a schema no operation references never reaches the document (Zod extracts referenced schemas only), so writing M4 shapes early costs nothing in `/docs`. |
 | Restart, not evolution | **Rewritten from the PRD**, section by section (§5), and a test asserts the absence of every removed member (§5.11) from the module and the document. | Owner decision 2026-09-12: no shared schema, reader, or route keeps a legacy table, column, or enum value alive. |
 | Document identity | `info.title` and the Scalar page title are **"Said on Air API"**; `info.description` is PRD §1–§2 in three paragraphs. The Worker name, the `@media-digest/*` scope, and storage keys are untouched. | PRD §9: the API document title follows the name; the rest needs an owner decision. |
-| Reasons on attempts | `Episode.processing` carries the recovery fields and `latestAttempt: EpisodeIngestionAttempt \| null`. There is no stored waiting code on the episode and no `waiting` count anywhere. | PRD §4.2 rules 11–13: reasons live on attempts only; counts are the four statuses. |
+| Reasons on attempts | `Episode.processing` carries the window fields and `latestAttempt: EpisodeIngestionAttempt \| null`. There is no stored waiting code on the episode and no `waiting` count anywhere. | PRD §4.2 rules 11–13: reasons live on attempts only; counts are the four statuses. |
 | Reader-safe wait reason | `Episode.waitReason` for every caller on a pending episode, derived from the latest attempt, which is also present in full in `processing.latestAttempt`. | Owner decision 2026-09-12 (PRD §4.2 rule 11, §9), resolving PRD §7's Channel screen against its route row; `skipReason` went reader-safe for the same reason. |
 | No authorization | **The API enforces none.** No 403, no `NOT_OWNER`, no `requireOwner`, no Registry role check. Every operation is accepted from any identity; `?scope=all`, `GET /catalog`, `GET /channels/{id}/followers`, and the run routes are open to every caller. `GET /me` still returns the role, for the web. | Owner decision 2026-09-12 (PRD §2, §7, §9): the email header is identity, not authentication, so an API check was never a guard; the web is the one gate. |
 | Owner add shortcut | Gone: `POST /channels` creates `requested` for every caller and starts nothing. | Owner decision 2026-09-12: the API reads the role nowhere; the web does add then approve for the owner. |
 | Promiscuous input and representation | `CreateChannelBody.title` and `initialImportCount` are honoured from any caller. `management` is a required block on every `Channel`, `processing` on every `Episode`, and summaries and related items go to every caller; the only per-caller fields are `following`, `unreadCount`, and `wasUnread`. | Same decision: one representation per entity, whoever asks; what a user is offered is the UX's job. |
+| Window vocabulary | `ProcessingIntent` (`publish` \| `replace`) as `intent` on episodes and attempts, with `windowStartedAt` and `windowDeadlineAt`; the staged generation column is `staged_vector_generation`. | Owner decision 2026-09-12 (PRD §9), replacing `RecoveryMode` / `recovery_mode`: the window opens at creation, not after a failure, so "recovery" named the wrong thing. |
 | Episode counts | `EpisodeCounts = { available, pending, failed, skipped }` for channels and the catalog alike; no `tracked`, the client sums. | PRD §4.2 names exactly these four; one schema for both places. |
 | Discovery runs | `IngestionRun = { runId, channelId, kind, feedStatus, discoveredCount, episodeLimit, startedAt, finishedAt }`; `management.latestRun` is the same schema. No status, Workflow id, failure, or per-episode outcomes. | PRD §4.2 rules 1–4: a run is completed feed history. One schema instead of a summary variant. |
 | Retry and Start responses | `POST …/retry` returns `EpisodeRetryResponse { episode, attempt }`; `POST /channels/:id/runs` returns `IngestionRunResponse { run }` and 502 after recording an unavailable feed. | PRD §7 rows; the owner reads the blocked attempt from the response instead of reloading. |
@@ -167,7 +168,7 @@ type MeResponse = { email: string; role: UserRole };
 | `ChannelStatus` | `requested`, `approved`, `declined` | `channels.status` |
 | `PausedBy` | `owner`, `system` | `channels.paused_by` |
 | `EpisodeStatus` | `pending`, `available`, `failed`, `skipped` | `episodes.status` |
-| `RecoveryMode` | `publication`, `replacement` | `episodes.recovery_mode`, attempts |
+| `ProcessingIntent` | `publication`, `replacement` | `episodes.intent`, attempts |
 | `EpisodeFailureCode` | `INGESTION_TIMEOUT` | `episodes.failure_code` |
 | `EpisodeSkipReason` | `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`, `OWNER` | `episodes.skip_reason` |
 | `EpisodeWaitReason` | `CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT` | the outcome codes of a `waiting` attempt, PRD §4.2 rule 11; derived, not stored |
@@ -242,7 +243,7 @@ type RelatedEpisode = { videoId: string; title: string };            // already 
 type EpisodeIngestionAttempt = {                                     // one Workflow instance, or one blocked start
   attemptId: string; videoId: string;
   trigger: AttemptTrigger; requestedByEmail: string | null;         // set exactly for owner_retry
-  recoveryMode: RecoveryMode;
+  intent: ProcessingIntent;
   status: AttemptStatus; outcomeCode: AttemptOutcomeCode | null; failureDetail: string | null;   // code null while running and on available
   workflowId: string | null;                                         // null for blocked
   stagedChunkCount: number | null;                                   // set when embedding began
@@ -250,9 +251,9 @@ type EpisodeIngestionAttempt = {                                     // one Work
 };
 type EpisodeProcessing = {                                           // every caller
   discoveredByRunId: string;
-  recoveryMode: RecoveryMode | null;                                 // the four recovery fields are all set or all null
-  recoveryStartedAt: number | null; recoveryDeadlineAt: number | null; nextAttemptAt: number | null;
-  attemptCount: number;                                              // launched since the window last started; blocked never counts
+  intent: ProcessingIntent | null;                                 // the four window fields are all set or all null
+  windowStartedAt: number | null; windowDeadlineAt: number | null; nextAttemptAt: number | null;
+  attemptCount: number;                                              // launched since the window last opened; blocked never counts
   latestAttempt: EpisodeIngestionAttempt | null;                     // where the reason lives
   failureCode: EpisodeFailureCode | null; failureDetail: string | null;   // written once, at the timeout
   skippedAt: number | null; skippedByEmail: string | null;
@@ -395,6 +396,8 @@ descriptions of attempt outcomes):
   `episodes` on a run.
 - Enum members: `NO_CAPTIONS` and `LIVE_OR_UPCOMING` in `EpisodeSkipReason`; `owner_retry` in `IngestionRunKind`.
 - Shapes: `takeaways` as `string[]` (it is `Takeaway[]`).
+- Renamed the same day, before any deployment: `RecoveryMode` and `EpisodeProcessing.recoveryMode`,
+  `recoveryStartedAt`, `recoveryDeadlineAt` (now `ProcessingIntent`, `intent`, `windowStartedAt`, `windowDeadlineAt`).
 
 ## 6. Validation and error mapping in `apps/api`
 
@@ -465,7 +468,7 @@ Telemetry: Scalar's open-source build sends nothing unless an analytics plugin i
    that the app does not register.
 2. The set of tags declared in the document equals the set of tags used by its operations.
 3. Component schemas include `ErrorCode`, `Channel`, `ChannelManagement`, `EpisodeCounts`, `Episode`,
-   `EpisodeSummary`, `Takeaway`, `EpisodeWaitReason`, `AttemptOutcomeCode`, `EpisodeIngestionAttempt`,
+   `EpisodeSummary`, `Takeaway`, `EpisodeWaitReason`, `AttemptOutcomeCode`, `ProcessingIntent`, `EpisodeIngestionAttempt`,
    `EpisodeProcessing`, `IngestionRun`, `Follow`, `Follower`, `Catalog`, `TranscriptProviderHealth`, and the enums of
    §5.3 that a registered route references; no `#/$defs/` reference survives.
 4. Every member in §5.11 is absent from the module's exports and from the document, asserted by name and by enum

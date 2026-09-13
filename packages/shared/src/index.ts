@@ -105,16 +105,16 @@ export const EpisodeStatusSchema = z
   .meta({
     id: "EpisodeStatus",
     description:
-      "`pending` is being processed or recovering; `available` has a verified vector generation and a summary; `failed` is a publication that exhausted its 48-hour recovery window; `skipped` is deliberate and reversible.",
+      "`pending` is being processed or recovering; `available` has a verified vector generation and a summary; `failed` is a `publish` window that closed without a summary; `skipped` is deliberate and reversible.",
   });
 export type EpisodeStatus = z.infer<typeof EpisodeStatusSchema>;
 
-export const RecoveryModeSchema = z.enum(["publication", "replacement"]).meta({
-  id: "RecoveryMode",
+export const ProcessingIntentSchema = z.enum(["publish", "replace"]).meta({
+  id: "ProcessingIntent",
   description:
-    "`publication` recovers a pending episode toward its first summary; `replacement` re-processes an available one while its current summary and vectors stay readable.",
+    "What an episode's open processing window is for: `publish` works toward a pending episode's first summary; `replace` re-processes an available one while its current summary and vectors stay readable.",
 });
-export type RecoveryMode = z.infer<typeof RecoveryModeSchema>;
+export type ProcessingIntent = z.infer<typeof ProcessingIntentSchema>;
 
 export const EpisodeFailureCodeSchema = z.enum(["INGESTION_TIMEOUT"]).meta({
   id: "EpisodeFailureCode",
@@ -522,7 +522,7 @@ export const EpisodeIngestionAttemptSchema = z
       .string()
       .nullable()
       .describe("Who asked; set exactly for `owner_retry`."),
-    recoveryMode: RecoveryModeSchema,
+    intent: ProcessingIntentSchema,
     status: AttemptStatusSchema,
     outcomeCode: AttemptOutcomeCodeSchema.nullable(),
     failureDetail: z.string().nullable(),
@@ -553,16 +553,16 @@ export const EpisodeProcessingSchema = z
     discoveredByRunId: Id.describe(
       "The discovery run that created the episode; immutable.",
     ),
-    recoveryMode: RecoveryModeSchema.nullable().describe(
-      "Set, with the three timestamps, while a recovery window is active.",
+    intent: ProcessingIntentSchema.nullable().describe(
+      "Set, with the three window timestamps, while a processing window is open. The window opens when the episode is created, not after a failure.",
     ),
-    recoveryStartedAt: UnixMs.nullable(),
-    recoveryDeadlineAt: UnixMs.nullable().describe(
-      "48 hours after the window started.",
+    windowStartedAt: UnixMs.nullable(),
+    windowDeadlineAt: UnixMs.nullable().describe(
+      "48 hours after the window opened.",
     ),
     nextAttemptAt: UnixMs.nullable(),
     attemptCount: Count.describe(
-      "Attempts that launched since the window last started; a blocked start never counts. Diagnostic only.",
+      "Attempts that launched since the window last opened; a blocked start never counts. Diagnostic only.",
     ),
     latestAttempt: EpisodeIngestionAttemptSchema.nullable().describe(
       "Where the reason lives; null before the first start.",

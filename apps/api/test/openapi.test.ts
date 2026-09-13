@@ -173,6 +173,7 @@ describe("GET /openapi.json", () => {
       "Takeaway",
       "EpisodeWaitReason",
       "AttemptOutcomeCode",
+      "ProcessingIntent",
       "EpisodeIngestionAttempt",
       "EpisodeProcessing",
       "IngestionRun",
@@ -207,6 +208,8 @@ describe("the 2026-09-12 restart", () => {
       "CatalogState",
       "ChannelFailureCode",
       "ChannelAlreadyAvailableResponse",
+      // Renamed to ProcessingIntent / intent / window* on 2026-09-12.
+      "RecoveryMode",
     ]) {
       expect(doc.components.schemas, gone).not.toHaveProperty(gone);
     }
@@ -249,6 +252,17 @@ describe("the 2026-09-12 restart", () => {
         "processing",
       ]),
     );
+    expect(component(doc, "ProcessingIntent")?.enum).toEqual([
+      "publish",
+      "replace",
+    ]);
+    for (const gone of [
+      "recoveryMode",
+      "recoveryStartedAt",
+      "recoveryDeadlineAt",
+    ]) {
+      expect(properties("EpisodeProcessing"), gone).not.toContain(gone);
+    }
   });
 });
 

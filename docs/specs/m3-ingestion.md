@@ -6,7 +6,7 @@
 The 2026-09-12 revision replaces the earlier hybrid run model. Channel ingestion is RSS discovery only; episode
 processing and recovery are independent of channel runs, channel status, and channel pause. Every episode Workflow
 is represented by one `episode_ingestion_attempts` row. Every unfinished, non-deterministic episode condition gets
-one 48-hour recovery window, including provider, transcript-size, AI, Vectorize, and lost-Workflow failures.
+one 48-hour processing window, including provider, transcript-size, AI, Vectorize, and lost-Workflow failures.
 
 **Starting over (owner decision 2026-09-12).** The Registry schema, the Registry DO's store modules, and the API contract are redesigned from scratch to this model rather than evolved under compatibility rules: the Registry's `0001_init.sql` is rewritten a second time before first deployment, `0002_drop_lifecycle_version.sql` is deleted, there is no `0003`, local Durable Object state is wiped, and no shared schema, reader, or route keeps a legacy table, column, or enum value alive. The User DO and its migration are untouched. Neither an additive-only nor a frozen-file rule applies; both were withdrawn on 2026-09-12 (PRD §5.4). The schema lands with `docs/specs/api-reference-plan.md` Step 4 and is PRD §5; this plan's Step 4 adds the ingestion writes on top.
 
@@ -44,15 +44,15 @@ readable until the new generation succeeds.
 | Fresh uploads without captions | `captionStatus: none` finishes the attempt `waiting CAPTIONS` and leaves publication `pending`. Recovery re-fetches every six hours until success or the episode's recovery deadline. At 48 hours one final due attempt is made; if captions are still absent, publication becomes `failed INGESTION_TIMEOUT` with `CAPTIONS` copied from that attempt into `failure_detail`. | Captions often lag publication, but elapsed time alone does not prove permanent absence. |
 | Shorts, live streams, premieres | Under **180 seconds** is immediately `skipped SHORT`. Live or upcoming finishes the attempt `waiting LIVE_OR_UPCOMING` and stays `pending` within the 48-hour window, then fails `INGESTION_TIMEOUT` with that reason in `failure_detail`. Known live metadata wins over `UNPLAYABLE`; otherwise `UNPLAYABLE` is an immediate deterministic skip. | Shorts and unplayable videos have definitive product outcomes; a live stream may later become processable. |
 | Non-English videos | `captionStatus: "non_english"` → `skipped NON_ENGLISH`. There is no channel-level consequence: a channel whose videos are all non-English is an approved channel with `episodes.available = 0`, which the owner can pause or decline. | Summaries, embeddings, and chat are English. Owner decision 2026-09-08; the channel code it once implied was removed on 2026-09-10 with every other channel failure code. |
-| Universal recovery rule | Every unfinished, non-deterministic condition uses the episode's 48-hour recovery window: captions, live/upcoming, provider limits, provider/auth/rate/parse failures, oversized transcripts, embedding, Vectorize, summary, and lost Workflows. Due episodes retry every six hours. Attempt count is diagnostic only. At the deadline, unfinished publication becomes `failed INGESTION_TIMEOUT`, the latest attempt's reason copied into `failure_detail`. **Reasons live on attempts only** (owner decision 2026-09-12): an attempt finishes `waiting` or `failed` with its code, and the episode row carries no waiting or technical code during recovery; the schema has no `waiting_code` column, and `failure_code`/`failure_detail` are written only at the timeout. There is no `waiting` count on channels or the catalog (2026-09-12 review); wait reasons appear on episode rows only. | A user gets one predictable recovery promise instead of different ladders for different infrastructure outcomes. |
-| Pre-flight gate | DownSub `/status` gates episode attempt launches only. Discovery always reads RSS. Every blocked start, automatic or owner, records one finished `blocked` attempt with no Workflow and `PROVIDER_AUTH` (rejected key) or `PROVIDER_LIMIT` (zero credits) as its outcome code (2026-09-12 review, replacing the no-row rule for automatic blocks). Before the deadline an automatic block advances `next_attempt_at`; at the deadline it settles recovery with that reason. Owner Retry returns its blocked attempt without touching recovery. An unreachable status does not block. Blocked attempts never increment `attempt_count`. | Provider health is relevant to transcript work, not to learning that a new episode exists. Every start leaves durable evidence, so an episode blocked for its whole window still times out with its real reason, and the rows are bounded: at most nine per episode, one per start inside its 48-hour window. |
-| Owner episode actions | Retry and Skip are independent of channel status and discovery runs. Retry accepts any episode state and is refused (409 `INVALID_STATE`) only while that episode has a running attempt. When that attempt is older than one hour, Retry first asks the launcher for its instance and reconciles inline exactly as the sweep does (2026-09-12 review): active means the refusal stands; gone or missing finishes the attempt `WORKFLOW_LOST` and the Retry proceeds, so a dead instance never holds Retry until the next recovery tick. When pre-flight permits, it resets the 48-hour window and starts immediately; a blocked Retry leaves episode/recovery state unchanged. A non-available episode returns to pending publication; an available episode starts replacement while current content stays active. A deterministic `SHORT`, `NON_ENGLISH`, or `UNPLAYABLE` result during replacement finishes the attempt `skipped`, ends the recovery, and leaves the episode available; only a verified new generation replaces readable content (2026-09-12 review). Skip remains `failed → skipped OWNER`. Neither action writes a channel or discovery-run row. | Episode repair remains possible after a channel is paused or declined and never changes channel history. |
+| Universal recovery rule | Every unfinished, non-deterministic condition uses the episode's 48-hour processing window: captions, live/upcoming, provider limits, provider/auth/rate/parse failures, oversized transcripts, embedding, Vectorize, summary, and lost Workflows. Due episodes retry every six hours. Attempt count is diagnostic only. At the deadline, unfinished publication becomes `failed INGESTION_TIMEOUT`, the latest attempt's reason copied into `failure_detail`. **Reasons live on attempts only** (owner decision 2026-09-12): an attempt finishes `waiting` or `failed` with its code, and the episode row carries no waiting or technical code during recovery; the schema has no `waiting_code` column, and `failure_code`/`failure_detail` are written only at the timeout. There is no `waiting` count on channels or the catalog (2026-09-12 review); wait reasons appear on episode rows only. | A user gets one predictable recovery promise instead of different ladders for different infrastructure outcomes. |
+| Pre-flight gate | DownSub `/status` gates episode attempt launches only. Discovery always reads RSS. Every blocked start, automatic or owner, records one finished `blocked` attempt with no Workflow and `PROVIDER_AUTH` (rejected key) or `PROVIDER_LIMIT` (zero credits) as its outcome code (2026-09-12 review, replacing the no-row rule for automatic blocks). Before the deadline an automatic block advances `next_attempt_at`; at the deadline it closes the window with that reason. Owner Retry returns its blocked attempt without touching recovery. An unreachable status does not block. Blocked attempts never increment `attempt_count`. | Provider health is relevant to transcript work, not to learning that a new episode exists. Every start leaves durable evidence, so an episode blocked for its whole window still times out with its real reason, and the rows are bounded: at most nine per episode, one per start inside its 48-hour window. |
+| Owner episode actions | Retry and Skip are independent of channel status and discovery runs. Retry accepts any episode state and is refused (409 `INVALID_STATE`) only while that episode has a running attempt. When that attempt is older than one hour, Retry first asks the launcher for its instance and reconciles inline exactly as the sweep does (2026-09-12 review): active means the refusal stands; gone or missing finishes the attempt `WORKFLOW_LOST` and the Retry proceeds, so a dead instance never holds Retry until the next recovery tick. When pre-flight permits, it resets the 48-hour window and starts immediately; a blocked Retry leaves episode/recovery state unchanged. A non-available episode returns to `pending` with intent `publish`; an available episode starts replacement while current content stays active. A deterministic `SHORT`, `NON_ENGLISH`, or `UNPLAYABLE` result during replacement finishes the attempt `skipped`, closes the window, and leaves the episode available; only a verified new generation replaces readable content (2026-09-12 review). Skip remains `failed → skipped OWNER`. Neither action writes a channel or discovery-run row. | Episode repair remains possible after a channel is paused or declined and never changes channel history. |
 | Takeaways carry timestamps | Each takeaway is `{ text, startSec }`, `startSec` null when the model gives none or it falls outside the episode. The prompt sends `[h:mm:ss]` markers and asks for one per takeaway; `mm:ss` is accepted for episodes under an hour. `EpisodeSummary.takeaways` in `packages/shared` changes from `string[]`; the web renders a `youtu.be/<id>?t=<s>` link per takeaway. No legacy data exists, so no normalisation of string takeaways is needed. | The digest's most useful click is "take me to that moment". Owner decision 2026-09-08; the legacy rule of 2026-09-10 became moot with the pre-production reset. |
 | Digest basis | Digest selection and ordering use the episode's first `processed_at`, exposed as `summaryAvailableAt`: 24 hours by default, seven days when expanded, ordered strictly by `processed_at` descending, `video_id` as the only tiebreak so the order is stable. Reads, refollows, re-approval, and enrichment never reset it; channel history stays publication-ordered. | Owner decision 2026-09-10, order confirmed 2026-09-11. A video published a month ago but summarised today belongs in today's digest. Episodes that became available within the same minutes, an initial import for instance, list in the order their summaries landed: independent instances finish milliseconds apart, so a publication tiebreak on equal timestamps would never fire, and the owner chose strict availability over a bucketed order. |
 | Channel timestamps | `last_checked_at` moves inside `recordDiscovery` only when a channel feed was actually read. There is no `channels.last_ingested_at` column. The API derives each channel's `lastIngestedAt` as `MAX(episodes.processed_at)` for that channel. A retry that first publishes an episode therefore advances the displayed value through episode data; replacing an already available summary does not, because `processed_at` is intentionally preserved. | Retry can publish or replace an episode without mutating a channel record. “Last ingested” continues to mean the newest first availability, while “Last checked” remains strictly about the feed. |
 | Catalog health figure | `GET /catalog.lastSuccessfulIngestionAt` is `MAX(episodes.processed_at)` across the Registry. | The figure means “when was a summary first made available anywhere” and no longer depends on a denormalized channel timestamp. |
 | Step granularity | One `step.do` per external call inside an attempt: the stagger sleep, transcript, each embedding batch, each upsert batch, retrieval verification, each summary map and reduce call, the related query, and each Registry write. Steps return bounded serialisable values. | Workflows cap a step result at 1 MiB and retry per step. |
-| Verify step | After the last upsert, `getByIds` is called in batches of the API's per-call ceiling until every expected id is present. The step's retry policy absorbs Vectorize's asynchronous processing; only after those retries does a missing id count as `VECTORIZE_INCOMPLETE`. | Vectorize applies an upsert asynchronously and an immediate read can miss vectors that are on their way. The recovery window handles a genuinely incomplete generation; `available` is never set on an accepted upsert alone. |
+| Verify step | After the last upsert, `getByIds` is called in batches of the API's per-call ceiling until every expected id is present. The step's retry policy absorbs Vectorize's asynchronous processing; only after those retries does a missing id count as `VECTORIZE_INCOMPLETE`. | Vectorize applies an upsert asynchronously and an immediate read can miss vectors that are on their way. The processing window handles a genuinely incomplete generation; `available` is never set on an accepted upsert alone. |
 | Channel independence | Pausing or declining stops future discovery selection only. Recovery and Owner episode actions continue for every previously discovered episode. | A channel decision controls future catalog growth, not whether already accepted work can finish. |
 | Attempt gate | An attempt write is accepted only while its own ledger row is running and its id matches the episode's current recovery attempt. | A stale Workflow cannot publish after reconciliation or a later attempt. No channel state is consulted. |
 | Publishing | Vector ids are `${videoId}:${generationId}:${chunkIndex}`. An attempt writes and verifies a staged generation. First publication atomically stores the summary and activates it; replacement atomically swaps the summary and active generation while preserving `processed_at` and read receipts. **One generation rule** (2026-09-12 review): the index holds one active generation per episode plus whatever an attempt is staging right now. After activation the attempt deletes the previous generation's ids, which `completeAttempt` returns with their chunk count; an attempt that finds an abandoned staged generation from the episode's last attempt deletes it before staging its own, using the staged chunk count that attempt recorded when embedding began. Retrieval keeps its channel filter and, in the same Registry check that validates availability and eligibility, drops any vector whose generation, parsed from its id, is not the episode's active one, fetching more candidates to cover the loss. No generation metadata index is needed. | Partial writes expose nothing, and failed replacement cannot damage readable content. Deletion keeps the index bounded and free of duplicate passages. A per-episode generation filter would need one id per eligible episode under Vectorize's 2 KB filter cap, many queries where the channel filter needs one. The retrieval check covers the window between activation and cleanup, or a cleanup that failed. |
@@ -82,8 +82,8 @@ episode attempt starter (new episode · recovery cron · Owner Retry)
    reconcile      Owner Retry only, on a running attempt older than 1 h: ask the launcher; active → 409;
                   gone or missing → finish it WORKFLOW_LOST and continue
    pre-flight     block: finished attempt row `blocked PROVIDER_AUTH | PROVIDER_LIMIT`, no instance;
-                  automatic → move next_attempt_at, or settle at the deadline; Owner Retry → return it, recovery untouched
-   begin          create episode_ingestion_attempt row `running`; set recovery generation
+                  automatic → move next_attempt_at, or settle at the deadline; Owner Retry → return it, window untouched
+   begin          create episode_ingestion_attempt row `running`; set staged generation
    launch         INGEST_WORKFLOW.create({ id: attemptId, params: { attemptId, videoId, channelId, startDelaySec } })
                   startDelaySec = k × 3 for the k-th attempt of this batch; 0 for an owner Retry
 
@@ -91,7 +91,7 @@ one Workflow instance per attempt:
    stagger        step.sleep(startDelaySec)
    transcript     source.fetch(videoId)                    → TranscriptResult | TranscriptError
    classify       deterministic SHORT / NON_ENGLISH / UNPLAYABLE → publication: episode skipped;
-                  replacement: attempt skipped, recovery ends, episode stays available unchanged
+                  replacement: attempt skipped, the window closes, episode stays available unchanged
                   any unfinished condition → finish the attempt with its reason (waiting CAPTIONS | LIVE_OR_UPCOMING |
                   PROVIDER_LIMIT, or failed <technical code>) and move the episode's next due time; the episode row
                   itself takes no reason; at the 48-hour deadline publication → failed INGESTION_TIMEOUT
@@ -115,12 +115,12 @@ one Workflow instance per attempt:
 recovery cron every 6 hours:
    reconcile      running attempts older than 1 hour; missing/gone → WORKFLOW_LOST
    expire         due publication at/after deadline gets one final attempt; if unfinished → INGESTION_TIMEOUT
-   select         every due recovery, independent of channel status/pause and RSS
+   select         every due window, independent of channel status/pause and RSS
    start          common attempt starter
 ```
 
 Transport retries inside a Workflow step use exponential backoff. Exhausting those retries finishes this attempt and
-records the reason; it does not make the episode terminal before its recovery deadline. A `TranscriptError` carries
+records the reason; it does not make the episode terminal before its window deadline. A `TranscriptError` carries
 its reason across the step boundary. The transcript step timeout is two minutes, AI steps three minutes, and the
 Vectorize verify step retries asynchronous visibility before reporting `VECTORIZE_INCOMPLETE`.
 
@@ -151,29 +151,29 @@ validation directly: there is no review gate.
 
 ### 3.3 Episode outcomes
 
-Content state and recovery state are distinct. Channels carry neither.
+Content state and the processing window are distinct. Channels carry neither.
 
 | Outcome | Column | Values | Owner action |
 |---|---|---|---|
-| Recovering publication | `status = pending`, `recovery_mode = publication` | Any non-deterministic unfinished reason; `next_attempt_at` and one 48-hour deadline | Automatic retry; a permitted Owner Retry restarts the window |
-| Recovering replacement | `status = available`, `recovery_mode = replacement` | Same reasons; current summary and active generation remain readable | Automatic retry; a permitted Owner Retry restarts the window |
+| Open `publish` window | `status = pending`, `intent = publish` | Any non-deterministic unfinished reason; `next_attempt_at` and one 48-hour deadline | Automatic retry; a permitted Owner Retry restarts the window |
+| Open `replace` window | `status = available`, `intent = replace` | Same reasons; current summary and active generation remain readable | Automatic retry; a permitted Owner Retry restarts the window |
 | Deterministic skip (publication) | `status = skipped`, `skip_reason` | `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`, or `OWNER` | Retry reopens publication |
-| Deterministic result during replacement | `status = available`, recovery cleared | The attempt is `skipped SHORT`, `NON_ENGLISH`, or `UNPLAYABLE`; summary, active generation, `processed_at`, and receipts unchanged (2026-09-12 review) | Retry starts replacement again |
+| Deterministic result under intent `replace` | `status = available`, window closed | The attempt is `skipped SHORT`, `NON_ENGLISH`, or `UNPLAYABLE`; summary, active generation, `processed_at`, and receipts unchanged (2026-09-12 review) | Retry starts replacement again |
 | Timed-out publication | `status = failed`, `failure_code = INGESTION_TIMEOUT` | `failure_detail` and latest attempt preserve the last underlying reason | Retry or Skip |
 | Published | `status = available`, `processed_at`, `active_vector_generation` | Full vector generation verified and summary stored | Retry starts replacement |
 
 `attempt_count` increments for attempts that actually launch, never for a `blocked` one, and remains diagnostic;
 it never controls terminal state. Reasons live on attempts only (owner decision 2026-09-12): an attempt finishes `waiting` with `CAPTIONS`,
 `LIVE_OR_UPCOMING`, or `PROVIDER_LIMIT` as its outcome code, or `failed` with a technical code (provider,
-transcript-size, embedding, Vectorize, summary, or `WORKFLOW_LOST`). During recovery the episode row carries no
+transcript-size, embedding, Vectorize, summary, or `WORKFLOW_LOST`). While the window is open the episode row carries no
 waiting or technical code; the rewritten schema has no `waiting_code` column, and `failure_code` and
 `failure_detail` are written once, at the timeout, as `INGESTION_TIMEOUT` and the latest attempt's reason. The
-owner reads the reason from the latest attempt; there is no `waiting` count (2026-09-12 review). A successful result clears the active recovery fields. A replacement that exhausts 48 hours
-clears its recovery fields and records the final attempt, but the episode remains available.
+owner reads the reason from the latest attempt; there is no `waiting` count (2026-09-12 review). A successful result closes the window. A replacement that exhausts 48 hours
+closes its window and records the final attempt, but the episode remains available.
 
 `episode_ingestion_attempts` is the only episode execution ledger. The rewritten `0001` creates it with `attempt_id`,
 `video_id`, unique nullable `workflow_id`, trigger (`channel_ingestion | scheduled_recovery | owner_retry`), nullable requester,
-recovery mode, generation id, staged chunk count (set when embedding starts, so the next attempt can delete an
+intent, generation id, staged chunk count (set when embedding starts, so the next attempt can delete an
 abandoned generation), status (`running | available | waiting | failed | skipped | blocked`), outcome code,
 detail, and timestamps. Automatic provider blocks create no row; Owner Retry blocks do. The latest attempt appears
 only in the owner episode projection.
@@ -188,7 +188,7 @@ expose `feed_status` and `discovered_count`, never episode processing counts.
 |---|---|---|
 | No captions, live/upcoming, provider block, technical error, oversized transcript, or lost Workflow before deadline | Publication stays pending or replacement stays available; the attempt records the reason and the episode's next attempt moves | Recovery cron retries in six hours |
 | Same at the 48-hour boundary | Make the final due attempt when pre-flight permits; a provider block records its `blocked` attempt and settles immediately | Success publishes; otherwise publication fails `INGESTION_TIMEOUT`, replacement stops and stays available |
-| `SHORT`, `NON_ENGLISH`, or `UNPLAYABLE` during replacement | The attempt finishes `skipped` with the reason and recovery ends; the episode stays available with its current summary and generation | Nothing automatic; the owner reads the reason on the latest attempt and may Retry again |
+| `SHORT`, `NON_ENGLISH`, or `UNPLAYABLE` during replacement | The attempt finishes `skipped` with the reason and the window closes; the episode stays available with its current summary and generation | Nothing automatic; the owner reads the reason on the latest attempt and may Retry again |
 | Automatic pre-flight block before deadline | A finished `blocked` attempt with `PROVIDER_AUTH` or `PROVIDER_LIMIT` is recorded and the next attempt moves; `attempt_count` is unchanged | Recovery cron checks again in six hours |
 | Owner Retry blocked by pre-flight | A finished blocked attempt is recorded; content remains unchanged | Fix provider state and Retry again, or wait for scheduled recovery |
 | First approval with no followers | The channel is system-paused at approval, and the initial import still runs once | Scheduled runs wait for a follower |
@@ -199,7 +199,7 @@ expose `feed_status` and `discovered_count`, never episode processing counts.
 | Related lookup fails | Summary publishes with `[]` | None |
 | Cleanup of a previous or abandoned generation fails | Publication stands; retrieval's generation check hides the leftover vectors | The episode's next attempt deletes them; nothing to do otherwise |
 
-Within one attempt, any wait, skip, or exhausted technical step ends that attempt. Only the episode recovery record
+Within one attempt, any wait, skip, or exhausted technical step ends that attempt. Only the episode's window
 decides what happens next. Discovery history never changes afterward.
 
 ### 3.5 Selection contract
@@ -241,7 +241,7 @@ Chats, retrieval for chat, preferences (M4). A retention policy. Re-embedding wh
 channels (skipped per video, not processed). Any channel-level failure state, channel retry, or automatic follow:
 those concepts were removed on 2026-09-10. Discovery-run episode membership and outcome aggregation: superseded by
 episode provenance plus the unified attempt ledger on 2026-09-12. A separate terminal rule for technical failures,
-oversized transcripts, missing captions, or live streams: superseded by the universal 48-hour recovery window.
+oversized transcripts, missing captions, or live streams: superseded by the universal 48-hour processing window.
 Vectorize deletion when a channel is declined (PRD §6: not required; eligibility excludes the channel). A Queue or
 any binding beyond the three above.
 
@@ -258,24 +258,24 @@ any binding beyond the three above.
    `skipped SHORT` with nothing stored; DownSub's `/status` shows one credit per attempted video and `GET /catalog`
    reports it. The discovery run is already complete before those attempts finish.
 3. Pausing or declining the channel prevents future scheduled discovery but does not cancel, delay, or reset any
-   previously discovered episode's recovery. Recovery can publish while declined; eligibility hides that content
+   previously discovered episode's window. An open window can still publish while declined; eligibility hides that content
    from readers until re-approval, while the owner can inspect and act on it throughout.
 4. Provider, transcript-size, AI, Vectorize, and lost-Workflow outcomes all remain recoverable for 48 hours and retry
    on the six-hour recovery schedule. Attempt count never makes the episode terminal. At the deadline a final due
    attempt is made; unfinished publication becomes `failed INGESTION_TIMEOUT` with the latest attempt's reason in
    `failure_detail`. An exhausted replacement stops but leaves the episode available.
-5. Owner Retry works for an episode under any channel status and, when pre-flight permits, resets its 48-hour window; a blocked Retry leaves recovery unchanged. It creates no discovery run,
+5. Owner Retry works for an episode under any channel status and, when pre-flight permits, resets its 48-hour window; a blocked Retry leaves the window unchanged. It creates no discovery run,
    writes no channel row, and is refused only while that episode has a running attempt that is under an hour old or
    still active; on an older running attempt whose instance is gone or missing, Retry reconciles it `WORKFLOW_LOST`
    inline and proceeds. Retry on available content
    keeps the old summary, vector generation, `processed_at`, and read receipts until the replacement generation is
    verified and atomically activated, after which the previous generation's vectors are deleted; a replacement
-   attempt that classifies `SHORT`, `NON_ENGLISH`, or `UNPLAYABLE` finishes `skipped`, ends the recovery, and leaves
+   attempt that classifies `SHORT`, `NON_ENGLISH`, or `UNPLAYABLE` finishes `skipped`, closes the window, and leaves
    the episode available and unchanged. Skip works
    `failed → skipped OWNER` under any channel status.
 6. A provider pre-flight block never prevents RSS discovery. Every blocked start records one finished `blocked`
    attempt with `PROVIDER_AUTH` or `PROVIDER_LIMIT` and leaves `attempt_count` alone; before the deadline automatic
-   processing then schedules another recovery check, and at the deadline it settles recovery with that reason, so an
+   processing then schedules another recovery check, and at the deadline it closes the window with that reason, so an
    episode blocked for its whole window fails `INGESTION_TIMEOUT` with `failure_detail` set. Owner Retry returns its
    blocked attempt.
    `GET /catalog` reports transcript provider status independently.
@@ -290,21 +290,21 @@ any binding beyond the three above.
    the Registry, and the first scheduled run over the same feed neither selects nor creates them. A channel with no
    successfully discovered episode still uses initial selection after earlier unavailable or empty history.
 10. A captionless or live episode is re-fetched every six hours and once at the deadline before failed timeout; a
-    non-English episode is immediately `skipped NON_ENGLISH`, and no elapsed-time check alone settles a recovery.
+    non-English episode is immediately `skipped NON_ENGLISH`, and no elapsed-time check alone closes a window.
 11. Every structured summary's takeaways carry `startSec` where the model gave a timestamp, and the digest links them.
 12. The digest selects and orders by `summaryAvailableAt`: a video published a month ago and summarised today
     appears in today's digest; reading it does not move it; two episodes that became available a second apart list
     newest availability first whatever their publication dates.
 13. A related-lookup failure still publishes the summary with `related: []`.
 14. A running attempt whose instance is missing or gone reconciles to `WORKFLOW_LOST` after one hour, remains in its
-    existing recovery window, and rejects later writes from that stale attempt; an Owner Retry on such an attempt
+    existing processing window, and rejects later writes from that stale attempt; an Owner Retry on such an attempt
     reconciles it inline and starts instead of waiting for the tick, while an active instance still answers 409. Sibling episodes and discovery
     history are untouched. The catalog's `lastSuccessfulIngestionAt` equals `MAX(episodes.processed_at)`.
     "Approved, never started" reads only when the channel has no run row.
 15. The Registry's `0001_init.sql`, rewritten on 2026-09-12 (`api-reference-plan.md` Step 4), applies on a fresh Registry and
     `_migrations` lists `0001_init` alone: no `0002` or `0003`, no `ingestion_run_episodes` table, no `waiting_code`
     or `last_ingested_at` column, no `owner_retry` run kind, no run status or Workflow columns. Its table checks
-    reject a replacement recovery on a `pending` row, a half-set recovery window, and a `failed` row without
+    reject a `replace` window on a `pending` row, a half-set processing window, and a `failed` row without
     `INGESTION_TIMEOUT`. At the end of M3 (plan Step 9) `outcome_code` carries a `CHECK` listing exactly the
     fifteen attempt outcome codes, added once every outcome has run for real. The User DO's migration is unchanged.
 16. `pnpm check` green; the coverage in AGENTS.md → Testing exists for lifecycle, attempts, the attempt gate, chunking,
@@ -337,7 +337,7 @@ The accepted documents now share these contracts:
   rule and no special terminal case for transcript size. Publication times out to `INGESTION_TIMEOUT`; replacement
   times out without removing current content. Reasons live on attempts: the episode row carries content state, the
   recovery schedule, and only what its table checks require.
-- Owner Retry and Skip are episode actions in every channel status. A Retry that starts work resets the recovery
+- Owner Retry and Skip are episode actions in every channel status. A Retry that starts work resets the processing
   window; a blocked Retry does not. Neither changes a channel or run record.
 - Vector generations make first publication and replacement safe: only a verified generation paired with a stored
   summary becomes active, and `processed_at` remains the first availability time. The index holds one active

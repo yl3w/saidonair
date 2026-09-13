@@ -4,7 +4,7 @@ import {
   type AttemptStatus,
   type AttemptTrigger,
   type EpisodeIngestionAttempt,
-  type RecoveryMode,
+  type ProcessingIntent,
 } from "@media-digest/shared";
 import { chunk, placeholders } from "../../lib/sql";
 
@@ -18,7 +18,7 @@ type AttemptRow = {
   attempt_id: string;
   video_id: string;
   trigger: string;
-  recovery_mode: string;
+  intent: string;
   staged_chunk_count: number | null;
   workflow_id: string | null;
   requested_by_email: string | null;
@@ -29,7 +29,7 @@ type AttemptRow = {
   finished_at: number | null;
 };
 
-const ATTEMPT_COLUMNS = `attempt_id, video_id, trigger, recovery_mode, staged_chunk_count, workflow_id,
+const ATTEMPT_COLUMNS = `attempt_id, video_id, trigger, intent, staged_chunk_count, workflow_id,
   requested_by_email, status, outcome_code, failure_detail, started_at, finished_at`;
 
 /** The latest attempt per episode (newest created_at, then attempt_id). Episodes with none are absent. */
@@ -72,7 +72,7 @@ function toAttempt(row: AttemptRow): EpisodeIngestionAttempt {
     videoId: row.video_id,
     trigger: toTrigger(row.trigger),
     requestedByEmail: row.requested_by_email,
-    recoveryMode: toRecoveryMode(row.recovery_mode),
+    intent: toIntent(row.intent),
     status: toStatus(row.status),
     outcomeCode: toOutcomeCode(row.outcome_code),
     failureDetail: row.failure_detail,
@@ -96,11 +96,9 @@ function toTrigger(value: string): AttemptTrigger {
   }
 }
 
-function toRecoveryMode(value: string): RecoveryMode {
-  if (value === "publication" || value === "replacement") return value;
-  throw new Error(
-    `unexpected episode_ingestion_attempts.recovery_mode: ${value}`,
-  );
+function toIntent(value: string): ProcessingIntent {
+  if (value === "publish" || value === "replace") return value;
+  throw new Error(`unexpected episode_ingestion_attempts.intent: ${value}`);
 }
 
 function toStatus(value: string): AttemptStatus {

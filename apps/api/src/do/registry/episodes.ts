@@ -4,7 +4,7 @@ import type {
   EpisodeSkipReason,
   EpisodeStatus,
   EpisodeSummary,
-  RecoveryMode,
+  ProcessingIntent,
   RelatedEpisode,
   Takeaway,
 } from "@media-digest/shared";
@@ -22,9 +22,9 @@ type EpisodeRow = {
   published_at: number;
   status: string;
   discovered_by_run_id: string;
-  recovery_mode: string | null;
-  recovery_started_at: number | null;
-  recovery_deadline_at: number | null;
+  intent: string | null;
+  window_started_at: number | null;
+  window_deadline_at: number | null;
   next_attempt_at: number | null;
   attempt_count: number;
   failure_code: string | null;
@@ -47,7 +47,7 @@ type EpisodeRow = {
 };
 
 const EPISODE_SELECT = `SELECT e.video_id, e.channel_id, c.title AS channel_title, e.title, e.published_at,
-    e.status, e.discovered_by_run_id, e.recovery_mode, e.recovery_started_at, e.recovery_deadline_at,
+    e.status, e.discovered_by_run_id, e.intent, e.window_started_at, e.window_deadline_at,
     e.next_attempt_at, e.attempt_count, e.failure_code, e.failure_detail, e.skip_reason, e.skipped_at,
     e.skipped_by_email, e.transcript_checked_at, e.chunk_count, e.vectorized_at, e.processed_at,
     e.created_at, e.updated_at,
@@ -59,8 +59,8 @@ const EPISODE_SELECT = `SELECT e.video_id, e.channel_id, c.title AS channel_titl
 
 export const DEFAULT_EPISODE_LIMIT = 20;
 export const MAX_EPISODE_LIMIT = 200;
-/** The one recovery window every unfinished, non-deterministic outcome gets (docs/PRD.md §4.2 rule 13). */
-export const RECOVERY_WINDOW_MS = 48 * 60 * 60 * 1000;
+/** The one processing window every episode gets, from creation and again on Retry (docs/PRD.md §4.2 rule 13). */
+export const PROCESSING_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /** Available episodes per channel; callers derive counts and unread state from these. */
 export function listAvailableVideoIds(
@@ -211,9 +211,9 @@ export function getEpisode(
 }
 
 /**
- * Retry re-arms the episode's recovery (docs/PRD.md §4.2 rule 16): a `pending`, `failed`, or
- * `skipped` episode returns to pending publication with a fresh 48-hour window; an `available` one
- * enters replacement recovery with its summary, active generation, and first availability untouched.
+ * Retry opens a fresh 48-hour window (docs/PRD.md §4.2 rule 16): a `pending`, `failed`, or `skipped`
+ * episode returns to `pending` with intent `publish`; an `available` one gets intent `replace`, its
+ * summary, active generation, and first availability untouched.
  * Refused only while an attempt is running (rule 17). Channel status is never consulted. No attempt
  * is written and nothing launches here: the starter and pre-flight arrive with M3.
  */
@@ -230,11 +230,11 @@ export function retryEpisode(
       "an attempt is running for this episode",
     );
   }
-  const deadline = now + RECOVERY_WINDOW_MS;
+  const deadline = now + PROCESSING_WINDOW_MS;
   if (episode.status === "available") {
     sql.exec(
-      `UPDATE episodes SET recovery_mode = 'replacement', recovery_started_at = ?, recovery_deadline_at = ?,
-         next_attempt_at = ?, attempt_count = 0, recovery_vector_generation = NULL, updated_at = ?
+      `UPDATE episodes SET intent = 'replace', window_started_at = ?, window_deadline_at = ?,
+         next_attempt_at = ?, attempt_count = 0, staged_vector_generation = NULL, updated_at = ?
        WHERE video_id = ?`,
       now,
       deadline,
@@ -244,10 +244,10 @@ export function retryEpisode(
     );
   } else {
     sql.exec(
-      `UPDATE episodes SET status = 'pending', recovery_mode = 'publication', recovery_started_at = ?,
-         recovery_deadline_at = ?, next_attempt_at = ?, attempt_count = 0, failure_code = NULL,
+      `UPDATE episodes SET status = 'pending', intent = 'publish', window_started_at = ?,
+         window_deadline_at = ?, next_attempt_at = ?, attempt_count = 0, failure_code = NULL,
          failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL,
-         recovery_vector_generation = NULL, updated_at = ?
+         staged_vector_generation = NULL, updated_at = ?
        WHERE video_id = ?`,
       now,
       deadline,
@@ -411,9 +411,9 @@ function toRecord(
     related: status === "available" ? related : [],
     processing: {
       discoveredByRunId: row.discovered_by_run_id,
-      recoveryMode: toRecoveryMode(row.recovery_mode),
-      recoveryStartedAt: row.recovery_started_at,
-      recoveryDeadlineAt: row.recovery_deadline_at,
+      intent: toIntent(row.intent),
+      windowStartedAt: row.window_started_at,
+      windowDeadlineAt: row.window_deadline_at,
       nextAttemptAt: row.next_attempt_at,
       attemptCount: row.attempt_count,
       latestAttempt,
@@ -468,11 +468,11 @@ function toStatus(value: string): EpisodeStatus {
   }
 }
 
-function toRecoveryMode(value: string | null): RecoveryMode | null {
-  if (value === null || value === "publication" || value === "replacement") {
+function toIntent(value: string | null): ProcessingIntent | null {
+  if (value === null || value === "publish" || value === "replace") {
     return value;
   }
-  throw new Error(`unexpected episodes.recovery_mode: ${value}`);
+  throw new Error(`unexpected episodes.intent: ${value}`);
 }
 
 function toFailureCode(value: string | null): EpisodeFailureCode | null {

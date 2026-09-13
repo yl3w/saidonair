@@ -1,7 +1,7 @@
 -- Global Registry DO — initial schema (docs/PRD.md §5.1, §5.3; docs/specs/api-reference-plan.md Step 4).
 -- Rewritten 2026-09-10 and again 2026-09-12 before first deployment, with owner approval, to the M3 model:
 -- discovery runs are completed feed history, one attempt ledger records every episode execution, episodes
--- carry a recovery window and vector generations, and reasons live on attempts. Migration governance is open
+-- carry a processing window with its intent and vector generations, and reasons live on attempts. Migration governance is open
 -- (docs/PRD.md §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be
 -- wiped for an edit to run.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
@@ -84,10 +84,11 @@ CREATE TABLE ingestion_runs (
 
 CREATE INDEX ingestion_runs_channel_id_created_at ON ingestion_runs (channel_id, created_at);
 
--- Episodes carry the state machine (`pending`, `available`, `failed`, `skipped`) and, separately, the recovery
--- window: `recovery_mode` with its start, 48-hour deadline, and next attempt time (docs/PRD.md §4.2 rules 5,
--- 10, 13–14). Reasons live on attempts: the row carries no waiting or technical code during recovery, and
--- failure_code is written once, at the timeout, as INGESTION_TIMEOUT with the latest attempt's reason as detail.
+-- Episodes carry the state machine (`pending`, `available`, `failed`, `skipped`) and, separately, the processing
+-- window: an `intent` (`publish` the first summary, or `replace` an existing one) with its start, 48-hour
+-- deadline, and next attempt time (docs/PRD.md §4.2 rules 5, 10, 13–14). The window opens at creation, not after
+-- a failure. Reasons live on attempts: the row carries no waiting or technical code while the window is open,
+-- and failure_code is written once, at the timeout, as INGESTION_TIMEOUT with the latest attempt's reason as detail.
 CREATE TABLE episodes (
   video_id TEXT PRIMARY KEY,
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
@@ -96,9 +97,9 @@ CREATE TABLE episodes (
   title TEXT NOT NULL,
   published_at INTEGER NOT NULL CHECK (published_at >= 0),
   status TEXT NOT NULL CHECK (status IN ('pending', 'available', 'failed', 'skipped')),
-  recovery_mode TEXT CHECK (recovery_mode IS NULL OR recovery_mode IN ('publication', 'replacement')),
-  recovery_started_at INTEGER CHECK (recovery_started_at IS NULL OR recovery_started_at >= 0),
-  recovery_deadline_at INTEGER CHECK (recovery_deadline_at IS NULL OR recovery_deadline_at >= 0),
+  intent TEXT CHECK (intent IS NULL OR intent IN ('publish', 'replace')),
+  window_started_at INTEGER CHECK (window_started_at IS NULL OR window_started_at >= 0),
+  window_deadline_at INTEGER CHECK (window_deadline_at IS NULL OR window_deadline_at >= 0),
   next_attempt_at INTEGER CHECK (next_attempt_at IS NULL OR next_attempt_at >= 0),
   -- Attempts that launched a Workflow since the window last started; blocked attempts never count. Diagnostic.
   attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
@@ -112,9 +113,10 @@ CREATE TABLE episodes (
   vectorized_at INTEGER CHECK (vectorized_at IS NULL OR vectorized_at >= 0),
   -- First availability; never reset (the API's summaryAvailableAt and the digest's basis).
   processed_at INTEGER CHECK (processed_at IS NULL OR processed_at >= 0),
-  -- The vector generation retrieval may use, and the one an attempt is staging (docs/PRD.md §4.2 rules 24–26).
+  -- The vector generation retrieval may use, and the one the open window's attempts are staging
+  -- (docs/PRD.md §4.2 rules 24–26).
   active_vector_generation TEXT,
-  recovery_vector_generation TEXT,
+  staged_vector_generation TEXT,
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
   -- Available means a verified generation is active and a summary exists.
@@ -125,16 +127,16 @@ CREATE TABLE episodes (
   ),
   -- failure_code is INGESTION_TIMEOUT exactly when failed, null otherwise.
   CHECK ((status = 'failed') = (failure_code IS NOT NULL)),
-  -- The recovery mode and its three timestamps are all set or all null.
-  CHECK ((recovery_mode IS NULL) = (recovery_started_at IS NULL)),
-  CHECK ((recovery_mode IS NULL) = (recovery_deadline_at IS NULL)),
-  CHECK ((recovery_mode IS NULL) = (next_attempt_at IS NULL)),
-  CHECK (recovery_mode IS NULL OR recovery_deadline_at >= recovery_started_at),
-  -- Publication recovery belongs to a pending episode, replacement recovery to an available one.
-  CHECK (recovery_mode IS NOT 'publication' OR status = 'pending'),
-  CHECK (recovery_mode IS NOT 'replacement' OR status = 'available'),
-  -- A staged generation exists only with an active recovery.
-  CHECK (recovery_vector_generation IS NULL OR recovery_mode IS NOT NULL),
+  -- The intent and its three window timestamps are all set or all null.
+  CHECK ((intent IS NULL) = (window_started_at IS NULL)),
+  CHECK ((intent IS NULL) = (window_deadline_at IS NULL)),
+  CHECK ((intent IS NULL) = (next_attempt_at IS NULL)),
+  CHECK (intent IS NULL OR window_deadline_at >= window_started_at),
+  -- Publishing belongs to a pending episode, replacing to an available one.
+  CHECK (intent IS NOT 'publish' OR status = 'pending'),
+  CHECK (intent IS NOT 'replace' OR status = 'available'),
+  -- A staged generation exists only while a window is open.
+  CHECK (staged_vector_generation IS NULL OR intent IS NOT NULL),
   -- Skips: reason and status imply each other, a skipped episode is dated, and OWNER names who skipped.
   CHECK ((status = 'skipped') = (skip_reason IS NOT NULL)),
   CHECK (status <> 'skipped' OR skipped_at IS NOT NULL),
@@ -176,7 +178,7 @@ CREATE TABLE episode_ingestion_attempts (
   attempt_id TEXT PRIMARY KEY,
   video_id TEXT NOT NULL REFERENCES episodes (video_id),
   trigger TEXT NOT NULL CHECK (trigger IN ('channel_ingestion', 'scheduled_recovery', 'owner_retry')),
-  recovery_mode TEXT NOT NULL CHECK (recovery_mode IN ('publication', 'replacement')),
+  intent TEXT NOT NULL CHECK (intent IN ('publish', 'replace')),
   generation_id TEXT,
   -- Set when embedding begins, so the next attempt can delete an abandoned staged generation.
   staged_chunk_count INTEGER CHECK (staged_chunk_count IS NULL OR staged_chunk_count >= 0),

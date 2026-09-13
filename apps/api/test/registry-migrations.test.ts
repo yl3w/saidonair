@@ -57,11 +57,11 @@ describe("registry migrations", () => {
     expect(episodeColumns).toEqual(
       expect.arrayContaining([
         "discovered_by_run_id",
-        "recovery_mode",
-        "recovery_deadline_at",
+        "intent",
+        "window_deadline_at",
         "next_attempt_at",
         "active_vector_generation",
-        "recovery_vector_generation",
+        "staged_vector_generation",
       ]),
     );
     expect(runColumns).toEqual([
@@ -146,7 +146,7 @@ describe("registry migrations", () => {
     expect(await stub.listRuns(CHANNEL_A)).toHaveLength(2);
   });
 
-  it("ties episode columns to status and the recovery window to itself", async () => {
+  it("ties episode columns to status and the processing window to itself", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
     const runId = await seedRun(CHANNEL_A);
@@ -198,50 +198,50 @@ describe("registry migrations", () => {
       expect(() =>
         insert("status, skipped_by_email", "'pending', 'alice@example.com'"),
       ).toThrow(/CHECK/i);
-      // The recovery window: all four set or all null, publication on pending, replacement on available.
-      expect(() =>
-        insert("status, recovery_mode", "'pending', 'publication'"),
-      ).toThrow(/CHECK/i);
+      // The processing window: all four set or all null, `publish` on pending, `replace` on available.
+      expect(() => insert("status, intent", "'pending', 'publish'")).toThrow(
+        /CHECK/i,
+      );
       expect(() =>
         insert(
-          "status, recovery_mode, recovery_started_at, recovery_deadline_at",
-          "'pending', 'publication', 1, 2",
+          "status, intent, window_started_at, window_deadline_at",
+          "'pending', 'publish', 1, 2",
         ),
       ).toThrow(/CHECK/i);
       expect(() =>
         insert(
-          "status, recovery_mode, recovery_started_at, recovery_deadline_at, next_attempt_at",
-          "'pending', 'replacement', 1, 2, 1",
+          "status, intent, window_started_at, window_deadline_at, next_attempt_at",
+          "'pending', 'replace', 1, 2, 1",
         ),
       ).toThrow(/CHECK/i);
       expect(() =>
         insert(
-          `status, ${available}, recovery_mode, recovery_started_at, recovery_deadline_at, next_attempt_at`,
-          "'available', 2, 1, 1, 'g1', 'publication', 1, 2, 1",
+          `status, ${available}, intent, window_started_at, window_deadline_at, next_attempt_at`,
+          "'available', 2, 1, 1, 'g1', 'publish', 1, 2, 1",
         ),
       ).toThrow(/CHECK/i);
       expect(() =>
-        insert("status, recovery_vector_generation", "'pending', 'g2'"),
+        insert("status, staged_vector_generation", "'pending', 'g2'"),
       ).toThrow(/CHECK/i);
       // And the shapes that are allowed.
       insert(
-        "status, recovery_mode, recovery_started_at, recovery_deadline_at, next_attempt_at, recovery_vector_generation",
-        "'pending', 'publication', 1, 2, 1, 'g2'",
+        "status, intent, window_started_at, window_deadline_at, next_attempt_at, staged_vector_generation",
+        "'pending', 'publish', 1, 2, 1, 'g2'",
       );
       sql.exec(
-        `UPDATE episodes SET status = 'skipped', recovery_mode = NULL, recovery_started_at = NULL,
-           recovery_deadline_at = NULL, next_attempt_at = NULL, recovery_vector_generation = NULL,
+        `UPDATE episodes SET status = 'skipped', intent = NULL, window_started_at = NULL,
+           window_deadline_at = NULL, next_attempt_at = NULL, staged_vector_generation = NULL,
            skip_reason = 'SHORT', skipped_at = 1 WHERE video_id = 'v'`,
       );
       sql.exec(
         `UPDATE episodes SET status = 'available', skip_reason = NULL, skipped_at = NULL,
            chunk_count = 2, vectorized_at = 1, processed_at = 1, active_vector_generation = 'g1',
-           recovery_mode = 'replacement', recovery_started_at = 5, recovery_deadline_at = 6, next_attempt_at = 5
+           intent = 'replace', window_started_at = 5, window_deadline_at = 6, next_attempt_at = 5
          WHERE video_id = 'v'`,
       );
       sql.exec(
         `UPDATE episodes SET status = 'failed', failure_code = 'INGESTION_TIMEOUT', failure_detail = 'CAPTIONS',
-           recovery_mode = NULL, recovery_started_at = NULL, recovery_deadline_at = NULL, next_attempt_at = NULL
+           intent = NULL, window_started_at = NULL, window_deadline_at = NULL, next_attempt_at = NULL
          WHERE video_id = 'v'`,
       );
     });
@@ -262,8 +262,8 @@ describe("registry migrations", () => {
       );
       const insert = (id: string, cols: string, vals: string) =>
         sql.exec(
-          `INSERT INTO episode_ingestion_attempts (attempt_id, video_id, recovery_mode, started_at, created_at, ${cols})
-           VALUES ('${id}', 'v', 'publication', 1, 1, ${vals})`,
+          `INSERT INTO episode_ingestion_attempts (attempt_id, video_id, intent, started_at, created_at, ${cols})
+           VALUES ('${id}', 'v', 'publish', 1, 1, ${vals})`,
         );
       // Running has no end; every other status has one.
       expect(() =>

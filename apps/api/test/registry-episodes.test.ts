@@ -215,7 +215,7 @@ describe("registry episodes", () => {
     expect(skipped.status).toBe("skipped");
     expect(skipped.skipReason).toBe("OWNER");
     expect(skipped.processing).toMatchObject({ skippedByEmail: ALICE });
-    // Retry re-arms a fresh 48-hour publication window; nothing launches until M3.
+    // Retry opens a fresh 48-hour `publish` window; nothing launches until M3.
     const retried = await stub.retryEpisode(CHANNEL_A, VIDEO_A);
     expect(retried.status).toBe("pending");
     expect(retried.skipReason).toBeNull();
@@ -225,14 +225,14 @@ describe("registry episodes", () => {
       failureDetail: null,
       skippedAt: null,
       skippedByEmail: null,
-      recoveryMode: "publication",
-      recoveryStartedAt: expect.any(Number),
-      recoveryDeadlineAt: expect.any(Number),
+      intent: "publish",
+      windowStartedAt: expect.any(Number),
+      windowDeadlineAt: expect.any(Number),
       nextAttemptAt: expect.any(Number),
     });
     expect(
-      (retried.processing.recoveryDeadlineAt ?? 0) -
-        (retried.processing.recoveryStartedAt ?? 0),
+      (retried.processing.windowDeadlineAt ?? 0) -
+        (retried.processing.windowStartedAt ?? 0),
     ).toBe(48 * 60 * 60 * 1000);
     expect((await stub.retryEpisode(CHANNEL_A, VIDEO_B)).status).toBe(
       "pending",
@@ -250,13 +250,13 @@ describe("registry episodes", () => {
       stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_C),
       "INVALID_STATE",
     );
-    // Retry of an available episode starts replacement and leaves its content in place.
+    // Retry of an available episode opens a `replace` window and leaves its content in place.
     const replacing = await stub.retryEpisode(CHANNEL_A, VIDEO_C);
     expect(replacing).toMatchObject({
       status: "available",
       summary: { format: "structured" },
       summaryAvailableAt: 1,
-      processing: { recoveryMode: "replacement", attemptCount: 0 },
+      processing: { intent: "replace", attemptCount: 0 },
     });
     await expectDomainError(stub.retryEpisode(CHANNEL_B, VIDEO_A), "NOT_FOUND");
 
