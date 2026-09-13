@@ -6,7 +6,6 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import type { AppEnv } from "../env";
-import { eligibleChannels } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
 import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
@@ -44,7 +43,9 @@ export const digestRoutes = new Hono<AppEnv>().get(
       now - MAX_WINDOW_MS,
     );
 
-    const eligible = await eligibleChannels(c.var.registry, c.var.user);
+    const eligible = await c.var.registry.listEligibleChannels(
+      c.var.identity.email,
+    );
     if (eligible.length === 0) {
       return c.json<DigestResponse>({ since, episodes: [] });
     }

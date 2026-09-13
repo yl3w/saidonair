@@ -10,8 +10,10 @@ import {
 } from "@media-digest/shared";
 import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
-import type { ChannelManagementRecord } from "../do/registry/types";
-import type { ChannelFollow } from "../do/user/types";
+import type {
+  ChannelManagementRecord,
+  FollowRecord,
+} from "../do/registry/types";
 import type { AppEnv } from "../env";
 import { isApproved, toChannel } from "../lib/channel-view";
 import { DomainError } from "../lib/errors";
@@ -21,9 +23,10 @@ import { validate } from "../lib/validation";
 type Ctx = Context<AppEnv>;
 
 /**
- * The caller's follows. Each embeds its channel, so a follow whose channel the owner has declined
- * still lists, with its status, and reads again once the channel is approved (docs/PRD.md §4.3).
- * Unread = available episodes the caller has no read receipt for.
+ * The caller's follows, read from the Registry's follower record, the one record of follows
+ * (docs/PRD.md §4.3). Each embeds its channel, so a follow whose channel the owner has declined still
+ * lists, with its status, and reads again once the channel is approved. Unread = available episodes
+ * the caller has no read receipt for; receipts stay in the User DO.
  */
 export const followRoutes = new Hono<AppEnv>()
   .get(
@@ -42,7 +45,7 @@ export const followRoutes = new Hono<AppEnv>()
       },
     }),
     async (c) => {
-      const follows = await c.var.user.listFollows();
+      const follows = await c.var.registry.listFollows(c.var.identity.email);
       if (follows.length === 0) return c.json<FollowsResponse>({ follows: [] });
 
       const ids = follows.map((follow) => follow.channelId);
@@ -120,8 +123,10 @@ export const followRoutes = new Hono<AppEnv>()
           409,
         );
       }
-      const follow = await c.var.user.follow(channelId);
-      await c.var.registry.recordFollow(c.var.identity.email, channelId);
+      const follow = await c.var.registry.recordFollow(
+        c.var.identity.email,
+        channelId,
+      );
       return c.json<FollowResponse>({
         follow: await followView(c, follow),
       });
@@ -146,8 +151,10 @@ export const followRoutes = new Hono<AppEnv>()
     validate("param", FollowParamsSchema),
     async (c) => {
       const { channelId } = c.req.valid("param");
-      const follow = await c.var.user.unfollow(channelId);
-      await c.var.registry.recordUnfollow(c.var.identity.email, channelId);
+      const follow = await c.var.registry.recordUnfollow(
+        c.var.identity.email,
+        channelId,
+      );
       return c.json<FollowResponse>({
         follow: await followView(c, follow),
       });
@@ -155,7 +162,7 @@ export const followRoutes = new Hono<AppEnv>()
   );
 
 /** One follow after a write, with the channel read back so pause and follower count are current. */
-async function followView(c: Ctx, follow: ChannelFollow): Promise<Follow> {
+async function followView(c: Ctx, follow: FollowRecord): Promise<Follow> {
   const [record] = await c.var.registry.listChannelManagement([
     follow.channelId,
   ]);
@@ -193,7 +200,7 @@ async function unreadByChannel(
 }
 
 function toFollow(
-  follow: ChannelFollow,
+  follow: FollowRecord,
   record: ChannelManagementRecord,
   view: { followerCount: number; unreadCount: number },
 ): Follow {

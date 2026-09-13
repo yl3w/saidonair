@@ -27,7 +27,6 @@ import { describeRoute } from "hono-openapi";
 import type { CatalogChannel } from "../do/registry/types";
 import type { AppEnv } from "../env";
 import { toChannel } from "../lib/channel-view";
-import { eligibleChannels } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
 import { DomainError, domainErrorCode } from "../lib/errors";
 import { requestIngestion } from "../lib/ingestion";
@@ -60,7 +59,9 @@ export const channelRoutes = new Hono<AppEnv>()
     validate("query", ScopeQuerySchema),
     async (c) => {
       const { scope } = c.req.valid("query");
-      const following = new Set(await c.var.user.activeChannelIds());
+      const following = new Set(
+        await c.var.registry.activeChannelIds(c.var.identity.email),
+      );
       const rows =
         scope === "all"
           ? await c.var.registry.listChannelManagement()
@@ -316,7 +317,7 @@ export const channelRoutes = new Hono<AppEnv>()
       const channel = await requireChannel(c, c.req.valid("param").id);
       const { limit } = c.req.valid("query");
       const eligible = new Set(
-        (await eligibleChannels(c.var.registry, c.var.user)).map(
+        (await c.var.registry.listEligibleChannels(c.var.identity.email)).map(
           (row) => row.channelId,
         ),
       );
@@ -452,7 +453,9 @@ async function requireChannel(
 }
 
 async function isFollowing(c: Ctx, channelId: string): Promise<boolean> {
-  return (await c.var.user.activeChannelIds()).includes(channelId);
+  return (await c.var.registry.activeChannelIds(c.var.identity.email)).includes(
+    channelId,
+  );
 }
 
 /** One channel as every caller sees it: the shared fields, `management`, and the caller's own `following`. */
@@ -466,9 +469,8 @@ async function fullChannel(c: Ctx, channelId: string): Promise<Channel> {
   });
 }
 
-/** Follows the caller onto a channel in both objects and returns the channel as they see it. */
+/** Follows the caller onto a channel (one Registry write) and returns the channel as they see it. */
 async function followAndView(c: Ctx, channelId: string, created: boolean) {
-  await c.var.user.follow(channelId);
   await c.var.registry.recordFollow(c.var.identity.email, channelId);
   return c.json<ChannelResponse>(
     { channel: await fullChannel(c, channelId) },

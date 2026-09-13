@@ -98,7 +98,7 @@ describe("follow routes", () => {
       (channelsAfterFollow.json.channels as Json[]).find(
         (row) => row.channelId === CHANNEL_A,
       ),
-    ).toMatchObject({ followerCount: 1 });
+    ).toMatchObject({ following: true, followerCount: 1 });
 
     // Alice is the only follower; unfollowing pauses the channel, and refollowing resumes it.
     // `paused` is the top-level boolean; the reason lives in `management`, present for everyone.
@@ -113,6 +113,16 @@ describe("follow routes", () => {
     expect((soleUnfollow.json.follow as Json).channel).not.toHaveProperty(
       "pausedBy",
     );
+    // One record of follows: `following` and `followerCount` come from the same rows and agree
+    // in the same response (docs/specs/follows-single-owner.md §6.2).
+    expect(
+      ((await call(ALICE, "GET", "/channels")).json.channels as Json[]).find(
+        (row) => row.channelId === CHANNEL_A,
+      ),
+    ).toMatchObject({ following: false, followerCount: 0 });
+    expect(
+      (await call(OWNER, "GET", `/channels/${CHANNEL_A}/followers`)).json,
+    ).toEqual({ followers: [] });
     const soleRefollow = await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
     expect(soleRefollow.json.follow).toMatchObject({
       channel: { paused: false, followerCount: 1 },
