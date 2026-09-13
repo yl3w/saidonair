@@ -447,7 +447,7 @@ The digest, unread counts, summarised counts, episode lists, and run lists all r
 writes. Nothing writes them yet except the owner's per-episode Retry and Skip, which need a row to act on.
 This slice ships those screens with real empty states and tests them with SQL-seeded fixtures, the way
 `test/helpers.ts` drives channel state. When M3 lands, the screens fill in without UI changes beyond the ones
-`m3-ingestion-plan.md` Step 9 lists.
+`m3-7-owner-ux.md` lists (formerly `m3-ingestion-plan.md` Step 9).
 
 ### 9.5 Write paths used by the light actions
 

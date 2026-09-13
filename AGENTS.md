@@ -57,7 +57,10 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 ├── .cursor/rules/            # pointer to AGENTS.md
 ├── docs/PRD.md               # canonical product specification
 ├── docs/specs/               # design reasoning and plans behind the PRD, each with its -plan.md: home-read-experience,
-│                             # api-reference, m3-ingestion, channel-simplification, follows-single-owner
+│                             # api-reference, channel-simplification, follows-single-owner, and M3 as the decision record
+│                             # m3-ingestion (its -plan.md is the roadmap) plus seven child chunks m3-1-transcripts-chunking,
+│                             # m3-2-attempt-ledger, m3-3-ai-vectorize, m3-4-discovery, m3-5-episode-workflow, m3-6-recovery,
+│                             # m3-7-owner-ux
 ├── package.json              # workspace root: volta.node, packageManager, turbo scripts
 ├── pnpm-workspace.yaml
 ├── .npmrc                    # engine-strict=true

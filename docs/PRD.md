@@ -500,7 +500,7 @@ code — `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `PROVIDER_HTTP`, `PROVIDER_PARS
 carry none. `EMBEDDING_FAILED` is an embedding step that exhausted its retries or returned the wrong dimension;
 `SUMMARY_FAILED` is a summary map or reduce call that exhausted its retries (invalid JSON is not a failure: it
 retries once, then falls back to raw text and publishes). The API exposes the set as the `AttemptOutcomeCode` enum;
-the column gets its `CHECK` at the end of M3 (`docs/specs/m3-ingestion-plan.md` Step 9), once every outcome has run
+the column gets its `CHECK` at the end of M3 (`docs/specs/m3-7-owner-ux-plan.md` Step 3), once every outcome has run
 for real, and until then the enum is the contract.
 
 - Positive import limits; nonnegative timestamps, attempt/chunk counts, sequence/position values,
@@ -541,7 +541,7 @@ for real, and until then the enum is the contract.
   revisit governance; until then this section states no further rule.
 - Both `0001_init.sql` files were rewritten on 2026-09-10 before first deployment, and the Registry's again on
   2026-09-12, when the owner chose to start over on the schema, the Registry DO's store modules, and the API contract
-  for M3 rather than carry deprecated tables, columns, and enum values (`docs/specs/m3-ingestion-plan.md` Step 4);
+  for M3 rather than carry deprecated tables, columns, and enum values (`docs/specs/api-reference-plan.md` Step 4);
   `0002_drop_lifecycle_version.sql` of 2026-09-11 was folded into that rewrite and deleted. The Registry lists
   `0001_init` alone; the User DO's file was edited on 2026-09-13 to drop `channel_follows` (§9). No rule prevents a
   further edit.

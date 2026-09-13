@@ -1,7 +1,10 @@
 # Feature spec — M3 Ingestion
 
 **Written:** 2026-09-08. **Revised:** 2026-09-12 after the functional review and owner walkthrough.
-**Status:** approved for implementation. Implements PRD §10 M3. Plan: `docs/specs/m3-ingestion-plan.md`.
+**Status:** approved for implementation. Implements PRD §10 M3. Roadmap: `docs/specs/m3-ingestion-plan.md`.
+**Split 2026-09-13:** implemented through seven child specs and plans, `m3-1-transcripts-chunking` through
+`m3-7-owner-ux`, in the order the roadmap gives. This document stays the one decision record for M3; a child spec adds
+only the decisions its chunk needs and links here for the rest.
 
 The 2026-09-12 revision replaces the earlier hybrid run model. Channel ingestion is RSS discovery only; episode
 processing and recovery are independent of channel runs, channel status, and channel pause. Every episode Workflow

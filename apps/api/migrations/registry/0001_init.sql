@@ -175,7 +175,7 @@ CREATE TABLE episode_summaries (
 -- The one execution ledger: first processing, scheduled recovery, and owner Retry are each one row, and each
 -- launched row is one Workflow instance (docs/PRD.md §4.2 rules 6–9). A `blocked` row records a start that
 -- pre-flight refused and never launched. outcome_code is the AttemptOutcomeCode enum of the API contract;
--- its CHECK lands at the end of M3 (docs/specs/m3-ingestion-plan.md Step 9), once every outcome has run for real.
+-- its CHECK lands at the end of M3 (docs/specs/m3-7-owner-ux-plan.md Step 3), once every outcome has run for real.
 CREATE TABLE episode_ingestion_attempts (
   attempt_id TEXT PRIMARY KEY,
   video_id TEXT NOT NULL REFERENCES episodes (video_id),

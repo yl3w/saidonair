@@ -17,7 +17,7 @@ carries the new names.
 of each other. Step 4 is one large commit: the Registry schema rewrite, its read model, and the restated contract are
 one unit because the stores return records typed against the shared module and the old shapes have no source in the
 new tables; it is reviewed by file group. Step 5 is documentation and the walkthrough. Nothing here waits on M3;
-`m3-ingestion-plan.md` Step 4 builds its ingestion writes on this plan's Step 4 instead. Decisions this plan makes are
+`m3-2-attempt-ledger-plan.md` (M3.2, formerly `m3-ingestion-plan.md` Step 4) builds its ingestion writes on this plan's Step 4 instead. Decisions this plan makes are
 marked **plan decision** and stand unless vetoed.
 
 ## Definition of complete
@@ -212,7 +212,7 @@ projections and routes; seeds and route tests; web.
     ('running','available','waiting','failed','skipped','blocked')`, `outcome_code?`, `failure_detail?`, `started_at`,
     `finished_at?`, `created_at`. Checks: `running` has no `finished_at` and every other status has one; `blocked` has
     no `workflow_id`; `owner_retry` has a requester and the other triggers none. **Plan decision:** no `CHECK` on
-    `outcome_code` yet; the shared `AttemptOutcomeCode` enum is the contract, and `m3-ingestion-plan.md` Step 9 adds
+    `outcome_code` yet; the shared `AttemptOutcomeCode` enum is the contract, and `m3-7-owner-ux-plan.md` Step 3 (formerly `m3-ingestion-plan.md` Step 9) adds
     the `CHECK` once every outcome has run for real (owner request 2026-09-12).
   - Indexes: `channels(status, paused_by)`; `channel_followers(channel_id, unfollowed_at)`;
     `episodes(channel_id, status, published_at)`; `episodes(next_attempt_at)`; `episodes(discovered_by_run_id)`;
@@ -307,7 +307,7 @@ spec §10.3 names and none from §5.11, and the four screens still load against 
 
 ## What the M3 and M4 plans build on this
 
-`m3-ingestion-plan.md` Step 4 (Registry state transitions) starts from this plan's Step 4: the tables, the read model,
+`m3-2-attempt-ledger-plan.md` (M3.2, formerly `m3-ingestion-plan.md` Step 4, Registry state transitions) starts from this plan's Step 4: the tables, the read model,
 and the route-driven writes exist, and it adds the ingestion writes. M3 Step 1 reuses the Step 3 status wrapper for
 pre-flight. These routes register in their own plans with the documentation fixed by spec §3.3; the coverage test, the
 tag test, and the parse rule fail until each is right, so no step here waits on them.
