@@ -9,6 +9,7 @@ import {
   expectDomainError,
   OWNER,
   registry,
+  seedApprovedChannel,
   seedEpisode,
   seedRun,
   setChannelState,
@@ -31,18 +32,14 @@ async function seedCatalog() {
     [CHANNEL_D, "D"],
     [CHANNEL_E, "E"],
   ] as const) {
-    await stub.createChannel(OWNER, {
-      channelId,
-      title,
-      status: "approved",
-    });
+    await seedApprovedChannel(channelId, title);
   }
-  // The owner's add pauses a channel nobody follows yet (Ruling R4); only E stays paused here.
+  // Approval pauses a channel nobody follows yet (Ruling R4); only E stays paused here.
   for (const channelId of [CHANNEL_A, CHANNEL_B, CHANNEL_C, CHANNEL_D]) {
-    await stub.resumeChannel(OWNER, channelId);
+    await stub.resumeChannel(channelId);
   }
   await setChannelState(CHANNEL_D, { status: "requested" });
-  await stub.pauseChannel(OWNER, CHANNEL_E);
+  await stub.pauseChannel(CHANNEL_E);
 
   await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: 2 });
   await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: 3 });
@@ -65,10 +62,10 @@ async function seedCatalog() {
 }
 
 describe("registry catalog summary and management", () => {
-  it("summarizes the catalog for the owner", async () => {
+  it("summarizes the catalog", async () => {
     const stub = await seedCatalog();
 
-    expect(await stub.getCatalogSummary(OWNER)).toEqual({
+    expect(await stub.getCatalogSummary()).toEqual({
       channels: { requested: 1, approved: 3, paused: 1, declined: 0 },
       episodes: { available: 2, pending: 0, waiting: 0, failed: 1, skipped: 0 },
       runs: { active: 1 },
@@ -77,11 +74,10 @@ describe("registry catalog summary and management", () => {
       // keep channels.status = 'approved'). `requested` reuses the `channels.requested` total.
       attention: { failedEpisodes: 1, neverStarted: 2, requested: 1 },
     });
-    await expectDomainError(stub.getCatalogSummary(ALICE), "NOT_OWNER");
   });
 
   it("is empty-safe before anything exists", async () => {
-    expect(await registry().getCatalogSummary(OWNER)).toEqual({
+    expect(await registry().getCatalogSummary()).toEqual({
       channels: { requested: 0, approved: 0, paused: 0, declined: 0 },
       episodes: { available: 0, pending: 0, waiting: 0, failed: 0, skipped: 0 },
       runs: { active: 0 },
@@ -93,7 +89,7 @@ describe("registry catalog summary and management", () => {
   it("joins channels to their management facts", async () => {
     const stub = await seedCatalog();
 
-    const rows = await stub.listChannelManagement(OWNER);
+    const rows = await stub.listChannelManagement();
     expect(rows.map((r) => r.channel.channelId)).toHaveLength(5);
     const byId = new Map(rows.map((r) => [r.channel.channelId, r]));
 
@@ -122,14 +118,10 @@ describe("registry catalog summary and management", () => {
       channel: { pausedBy: "owner", pausedAt: expect.any(Number) },
     });
 
-    const some = await stub.listChannelManagement(OWNER, [
-      CHANNEL_C,
-      CHANNEL_A,
-    ]);
+    const some = await stub.listChannelManagement([CHANNEL_C, CHANNEL_A]);
     expect(some.map((r) => r.channel.channelId).sort()).toEqual(
       [CHANNEL_A, CHANNEL_C].sort(),
     );
-    await expectDomainError(stub.listChannelManagement(ALICE), "NOT_OWNER");
   });
 
   it("lists channels by id in any status and ignores unknown ids", async () => {

@@ -2,7 +2,13 @@ import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { registryMigrations } from "../migrations/registry";
 import { applyMigrations } from "../src/do/migrations";
-import { ALICE, CHANNEL_A, OWNER, registry } from "./helpers";
+import {
+  ALICE,
+  CHANNEL_A,
+  OWNER,
+  registry,
+  seedApprovedChannel,
+} from "./helpers";
 
 describe("registry migrations", () => {
   it("creates every Registry table on first access and records both versions", async () => {
@@ -113,11 +119,7 @@ describe("registry migrations", () => {
 
   it("ties episode columns to status", async () => {
     const stub = registry();
-    await stub.createChannel(OWNER, {
-      channelId: CHANNEL_A,
-      title: "A",
-      status: "approved",
-    });
+    await seedApprovedChannel(CHANNEL_A, "A");
     await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;
       const insert = (cols: string, vals: string) =>

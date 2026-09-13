@@ -88,8 +88,9 @@ export function listCatalogChannels(sql: SqlStorage): CatalogChannel[] {
 }
 
 /**
- * Creates a channel; `INVALID_STATE` when the id exists in any status. Create-only on purpose
- * (db26c74): the route treats that refusal as "exists" and follows or reopens instead.
+ * Creates a `requested` channel, whoever asks; approval is a separate step (owner decision
+ * 2026-09-12). `INVALID_STATE` when the id exists in any status: create-only on purpose (db26c74),
+ * the route treats that refusal as "exists" and follows or reopens instead.
  */
 export function createChannel(
   sql: SqlStorage,
@@ -100,28 +101,17 @@ export function createChannel(
   if (getChannel(sql, channelId)) {
     throw new DomainError("INVALID_STATE", "channel is already in the catalog");
   }
-  const approved = input.status === "approved";
-  if (approved && !input.reviewer) {
-    throw new DomainError(
-      "INVALID_INPUT",
-      "an approved channel needs a reviewer",
-    );
-  }
   return toChannel(
     sql
       .exec<ChannelRow>(
         `INSERT INTO channels (channel_id, title, canonical_url, status, initial_import_count,
-           approved_at, reviewed_at, reviewed_by_email, created_at, updated_at)
-         VALUES (?, ?, ?, ?, COALESCE(?, 5), ?, ?, ?, ?, ?)
+           created_at, updated_at)
+         VALUES (?, ?, ?, 'requested', COALESCE(?, 5), ?, ?)
          RETURNING ${CHANNEL_COLUMNS}`,
         channelId,
         requireTitle(input.title),
         canonicalChannelUrl(channelId),
-        input.status,
         optionalImportCount(input.initialImportCount),
-        approved ? now : null,
-        approved ? now : null,
-        approved ? (input.reviewer ?? null) : null,
         now,
         now,
       )

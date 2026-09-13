@@ -15,10 +15,15 @@ describe("identity middleware via GET /me", () => {
     expect(response.status).toBe(200);
   });
 
-  it("returns 400 when X-User-Email is missing or malformed", async () => {
-    expect((await me()).status).toBe(400);
-    expect((await me("not-an-email")).status).toBe(400);
-    expect((await me("   ")).status).toBe(400);
+  it("returns 400 INVALID_INPUT when X-User-Email is missing or malformed", async () => {
+    for (const email of [undefined, "not-an-email", "   "]) {
+      const response = await me(email);
+      expect(response.status, String(email)).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: expect.stringContaining("X-User-Email"),
+        code: "INVALID_INPUT",
+      });
+    }
   });
 
   it("auto-registers and returns the normalized identity", async () => {

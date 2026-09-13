@@ -32,16 +32,11 @@ export function jsonResponse(
 
 /**
  * The error responses an operation can produce. 400 is always possible: the header may be missing
- * or the input invalid. Owner-only operations add 403; lookups add 404; state rules add 409 with
- * the rule spelled out; operations that call YouTube add 502.
+ * or the input invalid. Lookups add 404; state rules add 409 with the rule spelled out; operations
+ * that call YouTube add 502. There is no 403: the API enforces no authorization (docs/PRD.md §9).
  */
 export function errorResponses(
-  options: {
-    owner?: boolean;
-    notFound?: boolean;
-    conflict?: string;
-    upstream?: boolean;
-  } = {},
+  options: { notFound?: boolean; conflict?: string; upstream?: boolean } = {},
 ): Responses {
   const responses: Responses = {
     400: jsonResponse(
@@ -49,12 +44,6 @@ export function errorResponses(
       "`X-User-Email` missing or malformed, or invalid input (`INVALID_INPUT`).",
     ),
   };
-  if (options.owner) {
-    responses[403] = jsonResponse(
-      ErrorResponseSchema,
-      "The caller is not the owner (`NOT_OWNER`).",
-    );
-  }
   if (options.notFound) {
     responses[404] = jsonResponse(
       ErrorResponseSchema,
@@ -89,7 +78,8 @@ const documentation: GenerateSpecOptions["documentation"] = {
       "",
       "**Identity, not authentication.** Every request except `/health`, `/openapi.json`, and `/docs`",
       "carries `X-User-Email`, trimmed and lowercased. Unknown emails are registered on first use.",
-      "`GET /me` reports the caller's role so the web can decide what to offer.",
+      "`GET /me` reports the caller's role so the web can decide what to offer; the API itself enforces",
+      "no authorization and accepts every operation from any identity.",
       "",
       "**Entities, not roles.** Resources are the system's nouns: channels, episodes, runs, follows, the",
       "digest, the catalog. `?scope=all` widens a collection to everything the system holds, and a",
@@ -101,22 +91,22 @@ const documentation: GenerateSpecOptions["documentation"] = {
     { name: "me", description: "Who the caller is." },
     {
       name: "catalog",
-      description: "The shared catalog's aggregate state (owner).",
+      description: "The shared catalog's aggregate state.",
     },
     {
       name: "channels",
       description:
-        "Catalog channels: everyone reads the requested and approved ones; the owner reads every status and reviews them.",
+        "Catalog channels: the requested and approved ones by default, every status with `?scope=all`, and the review, pause, and resume actions.",
     },
     {
       name: "episodes",
       description:
-        "Episodes of a channel. Followers and the owner receive the shared summaries.",
+        "Episodes of a channel with their shared summaries and processing detail, and the retry and skip actions.",
     },
     {
       name: "runs",
       description:
-        "A channel's RSS discovery runs: when its feed was checked and what was found (owner).",
+        "A channel's RSS discovery runs: when its feed was checked and what was found.",
     },
     { name: "follows", description: "The caller's follows." },
     {

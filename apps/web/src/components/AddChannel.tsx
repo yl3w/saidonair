@@ -2,12 +2,15 @@ import { useState } from "preact/hooks";
 import { api } from "../api";
 import { CHANNEL_ID_HELP, isDeclinedResponse } from "../lib/copy";
 import { absoluteTime } from "../lib/time";
+import { useReadySession } from "../session";
 
 /**
- * One box for everyone (spec §7). A new id creates a requested channel (approved, for the owner) and
- * follows the caller; an existing id follows; a declined id shows the owner's note and offers Request again.
+ * One box for everyone (spec §7). A new id creates a requested channel and follows the caller; an
+ * existing id follows; a declined id shows the owner's note and offers Request again. The API has no
+ * owner shortcut (PRD §9), so the owner's one-step add is this component approving the new channel.
  */
 export function AddChannel({ onChanged }: { onChanged: () => void }) {
+  const { role } = useReadySession();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -46,7 +49,14 @@ export function AddChannel({ onChanged }: { onChanged: () => void }) {
       class="inline"
       onSubmit={(e) => {
         e.preventDefault();
-        run(() => api.addChannel({ channelId: value }));
+        run(async () => {
+          const { channel, created } = await api.addChannel({
+            channelId: value,
+          });
+          if (created && role === "owner") {
+            await api.approveChannel(channel.channelId, {});
+          }
+        });
       }}
     >
       <label>

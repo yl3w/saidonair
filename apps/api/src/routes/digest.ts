@@ -64,8 +64,6 @@ export const digestRoutes = new Hono<AppEnv>().get(
       since,
       episodes: records.map((record) =>
         toEpisode(record, {
-          includeSummary: true,
-          includeProcessing: false,
           wasUnread: !alreadyRead.has(record.videoId),
         }),
       ),

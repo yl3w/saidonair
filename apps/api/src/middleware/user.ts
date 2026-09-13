@@ -16,7 +16,10 @@ export const requireIdentity = createMiddleware<AppEnv>(async (c, next) => {
   const email = normalizeEmail(c.req.header(USER_EMAIL_HEADER));
   if (!email) {
     return c.json<ErrorResponse>(
-      { error: `${USER_EMAIL_HEADER} header is missing or malformed` },
+      {
+        error: `${USER_EMAIL_HEADER} header is missing or malformed`,
+        code: "INVALID_INPUT",
+      },
       400,
     );
   }

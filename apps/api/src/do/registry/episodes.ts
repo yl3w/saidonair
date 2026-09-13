@@ -165,14 +165,14 @@ export function getEpisode(
   return row ? toRecord(row, []) : null;
 }
 
-/** Owner: `failed | skipped → pending`, attempts and skip fields cleared. The caller starts the one-episode run. */
+/** `failed | skipped → pending`, attempts and skip fields cleared. The caller starts the one-episode run. */
 export function retryEpisode(
   sql: SqlStorage,
   channelId: string,
   videoId: string,
   now: number,
 ): EpisodeRecord {
-  const episode = requireOwnerActionable(sql, channelId, videoId);
+  const episode = requireActionableEpisode(sql, channelId, videoId);
   if (episode.status !== "failed" && episode.status !== "skipped") {
     throw new DomainError(
       "INVALID_STATE",
@@ -189,15 +189,15 @@ export function retryEpisode(
   return getEpisode(sql, channelId, videoId) ?? episode;
 }
 
-/** Owner: `failed → skipped OWNER`. */
+/** `failed → skipped OWNER`, recording whoever skipped it. */
 export function skipEpisode(
   sql: SqlStorage,
   channelId: string,
   videoId: string,
-  ownerEmail: string,
+  actorEmail: string,
   now: number,
 ): EpisodeRecord {
-  const episode = requireOwnerActionable(sql, channelId, videoId);
+  const episode = requireActionableEpisode(sql, channelId, videoId);
   if (episode.status !== "failed") {
     throw new DomainError(
       "INVALID_STATE",
@@ -208,7 +208,7 @@ export function skipEpisode(
     `UPDATE episodes SET status = 'skipped', skip_reason = 'OWNER', skipped_at = ?, skipped_by_email = ?,
        failure_code = NULL, failure_detail = NULL, updated_at = ? WHERE video_id = ?`,
     now,
-    ownerEmail,
+    actorEmail,
     now,
     videoId,
   );
@@ -216,7 +216,7 @@ export function skipEpisode(
 }
 
 /** An approved channel, no active run, and an episode that belongs to it. */
-function requireOwnerActionable(
+function requireActionableEpisode(
   sql: SqlStorage,
   channelId: string,
   videoId: string,

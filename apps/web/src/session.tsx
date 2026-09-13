@@ -1,5 +1,5 @@
-// Who this tab is acting for, resolved once through GET /me. The role is for rendering only:
-// every owner-only operation is authorized again by the API (docs/PRD.md §2). The
+// Who this tab is acting for, resolved once through GET /me. The role decides what this tab
+// offers, and that is the only gate: the API enforces no authorization (docs/PRD.md §2, §9). The
 // stored selection seeds the first render; after that this tab's identity lives here and is bound
 // into the API client, so another tab switching accounts cannot change what this one sends.
 import type { UserRole } from "@media-digest/shared";

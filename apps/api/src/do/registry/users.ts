@@ -64,13 +64,6 @@ export function seedOwner(sql: SqlStorage, email: string, now: number): void {
   );
 }
 
-/** Owner checks live in the DO so ordinary identity can never authorize owner actions. */
-export function assertOwner(sql: SqlStorage, email: string): void {
-  if (getUser(sql, email)?.role !== "owner") {
-    throw new DomainError("NOT_OWNER");
-  }
-}
-
 function toUser(row: UserRow): RegistryUser {
   return {
     email: row.email,

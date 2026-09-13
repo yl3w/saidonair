@@ -11,7 +11,6 @@ import {
 
 const STATUS_BY_CODE: Record<DomainErrorCode, ContentfulStatusCode> = {
   INVALID_INPUT: 400,
-  NOT_OWNER: 403,
   NOT_FOUND: 404,
   INVALID_STATE: 409,
   UPSTREAM_UNAVAILABLE: 502,

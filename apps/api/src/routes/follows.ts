@@ -1,7 +1,6 @@
 import {
   type ChannelDeclinedResponse,
   ChannelDeclinedResponseSchema,
-  type EpisodeCounts,
   type Follow,
   FollowParamsSchema,
   type FollowResponse,
@@ -11,10 +10,10 @@ import {
 } from "@media-digest/shared";
 import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
-import type { CatalogChannel } from "../do/registry/types";
+import type { ChannelManagementRecord } from "../do/registry/types";
 import type { ChannelFollow } from "../do/user/types";
 import type { AppEnv } from "../env";
-import { isApproved, toChannel, zeroEpisodeCounts } from "../lib/channel-view";
+import { isApproved, toChannel } from "../lib/channel-view";
 import { DomainError } from "../lib/errors";
 import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
@@ -47,31 +46,29 @@ export const followRoutes = new Hono<AppEnv>()
       if (follows.length === 0) return c.json<FollowsResponse>({ follows: [] });
 
       const ids = follows.map((follow) => follow.channelId);
-      const channels = new Map(
-        (await c.var.registry.listChannelsByIds(ids)).map((channel) => [
-          channel.channelId,
-          channel,
+      const records = new Map(
+        (await c.var.registry.listChannelManagement(ids)).map((record) => [
+          record.channel.channelId,
+          record,
         ]),
       );
-      const counts = await c.var.registry.countEpisodesByChannel(ids);
       const followers = await c.var.registry.countFollowers(ids);
       // Unread counts only ever cover eligible channels, so a followed channel the owner has
-      // declined reads zero unread until it is approved again (spec §4).
+      // declined reads zero unread until it is approved again (docs/PRD.md §4.3).
       const unread = await unreadByChannel(
         c,
         ids.filter((id) => {
-          const channel = channels.get(id);
-          return channel !== undefined && isApproved(channel);
+          const record = records.get(id);
+          return record !== undefined && isApproved(record.channel);
         }),
       );
 
       const rows: Follow[] = [];
       for (const follow of follows) {
-        const channel = channels.get(follow.channelId);
-        if (!channel) continue; // a follow of an id the Registry never had; nothing to show
+        const record = records.get(follow.channelId);
+        if (!record) continue; // a follow of an id the Registry never had; nothing to show
         rows.push(
-          toFollow(follow, channel, {
-            episodes: counts[follow.channelId] ?? zeroEpisodeCounts(),
+          toFollow(follow, record, {
             followerCount: followers[follow.channelId] ?? 0,
             unreadCount: unread[follow.channelId] ?? 0,
           }),
@@ -124,12 +121,9 @@ export const followRoutes = new Hono<AppEnv>()
         );
       }
       const follow = await c.var.user.follow(channelId);
-      const current = await c.var.registry.recordFollow(
-        c.var.identity.email,
-        channelId,
-      );
+      await c.var.registry.recordFollow(c.var.identity.email, channelId);
       return c.json<FollowResponse>({
-        follow: await followView(c, follow, current),
+        follow: await followView(c, follow),
       });
     },
   )
@@ -153,33 +147,27 @@ export const followRoutes = new Hono<AppEnv>()
     async (c) => {
       const { channelId } = c.req.valid("param");
       const follow = await c.var.user.unfollow(channelId);
-      const current = await c.var.registry.recordUnfollow(
-        c.var.identity.email,
-        channelId,
-      );
+      await c.var.registry.recordUnfollow(c.var.identity.email, channelId);
       return c.json<FollowResponse>({
-        follow: await followView(c, follow, current),
+        follow: await followView(c, follow),
       });
     },
   );
 
-async function followView(
-  c: Ctx,
-  follow: ChannelFollow,
-  channel: CatalogChannel,
-): Promise<Follow> {
-  const counts = await c.var.registry.countEpisodesByChannel([
-    channel.channelId,
+/** One follow after a write, with the channel read back so pause and follower count are current. */
+async function followView(c: Ctx, follow: ChannelFollow): Promise<Follow> {
+  const [record] = await c.var.registry.listChannelManagement([
+    follow.channelId,
   ]);
-  const followers = await c.var.registry.countFollowers([channel.channelId]);
+  if (!record) throw new DomainError("NOT_FOUND", "channel not found");
+  const followers = await c.var.registry.countFollowers([follow.channelId]);
   const unread = await unreadByChannel(
     c,
-    isApproved(channel) ? [channel.channelId] : [],
+    isApproved(record.channel) ? [follow.channelId] : [],
   );
-  return toFollow(follow, channel, {
-    episodes: counts[channel.channelId] ?? zeroEpisodeCounts(),
-    followerCount: followers[channel.channelId] ?? 0,
-    unreadCount: unread[channel.channelId] ?? 0,
+  return toFollow(follow, record, {
+    followerCount: followers[follow.channelId] ?? 0,
+    unreadCount: unread[follow.channelId] ?? 0,
   });
 }
 
@@ -206,20 +194,15 @@ async function unreadByChannel(
 
 function toFollow(
   follow: ChannelFollow,
-  channel: CatalogChannel,
-  view: {
-    episodes: EpisodeCounts;
-    followerCount: number;
-    unreadCount: number;
-  },
+  record: ChannelManagementRecord,
+  view: { followerCount: number; unreadCount: number },
 ): Follow {
   return {
     channelId: follow.channelId,
     followedAt: follow.followedAt,
     unfollowedAt: follow.unfollowedAt,
-    channel: toChannel(channel, {
+    channel: toChannel(record, {
       following: follow.unfollowedAt === null,
-      episodes: view.episodes,
       followerCount: view.followerCount,
     }),
     unreadCount: view.unreadCount,

@@ -43,6 +43,21 @@ export function registry() {
   return getRegistry(env);
 }
 
+/**
+ * Creates a channel and approves it as the owner: what most fixtures want. There is no owner add
+ * shortcut in the API (PRD §9), so this is the two calls the web makes. Approval pauses a channel
+ * nobody follows yet (system), exactly as the facade does.
+ */
+export async function seedApprovedChannel(
+  channelId: string,
+  title: string,
+  input: { initialImportCount?: number } = {},
+) {
+  const stub = registry();
+  await stub.createChannel({ channelId, title, ...input });
+  return (await stub.approveChannel(OWNER, channelId)).channel;
+}
+
 export function userDO(email: string) {
   return getUserDO(env, email);
 }

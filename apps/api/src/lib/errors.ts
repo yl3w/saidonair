@@ -1,18 +1,12 @@
-export type DomainErrorCode =
-  | "INVALID_INPUT"
-  | "NOT_OWNER"
-  | "NOT_FOUND"
-  | "INVALID_STATE"
-  /** YouTube (the only upstream) did not answer usably; distinct from bad input. Maps to 502. */
-  | "UPSTREAM_UNAVAILABLE";
+import { type ErrorCode, ErrorCodeSchema } from "@media-digest/shared";
 
-const DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = [
-  "INVALID_INPUT",
-  "NOT_OWNER",
-  "NOT_FOUND",
-  "INVALID_STATE",
-  "UPSTREAM_UNAVAILABLE",
-];
+/**
+ * The codes a `DomainError` may carry are exactly the wire enum (`ErrorCode` in packages/shared), so
+ * the document and the thrown errors cannot drift: add a code to the schema and it exists here.
+ */
+export type DomainErrorCode = ErrorCode;
+
+const DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = ErrorCodeSchema.options;
 
 /**
  * Thrown by Durable Object methods. Custom properties are not guaranteed to survive the

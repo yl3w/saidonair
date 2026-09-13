@@ -69,7 +69,6 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── index.ts              # Worker entry: fetch + scheduled handlers, Hono app
 │   │   │   ├── env.ts / bindings.d.ts # Hono AppEnv + hand-maintained Cloudflare.Env (no generated types)
 │   │   │   ├── middleware/user.ts    # X-User-Email → registry + per-user DO stub on context
-│   │   │   ├── middleware/owner.ts   # to be deleted: the API enforces no authorization (PRD §9, 2026-09-12; api-reference plan Step 2)
 │   │   │   ├── middleware/errors.ts  # typed DomainError (and Hono's malformed-JSON 400) → HTTP status
 │   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, chat, ...);
 │   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page

@@ -56,6 +56,15 @@ async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
+  return (await send(method, path, body)).json as T;
+}
+
+/** One call, with the status kept: `addChannel` needs to know whether it created or followed. */
+async function send(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ status: number; json: unknown }> {
   const email = identity;
   if (email === null) throw new ApiError(0, "no account selected", NO_ACCOUNT);
 
@@ -85,7 +94,7 @@ async function request<T>(
       json,
     );
   }
-  return json as T;
+  return { status: response.status, json };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -106,8 +115,13 @@ export const api = {
       "GET",
       options.scope === "all" ? "/channels?scope=all" : "/channels",
     ),
-  addChannel: (body: CreateChannelBody) =>
-    request<ChannelResponse>("POST", "/channels", body),
+  /** `created` is true for a 201 (new channel) and false for a 200 (an existing one, now followed). */
+  addChannel: async (
+    body: CreateChannelBody,
+  ): Promise<ChannelResponse & { created: boolean }> => {
+    const { status, json } = await send("POST", "/channels", body);
+    return { ...(json as ChannelResponse), created: status === 201 };
+  },
   getChannel: (channelId: string) =>
     request<ChannelResponse>("GET", `/channels/${enc(channelId)}`),
   requestChannel: (channelId: string) =>

@@ -7,6 +7,7 @@ import {
   expectDomainError,
   OWNER,
   registry,
+  seedApprovedChannel,
   seedEpisode,
   seedRun,
   seedSummary,
@@ -18,16 +19,8 @@ import {
 
 async function twoChannels() {
   const stub = registry();
-  await stub.createChannel(OWNER, {
-    channelId: CHANNEL_A,
-    title: "A",
-    status: "approved",
-  });
-  await stub.createChannel(OWNER, {
-    channelId: CHANNEL_B,
-    title: "B",
-    status: "approved",
-  });
+  await seedApprovedChannel(CHANNEL_A, "A");
+  await seedApprovedChannel(CHANNEL_B, "B");
   return stub;
 }
 
@@ -197,13 +190,9 @@ describe("registry episodes", () => {
     ).toHaveLength(1);
   });
 
-  it("owner retry reopens a failed or skipped episode; owner skip closes a failed one; both refuse an active run", async () => {
+  it("retry reopens a failed or skipped episode; skip closes a failed one and records whoever skipped; both refuse an active run", async () => {
     const stub = registry();
-    await stub.createChannel(OWNER, {
-      channelId: CHANNEL_A,
-      title: "A",
-      status: "approved",
-    });
+    await seedApprovedChannel(CHANNEL_A, "A");
     await seedEpisode(VIDEO_A, CHANNEL_A, {
       status: "failed",
       attemptCount: 3,
@@ -216,13 +205,14 @@ describe("registry episodes", () => {
     await seedEpisode(VIDEO_C, CHANNEL_A, { status: "available" });
     await seedSummary(VIDEO_C);
 
-    const skipped = await stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_A);
+    // No role is checked: whoever skips is recorded (PRD §9).
+    const skipped = await stub.skipEpisode(ALICE, CHANNEL_A, VIDEO_A);
     expect(skipped.status).toBe("skipped");
     expect(skipped.processing).toMatchObject({
       skipReason: "OWNER",
-      skippedByEmail: OWNER,
+      skippedByEmail: ALICE,
     });
-    const retried = await stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_A);
+    const retried = await stub.retryEpisode(CHANNEL_A, VIDEO_A);
     expect(retried.status).toBe("pending");
     expect(retried.processing).toMatchObject({
       attemptCount: 0,
@@ -231,7 +221,7 @@ describe("registry episodes", () => {
       skippedAt: null,
       skippedByEmail: null,
     });
-    expect((await stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_B)).status).toBe(
+    expect((await stub.retryEpisode(CHANNEL_A, VIDEO_B)).status).toBe(
       "pending",
     );
     // A retry touches one episode: the siblings keep their status and their summaries (spec §3.3).
@@ -248,22 +238,15 @@ describe("registry episodes", () => {
       "INVALID_STATE",
     );
     await expectDomainError(
-      stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_C),
+      stub.retryEpisode(CHANNEL_A, VIDEO_C),
       "INVALID_STATE",
     );
-    await expectDomainError(
-      stub.retryEpisode(ALICE, CHANNEL_A, VIDEO_A),
-      "NOT_OWNER",
-    );
-    await expectDomainError(
-      stub.retryEpisode(OWNER, CHANNEL_B, VIDEO_A),
-      "NOT_FOUND",
-    );
+    await expectDomainError(stub.retryEpisode(CHANNEL_B, VIDEO_A), "NOT_FOUND");
 
     await seedEpisode("ddddddddddd", CHANNEL_A, { status: "failed" });
     await seedRun(CHANNEL_A, { status: "running" });
     await expectDomainError(
-      stub.retryEpisode(OWNER, CHANNEL_A, "ddddddddddd"),
+      stub.retryEpisode(CHANNEL_A, "ddddddddddd"),
       "INVALID_STATE",
     );
     await stub.declineChannel(OWNER, CHANNEL_A);

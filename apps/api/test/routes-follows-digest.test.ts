@@ -16,6 +16,7 @@ import {
   expectShape,
   OWNER,
   registry,
+  seedApprovedChannel,
   seedEpisode,
   seedSummary,
   VIDEO_A,
@@ -53,17 +54,9 @@ async function seedCatalog(now: number) {
     [CHANNEL_B, "B"],
     [CHANNEL_D, "D"],
   ] as const) {
-    await stub.createChannel(OWNER, {
-      channelId: id,
-      title,
-      status: "approved",
-    });
+    await seedApprovedChannel(id, title);
   }
-  await stub.createChannel(ALICE, {
-    channelId: CHANNEL_C,
-    title: "C",
-    status: "requested",
-  });
+  await stub.createChannel({ channelId: CHANNEL_C, title: "C" });
   await stub.declineChannel(OWNER, CHANNEL_D);
 
   await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: now - HOUR });
@@ -108,10 +101,14 @@ describe("follow routes", () => {
     ).toMatchObject({ followerCount: 1 });
 
     // Alice is the only follower; unfollowing pauses the channel, and refollowing resumes it.
-    // A reader sees the `paused` boolean only; `pausedBy` is owner-only management (R14).
+    // `paused` is the top-level boolean; the reason lives in `management`, present for everyone.
     const soleUnfollow = await call(ALICE, "DELETE", `/follows/${CHANNEL_A}`);
     expect(soleUnfollow.json.follow).toMatchObject({
-      channel: { paused: true, followerCount: 0 },
+      channel: {
+        paused: true,
+        followerCount: 0,
+        management: { pausedBy: "system" },
+      },
     });
     expect((soleUnfollow.json.follow as Json).channel).not.toHaveProperty(
       "pausedBy",
@@ -220,7 +217,7 @@ describe("digest route", () => {
         { videoId: VIDEO_B, title: `Episode ${VIDEO_B}` },
       ],
     });
-    expect(episodes[0]).not.toHaveProperty("processing");
+    expect(episodes[0]).toHaveProperty("processing");
 
     const second = await call(ALICE, "GET", "/digest");
     expect((second.json.episodes as Json[]).map((e) => e.wasUnread)).toEqual([
@@ -239,7 +236,7 @@ describe("digest route", () => {
     });
 
     // A paused channel is still eligible: its existing summaries stay readable (spec §3.2).
-    await registry().pauseChannel(OWNER, CHANNEL_A);
+    await registry().pauseChannel(CHANNEL_A);
     const paused = await call(BOB, "GET", "/digest");
     expect((paused.json.episodes as Json[]).map((e) => e.videoId)).toEqual([
       VIDEO_A,

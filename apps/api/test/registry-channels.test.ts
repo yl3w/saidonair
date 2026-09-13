@@ -8,15 +8,15 @@ import {
   expectDomainError,
   OWNER,
   registry,
+  seedApprovedChannel,
 } from "./helpers";
 
 describe("registry channels", () => {
-  it("users create requested channels, the owner creates approved ones, never twice", async () => {
+  it("every add creates a requested channel, whoever asks, never twice", async () => {
     const stub = registry();
-    const requested = await stub.createChannel(ALICE, {
+    const requested = await stub.createChannel({
       channelId: CHANNEL_A,
       title: "A",
-      status: "requested",
     });
     expect(requested).toMatchObject({
       status: "requested",
@@ -24,44 +24,21 @@ describe("registry channels", () => {
       reviewedAt: null,
       pausedBy: null,
     });
-    await expectDomainError(
-      stub.createChannel(ALICE, {
-        channelId: CHANNEL_B,
-        title: "B",
-        status: "approved",
-      }),
-      "NOT_OWNER",
-    );
-    const approved = await stub.createChannel(OWNER, {
+    // The owner's add is no shortcut either (owner decision 2026-09-12): approval is a separate call.
+    const byOwner = await stub.createChannel({
       channelId: CHANNEL_B,
       title: "B",
-      status: "approved",
     });
-    // Nobody follows it yet, so the system pause applies at once, as approval does (Ruling R4);
-    // the owner's route follows immediately afterwards, which lifts it.
-    expect(approved).toMatchObject({
-      status: "approved",
-      reviewedByEmail: OWNER,
-      pausedBy: "system",
-    });
-    expect(approved.approvedAt).not.toBeNull();
+    expect(byOwner).toMatchObject({ status: "requested", approvedAt: null });
     await expectDomainError(
-      stub.createChannel(ALICE, {
-        channelId: CHANNEL_A,
-        title: "A",
-        status: "requested",
-      }),
+      stub.createChannel({ channelId: CHANNEL_A, title: "A" }),
       "INVALID_STATE",
     );
   });
 
-  it("approve sets approved_at once and reports whether the import should start", async () => {
+  it("approve sets approved_at once, records whoever approved, and reports whether the import should start", async () => {
     const stub = registry();
-    await stub.createChannel(ALICE, {
-      channelId: CHANNEL_A,
-      title: "A",
-      status: "requested",
-    });
+    await stub.createChannel({ channelId: CHANNEL_A, title: "A" });
     const first = await stub.approveChannel(OWNER, CHANNEL_A, {
       title: "Better",
       explanation: "ok",
@@ -77,7 +54,6 @@ describe("registry channels", () => {
       stub.approveChannel(OWNER, CHANNEL_A),
       "INVALID_STATE",
     );
-    await expectDomainError(stub.approveChannel(ALICE, CHANNEL_A), "NOT_OWNER");
 
     const declined = await stub.declineChannel(OWNER, CHANNEL_A, {
       explanation: "withdrawn",
@@ -87,18 +63,16 @@ describe("registry channels", () => {
       reviewNote: "withdrawn",
       pausedBy: null,
     });
-    const again = await stub.approveChannel(OWNER, CHANNEL_A);
+    // No role is checked: any identity may approve and is recorded as the reviewer (PRD §9).
+    const again = await stub.approveChannel(ALICE, CHANNEL_A);
     expect(again.importStarts).toBe(false);
     expect(again.channel.approvedAt).toBe(first.channel.approvedAt);
+    expect(again.channel.reviewedByEmail).toBe(ALICE);
   });
 
   it("decline from requested records the note; request again reopens and keeps it", async () => {
     const stub = registry();
-    await stub.createChannel(ALICE, {
-      channelId: CHANNEL_A,
-      title: "A",
-      status: "requested",
-    });
+    await stub.createChannel({ channelId: CHANNEL_A, title: "A" });
     const declined = await stub.declineChannel(OWNER, CHANNEL_A, {
       explanation: "no",
     });
@@ -110,107 +84,68 @@ describe("registry channels", () => {
       stub.declineChannel(OWNER, CHANNEL_A),
       "INVALID_STATE",
     );
-    const reopened = await stub.requestChannel(BOB, CHANNEL_A);
+    const reopened = await stub.requestChannel(CHANNEL_A);
     expect(reopened).toMatchObject({
       status: "requested",
       reviewNote: "no",
       reviewedByEmail: OWNER,
     });
-    await expectDomainError(
-      stub.requestChannel(BOB, CHANNEL_A),
-      "INVALID_STATE",
-    );
+    await expectDomainError(stub.requestChannel(CHANNEL_A), "INVALID_STATE");
   });
 
   it("pause and resume apply to approved channels only, idempotently", async () => {
     const stub = registry();
-    await stub.createChannel(OWNER, {
-      channelId: CHANNEL_A,
-      title: "A",
-      status: "approved",
-    });
-    await stub.createChannel(ALICE, {
-      channelId: CHANNEL_B,
-      title: "B",
-      status: "requested",
-    });
-    const paused = await stub.pauseChannel(OWNER, CHANNEL_A);
+    await seedApprovedChannel(CHANNEL_A, "A");
+    await stub.createChannel({ channelId: CHANNEL_B, title: "B" });
+    const paused = await stub.pauseChannel(CHANNEL_A);
     expect(paused.pausedBy).toBe("owner");
     expect(paused.pausedAt).not.toBeNull();
-    expect(await stub.pauseChannel(OWNER, CHANNEL_A)).toEqual(paused);
-    expect((await stub.resumeChannel(OWNER, CHANNEL_A)).pausedBy).toBeNull();
-    await expectDomainError(
-      stub.pauseChannel(OWNER, CHANNEL_B),
-      "INVALID_STATE",
-    );
-    await expectDomainError(stub.pauseChannel(ALICE, CHANNEL_A), "NOT_OWNER");
+    expect(await stub.pauseChannel(CHANNEL_A)).toEqual(paused);
+    expect((await stub.resumeChannel(CHANNEL_A)).pausedBy).toBeNull();
+    await expectDomainError(stub.pauseChannel(CHANNEL_B), "INVALID_STATE");
   });
 
-  it("lists requested and approved publicly; declined only by id or to the owner", async () => {
+  it("lists requested and approved publicly; declined only by id or in the full list", async () => {
     const stub = registry();
-    await stub.createChannel(ALICE, {
-      channelId: CHANNEL_A,
-      title: "A",
-      status: "requested",
-    });
-    await stub.createChannel(OWNER, {
-      channelId: CHANNEL_B,
-      title: "B",
-      status: "approved",
-    });
-    await stub.createChannel(ALICE, {
-      channelId: CHANNEL_C,
-      title: "C",
-      status: "requested",
-    });
+    await stub.createChannel({ channelId: CHANNEL_A, title: "A" });
+    await seedApprovedChannel(CHANNEL_B, "B");
+    await stub.createChannel({ channelId: CHANNEL_C, title: "C" });
     await stub.declineChannel(OWNER, CHANNEL_C);
     expect((await stub.listCatalogChannels()).map((c) => c.channelId)).toEqual([
       CHANNEL_A,
       CHANNEL_B,
     ]);
-    expect(
-      (await stub.listChannels(OWNER)).map((c) => c.channelId).sort(),
-    ).toEqual([CHANNEL_A, CHANNEL_B, CHANNEL_C]);
+    expect((await stub.listChannels()).map((c) => c.channelId).sort()).toEqual([
+      CHANNEL_A,
+      CHANNEL_B,
+      CHANNEL_C,
+    ]);
     expect((await stub.getChannel(CHANNEL_C))?.status).toBe("declined");
-    await expectDomainError(stub.listChannels(ALICE), "NOT_OWNER");
   });
 
   it("validates configuration input", async () => {
     const stub = registry();
     await expectDomainError(
-      stub.createChannel(OWNER, {
-        channelId: "not-a-channel",
-        title: "x",
-        status: "approved",
-      }),
+      stub.createChannel({ channelId: "not-a-channel", title: "x" }),
       "INVALID_INPUT",
     );
     await expectDomainError(
-      stub.createChannel(OWNER, {
-        channelId: CHANNEL_A,
-        title: "   ",
-        status: "approved",
-      }),
+      stub.createChannel({ channelId: CHANNEL_A, title: "   " }),
       "INVALID_INPUT",
     );
     await expectDomainError(
-      stub.createChannel(OWNER, {
+      stub.createChannel({
         channelId: CHANNEL_A,
         title: "A",
-        status: "approved",
         initialImportCount: 0,
       }),
       "INVALID_INPUT",
     );
     await expectDomainError(stub.approveChannel(OWNER, CHANNEL_B), "NOT_FOUND");
-    // An email nobody has registered is not an owner either.
+    // Whoever acts must at least be an email.
     await expectDomainError(
-      stub.createChannel("ghost@example.com", {
-        channelId: CHANNEL_A,
-        title: "A",
-        status: "approved",
-      }),
-      "NOT_OWNER",
+      stub.approveChannel("not an email", CHANNEL_A),
+      "INVALID_INPUT",
     );
   });
 });

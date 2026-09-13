@@ -1,8 +1,4 @@
-import type {
-  Channel,
-  ChannelManagement,
-  EpisodeCounts,
-} from "@media-digest/shared";
+import type { Channel, ChannelManagement } from "@media-digest/shared";
 import type {
   CatalogChannel,
   ChannelManagementRecord,
@@ -13,31 +9,24 @@ export function isApproved(channel: CatalogChannel): boolean {
   return channel.status === "approved";
 }
 
-export function zeroEpisodeCounts(): EpisodeCounts {
-  return {
-    tracked: 0,
-    available: 0,
-    pending: 0,
-    waiting: 0,
-    failed: 0,
-    skipped: 0,
-  };
-}
-
+/** What depends on who is asking: the caller's own relationship to the channel, nothing else. */
 export type ChannelView = {
   following: boolean;
-  episodes: EpisodeCounts;
   followerCount: number;
-  /** Present only when the caller is the owner. */
-  management?: ChannelManagementRecord;
 };
 
 /**
- * The one projection from the Registry's channel onto the shared `Channel`. Listing fields here,
- * rather than spreading, means a new Registry column never reaches the API by accident.
+ * The one projection from the Registry's channel, with its management facts, onto the shared
+ * `Channel`. Every caller receives the whole of it, `management` included: the API enforces no
+ * authorization (docs/PRD.md §7, §9), and the web decides what to show. Listing fields here, rather
+ * than spreading, means a new Registry column never reaches the API by accident.
  */
-export function toChannel(channel: CatalogChannel, view: ChannelView): Channel {
-  const base: Channel = {
+export function toChannel(
+  record: ChannelManagementRecord,
+  view: ChannelView,
+): Channel {
+  const { channel } = record;
+  return {
     channelId: channel.channelId,
     title: channel.title,
     canonicalUrl: channel.canonicalUrl,
@@ -47,13 +36,11 @@ export function toChannel(channel: CatalogChannel, view: ChannelView): Channel {
     reviewedAt: channel.reviewedAt,
     reviewNote: channel.reviewNote,
     lastIngestedAt: channel.lastIngestedAt,
-    episodes: view.episodes,
+    episodes: record.episodes,
     following: view.following,
     followerCount: view.followerCount,
+    management: toManagement(record),
   };
-  return view.management
-    ? { ...base, management: toManagement(view.management) }
-    : base;
 }
 
 export function toManagement(

@@ -32,19 +32,31 @@ export const HealthResponseSchema = z
   .meta({ id: "HealthResponse", description: "`GET /health`" });
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
+/**
+ * The typed error codes and their HTTP statuses. There is no 403: the API enforces no authorization
+ * (PRD §9). `apps/api` infers its `DomainErrorCode` from this schema, so the two cannot drift.
+ */
+export const ErrorCodeSchema = z
+  .enum(["INVALID_INPUT", "NOT_FOUND", "INVALID_STATE", "UPSTREAM_UNAVAILABLE"])
+  .meta({
+    id: "ErrorCode",
+    description:
+      "INVALID_INPUT (400, including a missing or malformed `X-User-Email`), NOT_FOUND (404), INVALID_STATE (409), UPSTREAM_UNAVAILABLE (502: YouTube did not answer usably).",
+  });
+export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
+
 export const ErrorResponseSchema = z
   .object({
     error: z
       .string()
       .describe("What went wrong. Typed errors are prefixed with their code."),
-    code: z
-      .string()
-      .describe(
-        "Present for typed errors: INVALID_INPUT (400), NOT_OWNER (403), NOT_FOUND (404), INVALID_STATE (409), UPSTREAM_UNAVAILABLE (502).",
-      )
-      .optional(),
+    code: ErrorCodeSchema.optional(),
   })
-  .meta({ id: "ErrorResponse", description: "Every non-2xx response body." });
+  .meta({
+    id: "ErrorResponse",
+    description:
+      "Every non-2xx response body. `code` is absent only on an unexpected 500.",
+  });
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
 /** Registry role. `owner` manages the shared catalog; everyone else is `user`. */
@@ -191,7 +203,7 @@ export const IngestionRunSummarySchema = z
   });
 export type IngestionRunSummary = z.infer<typeof IngestionRunSummarySchema>;
 
-/** Owner-only fields of a channel. */
+/** The management facts of a channel, present for every caller; the web shows them on the Owner screens. */
 export const ChannelManagementSchema = z
   .object({
     initialImportCount: z.number().int(),
@@ -209,13 +221,14 @@ export const ChannelManagementSchema = z
   })
   .meta({
     id: "ChannelManagement",
-    description: "Owner-only fields of a channel.",
+    description:
+      "The management facts of a channel, present for every caller: the API enforces no authorization, and the web shows them on the Owner screens.",
   });
 export type ChannelManagement = z.infer<typeof ChannelManagementSchema>;
 
 /**
- * A catalog channel as any caller sees it. `following` is about the caller; `management` is present
- * only for the owner.
+ * A catalog channel as every caller sees it, `management` included. Only `following` depends on
+ * who is asking.
  */
 export const ChannelSchema = z
   .object({
@@ -240,22 +253,22 @@ export const ChannelSchema = z
     followerCount: Count.describe(
       "Active followers, from the Registry's follower record.",
     ),
-    management: ChannelManagementSchema.optional(),
+    management: ChannelManagementSchema,
   })
   .meta({
     id: "Channel",
     description:
-      "A catalog channel as any caller sees it. `following` is about the caller; `management` is present only for the owner.",
+      "A catalog channel as every caller sees it, `management` included. Only `following` depends on who is asking.",
   });
 export type Channel = z.infer<typeof ChannelSchema>;
 
-/** `GET /channels` — requested and approved channels; `?scope=all` (owner) adds declined ones, each with `management`. */
+/** `GET /channels` — requested and approved channels; `?scope=all` adds declined ones. */
 export const ChannelsResponseSchema = z
   .object({ channels: z.array(ChannelSchema) })
   .meta({
     id: "ChannelsResponse",
     description:
-      "`GET /channels` — requested and approved channels; `?scope=all` (owner) adds declined ones, each with `management`.",
+      "`GET /channels` — requested and approved channels; `?scope=all` adds declined ones.",
   });
 export type ChannelsResponse = z.infer<typeof ChannelsResponseSchema>;
 
@@ -353,7 +366,7 @@ export const RelatedEpisodeSchema = z
   });
 export type RelatedEpisode = z.infer<typeof RelatedEpisodeSchema>;
 
-/** Owner-only processing detail of an episode. */
+/** Processing detail of an episode, present for every caller; the web shows it on the Owner screens. */
 export const EpisodeProcessingSchema = z
   .object({
     attemptCount: Count,
@@ -372,14 +385,15 @@ export const EpisodeProcessingSchema = z
   })
   .meta({
     id: "EpisodeProcessing",
-    description: "Owner-only processing detail of an episode.",
+    description:
+      "Processing detail of an episode, present for every caller; the web shows it on the Owner screens.",
   });
 export type EpisodeProcessing = z.infer<typeof EpisodeProcessingSchema>;
 
 /**
- * An episode of a catalog channel. `summary` and `related` are present for followers and the owner;
- * `wasUnread` accompanies a returned summary and reports the caller's receipt state before this
- * response recorded one; `processing` is present only for the owner.
+ * An episode of a catalog channel, the same for every caller: summary, related titles (filtered to
+ * the caller's eligible channels), and `processing`. `wasUnread` accompanies a summary returned to
+ * an eligible caller and reports their receipt state before this response recorded one.
  */
 export const EpisodeSchema = z
   .object({
@@ -399,15 +413,15 @@ export const EpisodeSchema = z
     wasUnread: z
       .boolean()
       .describe(
-        "Whether the caller had no read receipt for the summary before this response recorded one.",
+        "For an eligible caller (active follower of an approved channel) with a returned summary: whether they had no read receipt before this response recorded one. Absent for everyone else; their receipts are never touched.",
       )
       .optional(),
-    processing: EpisodeProcessingSchema.optional(),
+    processing: EpisodeProcessingSchema,
   })
   .meta({
     id: "Episode",
     description:
-      "An episode of a catalog channel. `summary` and `related` carry content for followers and the owner (null and empty for others); `wasUnread` accompanies a returned summary; `processing` is present only for the owner.",
+      "An episode of a catalog channel, the same for every caller: summary, related titles filtered to the caller's eligible channels, and `processing`. `wasUnread` accompanies a summary returned to an eligible caller.",
   });
 export type Episode = z.infer<typeof EpisodeSchema>;
 
@@ -418,7 +432,7 @@ export const EpisodeResponseSchema = z.object({ episode: EpisodeSchema }).meta({
 });
 export type EpisodeResponse = z.infer<typeof EpisodeResponseSchema>;
 
-/** `GET /channels/:id/episodes?limit=` — newest first. */
+/** `GET /channels/:id/episodes?limit=` — newest first, with summaries and processing detail for every caller. */
 export const EpisodesResponseSchema = z
   .object({ episodes: z.array(EpisodeSchema) })
   .meta({
@@ -479,12 +493,12 @@ export const IngestionRunSchema = z
   .meta({ id: "IngestionRun", description: "One ingestion run of a channel." });
 export type IngestionRun = z.infer<typeof IngestionRunSchema>;
 
-/** `GET /channels/:id/runs` (owner) — newest first. */
+/** `GET /channels/:id/runs` — newest first. */
 export const IngestionRunsResponseSchema = z
   .object({ runs: z.array(IngestionRunSchema) })
   .meta({
     id: "IngestionRunsResponse",
-    description: "`GET /channels/:id/runs` (owner) — newest first.",
+    description: "`GET /channels/:id/runs` — newest first.",
   });
 export type IngestionRunsResponse = z.infer<typeof IngestionRunsResponseSchema>;
 
@@ -531,17 +545,17 @@ export const FollowerSchema = z
   .object({ email: z.string(), followedAt: UnixMs })
   .meta({
     id: "Follower",
-    description: "One active follower of a channel, as the owner sees it.",
+    description: "One active follower of a channel.",
   });
 export type Follower = z.infer<typeof FollowerSchema>;
 
-/** `GET /channels/:id/followers` (owner) — active followers, oldest first. */
+/** `GET /channels/:id/followers` — active followers, oldest first. */
 export const FollowersResponseSchema = z
   .object({ followers: z.array(FollowerSchema) })
   .meta({
     id: "FollowersResponse",
     description:
-      "`GET /channels/:id/followers` (owner) — active followers, oldest first.",
+      "`GET /channels/:id/followers` — active followers, oldest first.",
   });
 export type FollowersResponse = z.infer<typeof FollowersResponseSchema>;
 
@@ -595,10 +609,10 @@ export const CatalogSchema = z
   .meta({ id: "Catalog", description: "The catalog's aggregate state." });
 export type Catalog = z.infer<typeof CatalogSchema>;
 
-/** `GET /catalog` (owner) */
+/** `GET /catalog` */
 export const CatalogResponseSchema = z
   .object({ catalog: CatalogSchema })
-  .meta({ id: "CatalogResponse", description: "`GET /catalog` (owner)" });
+  .meta({ id: "CatalogResponse", description: "`GET /catalog`" });
 export type CatalogResponse = z.infer<typeof CatalogResponseSchema>;
 
 // --- query and path parameters (API only; documented and validated from the same schema) ------------
@@ -608,7 +622,7 @@ export const ScopeQuerySchema = z.object({
   scope: z
     .enum(["all"])
     .describe(
-      "`all` widens the collection to everything the system holds. Owner only.",
+      "`all` widens the collection to everything the system holds, declined channels included.",
     )
     .optional(),
 });

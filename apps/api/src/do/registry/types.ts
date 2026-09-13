@@ -39,15 +39,11 @@ export type CatalogChannel = {
   updatedAt: number;
 };
 
-/** Callers resolve URLs to a canonical `UC…` id and fetch the title before calling the DO. */
+/** Callers resolve URLs to a canonical `UC…` id and fetch the title before calling the DO. Every channel starts `requested`. */
 export type CreateChannelInput = {
   channelId: string;
   title: string;
   initialImportCount?: number;
-  /** `approved` only for the owner's add; the facade checks the role. */
-  status: "requested" | "approved";
-  /** Required with `approved`: the owner, recorded as reviewer. */
-  reviewer?: string;
 };
 
 export type ReviewInput = {
@@ -59,7 +55,7 @@ export type ReviewInput = {
 /** One active or former follower of a channel, as the owner's queue shows it. */
 export type FollowerRecord = { email: string; followedAt: number };
 
-/** Owner-only processing detail of an episode; routes drop it for readers. */
+/** Processing detail of an episode, returned to every caller (the API enforces no authorization). */
 export type EpisodeProcessingRecord = {
   attemptCount: number;
   failureCode: string | null;
@@ -121,7 +117,7 @@ export type IngestionRunRecord = {
   episodes: IngestionRunEpisodeRecord[];
 };
 
-/** A channel with the owner-only facts the catalog table and detail header show. */
+/** A channel with the management facts the catalog table and detail header show. */
 export type ChannelManagementRecord = {
   channel: CatalogChannel;
   episodes: EpisodeCounts;

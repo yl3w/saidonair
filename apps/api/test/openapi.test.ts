@@ -81,6 +81,26 @@ describe("GET /openapi.json", () => {
     ).toContain("502");
   });
 
+  it("documents no 403 anywhere and a four-value ErrorCode: the API enforces no authorization", async () => {
+    const doc = await fetchDocument();
+    for (const [path, operations] of Object.entries(doc.paths)) {
+      for (const [method, operation] of Object.entries(operations)) {
+        expect(
+          Object.keys(operation.responses),
+          `${method} ${path}`,
+        ).not.toContain("403");
+      }
+    }
+    expect(doc.components.schemas.ErrorCode).toMatchObject({
+      enum: [
+        "INVALID_INPUT",
+        "NOT_FOUND",
+        "INVALID_STATE",
+        "UPSTREAM_UNAVAILABLE",
+      ],
+    });
+  });
+
   it("gives every operation one tag, a success response, and the identity requirement", async () => {
     const doc = await fetchDocument();
     for (const [path, operations] of Object.entries(doc.paths)) {

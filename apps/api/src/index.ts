@@ -54,8 +54,8 @@ app.get("/openapi.json", describeRoute({ hide: true }), async (context) =>
 // 2026-09-07 to "JSON everywhere".
 app.get("/docs", describeRoute({ hide: true }), docsPage);
 
-// Everything below requires X-User-Email. Routes are named after entities; owner-only
-// operations carry `requireOwner` themselves (AGENTS.md → API code).
+// Everything below requires X-User-Email. Routes are named after entities, and none checks a
+// role: the API enforces no authorization (docs/PRD.md §9).
 app.use("*", requireIdentity);
 app.route("/me", meRoutes);
 app.route("/catalog", catalogRoutes);

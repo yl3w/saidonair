@@ -37,14 +37,14 @@ export function getRegistry(env: Env): DurableObjectStub<RegistryDO> {
 
 /**
  * Global Registry Durable Object: identities, the shared channel catalog, episodes with their
- * shared summaries, and ingestion runs (reads only until M3 writes them).
+ * shared summaries, and discovery runs (reads only until M3 writes them).
  *
- * Every public method is an RPC endpoint. Owner-only methods take the acting email first and
- * verify the `owner` role here, so a route bug can never grant catalog management to a user.
- * Read methods that any caller may use are scoped by the channel ids the caller passes; the
- * routes compose them with the caller's follows. Methods are synchronous: DO input gates make
- * each call atomic against other callers, and multi-statement writes are additionally wrapped
- * in `transactionSync`.
+ * Every public method is an RPC endpoint, and none checks a role: the API enforces no
+ * authorization (docs/PRD.md §2, §9). Methods that record who acted (approve, decline, skip) take
+ * the acting email first and store it, whoever it is. Read methods are scoped by the channel ids
+ * the caller passes; the routes compose them with the caller's follows. Methods are synchronous:
+ * DO input gates make each call atomic against other callers, and multi-statement writes are
+ * additionally wrapped in `transactionSync`.
  */
 export class RegistryDO extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -88,57 +88,38 @@ export class RegistryDO extends DurableObject<Env> {
     return channels.getChannel(this.#sql, requireChannelId(channelId));
   }
 
-  /** Owner: every channel in every status. */
-  listChannels(actorEmail: string): CatalogChannel[] {
-    this.#assertOwner(actorEmail);
+  /** Every channel in every status, newest first. */
+  listChannels(): CatalogChannel[] {
     return channels.listChannels(this.#sql);
   }
 
   /**
-   * Anyone creates a `requested` channel; only the owner creates an `approved` one. Create-only:
-   * `INVALID_STATE` when the id exists, which the route turns into follow or request-again. An
-   * approved channel nobody follows yet is paused by the system at once, exactly as approval does
-   * (Ruling R4); the owner's route follows immediately afterwards, which lifts that pause.
+   * Creates a `requested` channel for whoever asks: there is no owner shortcut, approval is always
+   * `approveChannel` (owner decision 2026-09-12). Create-only: `INVALID_STATE` when the id exists,
+   * which the route turns into follow or request-again.
    */
-  createChannel(email: string, input: CreateChannelInput): CatalogChannel {
-    const actor = users.requireEmail(email);
-    if (input.status === "approved") this.#assertOwner(actor);
-    return this.#transaction(() => {
-      const now = Date.now();
-      const channel = channels.createChannel(
-        this.#sql,
-        {
-          ...input,
-          reviewer: input.status === "approved" ? actor : undefined,
-        },
-        now,
-      );
-      if (channel.status !== "approved") return channel;
-      const active = followers.countActiveByChannel(this.#sql, [
-        channel.channelId,
-      ])[channel.channelId];
-      if ((active ?? 0) > 0) return channel;
-      return channels.setPause(this.#sql, channel.channelId, "system", now);
-    });
+  createChannel(input: CreateChannelInput): CatalogChannel {
+    return channels.createChannel(this.#sql, input, Date.now());
   }
 
   /**
-   * Owner: `requested | declined → approved`. `importStarts` is true when approved_at was null
-   * before. A channel nobody actively follows is paused by the system at once, so approving one
-   * with no followers never leaves it running unattended (Ruling R4).
+   * `requested | declined → approved`, recording the caller as reviewer. `importStarts` is true when
+   * approved_at was null before. A channel nobody actively follows is paused by the system at once,
+   * so approving one with no followers never leaves it running unattended (Ruling R4).
    */
   approveChannel(
     actorEmail: string,
     channelId: string,
     input: ReviewInput = {},
   ): { channel: CatalogChannel; importStarts: boolean } {
-    const reviewer = this.#assertOwner(actorEmail);
+    const reviewer = users.requireEmail(actorEmail);
     return this.#transaction(() => {
+      const now = Date.now();
+      users.ensureUser(this.#sql, reviewer, now);
       const before = channels.requireChannel(
         this.#sql,
         requireChannelId(channelId),
       );
-      const now = Date.now();
       let channel = channels.approveChannel(
         this.#sql,
         before.channelId,
@@ -161,54 +142,58 @@ export class RegistryDO extends DurableObject<Env> {
     });
   }
 
-  /** Owner: `requested | approved → declined`. A run in flight finishes; eligibility hides its output. */
+  /** `requested | approved → declined`, recording the caller as reviewer. Existing episode recovery continues. */
   declineChannel(
     actorEmail: string,
     channelId: string,
     input: ReviewInput = {},
   ): CatalogChannel {
-    const reviewer = this.#assertOwner(actorEmail);
-    return channels.declineChannel(
-      this.#sql,
-      channelId,
-      reviewer,
-      input,
-      Date.now(),
-    );
+    const reviewer = users.requireEmail(actorEmail);
+    return this.#transaction(() => {
+      const now = Date.now();
+      users.ensureUser(this.#sql, reviewer, now);
+      return channels.declineChannel(
+        this.#sql,
+        channelId,
+        reviewer,
+        input,
+        now,
+      );
+    });
   }
 
-  /** Anyone: `declined → requested`. The route follows the caller afterwards. */
-  requestChannel(email: string, channelId: string): CatalogChannel {
-    users.requireEmail(email);
+  /** `declined → requested`, keeping the review fields. The route follows the caller afterwards. */
+  requestChannel(channelId: string): CatalogChannel {
     return channels.requestChannel(this.#sql, channelId, Date.now());
   }
 
-  pauseChannel(actorEmail: string, channelId: string): CatalogChannel {
-    this.#assertOwner(actorEmail);
+  pauseChannel(channelId: string): CatalogChannel {
     return channels.setPause(this.#sql, channelId, "owner", Date.now());
   }
 
-  /** Owner resume clears either kind of pause. */
-  resumeChannel(actorEmail: string, channelId: string): CatalogChannel {
-    this.#assertOwner(actorEmail);
+  /** Resume clears either kind of pause. */
+  resumeChannel(channelId: string): CatalogChannel {
     return channels.setPause(this.#sql, channelId, null, Date.now());
   }
 
-  /** Owner: the catalog's aggregate state for the attention card and health strip. */
-  getCatalogSummary(actorEmail: string): Catalog {
-    this.#assertOwner(actorEmail);
+  /** The catalog's aggregate state for the attention card and health strip. */
+  getCatalogSummary(): Catalog {
     return catalog.summarize(this.#sql);
   }
 
+  /** The browsable catalog (requested and approved) with management facts, title order. */
+  listCatalogManagement(): ChannelManagementRecord[] {
+    return catalog.withManagement(
+      this.#sql,
+      channels.listCatalogChannels(this.#sql),
+    );
+  }
+
   /**
-   * Owner: channels with their management facts (episode counts, latest run, never-started flag).
-   * All channels in every status by default, or just the given ids.
+   * Channels with their management facts (episode counts, latest run, never-started flag): every
+   * status by default, or just the given ids in any status; unknown ids are simply absent.
    */
-  listChannelManagement(
-    actorEmail: string,
-    channelIds?: string[],
-  ): ChannelManagementRecord[] {
-    this.#assertOwner(actorEmail);
+  listChannelManagement(channelIds?: string[]): ChannelManagementRecord[] {
     const selected = channelIds
       ? channels.listChannelsByIds(this.#sql, requireChannelIds(channelIds))
       : channels.listChannels(this.#sql);
@@ -231,7 +216,7 @@ export class RegistryDO extends DurableObject<Env> {
     return episodes.countByChannel(this.#sql, requireChannelIds(channelIds));
   }
 
-  /** Processed episodes with summaries since `sinceMs` in the given channels, newest first. */
+  /** Available episodes with summaries since `sinceMs` in the given channels, newest first. */
   listDigest(channelIds: string[], sinceMs: number): EpisodeRecord[] {
     if (!Number.isFinite(sinceMs) || sinceMs < 0) {
       throw new DomainError("INVALID_INPUT", "sinceMs must be a timestamp");
@@ -243,7 +228,7 @@ export class RegistryDO extends DurableObject<Env> {
     );
   }
 
-  /** One channel's episodes in every status, newest first; the route decides what the caller sees. */
+  /** One channel's episodes in every status, newest first, with summaries and processing detail. */
   listEpisodes(
     channelId: string,
     options: ListEpisodesOptions,
@@ -254,13 +239,8 @@ export class RegistryDO extends DurableObject<Env> {
     });
   }
 
-  /** Owner: back to `pending` with attempts reset; the route starts a one-episode run. */
-  retryEpisode(
-    actorEmail: string,
-    channelId: string,
-    videoId: string,
-  ): EpisodeRecord {
-    this.#assertOwner(actorEmail);
+  /** Back to `pending` with attempts reset; the route starts a one-episode run. */
+  retryEpisode(channelId: string, videoId: string): EpisodeRecord {
     const id = requireChannelId(channelId);
     const video = requireVideoId(videoId);
     return this.#transaction(() =>
@@ -268,25 +248,26 @@ export class RegistryDO extends DurableObject<Env> {
     );
   }
 
-  /** Owner: `failed → skipped OWNER`. */
+  /** `failed → skipped OWNER`, recording the caller's email as the skipper. */
   skipEpisode(
     actorEmail: string,
     channelId: string,
     videoId: string,
   ): EpisodeRecord {
-    const email = this.#assertOwner(actorEmail);
+    const email = users.requireEmail(actorEmail);
     const id = requireChannelId(channelId);
     const video = requireVideoId(videoId);
-    return this.#transaction(() =>
-      episodes.skipEpisode(this.#sql, id, video, email, Date.now()),
-    );
+    return this.#transaction(() => {
+      const now = Date.now();
+      users.ensureUser(this.#sql, email, now);
+      return episodes.skipEpisode(this.#sql, id, video, email, now);
+    });
   }
 
   // --- ingestion runs -------------------------------------------------------
 
-  /** Owner: every run of one channel with per-episode outcomes, newest first. */
-  listRuns(actorEmail: string, channelId: string): IngestionRunRecord[] {
-    this.#assertOwner(actorEmail);
+  /** Every run of one channel, newest first. */
+  listRuns(channelId: string): IngestionRunRecord[] {
     this.#requireChannel(channelId);
     return runs.listByChannel(this.#sql, requireChannelId(channelId));
   }
@@ -294,9 +275,9 @@ export class RegistryDO extends DurableObject<Env> {
   // --- followers --------------------------------------------------------------
 
   /**
-   * Anyone: records the caller's follow, keeping the Registry's follower record in step with the
-   * User DO's own list. `ensureUser` runs first so the foreign key holds for a direct RPC caller
-   * that never went through the identity middleware.
+   * Records the caller's follow, keeping the Registry's follower record in step with the User DO's
+   * own list. `ensureUser` runs first so the foreign key holds for a direct RPC caller that never
+   * went through the identity middleware.
    */
   recordFollow(email: string, channelId: string): CatalogChannel {
     const actor = users.requireEmail(email);
@@ -307,7 +288,7 @@ export class RegistryDO extends DurableObject<Env> {
     });
   }
 
-  /** Anyone: records the caller's unfollow; the last follower leaving pauses an approved channel. */
+  /** Records the caller's unfollow; the last follower leaving pauses an approved channel. */
   recordUnfollow(email: string, channelId: string): CatalogChannel {
     const actor = users.requireEmail(email);
     return this.#transaction(() => {
@@ -317,7 +298,7 @@ export class RegistryDO extends DurableObject<Env> {
     });
   }
 
-  /** Active followers per channel, zero-filled; any caller may check counts for channels they can see. */
+  /** Active followers per channel, zero-filled. */
   countFollowers(channelIds: string[]): Record<string, number> {
     return followers.countActiveByChannel(
       this.#sql,
@@ -325,9 +306,8 @@ export class RegistryDO extends DurableObject<Env> {
     );
   }
 
-  /** Owner: one channel's active followers, oldest first. */
-  listFollowers(actorEmail: string, channelId: string): FollowerRecord[] {
-    this.#assertOwner(actorEmail);
+  /** One channel's active followers, oldest first. */
+  listFollowers(channelId: string): FollowerRecord[] {
     this.#requireChannel(channelId);
     return followers.listActive(this.#sql, requireChannelId(channelId));
   }
@@ -340,13 +320,6 @@ export class RegistryDO extends DurableObject<Env> {
 
   #transaction<T>(work: () => T): T {
     return this.ctx.storage.transactionSync(work);
-  }
-
-  /** Returns the normalized actor email once the owner role is confirmed. */
-  #assertOwner(actorEmail: string): string {
-    const email = users.requireEmail(actorEmail);
-    users.assertOwner(this.#sql, email);
-    return email;
   }
 
   #requireChannel(channelId: string): CatalogChannel {
