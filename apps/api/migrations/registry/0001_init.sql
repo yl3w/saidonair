@@ -49,9 +49,9 @@ CREATE TABLE channels (
 -- Cron selection: approved and not paused.
 CREATE INDEX channels_status_paused_by ON channels (status, paused_by);
 
--- Who follows what, shared so the Registry can count followers, list who is waiting on a requested channel,
--- and pause a channel nobody follows. The User DO's channel_follows stays the source of truth for the user's
--- own list; the follow routes keep the two in step. An active follow is unfollowed_at IS NULL.
+-- The one record of who follows what (docs/PRD.md §4.3, decided 2026-09-13): the user's own list, the follower
+-- count, the owner's queue, the automatic pause, and eligibility all read these rows. An active follow is
+-- unfollowed_at IS NULL; an unfollow keeps the row as a tombstone that an explicit refollow clears.
 CREATE TABLE channel_followers (
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
   user_email TEXT NOT NULL REFERENCES global_users (email),
@@ -63,6 +63,8 @@ CREATE TABLE channel_followers (
 );
 
 CREATE INDEX channel_followers_channel_id_unfollowed_at ON channel_followers (channel_id, unfollowed_at);
+-- A user's own list and eligibility.
+CREATE INDEX channel_followers_user_email_unfollowed_at ON channel_followers (user_email, unfollowed_at);
 
 -- Discovery runs: one completed RSS feed check of one channel (docs/PRD.md §4.2 rules 1–4). A run exists only
 -- once complete, so it has no status, Workflow, or failure columns; episode processing history is on

@@ -1,53 +1,84 @@
+import { DomainError } from "../../lib/errors";
 import { chunk, placeholders } from "../../lib/sql";
-import { getChannel, requireChannel, setPause } from "./channels";
-import type { CatalogChannel, FollowerRecord } from "./types";
+import {
+  type ChannelRow,
+  requireChannel,
+  setPause,
+  toChannel,
+} from "./channels";
+import type { CatalogChannel, FollowerRecord, FollowRecord } from "./types";
 
 /**
- * Who follows what, shared with the Registry so it can list requesters, count followers, and pause a
- * channel nobody follows (docs/specs/channel-simplification.md §3.2). The User DO's channel_follows is
- * the source of truth for the user's own list; the follow routes keep the two in step.
+ * The one record of who follows what (docs/PRD.md §4.3, decided 2026-09-13): one row per channel
+ * and email serves the user's own list, `following`, the follower count, the owner's queue, the
+ * automatic pause, and eligibility. Nothing is copied anywhere else, so nothing can drift.
+ */
+
+type FollowRow = {
+  channel_id: string;
+  followed_at: number;
+  unfollowed_at: number | null;
+};
+
+const FOLLOW_COLUMNS = "channel_id, followed_at, unfollowed_at";
+
+/**
+ * Follow or refollow. Idempotent on an active row; a tombstone is cleared and adopts the new
+ * `followed_at`. A follow lifts a system pause; an owner pause needs the owner.
  */
 export function recordFollow(
   sql: SqlStorage,
   channelId: string,
   email: string,
   now: number,
-): CatalogChannel {
+): FollowRecord {
   const channel = requireChannel(sql, channelId);
-  sql.exec(
-    `INSERT INTO channel_followers (channel_id, user_email, followed_at, unfollowed_at, created_at, updated_at)
-     VALUES (?, ?, ?, NULL, ?, ?)
-     ON CONFLICT (channel_id, user_email) DO UPDATE
-       SET followed_at = CASE WHEN unfollowed_at IS NULL THEN followed_at ELSE excluded.followed_at END,
-           unfollowed_at = NULL, updated_at = excluded.updated_at`,
-    channel.channelId,
-    email,
-    now,
-    now,
-    now,
-  );
-  // A follow lifts a system pause; an owner pause needs the owner.
+  const row = sql
+    .exec<FollowRow>(
+      `INSERT INTO channel_followers (channel_id, user_email, followed_at, unfollowed_at, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, ?, ?)
+       ON CONFLICT (channel_id, user_email) DO UPDATE
+         SET followed_at = CASE WHEN unfollowed_at IS NULL THEN followed_at ELSE excluded.followed_at END,
+             unfollowed_at = NULL, updated_at = excluded.updated_at
+       RETURNING ${FOLLOW_COLUMNS}`,
+      channel.channelId,
+      email,
+      now,
+      now,
+      now,
+    )
+    .one();
   if (channel.pausedBy === "system")
-    return setPause(sql, channel.channelId, null, now);
-  return channel;
+    setPause(sql, channel.channelId, null, now);
+  return toFollow(row);
 }
 
+/**
+ * Unfollow, retaining a tombstone. `NOT_FOUND` when the user never followed the channel; idempotent
+ * on a tombstone. The last active follower leaving pauses an approved channel, unless the owner
+ * already paused it.
+ */
 export function recordUnfollow(
   sql: SqlStorage,
   channelId: string,
   email: string,
   now: number,
-): CatalogChannel {
+): FollowRecord {
   const channel = requireChannel(sql, channelId);
-  sql.exec(
-    `UPDATE channel_followers SET unfollowed_at = ?, updated_at = ?
-     WHERE channel_id = ? AND user_email = ? AND unfollowed_at IS NULL`,
-    now,
-    now,
-    channel.channelId,
-    email,
-  );
-  // The last follower leaving pauses an approved channel, unless the owner already paused it.
+  const existing = getFollow(sql, channel.channelId, email);
+  if (!existing) throw new DomainError("NOT_FOUND", "channel is not followed");
+  if (existing.unfollowedAt !== null) return existing;
+  const row = sql
+    .exec<FollowRow>(
+      `UPDATE channel_followers SET unfollowed_at = ?, updated_at = ?
+       WHERE channel_id = ? AND user_email = ?
+       RETURNING ${FOLLOW_COLUMNS}`,
+      now,
+      now,
+      channel.channelId,
+      email,
+    )
+    .one();
   const active =
     countActiveByChannel(sql, [channel.channelId])[channel.channelId] ?? 0;
   if (
@@ -55,9 +86,68 @@ export function recordUnfollow(
     channel.status === "approved" &&
     channel.pausedBy === null
   ) {
-    return setPause(sql, channel.channelId, "system", now);
+    setPause(sql, channel.channelId, "system", now);
   }
-  return getChannel(sql, channel.channelId) ?? channel;
+  return toFollow(row);
+}
+
+/** One user's row for one channel, active or tombstone; null when they never followed it. */
+export function getFollow(
+  sql: SqlStorage,
+  channelId: string,
+  email: string,
+): FollowRecord | null {
+  const row = sql
+    .exec<FollowRow>(
+      `SELECT ${FOLLOW_COLUMNS} FROM channel_followers WHERE channel_id = ? AND user_email = ?`,
+      channelId,
+      email,
+    )
+    .toArray()[0];
+  return row ? toFollow(row) : null;
+}
+
+/** A user's own list: active follows, newest first. */
+export function listByEmail(sql: SqlStorage, email: string): FollowRecord[] {
+  return sql
+    .exec<FollowRow>(
+      `SELECT ${FOLLOW_COLUMNS} FROM channel_followers
+       WHERE user_email = ? AND unfollowed_at IS NULL
+       ORDER BY followed_at DESC, channel_id`,
+      email,
+    )
+    .toArray()
+    .map(toFollow);
+}
+
+/** The channel ids a user actively follows, sorted. */
+export function activeChannelIds(sql: SqlStorage, email: string): string[] {
+  return sql
+    .exec<{ channel_id: string }>(
+      `SELECT channel_id FROM channel_followers
+       WHERE user_email = ? AND unfollowed_at IS NULL ORDER BY channel_id`,
+      email,
+    )
+    .toArray()
+    .map((row) => row.channel_id);
+}
+
+/**
+ * The one implementation of eligibility (docs/PRD.md §4.3, hard rule 3): the channels a user may
+ * read from are their active follows that are approved, paused or not. Requested channels have no
+ * content yet and declined ones are excluded by status. Title order, as the catalog lists.
+ */
+export function listEligible(sql: SqlStorage, email: string): CatalogChannel[] {
+  return sql
+    .exec<ChannelRow>(
+      `SELECT c.* FROM channel_followers f
+       JOIN channels c ON c.channel_id = f.channel_id
+       WHERE f.user_email = ? AND f.unfollowed_at IS NULL AND c.status = 'approved'
+       ORDER BY c.title COLLATE NOCASE, c.channel_id`,
+      email,
+    )
+    .toArray()
+    .map(toChannel);
 }
 
 /** Active followers per channel, zero-filled for every requested id. */
@@ -92,4 +182,12 @@ export function listActive(
     )
     .toArray()
     .map((row) => ({ email: row.user_email, followedAt: row.followed_at }));
+}
+
+function toFollow(row: FollowRow): FollowRecord {
+  return {
+    channelId: row.channel_id,
+    followedAt: row.followed_at,
+    unfollowedAt: row.unfollowed_at,
+  };
 }

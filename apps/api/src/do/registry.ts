@@ -22,6 +22,7 @@ import type {
   CreateChannelInput,
   EpisodeRecord,
   FollowerRecord,
+  FollowRecord,
   IngestionRunRecord,
   ListEpisodesOptions,
   RegistryUser,
@@ -273,30 +274,47 @@ export class RegistryDO extends DurableObject<Env> {
     return runs.listByChannel(this.#sql, requireChannelId(channelId));
   }
 
-  // --- followers --------------------------------------------------------------
+  // --- follows (the one record: docs/PRD.md §4.3, 2026-09-13) ----------------
 
   /**
-   * Records the caller's follow, keeping the Registry's follower record in step with the User DO's
-   * own list. `ensureUser` runs first so the foreign key holds for a direct RPC caller that never
-   * went through the identity middleware.
+   * Follow or refollow. `ensureUser` runs first so the foreign key holds for a direct RPC caller
+   * that never went through the identity middleware. Lifts a system pause.
    */
-  recordFollow(email: string, channelId: string): CatalogChannel {
+  recordFollow(email: string, channelId: string): FollowRecord {
     const actor = users.requireEmail(email);
+    const id = requireChannelId(channelId);
     return this.#transaction(() => {
       const now = Date.now();
       users.ensureUser(this.#sql, actor, now);
-      return followers.recordFollow(this.#sql, channelId, actor, now);
+      return followers.recordFollow(this.#sql, id, actor, now);
     });
   }
 
-  /** Records the caller's unfollow; the last follower leaving pauses an approved channel. */
-  recordUnfollow(email: string, channelId: string): CatalogChannel {
+  /**
+   * Unfollow, retaining a tombstone: `NOT_FOUND` when the caller never followed the channel,
+   * idempotent on a tombstone. The last follower leaving pauses an approved channel.
+   */
+  recordUnfollow(email: string, channelId: string): FollowRecord {
     const actor = users.requireEmail(email);
-    return this.#transaction(() => {
-      const now = Date.now();
-      users.ensureUser(this.#sql, actor, now);
-      return followers.recordUnfollow(this.#sql, channelId, actor, now);
-    });
+    const id = requireChannelId(channelId);
+    return this.#transaction(() =>
+      followers.recordUnfollow(this.#sql, id, actor, Date.now()),
+    );
+  }
+
+  /** The caller's own list: active follows, newest first. */
+  listFollows(email: string): FollowRecord[] {
+    return followers.listByEmail(this.#sql, users.requireEmail(email));
+  }
+
+  /** The channel ids the caller actively follows, sorted. */
+  activeChannelIds(email: string): string[] {
+    return followers.activeChannelIds(this.#sql, users.requireEmail(email));
+  }
+
+  /** Eligibility: the caller's active follows that are approved (docs/PRD.md §4.3). */
+  listEligibleChannels(email: string): CatalogChannel[] {
+    return followers.listEligible(this.#sql, users.requireEmail(email));
   }
 
   /** Active followers per channel, zero-filled. */

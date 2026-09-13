@@ -64,6 +64,21 @@ describe("registry migrations", () => {
         "staged_vector_generation",
       ]),
     );
+    const indexes = await runInDurableObject(stub, (_, state) =>
+      state.storage.sql
+        .exec<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'channel_followers' ORDER BY name",
+        )
+        .toArray()
+        .map((row) => row.name),
+    );
+    // The follower record is the one record of follows: indexed by channel (counts, queue) and by user (own list, eligibility).
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        "channel_followers_channel_id_unfollowed_at",
+        "channel_followers_user_email_unfollowed_at",
+      ]),
+    );
     expect(runColumns).toEqual([
       "run_id",
       "channel_id",

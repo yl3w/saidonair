@@ -56,8 +56,15 @@ export type ReviewInput = {
   explanation?: string;
 };
 
-/** One active or former follower of a channel, as the owner's queue shows it. */
+/** One active follower of a channel, as the owner's queue shows it. */
 export type FollowerRecord = { email: string; followedAt: number };
+
+/** One user's follow of one channel: active while `unfollowedAt` is null, a retained tombstone otherwise. */
+export type FollowRecord = {
+  channelId: string;
+  followedAt: number;
+  unfollowedAt: number | null;
+};
 
 /** Processing detail of an episode: the shared shape itself, returned to every caller. */
 export type EpisodeProcessingRecord = EpisodeProcessing;

@@ -4,7 +4,7 @@ import { chunk, placeholders } from "../../lib/sql";
 import { requireChannelId } from "../../lib/youtube/ids";
 import type { CatalogChannel, CreateChannelInput, ReviewInput } from "./types";
 
-type ChannelRow = {
+export type ChannelRow = {
   channel_id: string;
   title: string;
   canonical_url: string;
@@ -277,7 +277,7 @@ function optionalNote(value: string | undefined): string | null {
   return note ? note : null;
 }
 
-function toChannel(row: ChannelRow): CatalogChannel {
+export function toChannel(row: ChannelRow): CatalogChannel {
   return {
     channelId: row.channel_id,
     title: row.title,
