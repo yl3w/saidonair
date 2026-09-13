@@ -204,6 +204,7 @@ stored on the channel. `POST /channels` then has three non-error outcomes:
 
 - The id is **new**. A user's add creates the channel `requested` and follows the user (201). The owner's add
   creates it `approved`, follows the owner, and starts the initial import (201). The row appears under Followed.
+  _Superseded 2026-09-12: every add creates `requested`; the web's owner add follows with an approve (PRD §9)._
 - The id is **already in the catalog** as `requested` or `approved`. No channel is created; the caller follows it
   (200). This replaced the 2026-09-07 refusal (decision 6): following the existing channel is what the person
   wanted.
@@ -222,8 +223,8 @@ Header: title, "<state> · N following", and **Follow** or **Unfollow**.
 - **Requested:** "Awaiting owner approval"; no episodes.
 - **Approved:** summaries newest first for followers, marked read on view; a non-follower sees the titles and
   "Follow to read the summaries."; `pending`, `skipped`, and `failed` episodes listed by title with their
-  phrase from `episodePhrase` ("Not summarised yet", "No summary: under three minutes", "Summary failed; the
-  owner has been notified"). A paused channel reads "Approved · paused" and its existing summaries stay readable.
+  phrase from `episodePhrase` ("Not summarised yet", "Waiting for captions" and the other wait reasons from
+  `waitReason` (2026-09-12), "No summary: under three minutes", "Summary failed; the owner has been notified"). A paused channel reads "Approved · paused" and its existing summaries stay readable.
 - **Declined:** the note and date ("Declined on…" or "Withdrawn on…"), the follower count, **Unfollow** when the
   caller follows (Follow is not offered: the API answers 409 for a declined channel), and **Request again**, which asks
   "<review copy>. Ask the owner again?" once. Episode titles are listed without summaries when the channel had
@@ -516,6 +517,10 @@ no `Owner*` type. Three conventions carry this:
   applied to those handlers; the Registry re-checks the role inside every owner-only method, so the middleware
   is a convenience, not the guard.
 
+**Superseded 2026-09-12:** the API enforces no authorization (PRD §2, §7, §9). The 403 and `requireOwner` conventions
+in this section are history: every operation is accepted from any identity, `?scope=all` is open to all, and
+`management` is on every channel for every caller.
+
 The table is the contract on `main` at `6e075b1`. Rows marked *2026-09-07* were delivered by the home plan;
 rows marked *2026-09-10* were added or changed by `channel-simplification-plan.md`. The OpenAPI document at
 `GET /openapi.json`, generated from `packages/shared`, is the reference; `test/openapi.test.ts` keeps it and the
@@ -526,7 +531,7 @@ routes in step.
 | `GET /me` | anyone | Email and role | M1 |
 | `GET /catalog` | owner | Aggregate channels and episodes, last successful publication, provider health, and attention counts | revised 2026-09-12 |
 | `GET /channels` | anyone | `requested` and `approved` channels with `following`, `followerCount`, `episodes` counts. `?scope=all` (owner) adds `declined` channels, each with `management` | 2026-09-07, reshaped 2026-09-10 |
-| `POST /channels { channelId, title?, initialImportCount? }` | anyone | The id is verified against its RSS feed. User: create `requested` and follow (201), or follow the existing `requested` or `approved` channel (200). Owner: create `approved`, follow, start the import (201). 409 `ChannelDeclinedResponse` for a declined id; 400 `INVALID_INPUT` for handles, other URLs, or an id with no feed | 2026-09-07, reshaped 2026-09-10 |
+| `POST /channels { channelId, title?, initialImportCount? }` | anyone | The id is verified against its RSS feed. User: create `requested` and follow (201), or follow the existing `requested` or `approved` channel (200). Owner: created `approved`, followed, started the import (201) until 2026-09-12; now the same as a user's call, and the web follows with an approve. 409 `ChannelDeclinedResponse` for a declined id; 400 `INVALID_INPUT` for handles, other URLs, or an id with no feed | 2026-09-07, reshaped 2026-09-10 |
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; `management` for the owner | 2026-09-07, reshaped 2026-09-10 |
 | `POST /channels/:id/request` | anyone | `declined → requested`; follows the caller | 2026-09-10 |
 | `POST /channels/:id/approve { title?, initialImportCount?, explanation? }` | owner | `requested → approved` with the initial import, or `declined → approved` without one; recomputes pause | 2026-09-10 |
@@ -535,7 +540,7 @@ routes in step.
 | `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first. Followers and the owner receive available summaries; the owner also receives recovery state and the latest attempt | revised 2026-09-12 |
 | `POST /channels/:id/episodes/:videoId/retry` | owner | Any episode/channel state; resets the 48-hour window when work starts and returns an attempt; blocked leaves recovery unchanged; no discovery or channel write | revised 2026-09-12 |
 | `POST /channels/:id/episodes/:videoId/skip` | owner | Any channel state; `failed → skipped OWNER`; no discovery precondition | revised 2026-09-12 |
-| `GET /channels/:id/ingestion-runs` | owner | Completed initial/scheduled RSS discovery checks with feed status and discovered count | revised 2026-09-12 |
+| `GET /channels/:id/runs` | owner | Completed initial/scheduled RSS discovery checks with feed status and discovered count | revised 2026-09-12; renamed from `ingestion-runs` the same day |
 | `GET /channels/:id/followers` | owner | Active followers' emails and follow times, oldest first | 2026-09-10, replaces `/requests` |
 | `GET /follows` | anyone (own) | Active follows in any channel status, each embedding its `channel` and carrying `unreadCount`; most recent ingestion first | 2026-09-07, reshaped 2026-09-10 |
 | `PUT /follows/:channelId`, `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for declined); retained unfollow. Each write also records the follower in the Registry | 2026-09-07, reshaped 2026-09-10 |

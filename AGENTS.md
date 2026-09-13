@@ -41,9 +41,10 @@ This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainabl
    results before using them; never fall back to an unfiltered query. Enforce namespace ownership in
    `lib/vectorize.ts` for ID-based operations too; do not assume the underlying API accepts a namespace argument for
    every operation. Retrieval rules: `docs/PRD.md` §6.
-4. **Never run destructive commands**: no `DROP`, no `DELETE FROM` without a `WHERE` on user data, no
-   `wrangler delete`, `wrangler d1/vectorize delete`, no resetting Durable Object storage, no `rm -rf` outside build
-   output. If a task seems to require one, stop and ask.
+4. **Never run destructive commands**: no `DELETE FROM` without a `WHERE` on user data, no `wrangler delete`,
+   `wrangler d1/vectorize delete`, no resetting Durable Object storage, no `rm -rf` outside build output. If a task
+   seems to require one, stop and ask. `DROP` inside a migration file is DDL, not a command, and is allowed (owner
+   decision 2026-09-12, `docs/PRD.md` §5.4).
 
 ## Repo layout
 
@@ -68,7 +69,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── index.ts              # Worker entry: fetch + scheduled handlers, Hono app
 │   │   │   ├── env.ts / bindings.d.ts # Hono AppEnv + hand-maintained Cloudflare.Env (no generated types)
 │   │   │   ├── middleware/user.ts    # X-User-Email → registry + per-user DO stub on context
-│   │   │   ├── middleware/owner.ts   # requireOwner, applied per owner-only operation; the Registry re-checks the role too
+│   │   │   ├── middleware/owner.ts   # to be deleted: the API enforces no authorization (PRD §9, 2026-09-12; api-reference plan Step 2)
 │   │   │   ├── middleware/errors.ts  # typed DomainError (and Hono's malformed-JSON 400) → HTTP status
 │   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, chat, ...);
 │   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page
@@ -95,7 +96,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── lib/vectorize.ts      # namespaced upsert/query/getByIds/delete helpers
 │   │   │   ├── lib/workflows.ts      # ingestLauncher(env): the one path to INGEST_WORKFLOW (create, status); WORKFLOW_FAKE in tests
 │   │   │   ├── lib/transcripts/      # index.ts transcriptSource(env): fake | downsub; downsub.ts adapter; vtt.ts cue
-│   │   │   │                         # parser; types.ts (TranscriptSource, TranscriptError)
+│   │   │   │                         # parser; types.ts (TranscriptSource, TranscriptError); status.ts (DownSub /status:
+│   │   │   │                         # credits and key status, cached; serves GET /catalog and M3 pre-flight)
 │   │   │   └── prompts/              # prompt templates as .ts exporting functions; summary.ts carries prompt_version
 │   │   ├── migrations/               # DO SQLite migrations: registry/ and user/ (see Data & schema)
 │   │   ├── test/                     # setup.ts wipes the Registry after each test; helpers.ts expectShape
@@ -203,20 +205,22 @@ In code:
 - Never add login, sessions, JWTs, or Cloudflare Access.
 - `OWNER_EMAIL` comes from `apps/api/.dev.vars` locally (copy `.dev.vars.example`) and `wrangler secret put` when
   deployed; the Registry seeds the role from it on start. The email is never committed.
-- `requireOwner` from `middleware/owner.ts` is applied to owner-only handlers and returns 403 early; every owner-only
-  Registry DO method takes the acting email and re-checks the role itself. The middleware is a convenience, not the
-  guard.
+- The API enforces no authorization (PRD §2, §9, decided 2026-09-12): no route or Registry method checks the role, and
+  there is no 403. `GET /me` returns the role for the web, whose Owner screens and controls are the only gate. Where
+  the schema asks for a reviewer, skipper, or requester, record the acting email whoever it is.
 - `WEB_ORIGINS` lives in `wrangler.jsonc` `vars`, overridable in `.dev.vars`; `lib/cors.ts` runs before the identity
   middleware so preflights never reach it.
 
 ## Data & schema conventions
 
-The logical schema, check constraints, indexes, and migration governance (additive only; never edit a committed
-migration; retention) are `docs/PRD.md` §5. In code:
+The logical schema, check constraints, indexes, and migration governance (numbered files; no additive-only or
+frozen-file rule since 2026-09-12; retention) are `docs/PRD.md` §5. In code:
 
 - Migrations are numbered SQL files, one directory per DO class: `apps/api/migrations/registry/` and
   `apps/api/migrations/user/` (`0001_init.sql`, `0002_add_x.sql`, …). `do/migrations.ts` applies pending files on
-  first access under `blockConcurrencyWhile`, tracked in `_migrations`.
+  first access under `blockConcurrencyWhile`, tracked in `_migrations`. A file whose version is already recorded does
+  not re-run when edited: after editing an applied migration, wipe the local Durable Object state that applied it
+  (the `clean-local-do` skill, on the owner's word; nothing is deployed).
 - DO SQLite accepts at most 100 bound parameters per statement (verified against workerd 2026-09-07). Chunk `IN (...)`
   lists and multi-row writes with `lib/sql.ts`; never interpolate ids into SQL instead.
 - The DO classes in `do/registry.ts` and `do/user.ts` are thin RPC facades; logic lives in the store modules under
@@ -344,7 +348,7 @@ Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`; bind
   `vitest.config.ts` pins `OWNER_EMAIL` in `miniflare.bindings`, overriding the developer's `.dev.vars`; wrangler still
   loads that file, and other values are not overridden.
 - What to cover is the acceptance list in `docs/PRD.md` §8: isolation and retrieval scope, channel and episode
-  lifecycle, owner-only mutations, pure functions (chunking edge cases, RSS parsing, channel URL resolution, summary
+  lifecycle, every mutation accepted from any identity, pure functions (chunking edge cases, RSS parsing, channel URL resolution, summary
   JSON validation), migrations (a fresh DO runs them idempotently; the check constraints reject what they should), and
   the API document (`test/openapi.test.ts`; each route test parses one response per shared schema with `expectShape`
   from `test/helpers.ts`). Add or extend tests whenever a route or data path is introduced.

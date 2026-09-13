@@ -20,7 +20,7 @@
 - No new dependencies (AGENTS.md hard rule 1). No network in tests: feeds come from `YOUTUBE_FEEDS_FAKE` in `apps/api/vitest.config.ts` (`CHANNEL_A`…`D` have titles "Feed A"…"Feed D"; `CHANNEL_E` has no feed).
 - Hard rule 3 becomes "filter to the user's current followed, approved channels" (spec §11). Never an unfiltered Vectorize query; not exercised here because chat is M4.
 - Hard rule 4: no destructive commands. The one sanctioned wipe is the owner running `clean-local-do` on local `wrangler dev` state.
-- Migrations: `0001_init.sql` in both DOs is rewritten during this plan (spec §6, one-time owner-approved exception). After Task 5 the files are frozen again and the additive-only rule resumes. Never edit them in a later task; add `0002_*.sql`.
+- Migrations: `0001_init.sql` in both DOs is rewritten during this plan (spec §6, one-time owner-approved exception). After Task 5 the files were frozen again at the time; both the additive-only and frozen-file rules were withdrawn on 2026-09-12 (PRD §5.4).
 - Shared shapes: every request and response shape is a Zod schema in `packages/shared/src/index.ts` with its type beside it; `apps/api` validates with `validate(target, schema)` and documents with `describeRoute`; `apps/web` imports types only (`import type`). Optional text uses the `optionalText` helper (blank is `INVALID_INPUT`).
 - API on entities, not roles: no `/owner/*`, no role-named types; owner-only operations carry `requireOwner` and the Registry re-checks the role.
 - Typed errors: throw `DomainError(code, detail)` in `do/` and `lib/`; `middleware/errors.ts` maps `INVALID_INPUT` 400, `NOT_OWNER` 403, `NOT_FOUND` 404, `INVALID_STATE` 409.
@@ -158,7 +158,7 @@ import init from "./0001_init.sql";
 /**
  * Ordered list of Registry DO migrations. 0001 was rewritten once, on 2026-09-10 before first
  * deployment (docs/specs/channel-simplification.md §6); from here on a committed `.sql` file is
- * frozen and changes are appended (AGENTS.md → Data & schema conventions).
+ * frozen and changes are appended (AGENTS.md → Data & schema conventions). [Rule withdrawn 2026-09-12.]
  */
 export const registryMigrations: readonly Migration[] = [
   { version: "0001_init", sql: init },

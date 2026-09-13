@@ -1,6 +1,6 @@
 -- Global Registry DO — initial schema (docs/PRD.md §5.1, §5.3; docs/specs/channel-simplification.md §3, §6).
--- Rewritten 2026-09-10 before first deployment, with owner approval; from here on this file is frozen and
--- schema changes are additive 0002_*.sql files (AGENTS.md → Data & schema conventions).
+-- Rewritten 2026-09-10 before first deployment, with owner approval. Migration governance is open (docs/PRD.md
+-- §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be wiped for an edit to run.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
 
 -- Identities. `role` is the owner mechanism decided in AGENTS.md → Identity model:

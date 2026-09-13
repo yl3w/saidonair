@@ -43,7 +43,7 @@ The first block is the PM proposal of 2026-09-10 as amended in review; the secon
 | Question | Decision | Why |
 |---|---|---|
 | Channel statuses | **Three: `requested`, `approved`, `declined`.** Pause (`paused_by`) is a flag on approved channels. Nothing is deleted. | Import outcomes never described the channel well: today `available` is absorbing and every later problem already lives on episodes. Three statuses on one axis make the channel what it is, a catalog membership with the owner's answer. |
-| Who creates a channel | **Anyone.** A user pasting a `UC…` id or `/channel/UC…` URL creates a `requested` channel and follows it. The owner's add creates it `approved`. | One action for users, no separate request form, and the owner queue is simply the requested channels. |
+| Who creates a channel | **Anyone.** A user pasting a `UC…` id or `/channel/UC…` URL creates a `requested` channel and follows it. The owner's add created it `approved` until 2026-09-12; now every add creates `requested` (PRD §9). | One action for users, no separate request form, and the owner queue is simply the requested channels. |
 | Follow guard | **Any `requested` or `approved` channel can be followed.** Following a declined one is "request again" (§3.1). | With requests being follows, gating follows on availability would block the very action that requests a channel. Readability is decided by episode state, not by the follow. |
 | Episode metadata on channels | Every channel representation carries `episodes: { tracked, available, pending, waiting, failed, skipped }`, derived `lastIngestedAt`, `lastCheckedAt`, `followerCount`, and `paused`. | "Approved" no longer promises content, so the reader needs "0 of 5 summarised yet" where today they had "available". `lastIngestedAt` becomes `MAX(episodes.processed_at)` in M3 so an episode Retry never writes the channel. |
 | Episode statuses | **Four: `pending`, `available`, `failed`, `skipped`.** `processing` and `no_transcript` go. Pending's wait or technical reason lives on its latest attempt (2026-09-12); failed carries `INGESTION_TIMEOUT` with that reason as detail; skipped carries a skip reason. | The run table already says what is in progress. "No transcript" is one skip reason among several, not a status of its own. |
@@ -61,7 +61,7 @@ The first block is the PM proposal of 2026-09-10 as amended in review; the secon
 | What does `skipped` mean to each role? | **Reversible by owner retry; readers see the title with no summary.** | Channel history stays complete and a wrong automatic skip can be undone. |
 | Does unfollowing withdraw a request? | **A channel with no active followers is paused, whatever its status.** Pause lifts on the next follow. | Ingestion follows demand. The Registry tracks active followers for every channel, replacing requester count with a real follower count. |
 | Should declining soft-delete the channel, or be a status? | **A `declined` status; nothing is deleted.** Declined excludes scheduling by itself, so it is never also paused. A user re-requests a declined channel after seeing the owner's note, with one confirmation; the owner may approve a declined channel directly. Declining an approved channel confirms once in the UI. Copy says "Declined" when the channel was never approved and "Withdrawn" when it was. | One field describes the channel. The `deleted_at` axis, the restore route, the "restore it first" guards, and the two meanings of deletion all go. Approve and Decline become the only owner verbs at channel level, with Pause and Resume. |
-| Is there production data to migrate? | **No.** The application is not deployed; local Durable Object state is wiped once and the initial migrations are rewritten to the new model (§6). | No data migration, no deprecated columns or tables, no compatibility shims. A one-time, owner-approved exception to "migrations are additive only" and "never edit a committed migration"; both rules resume afterwards. |
+| Is there production data to migrate? | **No.** The application is not deployed; local Durable Object state is wiped once and the initial migrations are rewritten to the new model (§6). | No data migration, no deprecated columns or tables, no compatibility shims. At the time a one-time, owner-approved exception to "never edit a committed migration" and "migrations are additive only"; both rules were withdrawn outright on 2026-09-12 (PRD §5.4). |
 | Does the initial import run at first approval when nobody follows yet? | **Yes.** The newest `initial_import_count` entries are imported once; later runs wait for a follower. | The owner asked for the channel explicitly, the cost is at most five credits, and the catalog can show "N summarised" so people can judge the channel before following it. Recommended in review and adopted. |
 
 ## 3. Model
@@ -90,7 +90,7 @@ Columns on `channels` (Registry), exactly as §6 creates them:
 
 | Column | Values | Rule |
 |---|---|---|
-| `status` | `requested`, `approved`, `declined` | `requested` by a user's add or re-request; `approved` by the owner's add or approval; `declined` by the owner. Every transition is in the rules below; there is no other. |
+| `status` | `requested`, `approved`, `declined` | `requested` by a user's add or re-request; `approved` by approval (the owner's add shortcut was removed 2026-09-12); `declined` by the owner. Every transition is in the rules below; there is no other. |
 | `paused_by`, `paused_at` | null, `owner`, `system`; both set or both null | `approved` only, enforced by a check. No new feed-discovery runs while set; already discovered episodes keep recovering. `system` is set when the last active follower leaves and cleared by the next follow. `owner` is set and cleared only by the owner; a system pause never overrides it. Cleared on decline, recomputed on approve. |
 | `approved_at` | null or unix ms; non-null whenever `status = 'approved'` | Set the first time the channel is approved and never reset. Decides whether a later approval starts an initial import, and whether copy says "Declined" or "Withdrawn". |
 | `reviewed_at`, `reviewed_by_email`, `review_note` | nullable; the first two non-null whenever the status is not `requested` | Written by approve, decline, and owner add (the owner is the reviewer); the latest review only. Kept when a declined channel is re-requested, so the queue can show it. A review log is out of scope (§8). |
@@ -104,9 +104,9 @@ There is no `deleted_at`, `failure_code`, `failure_detail`, or `available_at`.
 Rules:
 
 - **Create.** `POST /channels { channelId, title?, initialImportCount? }` validates the id offline, fetches its RSS
-  feed (404 → `INVALID_INPUT`), and calls the Registry's create-only `createChannel` with the feed title. A user's
-  call creates `requested`; the owner's call creates `approved` with `approved_at`, the review fields, and starts the
-  initial import. The caller is followed onto the channel (§3.2). When the Registry answers `INVALID_STATE` because
+  feed (404 → `INVALID_INPUT`), and calls the Registry's create-only `createChannel` with the feed title. Every
+  call creates `requested` (until 2026-09-12 the owner's call created `approved` and started the initial import;
+  PRD §9). The caller is followed onto the channel (§3.2). When the Registry answers `INVALID_STATE` because
   the id already exists, the route does not fail: a `requested` or `approved` channel is followed and returned with
   200; a `declined` one is returned as 409 `INVALID_STATE` with `{ channelId, status: "declined", reviewNote,
   reviewedAt }` so the client can show the note and offer "Request again". The Registry stays create-only, as decided
@@ -249,17 +249,19 @@ Owner actions are independent of both channel status and channel runs:
 | `declined`, previously approved | Not in the catalog list. Followers see "Withdrawn" with the note and Request again | Request again (one confirmation) | Approve; no new initial import; per-episode Retry and Skip | Episode recovery only |
 
 Episodes: readers see every tracked episode's title in channel history; `available` ones carry the summary, others
-read "no summary" (`pending`: "not yet"; `skipped`: the humanised reason; `failed`: "the owner has been notified").
+read "no summary" (`pending`: the wait reason from its latest attempt, else "not yet" (`waitReason`, 2026-09-12);
+`skipped`: the humanised reason; `failed`: "the owner has been notified").
 Digest, unread counts, and chat use `available` episodes of eligible channels only.
 
 ## 5. API contract
 
-Entity-based as before: no `/owner/*`, authorization per operation, `management` and `?scope=all` for the owner.
+Entity-based as before: no `/owner/*`. `management` and `?scope=all` were the owner's until 2026-09-12, when the API
+stopped enforcing any authorization (PRD §9): every operation, `?scope=all`, and `management` are open to every caller.
 
 | Route | Who | Change | Purpose |
 |---|---|---|---|
 | `GET /channels` | anyone | changed | `requested` and `approved` channels, each with `status`, `paused`, `following`, `followerCount`, `episodes` counts, `lastIngestedAt`; `?scope=all` (owner) adds `declined` channels and `management` |
-| `POST /channels { channelId, title?, initialImportCount? }` | anyone | changed | User: create `requested` and follow (201), or follow the existing `requested`/`approved` one (200). Owner: create `approved` and start the import (201). A `declined` id is 409 `INVALID_STATE` with `channelId`, `status`, `reviewNote`, `reviewedAt` |
+| `POST /channels { channelId, title?, initialImportCount? }` | anyone | changed | User: create `requested` and follow (201), or follow the existing `requested`/`approved` one (200). Owner: created `approved` and started the import (201) until 2026-09-12; now the same as a user's call. A `declined` id is 409 `INVALID_STATE` with `channelId`, `status`, `reviewNote`, `reviewedAt` |
 | `GET /channels/:id` | anyone | changed | Any status by id, so a declined channel can show its note; declined ones simply do not appear in the list |
 | `POST /channels/:id/request` | anyone | new | `declined → requested`; follows the caller |
 | `POST /channels/:id/approve { title?, initialImportCount?, explanation? }` | owner | new | `requested → approved` with the initial import, or `declined → approved` without one |
@@ -270,7 +272,7 @@ Entity-based as before: no `/owner/*`, authorization per operation, `management`
 | `GET /channels/:id/episodes?limit=` | anyone | changed | Episode `status` takes the new values; the owner's `processing` block adds recovery mode/start/deadline/next-attempt, attempt count, latest outcome, and latest attempt |
 | `POST /channels/:id/episodes/:videoId/retry` | owner | as planned | Any episode state and channel status; when pre-flight permits, resets the 48-hour recovery and starts an immediate attempt, never a channel run; blocked leaves recovery/content unchanged |
 | `POST /channels/:id/episodes/:videoId/skip` | owner | new | `failed → skipped OWNER` in any channel status |
-| `GET /channels/:id/ingestion-runs` | owner | clarified | Initial/scheduled feed-discovery runs with feed status and discovered episodes; all processing history is exposed through episode attempts |
+| `GET /channels/:id/runs` | owner | clarified; renamed from `ingestion-runs` 2026-09-12 | Initial/scheduled feed-discovery runs with feed status and discovered episodes; all processing history is exposed through episode attempts |
 | `GET /channels/:id/followers` | owner | new, replaces `/requests` | Emails and `followedAt` of active followers; the UI shows emails only in the queue and counts elsewhere |
 | `GET /follows`, `PUT /follows/:channelId`, `DELETE /follows/:channelId` | anyone (own) | changed | Follow any `requested` or `approved` channel (409 with the note for `declined`); each write also records the follower in the Registry |
 | `GET /channel-requests`, `POST /channel-requests`, `…/approve`, `…/reject` | | **removed** | Requests are channels |
@@ -290,9 +292,9 @@ carries the 409 body for `POST /channels` and `PUT /follows/:channelId`, followi
 
 The application is not deployed and holds no data anyone depends on (decided 2026-09-10). Rather than extend the
 schema with additive columns and leave the old ones deprecated, the initial migrations are rewritten to the model in
-§3. This is a one-time exception, approved by the owner, to two rules in `AGENTS.md` → Data & schema conventions:
-"migrations are additive only" and "never edit a migration file that has been committed". Both rules resume the moment
-this lands; §11 records the exception in `AGENTS.md`. A second, owner-approved exception followed on 2026-09-11:
+§3. This is a one-time exception, approved by the owner, to two rules then in `AGENTS.md` → Data & schema conventions:
+"migrations are additive only" and "never edit a migration file that has been committed", both since withdrawn
+outright (2026-09-12, PRD §5.4); §11 records the exception as it stood in `AGENTS.md`. A second, owner-approved exception followed on 2026-09-11:
 `0002_drop_lifecycle_version.sql` dropped `lifecycle_version` from `channels` and `ingestion_runs` as a new file. A
 third followed on 2026-09-12, when the owner chose to start over on the schema, the Registry DO's store modules, and
 the API for M3: `0001` is rewritten again to the M3 model and `0002` is deleted (§6.4). The listing in §6.1 below is
@@ -313,8 +315,8 @@ What the reset involves:
 
 ```sql
 -- Global Registry DO — initial schema (docs/PRD.md §5.1, §5.3; docs/specs/channel-simplification.md §3, §6).
--- Rewritten 2026-09-10 before first deployment, with owner approval; from here on this file is frozen and
--- schema changes are additive 0002_*.sql files (AGENTS.md → Data & schema conventions).
+-- Rewritten 2026-09-10 before first deployment, with owner approval. Migration governance is open (docs/PRD.md
+-- §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be wiped for an edit to run.
 -- Superseded 2026-09-12 by a second pre-deployment rewrite (m3-ingestion-plan.md Step 4); kept here as the record
 -- of the 2026-09-10 shape.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
@@ -568,7 +570,7 @@ should be dropped when that spec is revised.
 | Episode `waiting_code` and pre-deadline `failure_code` as the wait and technical reasons | 2026-09-10 | §3.3 here; M3 spec §3.3 | The latest attempt's outcome; the episode carries only `INGESTION_TIMEOUT` at the deadline and the column is gone from the rewritten schema (2026-09-12) |
 | Scheduled runs select channels independently of follower count | 2026-09-08 | AGENTS.md → Ingestion; PRD §4.2 | Pause at zero followers (§3.2) |
 | Only available, non-deleted channels can be followed | 2026-09-07 | AGENTS.md → Catalog; PRD §4.3 | Any `requested` or `approved` channel (§3.2) |
-| Migrations are additive only; a committed migration file is frozen | 2026-09-07 | AGENTS.md → Data & schema conventions; both `0001_init.sql` headers | Suspended twice before first deployment, for the rewrite in §6 (2026-09-10) and the M3 rewrite in §6.4 (2026-09-12), with one owner-approved drop between them (`0002_drop_lifecycle_version.sql`, 2026-09-11, since folded into the second rewrite); in force again afterwards |
+| Migrations are additive only; a committed migration file is frozen | 2026-09-07 | AGENTS.md → Data & schema conventions; both `0001_init.sql` headers | Suspended twice before first deployment, for the rewrite in §6 (2026-09-10) and the M3 rewrite in §6.4 (2026-09-12), with one owner-approved drop between them (`0002_drop_lifecycle_version.sql`, 2026-09-11, since folded into the second rewrite); both halves withdrawn outright on 2026-09-12 until the owner revisits governance |
 | Declining an approved channel bumps `lifecycle_version` so a run in flight is fenced out | 2026-09-08, reaffirmed 2026-09-10 | AGENTS.md → Catalog, Ingestion; PRD §4.2; M3 spec §2; §3.1 and §9 here | Reversed: decline stops future discovery while independent recovery of already discovered episodes continues; the column was dropped |
 
 Unchanged and reaffirmed: DownSub as the transcript source, the universal 48-hour recovery ceiling, the 180-second cutoff, live
@@ -637,7 +639,7 @@ reader eligibility, while episode recovery owns its own lifecycle.
   `episode_summaries`, `ingestion_runs`, and in M3 `episode_ingestion_attempts`;
   `channel_requests` is gone. Add one sentence:
   "The initial migrations were rewritten twice before first deployment, with owner approval, on 2026-09-10 and
-  2026-09-12; from then on the additive-only and frozen-file rules apply without exception." Keep "Deletion is soft"
+  2026-09-12; there is no additive-only or frozen-file rule (2026-09-12)." Keep "Deletion is soft"
   for every other entity
   and add "channels are never deleted".
 - **API shape table:** per §5. **Screens:** per §7. **Testing → Lifecycle and retry:** replace the auto-follow,

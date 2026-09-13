@@ -1,7 +1,7 @@
 -- Per-user DO — initial schema (docs/PRD.md §5.2, §5.3).
 -- One object per normalized email; the email is implicit and never stored here.
--- Rewritten 2026-09-10 before first deployment, with owner approval; from here on this file is frozen and
--- schema changes are additive 0002_*.sql files (AGENTS.md → Data & schema conventions).
+-- Rewritten 2026-09-10 before first deployment, with owner approval. Migration governance is open (docs/PRD.md
+-- §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be wiped for an edit to run.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
 
 -- Follow state. A retained row with unfollowed_at set records the unfollow; an active follow is

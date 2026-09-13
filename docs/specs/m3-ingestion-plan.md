@@ -11,7 +11,7 @@ This revision supersedes the earlier hybrid design. An `ingestion_run` is comple
 Every unfinished, non-deterministic episode condition shares one 48-hour recovery window, regardless of attempt count
 or channel state.
 
-**Starting over (owner decision 2026-09-12).** The Registry schema, the Registry DO's store modules, and the API contract are redesigned from scratch to this model rather than evolved under compatibility rules: the Registry's `0001_init.sql` is rewritten a second time before first deployment, `0002_drop_lifecycle_version.sql` is deleted, there is no `0003`, local Durable Object state is wiped, and no shared schema, reader, or route keeps a legacy table, column, or enum value alive. The User DO and its migration are untouched. The additive-only and frozen-file rules resume the moment the rewrite lands. Step 4 carries the schema.
+**Starting over (owner decision 2026-09-12).** The Registry schema, the Registry DO's store modules, and the API contract are redesigned from scratch to this model rather than evolved under compatibility rules: the Registry's `0001_init.sql` is rewritten a second time before first deployment, `0002_drop_lifecycle_version.sql` is deleted, there is no `0003`, local Durable Object state is wiped, and no shared schema, reader, or route keeps a legacy table, column, or enum value alive. The User DO and its migration are untouched. Neither an additive-only nor a frozen-file rule applies; both were withdrawn on 2026-09-12 (PRD §5.4). The schema, the read model, and the writes the existing routes perform land with `docs/specs/api-reference-plan.md` Step 4 (moved there on 2026-09-12 so that plan depends on nothing here); this plan's Step 4 adds the ingestion writes on top.
 
 The work is split into nine implementation steps. Keep each step narrowly reviewable, run `pnpm check --force`
 after it, and exercise Workers runtime behavior under `wrangler dev` before completion.
@@ -41,8 +41,8 @@ attempt orchestration through the in-process step runner while retaining one `wr
 - Map provider responses to `UNPLAYABLE`, `PROVIDER_AUTH`, `PROVIDER_LIMIT`, `PROVIDER_RATE_LIMIT`,
   `PROVIDER_HTTP`, or `PROVIDER_PARSE`. Known live/upcoming metadata wins over `UNPLAYABLE`.
 - Treat a chosen caption file with no usable cues as `captionStatus: none`.
-- Add a cached/two-second `/status` wrapper for catalog health and episode pre-flight. Its result is
-  `{ remainingCredits, status: ok | auth_failed | unreachable }` and never makes the catalog endpoint fail.
+- Reuse `lib/transcripts/status.ts` from `docs/specs/api-reference-plan.md` Step 3 for episode pre-flight (it already
+  serves `GET /catalog`); add a test seam so pre-flight tests can drive `auth_failed` and zero credits.
 - Keep `TRANSCRIPTS_FAKE` capable of representing every result and failure, including provider status.
 
 **Tests:** track selection, VTT parsing, found/no-caption/non-English/live/unplayable cases, every HTTP mapping,
@@ -63,90 +63,26 @@ empty cues, malformed bodies, and provider health.
 
 **Done when:** `pnpm check --force` passes.
 
-## Step 3 — Shared contracts and read projections  (size: L)
+## Step 3 — Shared contracts and read projections  (struck 2026-09-12)
 
-**Files:** `packages/shared/src/index.ts`, Registry types/read stores, `lib/channel-view.ts`, `lib/episode-view.ts`,
-digest route, web type consumers, tests.
+Delivered by `docs/specs/api-reference-plan.md` Step 3 instead, approved by the owner on 2026-09-12: it rewrites
+`packages/shared/src/index.ts` to `docs/specs/api-reference.md` §5, the projections, the route schema references, the
+test helpers, and the web's compile-only changes, and lands in the same commit as Step 4 below. Where the bullets
+that stood here differed from that spec (`IngestionRunSummary`, `tracked`, `ChannelManagement.episodes`,
+`processing.processedAt`, an owner-only `EpisodeProcessing`), the spec wins. Nothing remains to do in this step.
 
-- `EpisodeSummary.takeaways` becomes `{ text, startSec }[]` and `Episode.summaryAvailableAt` exposes first
-  `processed_at`.
-- Extend owner-only `EpisodeProcessing` with:
-  - `recoveryMode: publication | replacement | null`
-  - `recoveryStartedAt`, `recoveryDeadlineAt`, `nextAttemptAt`
-  - diagnostic `attemptCount` and `latestAttempt`, which carries the last reason; the episode row has none during
-    recovery (owner decision 2026-09-12)
-  - `EpisodeCounts` and the catalog's episode counts drop `waiting` (2026-09-12 review): `available`, `pending`,
-    `failed`, and `skipped` only, a plain group-by on status; wait reasons surface on episode rows through
-    `latestAttempt`
-- Add `EpisodeIngestionAttempt` fields: id, video id, trigger
-  (`channel_ingestion | scheduled_recovery | owner_retry`), optional
-  requester, recovery mode, generation id, staged chunk count, Workflow id, status, outcome/detail, start/finish
-  times.
-- Change `IngestionRunSummary` and full run responses to discovery semantics: `feedStatus: read | unavailable` and
-  `discoveredCount`. Do not expose selected/available/waiting/failed/skipped run outcomes. The API contract is
-  restated from the model with no legacy member (owner decision 2026-09-12): `IngestionRunKindSchema` is
-  `initial | scheduled`; `IngestionRunStatusSchema`, `IngestionRunEpisodeSchema`, `IngestionRunEpisodeStatusSchema`,
-  and `Catalog.runs` go; `IngestionRun` loses `workflowId`, `failureCode`, and `failureDetail`; `EpisodeWaitingCode`
-  leaves the episode shape and lives on the attempt's outcome code.
-- Add `discoveredByRunId` to owner episode detail where useful for diagnosis; it is not reader-facing product copy.
-- Add `INGESTION_TIMEOUT` to failure codes. Skip reasons are `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`, and `OWNER`,
-  nothing else.
-- Keep `lastIngestedAt` and catalog `lastSuccessfulIngestionAt`, but derive both from `MAX(episodes.processed_at)`.
-- The Registry returns summary/related data only when the episode is `available`.
-- Digest selection and ordering use first `processed_at`, descending, with video id as stable tiebreak.
+## Step 4 — Registry state transitions  (size: L; after `api-reference-plan.md` Step 4)
 
-**Tests:** schema decoding, discovery-run projections, owner recovery fields, the reason surfacing from the latest
-attempt, the absence of any `waiting` count, derived ingestion times, summary
-visibility, digest availability order, independent read receipts, and the absence of every removed member from the
-generated OpenAPI document.
+**Files:** Registry episode/run/attempt stores and facade, tests.
 
-**Done when:** shared, API, and web consumers compile; `pnpm check --force` passes.
+**Precondition:** `docs/specs/api-reference-plan.md` Step 4 has landed: the rewritten `0001`, the read model, the
+route-driven writes (channel transitions, follower records, Skip, Retry's re-arm of recovery), and the seeds. This
+step adds the ingestion writes and their state-machine rules on top; it creates no table and changes no column.
 
-## Step 4 — Registry schema and state transitions  (size: L)
+### Schema (moved)
 
-**Files:** `apps/api/migrations/registry/0001_init.sql` (rewritten), `0002_drop_lifecycle_version.sql` (deleted),
-`migrations/registry/index.ts`, Registry episode/run/attempt stores and facade, `test/registry-migrations.test.ts`,
-tests.
-
-### Schema rewrite (owner decision 2026-09-12: starting over on schema, DO stores, and API)
-
-The application is not deployed and holds no data anyone depends on, so the Registry's `0001_init.sql` is rewritten a
-second time to match this model exactly, as it was on 2026-09-10: `0002_drop_lifecycle_version.sql` is deleted,
-`migrations/registry/index.ts` lists `0001_init` alone, local Durable Object state is wiped, and no deprecated table,
-column, or enum value remains. This is the second owner-approved exception to the additive-only and frozen-file
-rules; both resume the moment it lands. The User DO's `0001_init.sql` is untouched.
-
-- `global_users`, `channel_followers`, `episode_summaries`: unchanged from the 2026-09-10 file.
-- `channels`: unchanged minus `lifecycle_version` and `last_ingested_at`.
-- `episodes`: `video_id` PK, `channel_id` FK, `discovered_by_run_id` FK to `ingestion_runs`, `title`, `published_at`,
-  `status IN ('pending','available','failed','skipped')`, nullable `recovery_mode IN ('publication','replacement')`,
-  `recovery_started_at?`, `recovery_deadline_at?`, `next_attempt_at?`, `attempt_count DEFAULT 0`, `failure_code?`,
-  `failure_detail?`, nullable `skip_reason IN ('SHORT','NON_ENGLISH','UNPLAYABLE','OWNER')`, `skipped_at?`,
-  `skipped_by_email?` FK, `transcript_checked_at?`, `chunk_count?`, `vectorized_at?`, `processed_at?`,
-  `active_vector_generation?`, `recovery_vector_generation?`, `updated_at`, `created_at`. No `waiting_code`. Table
-  checks: `available` requires positive `chunk_count`, `vectorized_at`, `processed_at`, and
-  `active_vector_generation`; `failure_code` is `INGESTION_TIMEOUT` exactly when `failed` and null otherwise;
-  `recovery_mode` and its three timestamps are all set or all null; `'publication'` requires `pending` and
-  `'replacement'` requires `available`; `recovery_vector_generation` is set only with an active recovery; the skip
-  rules of 2026-09-10 unchanged (`skipped` and `skip_reason` imply each other, `skipped_at` when skipped,
-  `skipped_by_email` exactly for `OWNER`).
-- `ingestion_runs`: `run_id` PK, `channel_id` FK, `kind IN ('initial','scheduled')`, `feed_status IN
-  ('read','unavailable')`, `discovered_count DEFAULT 0`, `episode_limit?`, `started_at`, `finished_at`, `created_at`.
-  No status, `workflow_id`, `failure_code`, or `failure_detail`: a discovery run exists only once complete. No
-  run-episode table.
-- `episode_ingestion_attempts`: `attempt_id` PK, `video_id` FK, `trigger IN
-  ('channel_ingestion','scheduled_recovery','owner_retry')`, `recovery_mode IN ('publication','replacement')`,
-  `generation_id?`, `staged_chunk_count?`, `workflow_id?` unique, `requested_by_email?` FK, `status IN
-  ('running','available','waiting','failed','skipped','blocked')`, `outcome_code?`, `failure_detail?`, `started_at`
-  (the request time), `finished_at?`, `created_at`. Checks: `running` has no `finished_at` and every other status
-  has one; `blocked` has no `workflow_id`; `owner_retry` has a requester and the other triggers none.
-- Indexes: `channels(status, paused_by)`; `channel_followers(channel_id, unfollowed_at)`;
-  `episodes(channel_id, status, published_at)`; `episodes(next_attempt_at)`; `episodes(discovered_by_run_id)`;
-  `episodes(channel_id, processed_at)` for the derived ingestion time; `ingestion_runs(channel_id, created_at)`;
-  `episode_ingestion_attempts(video_id, created_at)`; `episode_ingestion_attempts(status, started_at)`. No partial
-  unique index on open runs, since none exist.
-- `test/registry-migrations.test.ts` asserts `["0001_init"]`, the absence of the removed table and columns, and each
-  table check above by attempting the write it forbids.
+The DDL, the migration index, and `test/registry-migrations.test.ts` are `api-reference-plan.md` Step 4.1 and 4.10;
+the logical schema is PRD §5. Nothing about the schema remains to do here.
 
 ### Discovery writes
 
@@ -188,7 +124,9 @@ rules; both resume the moment it lands. The User DO's `0001_init.sql` is untouch
   `publication` they set the episode `skipped` with the reason; under `replacement` they finish the attempt `skipped`,
   clear the recovery fields, and leave the episode `available` with every content field intact. Owner Skip sets
   `OWNER`.
-- When its pre-flight permits work, Owner Retry resets recovery start/deadline and attempt count. A blocked Retry
+- Retry's re-arm of recovery and the Skip transition exist from `api-reference-plan.md` Step 4.3; this step adds the
+  pre-flight and running-attempt behaviour around them. When its pre-flight permits work, Owner Retry resets recovery
+  start/deadline and attempt count. A blocked Retry
   records the action but changes no episode/recovery field. Owner Skip is `failed → skipped OWNER`. Both work under
   any channel status; Retry is refused only while that episode has a running attempt, and `beginAttempt` reports
   that attempt's id and age so the caller can reconcile an old one inline (Step 7).
@@ -201,8 +139,7 @@ rules; both resume the moment it lands. The User DO's `0001_init.sql` is untouch
 - First publication sets `processed_at` once. Replacement preserves it and all users' read receipts.
 - A stale or closed attempt cannot update the episode.
 
-**Tests:** the rewritten `0001` on fresh storage; the table checks rejecting a replacement recovery on a `pending`
-row, a half-set recovery window, and a `failed` row without `INGESTION_TIMEOUT`; immutable discovery provenance; feed
+**Tests:** immutable discovery provenance; feed
 read/unavailable
 history; universal 48-hour boundaries; diagnostic attempts beyond three; every failure family, none of them writing a
 pre-timeout `failure_code`; no `waiting` count anywhere; a blocked automatic start writing a `blocked` attempt without moving `attempt_count`, and
@@ -296,7 +233,8 @@ stale attempt; and a Workflow fake round trip if supported.
 - Fetch RSS, decide initial versus scheduled from whether an episode has ever been discovered, call
   `recordDiscovery`, then invoke the common attempt starter for each created episode. Failure to start one episode
   is recorded on that episode and does not change the completed discovery run.
-- Owner add/first approval starts initial discovery after the channel transition. The initial discovery ignores a
+- First approval starts initial discovery after the channel transition (the owner's add no longer approves,
+  2026-09-12). The initial discovery ignores a
   system pause. Re-approval starts nothing.
 - `POST /channels/:id/runs` means “check this feed now.” It requires approved status, ignores pause, and returns the
   completed discovery run. Return 502 after recording `feed_status = unavailable`; zero discoveries is a normal 200.
@@ -309,8 +247,8 @@ stale attempt; and a Workflow fake round trip if supported.
     schedules the next recovery time.
   - Owner Retry block creates/returns a finished blocked attempt.
   - Otherwise create a running attempt and launch the Workflow.
-- `POST /channels/:id/episodes/:videoId/retry` validates ownership role and episode/channel identity, but not channel
-  status. When pre-flight permits, it resets the 48-hour window; it always returns `{ episode, attempt }`, including
+- `POST /channels/:id/episodes/:videoId/retry` validates episode/channel identity, but not channel status or the
+  caller's role (the API enforces no authorization, PRD §9). When pre-flight permits, it resets the 48-hour window; it always returns `{ episode, attempt }`, including
   a blocked attempt that leaves recovery unchanged. A running attempt refuses it with 409 `INVALID_STATE`, except
   that when the attempt is older than one hour the route first asks `ingestLauncher(env).status(attemptId)`:
   `active` keeps the 409; `gone` or `missing` calls the Step 8 `closeLostEpisodeAttempt` helper and the Retry
@@ -377,6 +315,12 @@ affecting recovery, start delays increasing across the tick, and both Wrangler c
   Retry, and Skip. Replacement timeout is informational because content remains available.
 - Start remains an approved-channel action and reports discovery only.
 - Keep catalog provider health, takeaway timestamp links, digest availability labels, and the manual Refresh control.
+- Add the `CHECK` on `episode_ingestion_attempts.outcome_code` (owner request 2026-09-12): once the walkthrough below
+  has run every attempt outcome for real, edit `0001_init.sql` so the column accepts exactly the fifteen
+  `AttemptOutcomeCode` values of `api-reference.md` §5.3 or null, mirror the row into PRD §5.3's `CHECK` table, add
+  the rejecting write to `test/registry-migrations.test.ts`, and wipe local Durable Object state on the owner's word
+  so the edited file re-runs. Governance is open (PRD §5.4), so this is an edit of `0001`, not a new file. Until
+  then the shared enum is the contract (`api-reference-plan.md` Step 4.1).
 
 ### End-to-end walkthrough
 

@@ -8,7 +8,7 @@ processing and recovery are independent of channel runs, channel status, and cha
 is represented by one `episode_ingestion_attempts` row. Every unfinished, non-deterministic episode condition gets
 one 48-hour recovery window, including provider, transcript-size, AI, Vectorize, and lost-Workflow failures.
 
-**Starting over (owner decision 2026-09-12).** The Registry schema, the Registry DO's store modules, and the API contract are redesigned from scratch to this model rather than evolved under compatibility rules: the Registry's `0001_init.sql` is rewritten a second time before first deployment, `0002_drop_lifecycle_version.sql` is deleted, there is no `0003`, local Durable Object state is wiped, and no shared schema, reader, or route keeps a legacy table, column, or enum value alive. The User DO and its migration are untouched. The additive-only and frozen-file rules resume the moment the rewrite lands. The schema is in the plan's Step 4 and PRD §5.
+**Starting over (owner decision 2026-09-12).** The Registry schema, the Registry DO's store modules, and the API contract are redesigned from scratch to this model rather than evolved under compatibility rules: the Registry's `0001_init.sql` is rewritten a second time before first deployment, `0002_drop_lifecycle_version.sql` is deleted, there is no `0003`, local Durable Object state is wiped, and no shared schema, reader, or route keeps a legacy table, column, or enum value alive. The User DO and its migration are untouched. Neither an additive-only nor a frozen-file rule applies; both were withdrawn on 2026-09-12 (PRD §5.4). The schema lands with `docs/specs/api-reference-plan.md` Step 4 and is PRD §5; this plan's Step 4 adds the ingestion writes on top.
 
 Transcripts still come only from DownSub's API. An earlier InnerTube spike was removed after Cloudflare egress was
 bot-checked; the code survives only on the throwaway branch `spike/transcript-remote`.
@@ -301,11 +301,12 @@ any binding beyond the three above.
     reconciles it inline and starts instead of waiting for the tick, while an active instance still answers 409. Sibling episodes and discovery
     history are untouched. The catalog's `lastSuccessfulIngestionAt` equals `MAX(episodes.processed_at)`.
     "Approved, never started" reads only when the channel has no run row.
-15. The Registry's `0001_init.sql`, rewritten on 2026-09-12 (plan Step 4), applies on a fresh Registry and
+15. The Registry's `0001_init.sql`, rewritten on 2026-09-12 (`api-reference-plan.md` Step 4), applies on a fresh Registry and
     `_migrations` lists `0001_init` alone: no `0002` or `0003`, no `ingestion_run_episodes` table, no `waiting_code`
     or `last_ingested_at` column, no `owner_retry` run kind, no run status or Workflow columns. Its table checks
     reject a replacement recovery on a `pending` row, a half-set recovery window, and a `failed` row without
-    `INGESTION_TIMEOUT`. The User DO's migration is unchanged.
+    `INGESTION_TIMEOUT`. At the end of M3 (plan Step 9) `outcome_code` carries a `CHECK` listing exactly the
+    fifteen attempt outcome codes, added once every outcome has run for real. The User DO's migration is unchanged.
 16. `pnpm check` green; the coverage in AGENTS.md → Testing exists for lifecycle, attempts, the attempt gate, chunking,
     VTT parsing, summary validation, and the M3 items it lists.
 17. AGENTS.md and the PRD carry these decisions (§8).
