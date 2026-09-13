@@ -12,6 +12,9 @@ const workersOptions = {
     bindings: {
       // Tests must not depend on the developer's .dev.vars.
       OWNER_EMAIL: "owner@example.com",
+      // Empty on purpose, overriding any key in .dev.vars: no test may reach DownSub. The provider
+      // then reads as `unreachable` (lib/transcripts/status.ts), which the catalog route test asserts.
+      DOWNSUB_API_KEY: "",
       // An exact origin and a subdomain wildcard, so test/cors.test.ts covers both forms.
       WEB_ORIGINS: "http://localhost:5173,https://*.example.pages.dev",
       // Canned YouTube feeds so no test reaches the network (see lib/youtube/rss.ts feedFetcher).

@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Catalog, EpisodeCounts } from "@media-digest/shared";
+import type { EpisodeCounts } from "@media-digest/shared";
 import { registryMigrations } from "../../migrations/registry";
 import type { Env } from "../env";
 import { normalizeEmail } from "../lib/email";
@@ -17,6 +17,7 @@ import * as followers from "./registry/followers";
 import * as runs from "./registry/runs";
 import type {
   CatalogChannel,
+  CatalogSummary,
   ChannelManagementRecord,
   CreateChannelInput,
   EpisodeRecord,
@@ -176,8 +177,8 @@ export class RegistryDO extends DurableObject<Env> {
     return channels.setPause(this.#sql, channelId, null, Date.now());
   }
 
-  /** The catalog's aggregate state for the attention card and health strip. */
-  getCatalogSummary(): Catalog {
+  /** The catalog's aggregate state for the attention card and health strip; the route adds provider health. */
+  getCatalogSummary(): CatalogSummary {
     return catalog.summarize(this.#sql);
   }
 

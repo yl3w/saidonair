@@ -1,13 +1,16 @@
-import type { Catalog } from "@media-digest/shared";
 import { countByChannel, zeroCounts } from "./episodes";
 import { countActive, lastCompletedFinishedAt, latestByChannel } from "./runs";
-import type { CatalogChannel, ChannelManagementRecord } from "./types";
+import type {
+  CatalogChannel,
+  CatalogSummary,
+  ChannelManagementRecord,
+} from "./types";
 
 /**
  * The catalog's aggregate state for the owner's attention card and health strip. An approved
  * channel counts as `paused` rather than `approved` while a pause is set.
  */
-export function summarize(sql: SqlStorage): Catalog {
+export function summarize(sql: SqlStorage): CatalogSummary {
   const channels = { requested: 0, approved: 0, paused: 0, declined: 0 };
   for (const row of sql.exec<{ status: string; paused: number; n: number }>(
     `SELECT status, (paused_by IS NOT NULL) AS paused, COUNT(*) AS n FROM channels GROUP BY status, paused`,

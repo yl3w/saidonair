@@ -2,5 +2,8 @@
 # OWNER_EMAIL is normalized and seeded as the Registry owner (role `owner`) on start.
 # Deployed environments set it with `wrangler secret put OWNER_EMAIL`.
 OWNER_EMAIL=owner@example.com
+# The DownSub API key (transcripts; the catalog's provider health). Optional locally: unset, the
+# provider reads as `unreachable` and nothing is called. Deployed: `wrangler secret put DOWNSUB_API_KEY`.
+# DOWNSUB_API_KEY=
 # Optional: browser origins allowed by CORS, overriding vars.WEB_ORIGINS in wrangler.jsonc for local dev.
 # WEB_ORIGINS=http://localhost:5173,http://127.0.0.1:5173

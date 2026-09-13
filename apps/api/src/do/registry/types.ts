@@ -1,4 +1,5 @@
 import type {
+  Catalog,
   ChannelStatus,
   EpisodeCounts,
   EpisodeSkipReason,
@@ -13,6 +14,9 @@ import type {
   RelatedEpisode,
   UserRole,
 } from "@media-digest/shared";
+
+/** What the Registry knows of the catalog; the route adds the transcript provider's health. */
+export type CatalogSummary = Omit<Catalog, "transcripts">;
 
 export type RegistryUser = {
   email: string;

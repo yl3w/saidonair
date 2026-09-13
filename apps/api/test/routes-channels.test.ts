@@ -111,6 +111,8 @@ describe("channel and catalog routes", () => {
       channels: { requested: 1, approved: 1, paused: 0, declined: 1 },
       episodes: { available: 2, pending: 1, waiting: 0, failed: 0, skipped: 0 },
       attention: { failedEpisodes: 0, neverStarted: 1, requested: 1 },
+      // vitest.config.ts pins the key empty, so no test reaches DownSub and the provider reads as away.
+      transcripts: { remainingCredits: null, status: "unreachable" },
     });
 
     expect((await call(ALICE, "GET", "/channels?scope=bogus")).status).toBe(

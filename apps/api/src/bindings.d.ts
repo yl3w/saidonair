@@ -10,6 +10,13 @@ declare namespace Cloudflare {
      */
     OWNER_EMAIL?: string;
     /**
+     * Secret, never a `vars` entry: the DownSub API key (AGENTS.md → One-time setup). Read by
+     * `lib/transcripts/status.ts` for the catalog's provider health and, in M3, by the transcript
+     * adapter and pre-flight. Absent means the provider reads as `unreachable` and nothing is called;
+     * vitest.config.ts pins it empty so no test reaches DownSub.
+     */
+    DOWNSUB_API_KEY?: string;
+    /**
      * `vars` in wrangler.jsonc, overridable in `.dev.vars`: comma-separated browser origins allowed
      * by CORS; `scheme://*.host` matches any subdomain (Pages previews). Unset means the local Vite
      * origins (lib/cors.ts).

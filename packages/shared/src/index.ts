@@ -580,6 +580,34 @@ export type ChannelDeclinedResponse = z.infer<
 
 // --- catalog ----------------------------------------------------------------------------------------
 
+export const TranscriptProviderStatusSchema = z
+  .enum(["ok", "auth_failed", "unreachable"])
+  .meta({
+    id: "TranscriptProviderStatus",
+    description:
+      "`ok`: the key is accepted and the credit count is current; `auth_failed`: the provider rejected the key; `unreachable`: no key is configured, or the call failed, timed out, or answered unusably.",
+  });
+export type TranscriptProviderStatus = z.infer<
+  typeof TranscriptProviderStatusSchema
+>;
+
+/** The transcript provider's health, from its status endpoint, cached for five minutes per isolate. */
+export const TranscriptProviderHealthSchema = z
+  .object({
+    remainingCredits: Count.nullable().describe(
+      "Credits left this month; null unless `status` is `ok`.",
+    ),
+    status: TranscriptProviderStatusSchema,
+  })
+  .meta({
+    id: "TranscriptProviderHealth",
+    description:
+      "The transcript provider's health, from its status endpoint, cached for five minutes. The catalog never fails because of it.",
+  });
+export type TranscriptProviderHealth = z.infer<
+  typeof TranscriptProviderHealthSchema
+>;
+
 /** The catalog's aggregate state. */
 export const CatalogSchema = z
   .object({
@@ -605,6 +633,7 @@ export const CatalogSchema = z
       ),
       requested: Count,
     }),
+    transcripts: TranscriptProviderHealthSchema,
   })
   .meta({ id: "Catalog", description: "The catalog's aggregate state." });
 export type Catalog = z.infer<typeof CatalogSchema>;
