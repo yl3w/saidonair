@@ -1,23 +1,22 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "media-digest-api",
+  // Three environments (owner decision 2026-09-13; AGENTS.md → Environments): the top level IS staging, so a bare
+  // `wrangler deploy` can never reach production; `pnpm dev` runs `--env dev` against dev-only remote resources;
+  // production is `--env production`. Wrangler does not inherit bindings into environments (it does inherit
+  // `migrations`, `rules`, and the compatibility settings), so each one repeats its bindings, and
+  // test/wrangler-config.test.ts fails when they drift. Per-environment resources follow one naming rule:
+  // production `x`, staging `x-staging`, dev `x-dev` (Worker, Vectorize index, Workflow). Cron triggers exist in
+  // production only; staging and dev are driven by hand.
+  "name": "media-digest-api-staging",
   "main": "src/index.ts",
-  // Newest date accepted by the workerd bundled with the pinned @cloudflare/vitest-pool-workers.
-  // Raise it together with that dependency.
   "compatibility_date": "2026-08-22",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
-
   "vars": {
-    // Browser origins allowed to call the API (CORS): comma-separated; `scheme://*.host` matches any
-    // subdomain, for Pages previews. Not a guard: there is no authentication (docs/PRD.md §2).
-    // TODO(owner): add the deployed web origins, e.g. "https://<project>.pages.dev,https://*.<project>.pages.dev".
-    "WEB_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173"
+    // TODO(owner): WEB_ORIGINS for the deployed staging web (the Pages preview origin) once it exists. Unset, CORS
+    // allows only the local Vite origins (lib/cors.ts), which is enough to drive staging from a local web.
   },
-
-  // `.sql` migration files are imported as strings (see migrations/registry/index.ts).
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
-
   "durable_objects": {
     "bindings": [
       { "name": "REGISTRY_DO", "class_name": "RegistryDO" },
@@ -27,10 +26,33 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["RegistryDO"] },
     { "tag": "v2", "new_sqlite_classes": ["UserDO"] }
-  ]
-
-  // Secrets (never `vars`, never committed):
-  //   OWNER_EMAIL — seeded as the Registry owner. Local: apps/api/.dev.vars (copy .dev.vars.example).
-  //                 Deployed: `wrangler secret put OWNER_EMAIL`.
-  // TODO(owner): Add the cron trigger after its cadence and times are decided.
+  ],
+  "env": {
+    "dev": {
+      // Local development: `pnpm dev`. Secrets come from .dev.vars.dev, falling back to .dev.vars.
+      "name": "media-digest-api-dev",
+      "vars": {
+        "WEB_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "REGISTRY_DO", "class_name": "RegistryDO" },
+          { "name": "USER_DO", "class_name": "UserDO" }
+        ]
+      }
+    },
+    "production": {
+      "name": "media-digest-api",
+      "vars": {
+        // TODO(owner): WEB_ORIGINS for the production web (the Pages production origin) before the first deploy.
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "REGISTRY_DO", "class_name": "RegistryDO" },
+          { "name": "USER_DO", "class_name": "UserDO" }
+        ]
+      }
+      // triggers.crons: discovery `0 */6 * * *` lands with M3.4 and recovery `30 */6 * * *` with M3.6, here only.
+    }
+  }
 }

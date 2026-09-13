@@ -109,9 +109,11 @@ from the 2026-09-12 plan:
 
 ### 3.5 Bindings
 
-`wrangler.jsonc`: `"ai": { "binding": "AI", "remote": true }` and `"vectorize": [{ "binding": "VECTORS",
-"index_name": "media-rag", "remote": true }]`. `bindings.d.ts`: `AI: Ai`, `VECTORS: VectorizeIndex`, and the
-test-only `AI_FAKE?` and `VECTORIZE_FAKE?`. `vitest.config.ts` pins both fakes.
+`wrangler.jsonc`, once per environment (`AGENTS.md` → Environments): `"ai": { "binding": "AI", "remote": true }`
+and `"vectorize": [{ "binding": "VECTORS", "index_name": "<media-rag | media-rag-staging | media-rag-dev>",
+"remote": true }]`, the index named by tier. `bindings.d.ts`: `AI: Ai`, `VECTORS: VectorizeIndex`, and the test-only
+`AI_FAKE?` and `VECTORIZE_FAKE?`. `vitest.config.ts` pins both fakes and sets the pool's `remoteBindings: false`
+(M3.1 Step 0.2), so tests never open a remote session.
 
 ## 4. Acceptance criteria
 
@@ -135,7 +137,8 @@ test-only `AI_FAKE?` and `VECTORIZE_FAKE?`. `vitest.config.ts` pins both fakes.
 ## 5. Out of scope
 
 The Workflow with its retries and timeouts, the centroid and related step (M3.5); retrieval and chat (M4); the
-metadata indexes (the owner's one-time setup, confirmed in M3.1 Step 0).
+indexes and their metadata indexes (the owner's one-time setup; M3.1 Step 0 found none existed, and `media-rag-dev`
+is the one this chunk's probe needs).
 
 ## 6. `AGENTS.md` and PRD alignment
 

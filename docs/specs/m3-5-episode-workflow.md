@@ -86,7 +86,8 @@ output is parsed with `parseSummary`; invalid → one retry with the stricter su
 
 ### 3.5 Bindings and the digest
 
-`wrangler.jsonc`: `"workflows": [{ "name": "media-digest-ingest", "binding": "INGEST_WORKFLOW", "class_name":
+`wrangler.jsonc`, once per environment with the name by tier (`media-digest-ingest`, `-staging`, `-dev`;
+`AGENTS.md` → Environments): `"workflows": [{ "name": "…", "binding": "INGEST_WORKFLOW", "class_name":
 "IngestWorkflow" }]`; `index.ts` exports the class. `bindings.d.ts`: `INGEST_WORKFLOW: Workflow<IngestParams>` and
 test-only `WORKFLOW_FAKE?`. `vitest.config.ts` pins the fake with `default: "active"`. `episodes.ts` `listDigest`
 per §2.

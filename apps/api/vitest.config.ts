@@ -8,6 +8,8 @@ import { FAKE_TRANSCRIPTS } from "./test/fixtures/transcripts";
 const workersOptions = {
   wrangler: {
     configPath: "./wrangler.jsonc",
+    // The environment a developer runs (`pnpm dev`); tests never reach its remote resources.
+    environment: "dev",
   },
   miniflare: {
     bindings: {

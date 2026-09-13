@@ -51,7 +51,8 @@ Routes (`routes/channels.ts`): `POST /:id/runs`, tag `runs`, summary "Check the 
 that logs.
 
 `index.ts`: a `scheduled(controller, env, ctx)` export dispatching on `controller.cron`, logging an unknown string.
-`wrangler.jsonc`: `"triggers": { "crons": ["0 */6 * * *"] }`; M3.6 adds the second.
+`wrangler.jsonc`: `"triggers": { "crons": ["0 */6 * * *"] }` in `env.production` only (`AGENTS.md` → Environments);
+M3.6 adds the second. Staging and dev fire the tick by hand with `wrangler dev --test-scheduled`.
 
 ## 4. Acceptance criteria
 

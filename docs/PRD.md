@@ -114,14 +114,14 @@ Chat query: current follows ∩ approved channels
 |---|---|
 | Monorepo | pnpm workspaces + Turborepo; `apps/api`, `apps/web`, `packages/shared` |
 | Toolchain | Volta-pinned Node 22; `packageManager`-pinned pnpm |
-| Runtime | Cloudflare Workers on the Workers Paid plan (decided 2026-09-11); `compatibility_date` pinned; `nodejs_compat` |
+| Runtime | Cloudflare Workers on the Workers Paid plan (decided 2026-09-11); `compatibility_date` pinned; `nodejs_compat`; three environments, dev, staging, production, each its own Worker with its own Durable Objects, index, and Workflow (decided 2026-09-13; `AGENTS.md` → Environments) |
 | API | Hono, strict TypeScript, ESM only |
 | Validation and API document | Zod 4 schemas in `packages/shared` with the types inferred from them; `hono-openapi` generates OpenAPI 3.1 at `GET /openapi.json`; Scalar test client at `GET /docs` |
 | State | One SQLite Registry DO; one SQLite User DO per normalized email |
 | Orchestration | Cloudflare Workflows, one instance per episode attempt; two Cron Triggers in the same Worker: discovery `0 */6 * * *` and recovery `30 */6 * * *` (UTC) |
 | LLM | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
 | Embeddings | Workers AI `@cf/baai/bge-base-en-v1.5`, 768 dimensions, 512-token input cap (the deployed model id carries `.5`, corrected 2026-09-08) |
-| Vectors | Vectorize `media-rag`, cosine, explicit `shared-catalog` namespace; `channelId` and `videoId` metadata indexes |
+| Vectors | Vectorize, cosine, explicit `shared-catalog` namespace, `channelId` and `videoId` metadata indexes; one index per environment: `media-rag` (production), `media-rag-staging`, `media-rag-dev` (decided 2026-09-13) |
 | Transcripts | DownSub's API behind one transcript seam (`DOWNSUB_API_KEY` secret); a canned fake in tests |
 | UI | Cloudflare Pages, Vite + Preact + TypeScript, `preact-iso` history routing, one plain CSS file; no component, CSS, or state library |
 | Tests | Vitest + `@cloudflare/vitest-pool-workers`; env-selected fakes for Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds |
@@ -823,7 +823,12 @@ deletion, and per-channel chats. There is no route that starts a discovery run o
   searched. The web brand text and the API document title follow the name. Whether the repository name, the
   `@media-digest/*` package scope, the Worker name, and the browser storage keys follow it needs an owner decision.
 - **Cron cadence — decided 2026-09-12:** channel discovery runs at `0 */6 * * *` UTC and episode recovery at
-  `30 */6 * * *` UTC; both have a six-hour cadence.
+  `30 */6 * * *` UTC; both have a six-hour cadence. The triggers exist in production only (2026-09-13, below).
+- **Environments — decided 2026-09-13: three, dev, staging, production.** Local `wrangler dev` runs as dev against
+  dev-only remote resources (its own Vectorize index, its own secrets), so nothing local can touch what production
+  or the deployed staging preview holds. Staging is the default target of a bare deploy, so a forgotten flag can never
+  reach production. Cron triggers run in production only; staging and dev are driven by hand. Per-environment
+  resources are named `x`, `x-staging`, `x-dev`. The mechanics are `AGENTS.md` → Environments.
 - **Workers plan — decided 2026-09-11: Workers Paid.** Per-step CPU and the concurrent-instance cap both fit.
 - **Owner management interface — decided 2026-09-07:** the Owner screens in §7 and
   `docs/specs/home-read-experience.md`. Identification: `global_users.role` seeded from the `OWNER_EMAIL` secret.

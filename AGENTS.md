@@ -109,7 +109,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │                             # fixtures (channels, runs, episodes naming a run, attempts, summaries);
 │   │   │                             # fixtures/transcripts.ts is the TRANSCRIPTS_FAKE content and its video ids
 │   │   ├── .dev.vars.example         # copy to .dev.vars (gitignored) for OWNER_EMAIL and DOWNSUB_API_KEY
-│   │   ├── wrangler.jsonc
+│   │   ├── wrangler.jsonc            # three environments: the top level is staging, env.dev is local, env.production
+│   │   │                             # is live; bindings repeat per environment (see Environments)
 │   │   └── vitest.config.ts
 │   └── web/                  # Cloudflare Pages: Vite + Preact + TypeScript text UI
 │       ├── src/
@@ -146,18 +147,52 @@ The stack is fixed in `docs/PRD.md` §3. Engineering specifics that live here:
   with the pinned `@cloudflare/vitest-pool-workers` accepts. Raise it together with that dependency. `nodejs_compat`
   is enabled.
 - Durable Objects use SQLite storage through a `new_sqlite_classes` migration in `wrangler.jsonc`. The two crons are
-  `triggers` in the same file; the `scheduled` handler in `index.ts` dispatches on the cron string.
+  `triggers` in the same file, in `env.production` only; the `scheduled` handler in `index.ts` dispatches on the cron
+  string.
 - TypeScript `strict: true`, `noUncheckedIndexedAccess: true`, ESM only. Biome is the single formatter and linter, one
   config at the root. Turborepo uses the local cache only (no remote cache).
 
+## Environments
+
+Three, in one `apps/api/wrangler.jsonc` (owner decision 2026-09-13, PRD §9): **dev** for local work, **staging** for a
+deployed preview, **production** for the live tool. Each is its own Worker, so each has its own Durable Object
+namespaces, and each names its own Vectorize index and Workflow. Per-environment resources follow one rule:
+production `x`, staging `x-staging`, dev `x-dev` (`media-digest-api`, `media-rag`, `media-digest-ingest`, …).
+
+- **The top level of the file is staging.** A bare `wrangler deploy` can therefore never reach production;
+  `pnpm --filter api deploy` passes `--env=""` (wrangler's own idiom for "the top level, and I mean it") and
+  `pnpm --filter api deploy:production` passes `--env production`. `pnpm dev` runs `wrangler dev --env dev`.
+- Wrangler does not inherit bindings into environments (`migrations`, `rules`, and the compatibility settings do
+  inherit), so `vars`, `durable_objects`, `vectorize`, `ai`, and `workflows` are declared once per environment.
+  `test/wrangler-config.test.ts` fails when the three drift, when a named resource breaks the suffix rule, or when a
+  cron trigger appears outside production. Add a binding to all three or the gate fails.
+- Cron triggers live in `env.production` only. Staging and dev are driven by hand: Start, Retry, and
+  `wrangler dev --test-scheduled`.
+- Secrets are per environment: `wrangler secret put X --env production`, `… --env=""` for staging. Locally,
+  `wrangler dev --env dev` reads `.dev.vars.dev` if it exists and falls back to `.dev.vars`, so the one local file
+  keeps working. `.gitignore` covers `.dev.vars*` except the example.
+- `WEB_ORIGINS` is set in dev (the local Vite origins) and left unset in staging and production until the web is
+  deployed (`TODO(owner)` in the file); unset means the local origins, which is enough to drive a deployed API from a
+  local web.
+- Tests run under `environment: "dev"` in `vitest.config.ts` with the pool's `remoteBindings: false` (from M3.3), so
+  no test reaches any environment's remote resources.
+
 ## One-time setup (owner runs these; agents may propose, not run)
 
+One Vectorize index per environment, each with both metadata indexes, created before that environment's first
+upsert (`docs/PRD.md` §6): `media-rag-dev` before M3.3's local probe, `media-rag-staging` before the first staging
+deploy, `media-rag` before the first production deploy.
+
 ```
-wrangler vectorize create media-rag --dimensions=768 --metric=cosine
-wrangler vectorize create-metadata-index media-rag --property-name=channelId --type=string
-wrangler vectorize create-metadata-index media-rag --property-name=videoId   --type=string
-wrangler secret put OWNER_EMAIL       # the owner identity; in .dev.vars locally
-wrangler secret put DOWNSUB_API_KEY   # the transcript source; in .dev.vars locally
+for index in media-rag-dev media-rag-staging media-rag; do
+  wrangler vectorize create $index --dimensions=768 --metric=cosine
+  wrangler vectorize create-metadata-index $index --property-name=channelId --type=string
+  wrangler vectorize create-metadata-index $index --property-name=videoId   --type=string
+done
+wrangler secret put OWNER_EMAIL --env=""                 # staging; in .dev.vars locally
+wrangler secret put DOWNSUB_API_KEY --env=""             # staging; in .dev.vars locally
+wrangler secret put OWNER_EMAIL --env production
+wrangler secret put DOWNSUB_API_KEY --env production
 ```
 
 The metadata indexes **must exist before the first upsert** — vectors inserted earlier are not filterable on those
@@ -169,13 +204,14 @@ Run everything from the repo root through Turborepo. Workspace-level `pnpm --fil
 
 ```
 pnpm install
-pnpm dev            # turbo run dev --parallel: wrangler dev (api) + vite (web)
+pnpm dev            # turbo run dev --parallel: wrangler dev --env dev (api) + vite (web)
 pnpm build          # turbo run build: shared → web (vite) ; api has no build step
 pnpm typecheck      # turbo run typecheck
 pnpm lint           # turbo run lint (biome check)
 pnpm test           # turbo run test
 pnpm check          # turbo run typecheck lint test — the pre-finish gate
-pnpm --filter api deploy
+pnpm --filter api deploy               # staging (the top level of wrangler.jsonc)
+pnpm --filter api deploy:production    # production (--env production)
 pnpm skills:install --agent <agents…>   # copy skills/ into those agents' directories; see below
 ```
 
@@ -211,8 +247,8 @@ In code:
 - `middleware/user.ts` normalizes `X-User-Email` with `lib/email.ts`, auto-registers it in the Registry, and attaches
   the identity as `c.var.identity` and the per-user DO stub (`env.USER_DO.idFromName(email)`) as `c.var.user`.
 - Never add login, sessions, JWTs, or Cloudflare Access.
-- `OWNER_EMAIL` comes from `apps/api/.dev.vars` locally (copy `.dev.vars.example`) and `wrangler secret put` when
-  deployed; the Registry seeds the role from it on start. The email is never committed.
+- `OWNER_EMAIL` comes from `apps/api/.dev.vars` locally (copy `.dev.vars.example`) and `wrangler secret put` per
+  environment when deployed (Environments); the Registry seeds the role from it on start. The email is never committed.
 - The API enforces no authorization (PRD §2, §9, decided 2026-09-12): no route or Registry method checks the role, and
   there is no 403. `GET /me` returns the role for the web, whose Owner screens and controls are the only gate. Where
   the schema asks for a reviewer, skipper, or requester, record the acting email whoever it is.

@@ -45,7 +45,8 @@ automatic `recordBlockedAttempt` settle it as the final result (M3.2).
 
 Registry: `listDueEpisodes(now): EpisodeRecord[]`, `listRunningAttempts(startedBefore): EpisodeIngestionAttempt[]`.
 
-`index.ts` dispatches `RECOVERY_CRON`; `wrangler.jsonc` `triggers.crons` is `["0 */6 * * *", "30 */6 * * *"]`.
+`index.ts` dispatches `RECOVERY_CRON`; `wrangler.jsonc` `env.production.triggers.crons` is `["0 */6 * * *",
+"30 */6 * * *"]`; no other environment has triggers (`AGENTS.md` → Environments).
 
 ## 4. Acceptance criteria
 

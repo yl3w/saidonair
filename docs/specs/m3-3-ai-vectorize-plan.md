@@ -18,7 +18,9 @@ Spec §4, all eight criteria.
 **Files:** `apps/api/src/lib/vectorize.ts`, `apps/api/wrangler.jsonc`, `apps/api/src/bindings.d.ts`,
 `apps/api/vitest.config.ts`, `apps/api/test/setup.ts`, `apps/api/test/vectorize.test.ts`.
 
-- 1.1 `wrangler.jsonc`: the `vectorize` binding with `remote: true`; `bindings.d.ts` types it.
+- 1.1 `wrangler.jsonc`: the `vectorize` binding with `remote: true` in all three environments, index named by tier
+  (`test/wrangler-config.test.ts` enforces the suffix rule); `bindings.d.ts` types it; `vitest.config.ts` gains
+  `remoteBindings: false`.
 - 1.2 `vectorize.ts`: the contract of spec §3.1; the real store over `env.VECTORS` with batching constants;
   namespace enforcement per spec §2 on `getByIds` and `deleteByIds`.
 - 1.3 The fake behind `VECTORIZE_FAKE` (a JSON object, `{}` for defaults), exported `resetVectorFake()` called from
@@ -35,7 +37,7 @@ would).
 **Files:** `apps/api/src/lib/ai.ts`, `apps/api/src/prompts/summary.ts`, `apps/api/wrangler.jsonc`,
 `apps/api/src/bindings.d.ts`, `apps/api/vitest.config.ts`, `apps/api/test/ai.test.ts`.
 
-- 2.1 `wrangler.jsonc`: the `ai` binding with `remote: true`.
+- 2.1 `wrangler.jsonc`: the `ai` binding with `remote: true` in all three environments.
 - 2.2 `prompts/summary.ts`: `PROMPT_VERSION`, `mapPrompt`, `reducePrompt`, `stricterRetrySuffix`, the two approved
   texts verbatim. **Plan decision:** `PROMPT_VERSION` is `"2026-09-13"`; a later prompt edit sets the date of the
   edit.
@@ -63,7 +65,8 @@ would).
 **Files:** none committed.
 
 - 4.1 A temporary `GET /__probe/ai` route embeds one sentence and summarises the ten-minute fixture from
-  `TRANSCRIPTS_FAKE` through the real bindings under `wrangler dev` (`remote: true` reaches the account). Record the
+  `TRANSCRIPTS_FAKE` through the real bindings under `pnpm dev` (`--env dev`, so `media-rag-dev`, which the owner
+  creates first). Record the
   vector dimension, the raw summary text, and whether `parseSummary` accepted it. Delete the route.
 
 **Done when:** the observations are in the walkthrough record and `git status` is clean of the probe.
