@@ -5,8 +5,8 @@
 **Parent:** `docs/specs/m3-ingestion.md` §2 (Universal recovery rule, Reconciliation, Channel independence, Crons,
 Launch throttle), §3 "recovery cron", §3.4; PRD §4.2 rules 13–15. Acceptance 3, 4, 6 (automatic half), 7 (recovery
 half), 10, 14 (sweep half) of the parent.
-**Status:** approved with the split of 2026-09-13; not started. Plan: `docs/specs/m3-6-recovery-plan.md`. Needs
-M3.5 on `main`. No new dependencies.
+**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green; the walkthrough
+against the real engine is recorded in `docs/specs/m3-6-recovery-plan.md`. No new dependencies.
 
 ## 1. Summary
 
@@ -38,10 +38,13 @@ export async function runRecoveryTick(env, now): Promise<{ reconciled: number; d
 ```
 
 `reconcileRunningAttempts` lists running attempts started before `now − 1 h`, asks `ingestLauncher(env).status` for
-each, and calls `closeLostEpisodeAttempt` on `gone` or `missing`. `runRecoveryTick` reconciles, lists due episodes,
-and hands them all to `startEpisodeAttempts(env, episodes, "scheduled_recovery", { now })`, which reads pre-flight
-once and numbers the batch. An episode at or after its deadline is due like any other; `finishAttempt` and an
-automatic `recordBlockedAttempt` settle it as the final result (M3.2).
+each, and calls `closeLostEpisodeAttempt` on `gone` or `missing`; one attempt whose check or close throws is logged
+and does not stop the next. `runRecoveryTick` reconciles, lists due episodes, and hands them all to
+`startEpisodeAttempts(env, episodes, "scheduled_recovery")`, which reads pre-flight once and numbers the batch. `now`
+(default `Date.now()`) is the selection clock only: the Registry stamps every write with its own clock, as it has since
+M3.2, so the starter takes no `now` (implementation decision 2026-09-13, replacing the `{ now }` option first written
+here). An episode at or after its deadline is due like any other; `finishAttempt` and an automatic
+`recordBlockedAttempt` settle it as the final result (M3.2).
 
 Registry: `listDueEpisodes(now): EpisodeRecord[]`, `listRunningAttempts(startedBefore): EpisodeIngestionAttempt[]`.
 

@@ -471,6 +471,27 @@ export function listByChannel(
   return complete(sql, rows, options.relatedScope);
 }
 
+/**
+ * The recovery tick's selection (docs/specs/m3-6-recovery.md §2): every episode whose open window
+ * says its next attempt is due and that has no attempt running, in every channel status and pause
+ * state. Due order, then video id, so one tick's stagger is deterministic. No related titles.
+ */
+export function listDue(sql: SqlStorage, now: number): EpisodeRecord[] {
+  const rows = sql
+    .exec<EpisodeRow>(
+      `${EPISODE_SELECT}
+       WHERE e.intent IS NOT NULL AND e.next_attempt_at IS NOT NULL AND e.next_attempt_at <= ?
+         AND NOT EXISTS (
+           SELECT 1 FROM episode_ingestion_attempts a
+           WHERE a.video_id = e.video_id AND a.status = 'running'
+         )
+       ORDER BY e.next_attempt_at, e.video_id`,
+      now,
+    )
+    .toArray();
+  return complete(sql, rows, []);
+}
+
 /** One episode of one channel, with processing detail but no related titles. */
 export function getEpisode(
   sql: SqlStorage,

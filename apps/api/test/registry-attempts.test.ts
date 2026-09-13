@@ -16,6 +16,7 @@ import {
   OWNER,
   registry,
   seedApprovedChannel,
+  seedAttempt,
   seedEpisode,
   seedSummary,
   setChannelState,
@@ -792,5 +793,89 @@ describe("the attempt ledger", () => {
       kind: "running",
       attempt: { attemptId: id },
     });
+  });
+});
+
+describe("the recovery selection reads", () => {
+  it("lists due episodes with an open window and nothing running, in due order, inclusive of now", async () => {
+    const stub = registry();
+    await seedApprovedChannel(CHANNEL_A, "A");
+    const now = 1_000_000;
+    const window = (intent: "publish" | "replace", nextAttemptAt: number) => ({
+      intent,
+      startedAt: 1,
+      nextAttemptAt,
+    });
+    // Two due at exactly `now` (tie broken by video id), one due earlier under `replace`.
+    await seedEpisode(VIDEO_B, CHANNEL_A, {
+      status: "pending",
+      window: window("publish", now),
+    });
+    await seedEpisode(VIDEO_A, CHANNEL_A, {
+      status: "pending",
+      window: window("publish", now),
+    });
+    await seedEpisode(VIDEO_C, CHANNEL_A, {
+      status: "available",
+      window: window("replace", now - 10),
+    });
+    // Not due yet; running; window closed.
+    await seedEpisode("ddddddddddd", CHANNEL_A, {
+      status: "pending",
+      window: window("publish", now + 1),
+    });
+    await seedEpisode("eeeeeeeeeee", CHANNEL_A, {
+      status: "pending",
+      window: window("publish", now - 100),
+    });
+    await seedAttempt("eeeeeeeeeee", { status: "running", startedAt: 5 });
+    await seedEpisode("fffffffffff", CHANNEL_A, {
+      status: "failed",
+      failureDetail: "CAPTIONS",
+    });
+
+    expect((await stub.listDueEpisodes(now)).map((e) => e.videoId)).toEqual([
+      VIDEO_C,
+      VIDEO_A,
+      VIDEO_B,
+    ]);
+    expect(
+      (await stub.listDueEpisodes(now - 10)).map((e) => e.videoId),
+    ).toEqual([VIDEO_C]);
+    expect(await stub.listDueEpisodes(0)).toEqual([]);
+    await expectDomainError(stub.listDueEpisodes(-1), "INVALID_INPUT");
+  });
+
+  it("lists running attempts started strictly before the cutoff, oldest first, never a finished one", async () => {
+    const stub = registry();
+    await seedApprovedChannel(CHANNEL_A, "A");
+    for (const videoId of [VIDEO_A, VIDEO_B, VIDEO_C]) {
+      await seedEpisode(videoId, CHANNEL_A, {
+        status: "pending",
+        window: { intent: "publish", startedAt: 1 },
+      });
+    }
+    const old = await seedAttempt(VIDEO_A, {
+      status: "running",
+      startedAt: 100,
+    });
+    const older = await seedAttempt(VIDEO_B, {
+      status: "running",
+      startedAt: 50,
+    });
+    await seedAttempt(VIDEO_C, { status: "running", startedAt: 200 });
+    await seedAttempt(VIDEO_A, { status: "waiting", startedAt: 10 });
+
+    expect(
+      (await stub.listRunningAttempts(200)).map((a) => a.attemptId),
+    ).toEqual([older, old]);
+    expect((await stub.listRunningAttempts(201)).map((a) => a.videoId)).toEqual(
+      [VIDEO_B, VIDEO_A, VIDEO_C],
+    );
+    expect(await stub.listRunningAttempts(50)).toEqual([]);
+    await expectDomainError(
+      stub.listRunningAttempts(Number.NaN),
+      "INVALID_INPUT",
+    );
   });
 });

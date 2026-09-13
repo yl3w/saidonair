@@ -15,6 +15,7 @@ import {
 } from "../lib/youtube/ids";
 import type { ChannelFeed } from "../lib/youtube/rss";
 import { applyMigrations } from "./migrations";
+import * as attempts from "./registry/attempts";
 import * as catalog from "./registry/catalog";
 import * as channels from "./registry/channels";
 import * as episodes from "./registry/episodes";
@@ -239,13 +240,10 @@ export class RegistryDO extends DurableObject<Env> {
 
   /** Available episodes with summaries since `sinceMs` in the given channels, newest first. */
   listDigest(channelIds: string[], sinceMs: number): EpisodeRecord[] {
-    if (!Number.isFinite(sinceMs) || sinceMs < 0) {
-      throw new DomainError("INVALID_INPUT", "sinceMs must be a timestamp");
-    }
     return episodes.listDigest(
       this.#sql,
       requireChannelIds(channelIds),
-      sinceMs,
+      requireTimestamp(sinceMs, "sinceMs"),
     );
   }
 
@@ -258,6 +256,11 @@ export class RegistryDO extends DurableObject<Env> {
       limit: options.limit,
       relatedScope: requireChannelIds(options.relatedScope),
     });
+  }
+
+  /** The recovery tick's selection: window open, next attempt due, nothing running; every channel status (M3.6). */
+  listDueEpisodes(now: number): EpisodeRecord[] {
+    return episodes.listDue(this.#sql, requireTimestamp(now, "now"));
   }
 
   /** One episode of one channel with processing detail, or null; related titles are not resolved. */
@@ -344,6 +347,16 @@ export class RegistryDO extends DurableObject<Env> {
         now,
       );
     });
+  }
+
+  /** Running attempts that started before `startedBefore`, oldest first; reconciliation asks the engine about each. */
+  listRunningAttempts(startedBefore: number): EpisodeIngestionAttempt[] {
+    return attempts
+      .listRunningStartedBefore(
+        this.#sql,
+        requireTimestamp(startedBefore, "startedBefore"),
+      )
+      .map(attempts.toAttempt);
   }
 
   /** What an instance learns about its attempt before working: current or not, generation, episode facts. */
@@ -504,4 +517,12 @@ export class RegistryDO extends DurableObject<Env> {
     }
     users.seedOwner(this.#sql, email, Date.now());
   }
+}
+
+/** A finite Unix-ms timestamp at or after the epoch: the facade's clock inputs from callers. */
+function requireTimestamp(value: number, name: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new DomainError("INVALID_INPUT", `${name} must be a timestamp`);
+  }
+  return value;
 }

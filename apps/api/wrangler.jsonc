@@ -85,8 +85,9 @@
           { "name": "USER_DO", "class_name": "UserDO" }
         ]
       },
-      // The crons live here only (AGENTS.md → Environments): discovery on the hour; recovery at :30 lands with M3.6.
-      "triggers": { "crons": ["0 */6 * * *"] }
+      // The crons live here only (AGENTS.md → Environments): discovery on the hour, recovery at half past,
+      // dispatched by expression in lib/ingestion.ts.
+      "triggers": { "crons": ["0 */6 * * *", "30 */6 * * *"] }
     }
   }
 }

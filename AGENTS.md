@@ -93,7 +93,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── lib/validation.ts     # validate(target, schema): hono-openapi validator with the INVALID_INPUT 400 contract
 │   │   │   ├── lib/openapi.ts        # the document's fixed parts (info, tags, security) and describeRoute response helpers
 │   │   │   ├── lib/cors.ts           # browser origins allowed to call the API, from vars.WEB_ORIGINS
-│   │   │   ├── lib/ingestion.ts      # startDiscovery, the discovery tick, the scheduled dispatch; startEpisodeAttempts
+│   │   │   ├── lib/ingestion.ts      # startDiscovery, the discovery and recovery ticks, reconciliation, the scheduled dispatch; startEpisodeAttempts
 │   │   │   │                         # (pre-flight once per batch, one ledger row and one instance per episode, k × 3 s
 │   │   │   │                         # apart); closeLostEpisodeAttempt; preflight and startDelaySec are pure
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
@@ -295,8 +295,11 @@ Discovery runs, episode attempts, recovery, transcripts, and generation-safe pub
   `unavailable` run, never an error), records the run through the Registry, and hands the new episodes to
   `startEpisodeAttempts`: one provider pre-flight per batch, a `blocked` row or a running row per episode, one
   Workflow instance per launched attempt with `startDelaySec = k × 3`, and a `create` that throws finishing the
-  attempt `WORKFLOW_LOST`. `runScheduled(cron, env)` dispatches the crons; `index.ts` exports the typed
-  `ExportedHandler` and the Hono `app` by name.
+  attempt `WORKFLOW_LOST`. `runRecoveryTick` first reconciles running attempts older than an hour against the
+  engine (`reconcileRunningAttempts`: a gone or missing instance finishes `WORKFLOW_LOST` and the episode is due six
+  hours on, inside its window), then starts every due episode across every channel status and pause state as one
+  staggered batch; it reads no channel column. `runScheduled(cron, env)` dispatches both crons; `index.ts` exports the
+  typed `ExportedHandler` and the Hono `app` by name.
 - `workflows/ingest.ts` is the per-episode Workflow, one instance per attempt, its id the attempt's id. Each external
   call (transcript, each embed-and-upsert batch, each verify read, each AI call, the related query, each Registry
   write) is its own `step.do()` with an exported retry policy; verification is a loop of single-check steps with

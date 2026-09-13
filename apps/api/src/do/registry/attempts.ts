@@ -79,6 +79,21 @@ export function runningFor(
   );
 }
 
+/** Running attempts that started before `cutoff`, oldest first: reconciliation's candidates (rule 15). */
+export function listRunningStartedBefore(
+  sql: SqlStorage,
+  cutoff: number,
+): AttemptRow[] {
+  return sql
+    .exec<AttemptRow>(
+      `SELECT ${ATTEMPT_COLUMNS} FROM episode_ingestion_attempts
+       WHERE status = 'running' AND started_at < ?
+       ORDER BY started_at, attempt_id`,
+      cutoff,
+    )
+    .toArray();
+}
+
 export function getAttempt(
   sql: SqlStorage,
   attemptId: string,

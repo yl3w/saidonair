@@ -115,7 +115,11 @@ describe("wrangler.jsonc environments", () => {
     expect(Boolean(staging.ai)).toBe(Boolean(production?.ai));
   });
 
-  it("runs cron triggers in production only", () => {
+  it("runs both cron triggers in production and none elsewhere", () => {
+    expect(production?.triggers?.crons).toEqual([
+      "0 */6 * * *",
+      "30 */6 * * *",
+    ]);
     expect(staging.triggers).toBeUndefined();
     expect(dev?.triggers).toBeUndefined();
   });

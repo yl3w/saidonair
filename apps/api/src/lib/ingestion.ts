@@ -17,15 +17,20 @@ import { type ChannelFeed, feedFetcher, fetchChannelFeed } from "./youtube/rss";
 
 /**
  * The start points of ingestion (docs/PRD.md §4.2; docs/specs/m3-4-discovery.md §3;
- * docs/specs/m3-5-episode-workflow.md §3.2). Discovery is one RSS read of one approved channel
- * recorded as a completed run, from first approval, the owner's Start, or the discovery cron; it
- * never touches the transcript provider. The episodes a run creates, the recovery tick's due
- * episodes, and an owner's Retry all go through `startEpisodeAttempts`: one provider pre-flight per
- * batch, one ledger row per episode, one Workflow instance per launched attempt, three seconds apart.
+ * docs/specs/m3-5-episode-workflow.md §3.2; docs/specs/m3-6-recovery.md §3). Discovery is one RSS
+ * read of one approved channel recorded as a completed run, from first approval, the owner's Start,
+ * or the discovery cron; it never touches the transcript provider. The episodes a run creates, the
+ * recovery tick's due episodes, and an owner's Retry all go through `startEpisodeAttempts`: one
+ * provider pre-flight per batch, one ledger row per episode, one Workflow instance per launched
+ * attempt, three seconds apart. The recovery tick reconciles stale running attempts against the
+ * engine first, then starts every due episode regardless of its channel's status or pause.
  */
 
 /** Discovery, every six hours on the hour, UTC; `env.production` only (AGENTS.md → Environments). */
 export const DISCOVERY_CRON = "0 */6 * * *";
+
+/** Recovery, every six hours at half past, UTC; `env.production` only. */
+export const RECOVERY_CRON = "30 */6 * * *";
 
 export type DiscoveryOptions = {
   /** Bypass the fetch: the parsed feed, or null for an unreadable one. Tests use it; nothing else. */
@@ -189,7 +194,7 @@ export async function startEpisodeAttempts(
 /**
  * A running attempt whose instance is gone or missing finishes `WORKFLOW_LOST` and its episode stays
  * in its window (rule 15). Retry calls this inline on an attempt older than an hour; the recovery
- * sweep (M3.6) calls it for every such attempt.
+ * tick's reconciliation calls it for every such attempt.
  */
 export async function closeLostEpisodeAttempt(
   env: Env,
@@ -240,10 +245,94 @@ export async function runDiscoveryTick(env: Env): Promise<DiscoveryTickResult> {
   return result;
 }
 
+export type ReconcileResult = {
+  /** Running attempts older than an hour that were asked about. */
+  checked: number;
+  /** Those whose instance was gone or missing, now finished `WORKFLOW_LOST`. */
+  lost: number;
+};
+
+/**
+ * Reconciliation (rule 15): every running attempt older than an hour is asked about at the engine;
+ * a gone or missing instance finishes `WORKFLOW_LOST`, so its episode is due again inside its
+ * window, six hours on or at the deadline. One attempt that cannot be checked or closed is logged
+ * and does not stop the next.
+ */
+export async function reconcileRunningAttempts(
+  env: Env,
+  now: number = Date.now(),
+): Promise<ReconcileResult> {
+  const stale = await getRegistry(env).listRunningAttempts(
+    now - RECONCILE_AFTER_MS,
+  );
+  const launcher = ingestLauncher(env);
+  let lost = 0;
+  for (const attempt of stale) {
+    try {
+      const status = await launcher.status(attempt.attemptId);
+      if (status === "active") continue;
+      await closeLostEpisodeAttempt(env, attempt.attemptId);
+      lost += 1;
+    } catch (error) {
+      console.log({
+        event: "recovery.reconcile_failed",
+        attemptId: attempt.attemptId,
+        videoId: attempt.videoId,
+        error: messageOf(error),
+      });
+    }
+  }
+  return { checked: stale.length, lost };
+}
+
+export type RecoveryTickResult = {
+  /** Attempts finished `WORKFLOW_LOST` by reconciliation. */
+  reconciled: number;
+  /** Episodes whose next attempt was due, in every channel status and pause state. */
+  due: number;
+  started: number;
+  blocked: number;
+};
+
+/**
+ * The recovery cron (rules 13–15): reconcile first, then one attempt for every due episode,
+ * numbered across the whole tick so the k-th launched instance sleeps k × 3 seconds, with one
+ * provider pre-flight for the tick. No channel column is read. An episode at or after its deadline
+ * is due like any other; the ledger settles its result as the final one (M3.2).
+ */
+export async function runRecoveryTick(
+  env: Env,
+  now: number = Date.now(),
+): Promise<RecoveryTickResult> {
+  const reconciliation = await reconcileRunningAttempts(env, now);
+  const due = await getRegistry(env).listDueEpisodes(now);
+  // TODO(owner): a cap on due episodes per tick would slice `due` here; today the stagger is the only throttle.
+  const results = await startEpisodeAttempts(env, due, "scheduled_recovery");
+  const count = (kind: AttemptStartResult["kind"]) =>
+    results.filter((result) => result.kind === kind).length;
+  const result: RecoveryTickResult = {
+    reconciled: reconciliation.lost,
+    due: due.length,
+    started: count("started"),
+    blocked: count("blocked"),
+  };
+  console.log({
+    event: "recovery.tick",
+    ...result,
+    checked: reconciliation.checked,
+    launchFailed: count("lost"),
+  });
+  return result;
+}
+
 /** The `scheduled` handler's dispatch, by cron expression (AGENTS.md → Stack). */
 export async function runScheduled(cron: string, env: Env): Promise<void> {
   if (cron === DISCOVERY_CRON) {
     await runDiscoveryTick(env);
+    return;
+  }
+  if (cron === RECOVERY_CRON) {
+    await runRecoveryTick(env);
     return;
   }
   console.log({ event: "scheduled.unknown_cron", cron });
