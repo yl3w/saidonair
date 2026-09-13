@@ -79,6 +79,35 @@ describe("registry episodes", () => {
     await expectDomainError(stub.listDigest(["nope"], 0), "INVALID_INPUT");
   });
 
+  it("orders the digest by first availability, not publication, and applies `since` to it", async () => {
+    const stub = await twoChannels();
+    // Published a month ago, summarised just now: today's digest. Published today, summarised earlier: behind it.
+    await seedEpisode(VIDEO_A, CHANNEL_A, {
+      publishedAt: 1_000,
+      processedAt: 5_000,
+    });
+    await seedSummary(VIDEO_A);
+    await seedEpisode(VIDEO_B, CHANNEL_A, {
+      publishedAt: 9_000,
+      processedAt: 4_000,
+    });
+    await seedSummary(VIDEO_B);
+    await seedEpisode(VIDEO_C, CHANNEL_A, {
+      publishedAt: 9_500,
+      processedAt: 4_000,
+    });
+    await seedSummary(VIDEO_C);
+    expect(
+      (await stub.listDigest([CHANNEL_A], 0)).map((e) => e.videoId),
+    ).toEqual([VIDEO_A, VIDEO_B, VIDEO_C]);
+    expect(
+      (await stub.listDigest([CHANNEL_A], 4_500)).map((e) => e.videoId),
+    ).toEqual([VIDEO_A]);
+    expect((await stub.listDigest([CHANNEL_A], 0))[0]?.summaryAvailableAt).toBe(
+      5_000,
+    );
+  });
+
   it("counts by status and lists available ids across more than one parameter batch", async () => {
     const stub = await twoChannels();
     const ids = videoIds(120);

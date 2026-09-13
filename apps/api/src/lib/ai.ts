@@ -6,6 +6,8 @@
  * own `[h:mm:ss]` markers, and a marker in the prompt drives the failure paths.
  */
 
+import { STRICTER_RETRY_SUFFIX } from "../prompts/summary";
+
 export const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 export const EMBEDDING_DIMENSIONS = 768;
 /** Texts per `embed` call: well under the model's input cap, one Vectorize upsert batch each. */
@@ -29,7 +31,8 @@ export type Summarizer = {
 export type AiClient = Embedder & Summarizer;
 
 export function ai(env: { AI?: Ai; AI_FAKE?: string }): AiClient {
-  if (env.AI_FAKE !== undefined) return fakeClient();
+  if (env.AI_FAKE !== undefined)
+    return fakeClient(parseFakeOptions(env.AI_FAKE));
   if (!env.AI) throw new Error("AI binding is not configured");
   return realClient(env.AI);
 }
@@ -105,14 +108,26 @@ export function resetAiFake(): void {
   invalidOnceSeen.clear();
 }
 
-function fakeClient(): AiClient {
+type FakeOptions = {
+  /** `embed` throws, for the EMBEDDING_FAILED path. */
+  embedThrows: boolean;
+};
+
+function parseFakeOptions(raw: string): FakeOptions {
+  const value = JSON.parse(raw) as Partial<FakeOptions> | null;
+  return { embedThrows: value?.embedThrows ?? false };
+}
+
+function fakeClient(options: FakeOptions): AiClient {
   const complete = async (prompt: string): Promise<string> => {
     if (prompt.includes(FAKE_THROW))
       throw new Error("SUMMARY_FAILED: canned failure");
     if (prompt.includes(FAKE_INVALID))
       return "I am sorry, I cannot produce that JSON.";
-    if (prompt.includes(FAKE_INVALID_ONCE) && !invalidOnceSeen.has(prompt)) {
-      invalidOnceSeen.add(prompt);
+    // The retry re-sends the prompt with the stricter suffix: same prompt, second answer.
+    const key = prompt.replace(STRICTER_RETRY_SUFFIX, "");
+    if (prompt.includes(FAKE_INVALID_ONCE) && !invalidOnceSeen.has(key)) {
+      invalidOnceSeen.add(key);
       return "Here is my answer: { not: json";
     }
     return cannedSummary(prompt);
@@ -120,6 +135,8 @@ function fakeClient(): AiClient {
   return {
     async embed(texts) {
       requireBatch(texts);
+      if (options.embedThrows)
+        throw new Error("EMBEDDING_FAILED: canned failure");
       return texts.map((text) => fakeEmbedding(text));
     },
     summarizeSection: complete,

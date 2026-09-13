@@ -10,6 +10,7 @@ import type {
   EpisodeSummary,
   IngestionRun,
   PausedBy,
+  ProcessingIntent,
   RelatedEpisode,
   UserRole,
 } from "@media-digest/shared";
@@ -200,3 +201,24 @@ export type EpisodeSummaryInput =
       model: string;
       promptVersion: string;
     };
+
+/**
+ * What a Workflow instance learns about its own attempt before it works (docs/specs/m3-5-episode-workflow.md
+ * §3.4 `load`): whether it is still the current attempt, the generation it stages, the episode facts its vector
+ * metadata carries, and the abandoned generation it deletes first, when any.
+ */
+export type AttemptContext = {
+  current: boolean;
+  attempt: EpisodeIngestionAttempt;
+  generationId: string | null;
+  episode: {
+    videoId: string;
+    channelId: string;
+    channelTitle: string;
+    title: string;
+    publishedAt: number;
+    intent: ProcessingIntent | null;
+    activeVectorGeneration: string | null;
+  };
+  abandonedGeneration: StagedGeneration | null;
+};

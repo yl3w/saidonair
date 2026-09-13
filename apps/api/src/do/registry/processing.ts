@@ -7,6 +7,7 @@ import * as attempts from "./attempts";
 import * as episodes from "./episodes";
 import { relatedFromCandidates, upsertSummary } from "./summaries";
 import {
+  type AttemptContext,
   type AttemptOutcome,
   type AttemptResult,
   type AttemptStart,
@@ -235,6 +236,54 @@ export function completeAttempt(
     attempt: attempts.toAttempt(row),
     episode: requireRecord(sql, episode.videoId),
     previousGeneration: previous,
+  };
+}
+
+/**
+ * The instance's view of its attempt (`load`): current or not, and what it must know to stage and to
+ * clean up. Never throws for a stale attempt; `current: false` tells the instance to exit quietly.
+ */
+export function describeAttempt(
+  sql: SqlStorage,
+  attemptId: string,
+): AttemptContext {
+  const attempt = requireAttempt(sql, attemptId);
+  const state = episodes.requireState(sql, attempt.video_id);
+  const record = requireRecord(sql, attempt.video_id);
+  const current =
+    attempt.status === "running" &&
+    attempt.generation_id !== null &&
+    state.stagedVectorGeneration === attempt.generation_id;
+  const previous = attempts.previousWithGeneration(
+    sql,
+    attempt.video_id,
+    attempt.attempt_id,
+  );
+  const abandoned =
+    previous &&
+    previous.generation_id !== null &&
+    previous.staged_chunk_count !== null &&
+    previous.status !== "available" &&
+    previous.generation_id !== state.activeVectorGeneration
+      ? {
+          generationId: previous.generation_id,
+          chunkCount: previous.staged_chunk_count,
+        }
+      : null;
+  return {
+    current,
+    attempt: attempts.toAttempt(attempt),
+    generationId: attempt.generation_id,
+    episode: {
+      videoId: record.videoId,
+      channelId: record.channelId,
+      channelTitle: record.channelTitle,
+      title: record.title,
+      publishedAt: record.publishedAt,
+      intent: state.intent,
+      activeVectorGeneration: state.activeVectorGeneration,
+    },
+    abandonedGeneration: abandoned,
   };
 }
 

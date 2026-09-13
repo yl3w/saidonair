@@ -22,6 +22,7 @@ import * as followers from "./registry/followers";
 import * as processing from "./registry/processing";
 import * as runs from "./registry/runs";
 import type {
+  AttemptContext,
   AttemptOutcome,
   AttemptResult,
   AttemptStart,
@@ -259,6 +260,15 @@ export class RegistryDO extends DurableObject<Env> {
     });
   }
 
+  /** One episode of one channel with processing detail, or null; related titles are not resolved. */
+  getEpisode(channelId: string, videoId: string): EpisodeRecord | null {
+    return episodes.getEpisode(
+      this.#sql,
+      requireChannelId(channelId),
+      requireVideoId(videoId),
+    );
+  }
+
   /** Back to `pending` with attempts reset; the route starts a one-episode run. */
   retryEpisode(channelId: string, videoId: string): EpisodeRecord {
     const id = requireChannelId(channelId);
@@ -334,6 +344,14 @@ export class RegistryDO extends DurableObject<Env> {
         now,
       );
     });
+  }
+
+  /** What an instance learns about its attempt before working: current or not, generation, episode facts. */
+  describeAttempt(attemptId: string): AttemptContext {
+    return processing.describeAttempt(
+      this.#sql,
+      processing.requireAttemptId(attemptId),
+    );
   }
 
   /** How many vectors the current attempt is about to write, recorded before the first upsert. */

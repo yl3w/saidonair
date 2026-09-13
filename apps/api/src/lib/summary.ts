@@ -5,11 +5,13 @@ import type { TranscriptChunk } from "./chunk";
  * §3.3): the transcript the model reads, with one `[h:mm:ss]` marker per chunk; the split of a long
  * episode into sections of at most 45 minutes on chunk boundaries, one map call each; and the hand
  * validation of the model's JSON, shape and not just parseability (AGENTS.md → AI code), with each
- * takeaway's marker mapped to a `startSec` a reader can jump to.
+ * takeaway's marker mapped to a `startSec` a reader can jump to. The prompt asks for an executive
+ * summary of at most three sentences; the count is not validated (owner decision 2026-09-13): a
+ * structured answer that runs long serves the reader better than the raw-text fallback a rejection
+ * would leave them with.
  */
 
 export const SECTION_MAX_SEC = 45 * 60;
-export const MAX_SUMMARY_SENTENCES = 3;
 export const MIN_TAKEAWAYS = 3;
 export const MAX_TAKEAWAYS = 5;
 export const MIN_TAGS = 1;
@@ -73,17 +75,6 @@ export function parseTimestampMarker(value: string): number | null {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
-// A private-use character stands in for a decimal point while sentences are counted.
-const DECIMAL_POINT = String.fromCharCode(0xe000);
-
-/** Sentences end in `.`, `!`, or `?` followed by whitespace or the end; a decimal point between digits does not. */
-export function countSentences(text: string): number {
-  const guarded = text.trim().replace(/(\d)\.(\d)/g, `$1${DECIMAL_POINT}$2`);
-  return guarded
-    .split(/[.!?]+(?:\s+|$)/)
-    .filter((piece) => piece.trim().length > 0).length;
-}
-
 /**
  * The model's raw text to a validated summary, or null when it is not one: the JSON between the
  * first `{` and the last `}` (models wrap answers in prose and fences), then the shape. A takeaway's
@@ -106,12 +97,7 @@ export function parseSummary(
   if (!value) return null;
 
   const executiveSummary = nonEmpty(value.executiveSummary);
-  if (
-    executiveSummary === null ||
-    countSentences(executiveSummary) > MAX_SUMMARY_SENTENCES
-  ) {
-    return null;
-  }
+  if (executiveSummary === null) return null;
 
   if (!Array.isArray(value.takeaways)) return null;
   if (

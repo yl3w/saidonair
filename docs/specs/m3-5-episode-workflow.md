@@ -6,8 +6,9 @@
 Attempt gate, Publishing, Launch throttle, Reconciliation's Retry half, Digest basis), §3 "episode attempt starter"
 and "one Workflow instance per attempt", §3.5, §4; PRD §4.2 rules 5–9, 16–17, 24–26 and §4.4. Acceptance 2, 5, 6
 (owner half), 11, 12, 13, 14 (Retry half), 18, 19 of the parent.
-**Status:** approved with the split of 2026-09-13; not started. Plan: `docs/specs/m3-5-episode-workflow-plan.md`.
-Needs M3.1–M3.4 on `main`. No new dependencies.
+**Status:** implemented 2026-09-13 on `main`, committed the same day at the owner's request; `pnpm check` green; the `wrangler
+dev` walkthrough on real channels, DownSub, Workers AI, Vectorize, and the local Workflows engine is recorded in
+`docs/specs/m3-5-episode-workflow-plan.md`. No new dependencies.
 
 ## 1. Summary
 
@@ -33,6 +34,9 @@ DownSub key now produces `available` episodes with summaries in the Registry and
 | Verify step result | Only the count of missing ids crosses the step boundary. | Step results stay small. |
 | Related query width | `query(topK: 50)`, the cap when metadata is returned, before deduping to at most five other videos. | With 20 candidates one neighbouring episode's many similar chunks can crowd out the rest and leave the related list short of five (owner decision 2026-09-13; replaces the 20 of the first draft). Costs nothing meaningful. |
 | Pipeline as a function | `ingestAttempt(step, env, params)` takes a `StepLike` (`do`, `sleep`) and does the work; `IngestWorkflow.run` passes the real `step`. | Tests drive the pipeline with an inline step runner whether or not the pool runs Workflows (M3.1 Step 0.1 decides which tests also use real instances). |
+| The instance's first read | `load` calls a new Registry read, `describeAttempt(attemptId)`: current or not, the generation to stage, the episode facts the vector metadata carries, and the abandoned generation to delete first. The instance receives only the four params. | `beginAttempt` told the starter about the abandoned generation, not the instance; a read the instance owns keeps `IngestParams` at four fields and lets a replayed instance re-derive everything. |
+| Embed and upsert per batch | One `stage:<i>` step embeds twenty chunks and upserts their vectors; only the batch's vector sum crosses the boundary. | The vectors would otherwise cross a step boundary only to be upserted by the next step; a retry re-embeds (deterministic in the fake, near enough in the model) and re-upserts by id. |
+| Deterministic provider answers do not retry | The transcript step returns `UNPLAYABLE`, `PROVIDER_AUTH`, and `PROVIDER_LIMIT` as values; every other provider failure throws and is retried by the step. | Five retries with backoff against a rejected key or a deleted video would waste minutes for the same answer. |
 | Classification is pure | `classify(result \| failure): Classification` exported from `workflows/ingest.ts` and unit-tested on every row of parent §3.5. | The row table is the contract; a pure function pins it. |
 
 ## 3. Contract

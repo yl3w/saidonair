@@ -273,6 +273,9 @@ function parseFakeOptions(raw: string): FakeOptions {
 }
 
 function fakeStore(options: FakeOptions): VectorStore {
+  // A store configured without a delay sees every write at once, including writes an earlier,
+  // delayed configuration left pending: the operator "waited long enough".
+  if (options.visibilityDelayReads === 0) fakePendingReads.clear();
   const failing = (method: FakeOptions["throwOn"][number]) => {
     if (options.throwOn.includes(method)) {
       throw new Error(`vectorize fake: ${method} is configured to fail`);

@@ -17,9 +17,10 @@ import { docsPage } from "./routes/docs";
 import { followRoutes } from "./routes/follows";
 import { meRoutes } from "./routes/me";
 
-// Durable Object classes must be exported from the Worker entry.
+// Durable Object and Workflow classes must be exported from the Worker entry.
 export { RegistryDO } from "./do/registry";
 export { UserDO } from "./do/user";
+export { IngestWorkflow } from "./workflows/ingest";
 
 export const app = new Hono<AppEnv>();
 

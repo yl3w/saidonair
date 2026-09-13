@@ -18,6 +18,7 @@ import {
   runDiscoveryTick,
   startDiscovery,
 } from "../src/lib/ingestion";
+import { createdInstances } from "../src/lib/workflows";
 import { CHANNEL_F, FEED_F_ENTRIES } from "./fixtures/feeds";
 import {
   ALICE,
@@ -120,10 +121,14 @@ describe("discovery on approval", () => {
       expect(row.processing).toMatchObject({
         discoveredByRunId: run.runId,
         intent: "publish",
-        attemptCount: 0,
-        latestAttempt: null,
+        attemptCount: 1,
+        latestAttempt: { status: "running", trigger: "channel_ingestion" },
       });
     }
+    // Every new episode started its first attempt at once, three seconds apart (PRD §4.2 rules 5 and 8).
+    expect(createdInstances().map((p) => [p.videoId, p.startDelaySec])).toEqual(
+      NEWEST_FIVE.map((videoId, k) => [videoId, k * 3]),
+    );
     const runs = await call(ALICE, "GET", `/channels/${CHANNEL_F}/runs`);
     expectShape(IngestionRunsResponseSchema, runs.json);
     expect(runs.json.runs).toHaveLength(1);
@@ -326,6 +331,10 @@ describe("the discovery cron", () => {
       expect(await stub.listRuns(untouched)).toEqual([]);
     }
 
+    // Five launches for F's five new episodes, none for A's empty feed.
+    expect(createdInstances().map((p) => p.channelId)).toEqual(
+      Array(5).fill(CHANNEL_F),
+    );
     // The tick's own account of itself, on a second pass: F now reads "nothing new".
     expect(await runDiscoveryTick(env)).toEqual({
       channels: 3,

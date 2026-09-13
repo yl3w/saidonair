@@ -102,7 +102,7 @@ Digest · Channels
 ## Today's digest                                          since 2026-09-06 09:12
                                                             Show last 7 days · Refresh
 NEW  How we shipped the thing — Some Channel · 3h ago
-     Executive summary, at most three sentences.
+     Executive summary, about three sentences.
      • takeaway
      • takeaway
      • takeaway

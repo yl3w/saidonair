@@ -379,10 +379,12 @@ episode's row, phrased from its latest attempt.
 
 ### 4.4 Shared summaries, digests, and unread state
 
-- Store one summary per episode: an executive summary of at most three sentences, 3–5 takeaways each with the
-  timestamp of the moment it comes from, and topic tags. The model is asked for JSON with `[mm:ss]` markers in the
-  prompt; a takeaway's timestamp is taken from those markers and is null when absent or out of range. Validate the
-  JSON shape; retry invalid output once, then retain raw text with a `raw_fallback` flag.
+- Store one summary per episode: an executive summary the prompt asks to keep to three sentences, 3–5 takeaways each
+  with the timestamp of the moment it comes from, and topic tags. The model is asked for JSON with `[h:mm:ss]` markers
+  in the prompt; a takeaway's timestamp is taken from those markers and is null when absent or out of range. Validate
+  the JSON shape, not the sentence count (owner decision 2026-09-13: a structured summary that runs long serves the
+  reader better than the raw text a rejection would leave). Retry invalid output once, then retain raw text with a
+  `raw_fallback` flag.
 - Summaries publish automatically after that validation, retry, and raw fallback. There is no manual approval and no
   summary-quality review gate (owner decision 2026-09-10). Prompts are versioned; changing one is a product decision.
 - User preferences affect chat answers only, not shared summaries.
@@ -391,8 +393,8 @@ episode's row, phrased from its latest attempt.
   stores an empty list and never blocks publication. Display only related titles belonging to the reader's eligible
   channels; the UI omits an empty section.
 - Digest windows and ordering use the summary's first availability time, `episodes.processed_at` exposed as
-  `summaryAvailableAt`, not the video's publication time (owner decision 2026-09-10; the digest route carries it in
-  M3 and uses publication time until then). The default window is the last 24 hours and the expanded window seven
+  `summaryAvailableAt`, not the video's publication time (owner decision 2026-09-10; carried by the digest route since
+  M3.5, 2026-09-13). The default window is the last 24 hours and the expanded window seven
   days, newest availability first, within eligible followed channels. Reads, refollows, re-approval, and enrichment
   never reset availability. Publication time stays separate metadata, and channel history stays publication-ordered.
 - Channel pages show recent episodes to followers, with a summary on the available ones and a phrase on the rest.
@@ -600,7 +602,7 @@ wait reasons live in one place in the web app.
   but never started", from `GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the
   count is zero. Then:
   1. **Today's digest** — eligible followed channels only; summaries first available in the last 24 hours, newest
-     availability first (M3 carries the basis; publication time until then), as a flat list with the channel as
+     availability first (the basis since M3.5), as a flat list with the channel as
      byline: shared summary, takeaways with `youtu.be/<id>?t=<startSec>` links where a timestamp exists, tags, and
      related titles filtered to eligible channels. Items with no read receipt at fetch time are marked NEW, and
      returning them records the receipt. "Show last 7 days" widens the window; "Refresh" (M3) re-fetches the lists
@@ -706,7 +708,7 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | `GET /channels/:id/followers` | anyone; UI: owner | Emails and follow times of the channel's active followers |
 | `GET /follows` | anyone (own) | Own active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
 | `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for a declined one) / retain an unfollow tombstone on a channel in any status; the Registry's follower record is the follow |
-| `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt` (M3; publication time until then); default last 24h, clamped to 7 days; marks returned items read and reports `wasUnread` per item |
+| `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt` (since M3.5); default last 24h, clamped to 7 days; marks returned items read and reports `wasUnread` per item |
 | `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats |
 | `GET /chats/:id/messages?limit=50` | anyone (own) | Selected chat history with citation snapshots |
 | `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources using current eligible follows |

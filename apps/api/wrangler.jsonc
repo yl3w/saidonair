@@ -17,6 +17,13 @@
     // allows only the local Vite origins (lib/cors.ts), which is enough to drive staging from a local web.
   },
   "ai": { "binding": "AI", "remote": true },
+  "workflows": [
+    {
+      "name": "media-digest-ingest-staging",
+      "binding": "INGEST_WORKFLOW",
+      "class_name": "IngestWorkflow"
+    }
+  ],
   "vectorize": [
     { "binding": "VECTORS", "index_name": "media-rag-staging", "remote": true }
   ],
@@ -39,6 +46,13 @@
         "WEB_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173"
       },
       "ai": { "binding": "AI", "remote": true },
+      "workflows": [
+        {
+          "name": "media-digest-ingest-dev",
+          "binding": "INGEST_WORKFLOW",
+          "class_name": "IngestWorkflow"
+        }
+      ],
       "vectorize": [
         { "binding": "VECTORS", "index_name": "media-rag-dev", "remote": true }
       ],
@@ -55,6 +69,13 @@
         // TODO(owner): WEB_ORIGINS for the production web (the Pages production origin) before the first deploy.
       },
       "ai": { "binding": "AI", "remote": true },
+      "workflows": [
+        {
+          "name": "media-digest-ingest",
+          "binding": "INGEST_WORKFLOW",
+          "class_name": "IngestWorkflow"
+        }
+      ],
       "vectorize": [
         { "binding": "VECTORS", "index_name": "media-rag", "remote": true }
       ],

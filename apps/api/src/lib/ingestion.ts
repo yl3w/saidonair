@@ -1,16 +1,27 @@
-import type { AttemptTrigger } from "@media-digest/shared";
+import type {
+  AttemptTrigger,
+  EpisodeIngestionAttempt,
+  TranscriptProviderHealth,
+} from "@media-digest/shared";
 import { getRegistry } from "../do/registry";
-import type { DiscoveryResult, EpisodeRecord } from "../do/registry/types";
+import type {
+  BlockReason,
+  DiscoveryResult,
+  EpisodeRecord,
+} from "../do/registry/types";
 import type { Env } from "../env";
 import { domainErrorCode } from "./errors";
+import { transcriptProviderHealth } from "./transcripts/status";
+import { type IngestParams, ingestLauncher } from "./workflows";
 import { type ChannelFeed, feedFetcher, fetchChannelFeed } from "./youtube/rss";
 
 /**
- * The start points of ingestion (docs/PRD.md §4.2; docs/specs/m3-4-discovery.md §3). Discovery is
- * one RSS read of one approved channel recorded as a completed run, from first approval, the
- * owner's Start, or the discovery cron; it never touches the transcript provider. The episodes a
- * run creates are handed to `startEpisodeAttempts`, which logs until M3.5 replaces its body with
- * the pre-flight, the ledger write, and the Workflow launch.
+ * The start points of ingestion (docs/PRD.md §4.2; docs/specs/m3-4-discovery.md §3;
+ * docs/specs/m3-5-episode-workflow.md §3.2). Discovery is one RSS read of one approved channel
+ * recorded as a completed run, from first approval, the owner's Start, or the discovery cron; it
+ * never touches the transcript provider. The episodes a run creates, the recovery tick's due
+ * episodes, and an owner's Retry all go through `startEpisodeAttempts`: one provider pre-flight per
+ * batch, one ledger row per episode, one Workflow instance per launched attempt, three seconds apart.
  */
 
 /** Discovery, every six hours on the hour, UTC; `env.production` only (AGENTS.md → Environments). */
@@ -46,24 +57,150 @@ export async function startDiscovery(
   return result;
 }
 
+/** Running attempts older than this are checked against the engine before Retry or recovery proceeds (rules 15, 17). */
+export const RECONCILE_AFTER_MS = 60 * 60 * 1000;
+
+/** The k-th attempt launched in one batch sleeps this long first (docs/PRD.md §4.2 rule 8), k from 0. */
+export function startDelaySec(k: number): number {
+  return k * 3;
+}
+
+/** What the provider's health means for a start: a rejected key or no credits blocks it, anything else does not (rule 9). */
+export function preflight(
+  health: TranscriptProviderHealth,
+): BlockReason | null {
+  if (health.status === "auth_failed") return "PROVIDER_AUTH";
+  if (health.status === "ok" && health.remainingCredits === 0)
+    return "PROVIDER_LIMIT";
+  return null;
+}
+
+export type AttemptStartResult = {
+  videoId: string;
+  /** `started` launched an instance; `blocked` recorded a blocked row; `running` found one in flight; `lost` could not launch. */
+  kind: "started" | "blocked" | "running" | "lost";
+  attempt: EpisodeIngestionAttempt;
+};
+
+export type StartOptions = {
+  /** The owner behind an `owner_retry`; the automatic triggers pass nothing. */
+  requestedByEmail?: string;
+};
+
 /**
- * The common attempt starter for discovery's new episodes, the recovery tick, and Owner Retry.
- * Until M3.5 it records the request as a log line, so the call sites are in place and visible under
- * `wrangler dev`; M3.5 replaces the body with pre-flight, `beginAttempt`, and the launch.
+ * The common attempt starter. One pre-flight for the whole batch; then per episode: a blocked row
+ * when the provider refuses work, otherwise a running row and a Workflow instance whose first step
+ * sleeps k × 3 seconds, k counting launches. A `create` that throws finishes the attempt
+ * `WORKFLOW_LOST` and the batch continues; so does any other failure on one episode.
  */
 export async function startEpisodeAttempts(
-  _env: Env,
+  env: Env,
   episodes: readonly EpisodeRecord[],
   trigger: AttemptTrigger,
-): Promise<void> {
+  options: StartOptions = {},
+): Promise<AttemptStartResult[]> {
+  if (episodes.length === 0) return [];
+  const registry = getRegistry(env);
+  const launcher = ingestLauncher(env);
+  const block = preflight(await transcriptProviderHealth(env));
+  const results: AttemptStartResult[] = [];
+  let launched = 0;
   for (const episode of episodes) {
-    console.log({
-      event: "ingestion.attempt_start_requested",
-      channelId: episode.channelId,
-      videoId: episode.videoId,
-      trigger,
-    });
+    const { videoId, channelId } = episode;
+    try {
+      if (block) {
+        const { attempt } = await registry.recordBlockedAttempt(
+          videoId,
+          trigger,
+          block,
+          options.requestedByEmail,
+        );
+        console.log({
+          event: "ingestion.attempt_blocked",
+          channelId,
+          videoId,
+          trigger,
+          reason: block,
+        });
+        results.push({ videoId, kind: "blocked", attempt });
+        continue;
+      }
+      const start = await registry.beginAttempt(
+        videoId,
+        trigger,
+        options.requestedByEmail,
+      );
+      if (start.kind === "running") {
+        console.log({
+          event: "ingestion.attempt_running",
+          channelId,
+          videoId,
+          attemptId: start.attempt.attemptId,
+        });
+        results.push({ videoId, kind: "running", attempt: start.attempt });
+        continue;
+      }
+      const params: IngestParams = {
+        attemptId: start.attempt.attemptId,
+        videoId,
+        channelId,
+        startDelaySec: startDelaySec(launched),
+      };
+      try {
+        await launcher.create(params);
+      } catch (error) {
+        const lost = await registry.finishAttempt(params.attemptId, {
+          status: "failed",
+          code: "WORKFLOW_LOST",
+          detail: `create failed: ${messageOf(error)}`,
+        });
+        console.log({
+          event: "ingestion.attempt_lost",
+          channelId,
+          videoId,
+          attemptId: params.attemptId,
+        });
+        results.push({ videoId, kind: "lost", attempt: lost.attempt });
+        continue;
+      }
+      launched += 1;
+      console.log({
+        event: "ingestion.attempt_started",
+        channelId,
+        videoId,
+        trigger,
+        attemptId: params.attemptId,
+        startDelaySec: params.startDelaySec,
+      });
+      results.push({ videoId, kind: "started", attempt: start.attempt });
+    } catch (error) {
+      console.log({
+        event: "ingestion.start_failed",
+        channelId,
+        videoId,
+        trigger,
+        error: messageOf(error),
+      });
+    }
   }
+  return results;
+}
+
+/**
+ * A running attempt whose instance is gone or missing finishes `WORKFLOW_LOST` and its episode stays
+ * in its window (rule 15). Retry calls this inline on an attempt older than an hour; the recovery
+ * sweep (M3.6) calls it for every such attempt.
+ */
+export async function closeLostEpisodeAttempt(
+  env: Env,
+  attemptId: string,
+): Promise<void> {
+  await getRegistry(env).finishAttempt(attemptId, {
+    status: "failed",
+    code: "WORKFLOW_LOST",
+    detail: "the Workflow instance is gone or missing after an hour",
+  });
+  console.log({ event: "ingestion.attempt_lost", attemptId });
 }
 
 export type DiscoveryTickResult = {

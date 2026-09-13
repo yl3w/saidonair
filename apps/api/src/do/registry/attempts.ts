@@ -110,6 +110,25 @@ export function latestWithGeneration(
   );
 }
 
+/** The episode's newest attempt that minted a generation other than the one named: what a running attempt may find abandoned. */
+export function previousWithGeneration(
+  sql: SqlStorage,
+  videoId: string,
+  excludingAttemptId: string,
+): AttemptRow | null {
+  return (
+    sql
+      .exec<AttemptRow>(
+        `SELECT ${ATTEMPT_COLUMNS} FROM episode_ingestion_attempts
+         WHERE video_id = ? AND generation_id IS NOT NULL AND attempt_id <> ?
+         ORDER BY created_at DESC, attempt_id DESC LIMIT 1`,
+        videoId,
+        excludingAttemptId,
+      )
+      .toArray()[0] ?? null
+  );
+}
+
 export type RunningInsert = {
   attemptId: string;
   videoId: string;

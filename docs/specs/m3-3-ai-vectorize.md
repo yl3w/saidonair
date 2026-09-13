@@ -84,7 +84,9 @@ export function parseSummary(raw: string, durationSec: number | null): Structure
 ```
 
 `parseSummary` extracts the JSON between the first `{` and the last `}` (models wrap output in prose or fences),
-then validates: `executiveSummary` a non-empty string of at most three sentences; `takeaways` three to five objects
+then validates: `executiveSummary` a non-empty string (the prompt asks for at most three sentences; the count is not
+validated, owner decision 2026-09-13 after the M3.5 walkthrough saw a long but otherwise good answer fall back to raw
+text); `takeaways` three to five objects
 with non-empty `text` and `at` a string or null, `at` parsed to `startSec` and set null when absent, unparsable, or
 beyond `durationSec` when known; `topicTags` one to eight non-empty strings, lower-cased and trimmed. Anything else is
 `null`, which the caller treats as invalid output.
@@ -127,9 +129,9 @@ and `"vectorize": [{ "binding": "VECTORS", "index_name": "<media-rag | media-rag
    all; `query` honours the channel filter and never returns a vector from another channel.
 5. `sectionize`: 40 minutes is one section; 100 minutes is three, split only on chunk boundaries, each at most
    45 minutes; `formatTranscript` markers read `[0:04:12]` and `[1:02:03]`.
-6. `parseSummary`: valid JSON passes; fence-wrapped JSON passes; four sentences, two takeaways, six takeaways, zero
-   tags, nine tags, and a non-string field each return null; `at` beyond the duration gives `startSec: null`;
-   `mm:ss` is accepted; tags come back lower-cased.
+6. `parseSummary`: valid JSON passes; fence-wrapped JSON passes; a four-sentence summary passes (2026-09-13); two
+   takeaways, six takeaways, zero tags, nine tags, and a non-string field each return null; `at` beyond the duration
+   gives `startSec: null`; `mm:ss` is accepted; tags come back lower-cased.
 7. The fake summarizer answers invalid JSON once then valid, invalid always, or throws, on the marker.
 8. `pnpm check` green; the probe embedded one text and summarised one fixture with the real bindings under
    `wrangler dev`, its observations are recorded, and it left no trace in the tree.

@@ -4,7 +4,9 @@
 `docs/specs/m3-ingestion-plan.md`. Carries Step 6, the episode half of Step 7, the Workflow binding of Step 5, and
 the digest basis of the 2026-09-12 plan.
 **Written:** 2026-09-13, against `main` at `e37181c`.
-**Status:** approved; not started. Requires M3.1–M3.4 on `main`. No new dependencies.
+**Status:** complete 2026-09-13 on `main`, committed the same day at the owner's request: the four code
+steps landed together, `pnpm check` green with 35 test files and 286 tests (32 and 250 before), the walkthrough
+below run against real services. No new dependencies.
 **Shape:** four code steps and a walkthrough, each code step one commit when the owner asks with `pnpm check` green.
 Step 1 and Step 4 are independent of the rest; Step 3 needs Step 2. Decisions this plan makes are marked **plan
 decision** and stand unless vetoed.
@@ -91,4 +93,37 @@ one with a short for `skipped SHORT`; read the credits again. Record every leg b
 
 ## Walkthrough record
 
-_Filled in during Step 5._
+Run on 2026-09-13 under `wrangler dev --env dev` (remote Workers AI and `media-rag-dev`, the local Workflows
+engine, the owner's DownSub key) on scratch `--persist-to` directories, one per run, so the owner's local state
+stayed untouched. Identities `alice@example.com` (adds and follows) and `owner@example.com` (approves, retries).
+Credits: 2141 before the day's M3.5 runs, 2128 after (thirteen `subtitles_found` calls: nine episodes attempted,
+one replacement, three direct probes).
+
+| Leg | What happened |
+|---|---|
+| Veritasium, newest 2, then newest 4 on fresh state | Every attempt finished `skipped SHORT` within 5–15 s of approval: DownSub reports the four newest uploads at 49, 91, and similar seconds, all shorts (confirmed directly for two ids). Correct, and no use for the happy path. |
+| 3Blue1Brown, newest 2 | Two puzzle shorts, `skipped SHORT` in 5 s. |
+| Computerphile, newest 3 (`iuHddnIzKRA`, `kVXp6UNVPTo`, `xs5iOwkX9fU`) | Approval discovered 3 and started 3 attempts (stagger 0, 3, 6 s). All three `available` after 50 s: 29, 34, and 21 chunks; `wrangler vectorize info` read 84 vectors, the exact sum. Two structured summaries with real timestamps (takeaways at 223, 1583, 1472 s and 114, 454, 854 s; tags like `ai`, `neuralese`, `linux`); the third fell back to raw text (below). Related: 0, 2, 1, the later episodes finding the earlier ones. The log carried `ingestion.attempt_started` ×3 and `ingest.published` ×3. |
+| digest and catalog | `GET /digest` as alice listed the three newest availability first (`summaryAvailableAt` 715490 > 714078 > 704918 ms), all `wasUnread: false` because the polling script had already read them through the channel page, which records receipts for an eligible caller. `GET /catalog`: `episodes.available: 3`, `lastSuccessfulIngestionAt` equal to the newest `processed_at`, credits 2128. |
+| Retry of an available episode (`iuHddnIzKRA`) | 200 with `attempt: { status: running, intent: replace }`; while running the episode stayed `available` with its old summary (takeaways 223, 1583, 1472); 25 s later the new summary (280, 679, 1583) with one related episode, `summaryAvailableAt` unchanged at 1789325704918, `chunkCount` 29, `attemptCount` 1 (reset by Retry, then one launch). The index still read 84 right after: the new generation's 29 in, the old 29 deleted by `cleanup`. |
+| raw fallback | `kVXp6UNVPTo`'s model answer was fenced JSON whose `executiveSummary` ran past three sentences twice, so `parseSummary` refused it and the raw text was published as `raw_fallback`, exactly as PRD §4.4 then said. The reader lost the takeaways, timestamps, and tags that answer carried, and the stricter retry suffix speaks of JSON shape, not length, so the retry could not help. Owner decision the same day: the prompt keeps asking for three sentences and the validator no longer counts them (PRD §4.4 and the M3.3 spec §3.3 updated). |
+| not exercised | A fresh captionless upload for `waiting CAPTIONS` (none at hand; the fixture test covers it); a `blocked` start against the real provider (the fixture test covers both reasons). |
+
+Decisions made while implementing (plan decisions, stand unless vetoed), beyond the spec's §2 rows:
+
+- A new Registry read, `describeAttempt(attemptId)`, and a facade `getEpisode(channelId, videoId)`; `attempts.ts` gained
+  `previousWithGeneration`. The starter keeps `IngestParams` at four fields.
+- The stagger counts launched attempts only: a blocked or running episode does not consume a slot.
+- `RECONCILE_AFTER_MS` (one hour) lives in `lib/ingestion.ts`; the Retry route reads the episode's latest attempt
+  through `getEpisode`, asks the launcher only for one older than that, and reconciles inline before pre-flight.
+- The verify loop is `verify:<n>` steps with `verify-wait:<n>` sleeps between them; the schedule is the exported
+  `VERIFY_DELAYS_SEC` (17 × 10 s, then 30, 60, 120, 240, 480, 960 s: about 34 minutes in all, longer than the spec's
+  "about 21" because the six back-off waits sum to 31.5 minutes).
+- Test seams: `AI_FAKE` gained `embedThrows`; `WORKFLOW_FAKE`'s `createThrows` matches an attempt id or a video id;
+  `test/fake-step.ts` runs steps inline and honours `retries.limit`; one test runs a real instance through the binding
+  with `introspectWorkflowInstance` and `disableSleeps` (the pool runs Workflows, M3.1 Step 0.1).
+- The Workflow's own `console.log` lines do reach the `wrangler dev` output (`ingest.published` appeared), so the
+  event names are worth keeping stable for M3.7's walkthrough.
+- The sentence-count check left `parseSummary` (owner decision 2026-09-13, see the raw fallback row above): a
+  structured answer over the cap is kept whole, and `countSentences` and `MAX_SUMMARY_SENTENCES` went with the check.
+  Neither prompt changed, so `PROMPT_VERSION` stays `2026-09-13`.

@@ -13,6 +13,8 @@ import {
   EpisodeParamsSchema,
   type EpisodeResponse,
   EpisodeResponseSchema,
+  type EpisodeRetryResponse,
+  EpisodeRetryResponseSchema,
   type EpisodesResponse,
   EpisodesResponseSchema,
   type FollowersResponse,
@@ -31,9 +33,17 @@ import type { AppEnv } from "../env";
 import { toChannel } from "../lib/channel-view";
 import { toEpisode } from "../lib/episode-view";
 import { DomainError, domainErrorCode } from "../lib/errors";
-import { startDiscovery } from "../lib/ingestion";
+import {
+  closeLostEpisodeAttempt,
+  preflight,
+  RECONCILE_AFTER_MS,
+  startDiscovery,
+  startEpisodeAttempts,
+} from "../lib/ingestion";
 import { errorResponses, jsonResponse } from "../lib/openapi";
+import { transcriptProviderHealth } from "../lib/transcripts/status";
 import { validate } from "../lib/validation";
+import { ingestLauncher } from "../lib/workflows";
 import { extractChannelId } from "../lib/youtube/ids";
 import { feedFetcher, fetchChannelFeed } from "../lib/youtube/rss";
 
@@ -372,9 +382,12 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["episodes"],
       summary: "Retry an episode",
       description:
-        "Any episode state, in any channel status. A `pending`, `failed`, or `skipped` episode returns to `pending` with intent `publish` and a fresh 48-hour window; an `available` one gets intent `replace`, its summary and vectors untouched until the replacement succeeds. Refused only while an attempt is running. Until M3 lands the attempt starter, nothing launches and the response is the episode alone. The web offers this to the owner.",
+        "Any episode state, in any channel status. Refused with 409 only while an attempt is running: under an hour old unconditionally, older only when the Workflow engine still reports it active (a gone or missing instance is reconciled as WORKFLOW_LOST first). Then the transcript provider's pre-flight: a rejected key or no credits records a `blocked` attempt and returns the episode unchanged. Otherwise a `pending`, `failed`, or `skipped` episode returns to `pending` with intent `publish` and a fresh 48-hour window, an `available` one gets intent `replace` with its summary and vectors untouched until the replacement succeeds, and one Workflow instance starts at once. Never reads RSS or writes a channel or run. The web offers this to the owner.",
       responses: {
-        200: jsonResponse(EpisodeResponseSchema, "The episode, pending again."),
+        200: jsonResponse(
+          EpisodeRetryResponseSchema,
+          "The episode and the attempt just started, or blocked.",
+        ),
         ...errorResponses({
           notFound: true,
           conflict: "An attempt is running for this episode",
@@ -384,9 +397,55 @@ export const channelRoutes = new Hono<AppEnv>()
     validate("param", EpisodeParamsSchema),
     async (c) => {
       const { id, videoId } = c.req.valid("param");
-      // M3.5 adds the pre-flight and the attempt start here; the window re-opens today.
-      const record = await c.var.registry.retryEpisode(id, videoId);
-      return c.json<EpisodeResponse>({ episode: toEpisode(record) });
+      const registry = c.var.registry;
+      const before = await registry.getEpisode(id, videoId);
+      if (!before) throw new DomainError("NOT_FOUND", "episode not found");
+
+      // A running attempt refuses Retry, unless it is old and the engine has lost it (rule 17).
+      const running = before.processing.latestAttempt;
+      if (running?.status === "running") {
+        const refuse = () =>
+          new DomainError(
+            "INVALID_STATE",
+            "an attempt is running for this episode",
+          );
+        if (Date.now() - running.startedAt < RECONCILE_AFTER_MS) throw refuse();
+        const status = await ingestLauncher(c.env).status(running.attemptId);
+        if (status === "active") throw refuse();
+        await closeLostEpisodeAttempt(c.env, running.attemptId);
+      }
+
+      // Pre-flight before the window resets, so a blocked Retry leaves the window untouched (rule 16).
+      const block = preflight(await transcriptProviderHealth(c.env));
+      if (block) {
+        const blocked = await registry.recordBlockedAttempt(
+          videoId,
+          "owner_retry",
+          block,
+          c.var.identity.email,
+        );
+        return c.json<EpisodeRetryResponse>({
+          episode: toEpisode(blocked.episode),
+          attempt: blocked.attempt,
+        });
+      }
+
+      const reopened = await registry.retryEpisode(id, videoId);
+      const [result] = await startEpisodeAttempts(
+        c.env,
+        [reopened],
+        "owner_retry",
+        {
+          requestedByEmail: c.var.identity.email,
+        },
+      );
+      if (!result)
+        throw new Error("the starter answered nothing for one episode");
+      const after = await registry.getEpisode(id, videoId);
+      return c.json<EpisodeRetryResponse>({
+        episode: toEpisode(after ?? reopened),
+        attempt: result.attempt,
+      });
     },
   )
 

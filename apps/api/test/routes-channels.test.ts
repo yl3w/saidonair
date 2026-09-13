@@ -5,6 +5,7 @@ import {
   ChannelResponseSchema,
   ChannelsResponseSchema,
   EpisodeResponseSchema,
+  EpisodeRetryResponseSchema,
   EpisodesResponseSchema,
   FollowersResponseSchema,
   IngestionRunsResponseSchema,
@@ -470,12 +471,18 @@ describe("channel and catalog routes", () => {
       `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`,
     );
     expect(retry.status).toBe(200);
-    expectShape(EpisodeResponseSchema, retry.json);
+    expectShape(EpisodeRetryResponseSchema, retry.json);
     const retried = retry.json.episode as Json;
     expect(retried.status).toBe("pending");
+    // The window re-opens and one attempt starts at once (M3.5).
     expect(retried.processing).toMatchObject({
-      attemptCount: 0,
+      attemptCount: 1,
       intent: "publish",
+      latestAttempt: { status: "running", trigger: "owner_retry" },
+    });
+    expect(retry.json.attempt).toMatchObject({
+      status: "running",
+      requestedByEmail: OWNER,
     });
 
     // Only a running attempt refuses Retry.

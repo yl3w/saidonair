@@ -84,7 +84,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── do/migrations.ts      # shared SQLite migration runner
 │   │   │   ├── do/user.ts            # Per-user Durable Object (RPC facade)
 │   │   │   ├── do/user/              # User store modules: reads, chats, preferences, types (follows live in the Registry)
-│   │   │   ├── workflows/ingest.ts   # per-episode ingestion Workflow: one instance per episode attempt
+│   │   │   ├── workflows/ingest.ts   # IngestWorkflow: one instance per episode attempt; ingestAttempt(step, env, params)
+│   │   │   │                         # is the pipeline over a StepLike, classify is pure; step policies are exported constants
 │   │   │   ├── lib/youtube/          # ids.ts (id validation, /channel/UC… extraction), rss.ts (feed verification,
 │   │   │   │                         # title, episodes); nothing else in the codebase talks to YouTube
 │   │   │   ├── lib/channel-view.ts   # the one projection from the Registry channel onto the shared Channel (+ management)
@@ -93,7 +94,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── lib/openapi.ts        # the document's fixed parts (info, tags, security) and describeRoute response helpers
 │   │   │   ├── lib/cors.ts           # browser origins allowed to call the API, from vars.WEB_ORIGINS
 │   │   │   ├── lib/ingestion.ts      # startDiscovery, the discovery tick, the scheduled dispatch; startEpisodeAttempts
-│   │   │   │                         # (log-only until M3.5 gives it pre-flight, the ledger write, and the launch)
+│   │   │   │                         # (pre-flight once per batch, one ledger row and one instance per episode, k × 3 s
+│   │   │   │                         # apart); closeLostEpisodeAttempt; preflight and startDelaySec are pure
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
 │   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC; codes are the shared ErrorCode enum
 │   │   │   ├── lib/sql.ts            # bound-parameter chunking for DO SQLite
@@ -102,7 +104,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── lib/summary.ts        # pure: [h:mm:ss] transcript formatting, 45-minute sections, summary JSON validation
 │   │   │   ├── lib/vectorize.ts      # the namespaced vector store (upsert/getByIds/query/deleteByIds), generation ids,
 │   │   │   │                         # hard rule 3 in code; VECTORIZE_FAKE in tests
-│   │   │   ├── lib/workflows.ts      # ingestLauncher(env): the one path to INGEST_WORKFLOW (create, status); WORKFLOW_FAKE in tests
+│   │   │   ├── lib/workflows.ts      # ingestLauncher(env): the one path to INGEST_WORKFLOW (create, status folded to
+│   │   │   │                         # active | gone | missing); WORKFLOW_FAKE in tests records creates
 │   │   │   ├── lib/transcripts/      # index.ts transcriptSource(env): fake | downsub; downsub.ts adapter; vtt.ts cue
 │   │   │   │                         # parser; types.ts (TranscriptSource, TranscriptError); status.ts (DownSub /status:
 │   │   │   │                         # credits and key status, cached; serves GET /catalog and M3 pre-flight)
@@ -288,14 +291,20 @@ Discovery runs, episode attempts, recovery, transcripts, and generation-safe pub
 `docs/PRD.md` §4.2 (numbered rules) and §6. In code:
 
 - `lib/ingestion.ts` holds the independent discovery and episode-attempt start points shared by first approval, the
-  Start route, the two crons, and owner Retry. Discovery is live since M3.4: `startDiscovery` reads the feed (a 404
-  or an unreachable YouTube is an `unavailable` run, never an error), records the run through the Registry, and
-  hands the new episodes to `startEpisodeAttempts`, which logs one line per episode until M3.5. `runScheduled(cron,
-  env)` dispatches the crons; `index.ts` exports the typed `ExportedHandler` and the Hono `app` by name.
-- `workflows/ingest.ts` is the per-episode Workflow, one instance per attempt. Keep each external call (transcript,
-  AI, Vectorize) in its own `step.do()` for granular retries; the verify step's retry policy absorbs Vectorize's
-  asynchronous upserts before it reports `VECTORIZE_INCOMPLETE`. Instances never fetch RSS or write channel or run
-  rows; they validate their own open attempt row.
+  Start route, the two crons, and owner Retry. `startDiscovery` reads the feed (a 404 or an unreachable YouTube is an
+  `unavailable` run, never an error), records the run through the Registry, and hands the new episodes to
+  `startEpisodeAttempts`: one provider pre-flight per batch, a `blocked` row or a running row per episode, one
+  Workflow instance per launched attempt with `startDelaySec = k × 3`, and a `create` that throws finishing the
+  attempt `WORKFLOW_LOST`. `runScheduled(cron, env)` dispatches the crons; `index.ts` exports the typed
+  `ExportedHandler` and the Hono `app` by name.
+- `workflows/ingest.ts` is the per-episode Workflow, one instance per attempt, its id the attempt's id. Each external
+  call (transcript, each embed-and-upsert batch, each verify read, each AI call, the related query, each Registry
+  write) is its own `step.do()` with an exported retry policy; verification is a loop of single-check steps with
+  sleeps between them on `VERIFY_DELAYS_SEC`, absorbing Vectorize's asynchronous writes before
+  `VECTORIZE_INCOMPLETE`. Instances never fetch RSS or write channel or run rows; `load` reads
+  `describeAttempt` and exits quietly when the attempt is no longer current, and every later write goes through
+  the attempt gate. Deterministic provider answers (`UNPLAYABLE`, `PROVIDER_AUTH`, `PROVIDER_LIMIT`) come back as
+  values so the transcript step spends no retries on them.
 - `lib/workflows.ts` `ingestLauncher(env)` is the one path to the `INGEST_WORKFLOW` binding (create, status);
   `WORKFLOW_FAKE` replaces it in tests.
 - `lib/youtube/ids.ts` and `lib/youtube/rss.ts` are the only code that talks to YouTube. `feedFetcher(env)` serves
@@ -400,9 +409,13 @@ Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`; bind
 `apps/web` has typecheck and lint only.
 
 - Workers AI, Vectorize, DownSub, Workflows, and YouTube's feed are not available locally. Fakes are selected by
-  test-only env bindings — `AI_FAKE`, `VECTORIZE_FAKE`, `TRANSCRIPTS_FAKE` (transcripts and the provider's health),
-  `WORKFLOW_FAKE` (answers `active`, `gone`, or `missing` per instance id and can make `create()` throw),
-  `YOUTUBE_FEEDS_FAKE` — set in `vitest.config.ts`. This is the only seam that works end to end: the pinned pool has
+  test-only env bindings — `AI_FAKE` (`{ embedThrows? }`; prompt markers `[[invalid-once]]`, `[[invalid]]`,
+  `[[throw]]` drive the summarizer), `VECTORIZE_FAKE` (`{ visibilityDelayReads?, throwOn? }`), `TRANSCRIPTS_FAKE`
+  (transcripts and the provider's health), `WORKFLOW_FAKE` (`{ default?, instances?, createThrows? }`: answers
+  `active`, `gone`, or `missing` per attempt id, records every `create`, and can make one throw),
+  `YOUTUBE_FEEDS_FAKE` — set in `vitest.config.ts`. The ingest pipeline is tested through `test/fake-step.ts`, an
+  inline step runner that honours `retries.limit`, plus one real instance through the binding with the pool's
+  `introspectWorkflowInstance`. This is the only seam that works end to end: the pinned pool has
   no `fetchMock`, and `vi.mock` does not reach modules the Worker loads for `SELF` requests. No test reaches the
   network. Verified 2026-09-13 (`docs/specs/m3-1-transcripts-chunking-plan.md` Step 0): a value assigned to `env.X`
   from `cloudflare:test` is visible to the Worker under `SELF` in the same test, so a route-level test may swap a

@@ -12,6 +12,11 @@ declare namespace Cloudflare {
      */
     VECTORS: Vectorize;
     /**
+     * The episode Workflow of this environment (`media-digest-ingest`, `-staging`, `-dev`), one
+     * instance per attempt; `lib/workflows.ts` is the only caller.
+     */
+    INGEST_WORKFLOW: Workflow<import("./lib/workflows").IngestParams>;
+    /**
      * Secret, never a `vars` entry. Normalized and seeded as the `owner` role each time the
      * Registry DO starts; absent or malformed means no owner is seeded (logged as a warning).
      */
@@ -54,5 +59,11 @@ declare namespace Cloudflare {
      * `.dev.vars` or deployed.
      */
     VECTORIZE_FAKE?: string;
+    /**
+     * Test only (vitest.config.ts): JSON `{ default?, instances?, createThrows? }` for the launcher
+     * fake in `lib/workflows.ts`, which launches nothing and records every create. Never set in
+     * `.dev.vars` or deployed.
+     */
+    WORKFLOW_FAKE?: string;
   }
 }

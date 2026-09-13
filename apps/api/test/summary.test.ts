@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chunkTranscript, type TranscriptChunk } from "../src/lib/chunk";
 import {
-  countSentences,
   formatTimestamp,
   formatTranscript,
   parseSummary,
@@ -77,17 +76,6 @@ describe("sectionize", () => {
   });
 });
 
-describe("countSentences", () => {
-  it("counts terminal punctuation and ignores decimal points", () => {
-    expect(countSentences("One. Two! Three?")).toBe(3);
-    expect(countSentences("Version 3.5 shipped. It costs 2.50 dollars.")).toBe(
-      2,
-    );
-    expect(countSentences("No terminal punctuation")).toBe(1);
-    expect(countSentences("Ends with dots...")).toBe(1);
-  });
-});
-
 describe("parseSummary", () => {
   it("accepts valid JSON, fenced JSON, and prose around JSON, mapping markers to seconds and lower-casing tags", () => {
     const expected = {
@@ -108,6 +96,16 @@ describe("parseSummary", () => {
         3600,
       ),
     ).toEqual(expected);
+  });
+
+  it("keeps an executive summary that runs past the three sentences the prompt asks for", () => {
+    const long = "One. Two. Three. Four. Version 3.5 shipped, e.g. today.";
+    const summary = parseSummary(
+      JSON.stringify({ ...VALID, executiveSummary: long }),
+      3600,
+    );
+    expect(summary?.executiveSummary).toBe(long);
+    expect(summary?.takeaways).toHaveLength(3);
   });
 
   it("nulls a timestamp that is absent, unparsable, or past the known duration, and keeps it with no known duration", () => {
@@ -147,10 +145,6 @@ describe("parseSummary", () => {
     ["no JSON at all", "I cannot help with that."],
     ["broken JSON", "{ executiveSummary: oops"],
     ["two objects in an array", JSON.stringify([VALID, VALID])],
-    [
-      "four sentences",
-      JSON.stringify({ ...VALID, executiveSummary: "One. Two. Three. Four." }),
-    ],
     ["an empty summary", JSON.stringify({ ...VALID, executiveSummary: "  " })],
     [
       "two takeaways",

@@ -105,14 +105,14 @@ test lists exactly the registered routes at any time. No row has a 403: the API 
 | `POST /channels/{id}/pause`, `…/resume` | channels | 200 `ChannelResponse` | 400 404 409 | M2 |
 | `GET /channels/{id}/followers` | channels | 200 `FollowersResponse` | 400 404 | M2 |
 | `GET /channels/{id}/episodes` `?limit=` | episodes | 200 `EpisodesResponse` | 400 404 | M2 |
-| `POST /channels/{id}/episodes/{videoId}/retry` | episodes | 200 `EpisodeRetryResponse` | 400 404 409 (running attempt) | M3 (`EpisodeResponse` until the attempt starter exists) |
+| `POST /channels/{id}/episodes/{videoId}/retry` | episodes | 200 `EpisodeRetryResponse` | 400 404 409 (running attempt) | M3.5, `EpisodeRetryResponse` registered 2026-09-13 |
 | `POST /channels/{id}/episodes/{videoId}/skip` | episodes | 200 `EpisodeResponse` | 400 404 409 (not failed) | M2 |
 | `GET /channels/{id}/runs` | runs | 200 `IngestionRunsResponse` | 400 404 | M2; was `ingestion-runs` until 2026-09-12 |
 | `POST /channels/{id}/runs` | runs | 200 `IngestionRunResponse` | 400 404 409 (not approved) 502 | M3.4, registered 2026-09-13 |
 | `GET /follows` | follows | 200 `FollowsResponse` | 400 | M2 |
 | `PUT /follows/{channelId}` | follows | 200 `FollowResponse` | 400 404, 409 `ChannelDeclinedResponse` | M2 |
 | `DELETE /follows/{channelId}` | follows | 200 `FollowResponse` | 400 404 | M2 |
-| `GET /digest` `?since=` | digest | 200 `DigestResponse` | 400 | M2; availability basis M3 |
+| `GET /digest` `?since=` | digest | 200 `DigestResponse` | 400 | M2; availability basis since M3.5 (2026-09-13) |
 | `POST /chats` `CreateChatBody` | chats | 201 `ChatResponse` | 400 | M4 |
 | `GET /chats` | chats | 200 `ChatsResponse` | 400 | M4 |
 | `GET /chats/{id}/messages` `?limit=` | chats | 200 `ChatMessagesResponse` | 400 404 | M4 |

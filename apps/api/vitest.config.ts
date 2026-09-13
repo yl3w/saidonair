@@ -29,6 +29,8 @@ const workersOptions = {
       // reassign either for one case.
       AI_FAKE: "{}",
       VECTORIZE_FAKE: "{}",
+      // The launcher fake (lib/workflows.ts): every instance reads `active` unless a test says otherwise.
+      WORKFLOW_FAKE: JSON.stringify({ default: "active" }),
       // An exact origin and a subdomain wildcard, so test/cors.test.ts covers both forms.
       WEB_ORIGINS: "http://localhost:5173,https://*.example.pages.dev",
       // Canned YouTube feeds so no test reaches the network (test/fixtures/feeds.ts; see

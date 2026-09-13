@@ -422,9 +422,10 @@ export function lastProcessedAt(sql: SqlStorage): number | null {
 }
 
 /**
- * The digest: available episodes with a stored summary, published at or after `sinceMs`, in the
- * given channels, newest first. Publication time is the basis until M3 switches it to first
- * availability (docs/PRD.md §4.4). Related titles are resolved within the same channels.
+ * The digest: available episodes with a stored summary whose first availability (`processed_at`,
+ * the API's `summaryAvailableAt`) is at or after `sinceMs`, in the given channels, newest
+ * availability first with `video_id` as the only tiebreak (docs/PRD.md §4.4). Publication time is
+ * metadata here, never the basis. Related titles are resolved within the same channels.
  */
 export function listDigest(
   sql: SqlStorage,
@@ -438,7 +439,7 @@ export function listDigest(
       ...sql
         .exec<EpisodeRow>(
           `${EPISODE_SELECT}
-           WHERE e.status = 'available' AND s.video_id IS NOT NULL AND e.published_at >= ?
+           WHERE e.status = 'available' AND s.video_id IS NOT NULL AND e.processed_at >= ?
              AND e.channel_id IN (${placeholders(batch.length)})`,
           sinceMs,
           ...batch,
@@ -446,7 +447,7 @@ export function listDigest(
         .toArray(),
     );
   }
-  rows.sort(byNewest);
+  rows.sort(byAvailability);
   return complete(sql, rows, channelIds);
 }
 
@@ -605,9 +606,11 @@ function requireLimit(value: number | undefined): number {
   return value;
 }
 
-function byNewest(a: EpisodeRow, b: EpisodeRow): number {
+/** Newest first availability first; `video_id` breaks ties so the order is stable (docs/PRD.md §4.4). */
+function byAvailability(a: EpisodeRow, b: EpisodeRow): number {
   return (
-    b.published_at - a.published_at || a.video_id.localeCompare(b.video_id)
+    (b.processed_at ?? 0) - (a.processed_at ?? 0) ||
+    a.video_id.localeCompare(b.video_id)
   );
 }
 
