@@ -4,7 +4,7 @@
 `docs/specs/m3-ingestion-plan.md`. Carries the discovery half of Step 7 and the discovery cron of Step 8 of the
 2026-09-12 plan.
 **Written:** 2026-09-13, against `main` at `e37181c`.
-**Status:** complete 2026-09-13 in the working tree on `main` (uncommitted until the owner asks): the three code
+**Status:** complete 2026-09-13 on `main` (committed as `6d6b422`): the three code
 steps landed together, `pnpm check` green with 32 test files and 250 tests (31 and 242 before), the walkthrough
 below run. No new dependencies.
 **Shape:** three code steps and a walkthrough, each code step one commit when the owner asks with `pnpm check` green.

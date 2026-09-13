@@ -11,9 +11,10 @@ function withdrawQuestion(channel: Channel): string {
 }
 
 /**
- * Approve, decline, pause, or resume a channel, by status (spec §7). The owner's catalog table and
- * channel screen both render this; `idPrefix` is prepended to every button id so the two can be on
- * screen at once without colliding.
+ * Approve, decline, pause, resume, or start a channel, by status (spec §7; PRD §7). Start checks an
+ * approved channel's feed now, paused or not. The owner's catalog table and channel screen both
+ * render this; `idPrefix` is prepended to every button id so the two can be on screen at once
+ * without colliding.
  */
 export function ChannelStatusActions({
   channel: c,
@@ -57,6 +58,15 @@ export function ChannelStatusActions({
   if (c.status === "approved") {
     return (
       <div class="actions">
+        <button
+          id={`${idPrefix}start-${c.channelId}`}
+          type="button"
+          disabled={busy}
+          title="Check the feed now, paused or not"
+          onClick={() => act(() => api.startRun(c.channelId))}
+        >
+          Start
+        </button>
         <button
           id={`${idPrefix}${c.paused ? "resume" : "pause"}-${c.channelId}`}
           type="button"

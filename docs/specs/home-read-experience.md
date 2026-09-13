@@ -145,9 +145,8 @@ Hidden entirely when the sum is zero; the nav still shows **Owner**. Fed by `GET
 - Source: `GET /digest?since=<iso>`; default `since` is 24 hours ago. Eligible channels are the reader's
   active follows intersected with `approved` catalog channels (`lib/eligibility.ts`, the one definition the
   digest, follows, episodes, and later chat share). Only `available` episodes carry summaries. Newest first,
-  flat list, channel title as the byline. No grouping by channel; a day's digest is short. M3 changes the
-  window and ordering basis to first availability (`summaryAvailableAt`, `AGENTS.md` → Screens); until then
-  publication time is the basis.
+  flat list, channel title as the byline. No grouping by channel; a day's digest is short. Since M3.5 (2026-09-13) the
+  window and ordering basis is first availability (`summaryAvailableAt`, PRD §7); before that, publication time.
 - Each item shows: **video title** linked to `https://youtu.be/<videoId>`, channel title linked to
   `/channel/:id`, relative published time, executive summary, takeaways as bullets, topic tags as plain
   text. Raw-fallback summaries show the stored text with the note "unformatted summary".
@@ -156,17 +155,19 @@ Hidden entirely when the sum is zero; the nav still shows **Owner**. Fed by `GET
 - **NEW** marks items that had no read receipt when the request ran. Returning them records the receipt, so
   the marker is the only trace the user gets of what they had not seen. The response carries `wasUnread`.
 - **Show last 7 days** re-queries with `since` seven days ago. There is no further paging in this slice.
-- **Refresh** (M3) runs the same list reload a follow or unfollow runs, which re-fetches the digest after the lists
+- **Refresh** runs the same list reload a follow or unfollow runs, which re-fetches the digest after the lists
   so NEW markers and unread counts still describe one moment. It exists because the only poll stops the moment a
   followed channel is approved, and its first summaries land minutes later; without it a reader on an empty digest
   could only reload the page. It is a button, not a poll.
-- Empty states are two today, three after M3:
+- Empty states are three (the third since M3.7, 2026-09-13):
   - No active follows: "Follow a channel to start your digest." followed by the **Catalog** list from §6.4
     rendered inline, with follow buttons. Following any channel switches the section to the normal layout
     on the next load.
-  - Following at least one channel and nothing in the window: "Nothing new since yesterday." M3 replaces
-    this with the three-way copy of `AGENTS.md` → Screens: follows but none approved yet, no new summaries
-    in the last 24 hours, no new summaries in the last 7 days (owner decision 2026-09-10).
+  - Following channels, none of them approved yet: "No summaries yet: none of the channels you follow is
+    approved. Their rows below say where each one stands."
+  - Following at least one approved channel and nothing in the window: "No new summaries in the last 24 hours."
+    or "No new summaries in the last 7 days." (owner decision 2026-09-10; "Nothing new since yesterday." until
+    M3.7).
 - Load order matters. Home requests `/follows` and `/channels` first, then `/digest`. The digest marks its
   items read, and the follow rows show unread counts. Fetching the counts before the marking keeps the
   "3 unread" on a channel row consistent with the three items marked NEW below it.
@@ -296,7 +297,7 @@ Source: `GET /catalog`. Counts of channels by status plus paused, episodes `avai
 nonzero `failed` and `skipped` counts (the `waiting` count was dropped on 2026-09-12; wait reasons appear on
 episode rows), and the most recent successful ingestion anywhere in the catalog.
 Numbers only; each channel count links to the matching filter of
-the All channels table. M3 adds the DownSub credit balance (`transcripts.remainingCredits`) to the same strip.
+the All channels table. The DownSub credit balance (`transcripts.remainingCredits`) sits on the same strip.
 
 ### 7.3 Needs attention
 
@@ -310,9 +311,8 @@ The failed-episode review that replaced the failed-channel review, plus one neig
   attempt. Siblings and every channel/run record are untouched.
   Skipped episodes are not listed here; the owner reopens one from the channel detail with Retry.
 - **Approved, never started.** Approved channels whose `management.neverStarted` is true: no ingestion run row
-  exists at all, with no age window (decision 9, carried over). Shown as information with how long ago the
-  channel was approved; there is no Start button until M3 adds `POST /channels/:id/runs`. Until the ingestion
-  Workflow exists, every approved channel sits here, which is the honest picture.
+  exists at all, with no age window (decision 9, carried over). Shown with how long ago the
+  channel was approved and a Start button (`POST /channels/:id/runs`), which checks the feed now.
 
 ### 7.4 All channels
 
@@ -327,7 +327,7 @@ every status, including declined, with client-side filter links from the health 
 | Last ingested | `lastIngestedAt` | Relative time, derived from the channel's newest episode `processed_at`; Retry never writes the channel. |
 | Latest run | `management.latestRun` | Kind and completed time plus exactly what the RSS check found: “N episodes discovered”, “Nothing new”, or “Feed unavailable”. Episode outcomes never appear on a discovery run. |
 | Followers | `followerCount` | Real count from the Registry's follower record; emails only in the queue and the detail view. |
-| Actions | `ChannelStatusActions` | Requested: Approve, Decline. Approved: Pause or Resume, Decline, and in M3 Start to check the feed now, paused or not. Declined: Approve. Declining an approved channel confirms once, naming its follower count. |
+| Actions | `ChannelStatusActions` | Requested: Approve, Decline. Approved: Start to check the feed now, paused or not, Pause or Resume, Decline. Declined: Approve. Declining an approved channel confirms once, naming its follower count. |
 
 **Add a channel** (in scope, decision 1). A `UC…` id or `/channel/UC…` URL, optional title, optional import
 count defaulting to 5. Calls `POST /channels`; for the owner this creates an `approved` channel, follows the
@@ -361,13 +361,13 @@ initial     9d ago    read          5 episodes discovered
 ```
 
 Everything below is read from the Registry DO; the source table is named so it is clear what is available
-today versus after M3.
+before versus after M3 (complete 2026-09-13).
 
 **Header** (`channels`): title, canonical URL, id, state with pause, `approvedAt`, the latest review
-(`reviewedAt`, `reviewedByEmail`, `reviewNote`), `initialImportCount`, `lastCheckedAt` (M3: it moves only when
+(`reviewedAt`, `reviewedByEmail`, `reviewNote`), `initialImportCount`, `lastCheckedAt` (it moves only when
 the feed was actually read, so a check time that stands still while runs keep appearing means the feed cannot be
 read), created and updated times, and the follower count. Actions from `ChannelStatusActions`, the same component the table uses:
-Approve, Decline, Pause, Resume as the status allows, with the one withdraw confirmation, and in M3 Start on an
+Approve, Decline, Pause, Resume as the status allows, with the one withdraw confirmation, and Start on an
 approved channel, paused or not, so the owner can check its feed immediately.
 
 **Episodes** (`episodes`, `episode_summaries`, `episode_ingestion_attempts`): title linked to `youtu.be`, published,
@@ -421,13 +421,13 @@ One store module per concern under `do/registry/`, all present on `main`:
   ids are resolved to titles inside the method and filtered to the passed channel ids, so the route never sees
   titles from ineligible channels.
 - `runs.ts`: `latestByChannel`, completed discovery history, feed status, discovered counts, and `neverStarted`.
-- `episode-attempts.ts` (M3): unified first-processing, scheduled-recovery, and Owner-Retry attempt history.
+- `attempts.ts` and `processing.ts` (M3): unified first-processing, scheduled-recovery, and Owner-Retry attempt history.
 - `catalog.ts`: `summarize()`, the `Catalog` aggregate.
 - Facade methods on `RegistryDO`: reader-safe `listChannels`, `listChannelsByIds`, `getChannel`,
   `listAvailableVideoIds`, `listDigest`, `listEpisodes`; owner-checked `getCatalogSummary`, `listRuns`,
   `listFollowers`, and every transition. Internal names follow the entity vocabulary of §10.
 
-All `IN (...)` lists go through `lib/sql.ts` chunking. M3 adds discovery writes, episode window state, and the
+All `IN (...)` lists go through `lib/sql.ts` chunking. M3 added discovery writes, episode window state, and the
 attempt ledger on the rewritten schema, which has no run-episode table.
 
 ### 9.3 What the DOs cannot tell us, and what we show instead
@@ -441,13 +441,12 @@ attempt ledger on the rewritten schema, which has no run-episode table.
 - **Whether ingestion is enabled.** The Registry does not know that the Workflow is not yet deployed.
   Approved channels with no run simply surface as never started (§7.3).
 
-### 9.4 What is empty until M3
+### 9.4 What was empty until M3
 
 The digest, unread counts, summarised counts, episode lists, and run lists all read tables that ingestion
-writes. Nothing writes them yet except the owner's per-episode Retry and Skip, which need a row to act on.
-This slice ships those screens with real empty states and tests them with SQL-seeded fixtures, the way
-`test/helpers.ts` drives channel state. When M3 lands, the screens fill in without UI changes beyond the ones
-`m3-7-owner-ux.md` lists (formerly `m3-ingestion-plan.md` Step 9).
+writes. This slice shipped those screens with real empty states and tested them with SQL-seeded fixtures, the
+way `test/helpers.ts` drives channel state. M3 landed on 2026-09-13 and filled them in, with the UI changes
+`m3-7-owner-ux.md` lists (Start, the Retry rule, the window copy, Refresh, the third empty state).
 
 ### 9.5 Write paths used by the light actions
 
@@ -545,7 +544,7 @@ routes in step.
 | `PUT /follows/:channelId`, `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for declined); retained unfollow. Each write also records the follower in the Registry | 2026-09-07, reshaped 2026-09-10 |
 | `GET /digest?since=<iso>` | anyone (own) | `available` episodes of eligible follows, newest first, default 24 h, clamped to 7 days; returned summaries are marked read; each carries `wasUnread` | 2026-09-07 |
 | `DELETE /channels/:id`, `POST /channels/:id/restore`, `POST /channels/:id/retry`, `GET`/`POST /channel-requests`, `POST /channel-requests/:id/approve|reject`, `GET /channels/:id/requests` | | **Removed 2026-09-10.** Channels are never deleted, have no failure to retry, and are their own requests | |
-| `POST /channels/:id/runs` | owner | M3: check an approved channel's RSS feed now, ignoring pause; return the completed discovery result | planned M3 |
+| `POST /channels/:id/runs` | owner | Check an approved channel's RSS feed now, ignoring pause; return the completed discovery result | M3.4, 2026-09-13 |
 
 Response shapes live in `packages/shared` as Zod schemas with inferred types, named after the entity they carry.
 Sketch of the ones with structure this document depends on (the schemas are authoritative):
@@ -673,7 +672,7 @@ enums join the existing types in `packages/shared`. Every response wraps its ent
   immediately; their effects are reversible or recorded.
 - **Polling.** Only the Home channel lists, only while a followed channel is `requested` (§6.4). The owner
   attention count refreshes on navigation, not on a timer. Ingestion progress is never polled: readers press
-  **Refresh** on the digest (M3), and the owner reloads the channel detail. Readers are not told about runs, so
+  **Refresh** on the digest, and the owner reloads the channel detail. Readers are not told about runs, so
   there is nothing for them to poll on, and caption and credit waits can last days.
 - **Timestamps.** Relative in the row ("3h ago"); the absolute time in the element's `title`.
 - **Layout.** Text only, one CSS file, no component library. Reader pages keep the current 42rem measure.
@@ -691,7 +690,7 @@ enums join the existing types in `packages/shared`. Every response wraps its ent
 
 ## 12. Out of scope for this slice
 
-Chats and preferences, the ingestion Workflow and cron, summary generation, the on-demand Start action (M3),
+Chats and preferences, the ingestion Workflow and cron, summary generation, the on-demand Start action (M3, complete 2026-09-13),
 editing a channel's title or import count after creation, bulk approve, any notification, any channel
 deletion or archive (decided against on 2026-09-10: declined is the terminal-looking state, and a declined
 channel can always be requested again).
@@ -717,7 +716,7 @@ channel can always be requested again).
    view; the list route stays light. Proposed as one `GET /owner/channels/:id`, re-shaped under decision 11.
    *Revised 2026-09-10:* `/requests` became `/followers`.
 5. **Digest empty states.** Two: "Follow a channel to start your digest." with the catalog inline for
-   readers with no follows; "Nothing new since yesterday." otherwise. *Stands until M3,* which brings the
+   readers with no follows; "Nothing new since yesterday." otherwise. *Stood until M3.7 (2026-09-13),* which brought the
    three-way copy recorded in `AGENTS.md` → Screens.
 6. **Requests for already-available channels.** The owner's observation: nobody requests a channel they can
    see and follow. So submission refuses such a request with 409 and a Follow hint, no request row is
@@ -774,7 +773,7 @@ channel can always be requested again).
   after following, the digest shows "Nothing new since yesterday." until summaries exist.
 - With seeded summaries: the digest lists the last 24 hours across eligible channels newest first, marks
   NEW on items without a receipt, records receipts for exactly the returned items, and excludes declined,
-  requested, and unfollowed channels. "Show last 7 days" widens the window; "Refresh" (M3) re-fetches lists and
+  requested, and unfollowed channels. "Show last 7 days" widens the window; "Refresh" re-fetches lists and
   digest in that order.
 - Followed rows show summarised and unread counts consistent with the NEW markers on the same load; a
   declined channel that is still followed shows "Declined" or "Withdrawn" with the note and Request again, and

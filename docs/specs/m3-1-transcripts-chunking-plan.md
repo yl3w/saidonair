@@ -3,7 +3,7 @@
 **Implements:** `docs/specs/m3-1-transcripts-chunking.md` under `AGENTS.md`; parent decisions in
 `docs/specs/m3-ingestion.md` §2; roadmap `docs/specs/m3-ingestion-plan.md`.
 **Written:** 2026-09-13, against `main` at `e37181c`.
-**Status:** complete 2026-09-13 in the working tree on `main` (uncommitted until the owner asks): Steps 0, 1, and 2
+**Status:** complete 2026-09-13 on `main` (committed as `5a73f18`): Steps 0, 1, and 2
 done, `pnpm check` green with 25 test files, the probe route removed, the scratch files deleted. The one open item is
 the owner's: the `media-rag` index does not exist yet (Step 0.4). No new dependencies.
 **Shape:** one verification step and two code steps, each ending with `pnpm check` green and one commit when the owner

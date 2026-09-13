@@ -1,6 +1,6 @@
 import type { Channel } from "@media-digest/shared";
 import { useState } from "preact/hooks";
-import { channelStateCopy, runResultCopy } from "../lib/copy";
+import { actionErrorCopy, channelStateCopy, runResultCopy } from "../lib/copy";
 import { type Act, AttentionList } from "./AttentionList";
 import type { CatalogFilter } from "./CatalogHealth";
 import { ChannelStatusActions } from "./ChannelStatusActions";
@@ -33,10 +33,7 @@ export function CatalogTable({
     try {
       await work();
     } catch (caught) {
-      setErrors((e) => ({
-        ...e,
-        [channelId]: caught instanceof Error ? caught.message : String(caught),
-      }));
+      setErrors((e) => ({ ...e, [channelId]: actionErrorCopy(caught) }));
     } finally {
       onChanged();
       setBusy((b) => ({ ...b, [channelId]: false }));
@@ -64,7 +61,7 @@ export function CatalogTable({
   );
 }
 
-/** **All channels** (spec §7): every channel, with the actions its status allows. */
+/** **All channels** (spec §7): every channel, with the actions its status allows; Start on every approved row. */
 function AllChannelsTable({
   channels,
   disabled,

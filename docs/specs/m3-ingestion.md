@@ -1,7 +1,9 @@
 # Feature spec — M3 Ingestion
 
 **Written:** 2026-09-08. **Revised:** 2026-09-12 after the functional review and owner walkthrough.
-**Status:** approved for implementation. Implements PRD §10 M3. Roadmap: `docs/specs/m3-ingestion-plan.md`.
+**Status:** complete 2026-09-13, implemented through the seven child chunks (`5a73f18`, `620fe88`, `795ca1b`, `6d6b422`,
+`769ede4`, `7818495`, and the M3.7 commit; the environments in `afb2b02`); the end-to-end walkthrough is recorded in
+`docs/specs/m3-7-owner-ux-plan.md`. Implements PRD §10 M3. Roadmap: `docs/specs/m3-ingestion-plan.md`.
 **Split 2026-09-13:** implemented through seven child specs and plans, `m3-1-transcripts-chunking` through
 `m3-7-owner-ux`, in the order the roadmap gives. This document stays the one decision record for M3; a child spec adds
 only the decisions its chunk needs and links here for the rest.

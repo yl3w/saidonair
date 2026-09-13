@@ -1,5 +1,6 @@
 import type { Channel } from "@media-digest/shared";
 import { api } from "../api";
+import { attemptCountCopy, failureDetailCopy } from "../lib/copy";
 import { useLoad } from "../lib/use-load";
 import { Time } from "./Time";
 
@@ -8,7 +9,11 @@ export type Act = (
   work: () => Promise<unknown>,
 ) => Promise<void>;
 
-/** **Needs attention** (spec §7): failed episodes grouped by channel, then channels never started. */
+/**
+ * **Needs attention** (spec §7; PRD §7): publications that exhausted their 48 hours, grouped by
+ * channel with the last reason, launched attempts, Retry, and Skip; then approved channels with no
+ * discovery run at all, each with Start.
+ */
 export function AttentionList({
   channels,
   busy,
@@ -55,6 +60,17 @@ export function AttentionList({
             <div class="meta">
               approved <Time at={c.approvedAt} />, never started
             </div>
+            {errors[c.channelId] && <p class="error">{errors[c.channelId]}</p>}
+          </div>
+          <div class="actions">
+            <button
+              id={`attention-start-${c.channelId}`}
+              type="button"
+              disabled={disabled || (busy[c.channelId] ?? false)}
+              onClick={() => act(c.channelId, () => api.startRun(c.channelId))}
+            >
+              Start
+            </button>
           </div>
         </div>
       ))}
@@ -110,8 +126,12 @@ function FailedEpisodes({
             <div class="grow">
               <a href={`https://youtu.be/${e.videoId}`}>{e.title}</a>
               <div class="meta">
-                {e.processing?.failureCode ?? "unknown failure"} · attempt{" "}
-                {e.processing?.attemptCount ?? 0}
+                {e.processing.failureCode ?? "unknown failure"}
+                {e.processing.failureDetail &&
+                  ` · ${failureDetailCopy(e.processing.failureDetail)}`}
+                {" · "}
+                {attemptCountCopy(e.processing.attemptCount)} · failed{" "}
+                <Time at={e.processing.updatedAt} />
               </div>
             </div>
             <div class="actions">

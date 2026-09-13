@@ -398,7 +398,8 @@ Screens, copy, and behaviour are `docs/PRD.md` §7 "Screens"; wireframes and acc
 - `src/api.ts` is the only place `fetch` is called; it sets `X-User-Email` from the identity `session.tsx` binds into it
   and the API base URL from `import.meta.env.VITE_API_URL`. `account.ts` (localStorage) is read once, when the session
   mounts, and written when an account is selected.
-- `lib/copy.ts` is the one home for channel-status, episode, skip, and wait phrases; `lib/time.ts` renders relative
+- `lib/copy.ts` is the one home for channel-status, episode, skip, wait, attempt-outcome, window-intent, and run-result
+  phrases (and the owner-action error phrase, "Feed unavailable" for a 502); `lib/time.ts` renders relative
   times; `lib/use-load.ts` holds per-section loading and error state.
 - Routing is `preact-iso` in history mode. Pages serves `index.html` for unknown paths when no `404.html` is deployed,
   so verify deep links and reloads under `wrangler pages dev`. Section navigation within a page uses anchors, not

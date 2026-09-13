@@ -327,6 +327,19 @@ describe("registry migrations", () => {
         "trigger, status, finished_at, requested_by_email",
         "'owner_retry', 'blocked', 2, 'alice@example.com'",
       );
+      // outcome_code is the closed AttemptOutcomeCode set (PRD §5.3; the CHECK since M3.7).
+      expect(() =>
+        insert(
+          "a4",
+          "trigger, status, finished_at, outcome_code",
+          "'channel_ingestion', 'failed', 2, 'SOMETHING_ELSE'",
+        ),
+      ).toThrow(/CHECK/i);
+      insert(
+        "a4",
+        "trigger, status, finished_at, outcome_code",
+        "'channel_ingestion', 'failed', 2, 'WORKFLOW_LOST'",
+      );
       // Workflow ids are unique across attempts.
       expect(() =>
         insert(

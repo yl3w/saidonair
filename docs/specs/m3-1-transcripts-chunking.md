@@ -5,7 +5,7 @@
 **Parent:** `docs/specs/m3-ingestion.md` is the decision record for all of M3. This spec adds nothing to its §2 and
 carries only the contract, acceptance criteria, and scope lines this chunk needs. Implements PRD §4.2 rules 19–23 and
 the chunking contract of PRD §6.
-**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green; the Step 0 answers
+**Status:** implemented 2026-09-13 on `main`, committed as `5a73f18`; `pnpm check` green; the Step 0 answers
 and the DownSub probe are recorded in `docs/specs/m3-1-transcripts-chunking-plan.md`. §3.3's error rows were rewritten
 from what the probe showed (the plan's walkthrough record explains). No new dependencies.
 

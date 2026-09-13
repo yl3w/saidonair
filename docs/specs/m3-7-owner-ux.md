@@ -6,8 +6,10 @@
 carry timestamps), §7 and §8; PRD §7 Screens (Home, Owner, Owner channel detail), §5.3 (the outcome-code `CHECK`);
 `docs/specs/home-read-experience.md` §6 and §7 where they say "M3". Acceptance 7 (copy half), 11, 15, 16, 17 of the
 parent, and its end-to-end walkthrough.
-**Status:** approved with the split of 2026-09-13; not started. Plan: `docs/specs/m3-7-owner-ux-plan.md`. Needs
-M3.1–M3.6 on `main`. No new dependencies; the web keeps `preact`, `preact-iso`, `vite`, `@preact/preset-vite`.
+**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green, the web builds
+with no Zod in `dist`; the eight-scenario walkthrough is recorded in `docs/specs/m3-7-owner-ux-plan.md`. The owner's
+click-through of the four screens is still to do (the agent has no browser). No new dependencies; the web keeps
+`preact`, `preact-iso`, `vite`, `@preact/preset-vite`.
 
 ## 1. Summary
 

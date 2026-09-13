@@ -4,7 +4,7 @@
 `docs/specs/m3-ingestion-plan.md`. Carries Step 5 of the 2026-09-12 plan except the Workflow binding (M3.5) and the
 retrieval generation-check test (M4).
 **Written:** 2026-09-13, against `main` at `e37181c`.
-**Status:** complete 2026-09-13 in the working tree on `main` (uncommitted until the owner asks): the four steps
+**Status:** complete 2026-09-13 on `main` (committed as `795ca1b`): the four steps
 landed together, `pnpm check` green with 31 test files and 242 tests (28 and 207 before), the probe run and removed.
 No new dependencies.
 **Shape:** three code steps and one probe step, each ending with `pnpm check` green and one commit when the owner

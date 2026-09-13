@@ -5,7 +5,7 @@
 **Parent:** `docs/specs/m3-ingestion.md` §2 (Attempt gate, Universal recovery rule, Pre-flight gate, Owner episode
 actions, Publishing) and §3.3–3.4; PRD §4.2 rules 1–3, 5–7, 9–18, 24–26. This spec restates none of them; it fixes
 the Registry contract that implements them.
-**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green. Plan and
+**Status:** implemented 2026-09-13 on `main`, committed as `620fe88`; `pnpm check` green. Plan and
 record: `docs/specs/m3-2-attempt-ledger-plan.md`. Depends on nothing in M3: the schema, read model, and route-driven
 writes landed in `4871782` (`docs/specs/api-reference-plan.md` Step 4). No new dependencies.
 

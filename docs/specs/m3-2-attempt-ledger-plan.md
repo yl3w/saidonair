@@ -3,7 +3,7 @@
 **Implements:** `docs/specs/m3-2-attempt-ledger.md` under `AGENTS.md`; parent `docs/specs/m3-ingestion.md`; roadmap
 `docs/specs/m3-ingestion-plan.md`. Carries the writes of Step 4 of the 2026-09-12 plan.
 **Written:** 2026-09-13, against `main` at `e37181c`.
-**Status:** complete 2026-09-13 in the working tree on `main` (uncommitted until the owner asks): the three steps
+**Status:** complete 2026-09-13 on `main` (committed as `620fe88`): the three steps
 landed together, `pnpm check` green, 27 test files and 202 tests (25 and 175 before). No new dependencies.
 **Shape:** three code steps, each ending with `pnpm check` green and one commit when the owner asks. Step 1 is
 independent of Steps 2 and 3; Step 3 needs Step 2. Nothing here changes `0001_init.sql`, a route, or the web. Decisions

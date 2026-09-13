@@ -5,7 +5,7 @@
 **Parent:** `docs/specs/m3-ingestion.md` §2 (Which channels discovery touches, Which episodes discovery creates,
 On-demand start, Latest run on catalog rows, Crons), §3 "channel discovery"; PRD §4.2 rules 1–5 and 27. Acceptance
 1, 7 (discovery half), 8, and 9 of the parent.
-**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green; the `wrangler
+**Status:** implemented 2026-09-13 on `main`, committed as `6d6b422`; `pnpm check` green; the `wrangler
 dev` walkthrough on a real channel is recorded in `docs/specs/m3-4-discovery-plan.md`. No new dependencies.
 
 ## 1. Summary

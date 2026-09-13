@@ -6,7 +6,7 @@ recovery; **2026-09-13** split into seven child specs and plans, each a chunk th
 through on its own. This file is now the roadmap: the order, the dependencies, the status of each chunk, and the
 decisions the split itself made. The step-by-step detail lives in the child plans; the 2026-09-12 single plan is
 preserved in git history at `a94921d` and `16949b3`.
-**Status:** roadmap; M3.1 complete 2026-09-13 (`5a73f18`; its Step 0 found that the `media-rag` index does not exist
+**Status:** complete 2026-09-13; every chunk landed, M3.7 awaiting its commit. M3.1 complete 2026-09-13 (`5a73f18`; its Step 0 found that the `media-rag` index does not exist
 on the account, that the pool runs Workflows, that `remoteBindings: false` keeps tests offline, and that test-side
 `env` assignments reach `SELF`); M3.2 complete the same day (`620fe88`). Also 2026-09-13: three Wrangler environments
 (`AGENTS.md` → Environments), so M3.3 and M3.5 declare their bindings per environment with tier-named resources, and
@@ -14,8 +14,10 @@ the crons of M3.4 and M3.6 go into `env.production` only. M3.3 complete later th
 10–80 s before a Vectorize write is readable on a fresh index); M3.4 complete (`6d6b422`): approval and Start
 discover, the discovery cron runs in production. M3.5 committed the same day: summaries exist,
 three Computerphile episodes published end to end under `wrangler dev` in 50 s, a replacement in 25 s. M3.6
-implemented the same day, awaiting commit: the recovery cron reconciles stale attempts and restarts due episodes in
-every channel state, exercised against the real engine. No new dependencies anywhere in M3.
+committed the same day (`7818495`): the recovery cron reconciles stale attempts and restarts due episodes in every
+channel state, exercised against the real engine. M3.7 implemented the same day, awaiting commit: Start, the Retry
+rule, the episode window copy, Refresh and the third empty state, the `outcome_code` `CHECK`, and the eight-scenario
+walkthrough on real channels. No new dependencies anywhere in M3.
 
 `docs/specs/m3-ingestion.md` stays the one decision record for M3. A child spec adds only the decisions its chunk
 needs, names the parent §2 rows it implements, and never restates them. Where a child and the parent disagree, the
@@ -30,8 +32,8 @@ parent governs and the child is the one to fix; where the parent and PRD disagre
 | M3.3 | `m3-3-ai-vectorize.md`, `-plan.md` | Step 5 minus the Workflow binding and the retrieval test | L | M3.1 (`TranscriptChunk`) | no | complete 2026-09-13 (`795ca1b`) |
 | M3.4 | `m3-4-discovery.md`, `-plan.md` | Step 7 discovery half, Step 8 discovery cron | M | M3.2 | yes: runs and pending episodes | complete 2026-09-13 (`6d6b422`) |
 | M3.5 | `m3-5-episode-workflow.md`, `-plan.md` | Step 6, Step 7 episode half, Step 5's Workflow binding, the digest basis | L | M3.1–M3.4 | yes: summaries | complete 2026-09-13 (`769ede4`) |
-| M3.6 | `m3-6-recovery.md`, `-plan.md` | Step 8 minus discovery cron and the lost-attempt helper | M | M3.5 | yes: six-hourly recovery | implemented 2026-09-13, awaiting commit |
-| M3.7 | `m3-7-owner-ux.md`, `-plan.md` | Step 9 | M | M3.1–M3.6 | yes: Owner screens, Refresh, Start | approved, not started |
+| M3.6 | `m3-6-recovery.md`, `-plan.md` | Step 8 minus discovery cron and the lost-attempt helper | M | M3.5 | yes: six-hourly recovery | complete 2026-09-13 (`7818495`) |
+| M3.7 | `m3-7-owner-ux.md`, `-plan.md` | Step 9 | M | M3.1–M3.6 | yes: Owner screens, Refresh, Start | implemented 2026-09-13, awaiting commit |
 
 Order: M3.1 and M3.2 in either order or in parallel; M3.3 any time before M3.5; then M3.4, M3.5, M3.6, M3.7 in
 sequence. Step 3 of the 2026-09-12 plan was struck on 2026-09-12 (delivered by `api-reference-plan.md` Step 3) and

@@ -4,7 +4,7 @@
 `docs/specs/m3-ingestion-plan.md`. Carries Step 8 of the 2026-09-12 plan minus the discovery cron (M3.4) and the
 lost-attempt helper (M3.5).
 **Written:** 2026-09-13, against `main` at `e37181c`.
-**Status:** complete 2026-09-13 in the working tree on `main` (uncommitted until the owner asks): both code steps
+**Status:** complete 2026-09-13 on `main` (committed as `7818495`): both code steps
 landed together, `pnpm check` green with 36 test files and 293 tests (35 and 285 before), the walkthrough below run
 against the real Workflow engine. No new dependencies.
 **Shape:** two code steps and a walkthrough, each code step one commit when the owner asks with `pnpm check` green.

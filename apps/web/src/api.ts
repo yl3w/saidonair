@@ -11,10 +11,12 @@ import type {
   DeclineChannelBody,
   DigestResponse,
   EpisodeResponse,
+  EpisodeRetryResponse,
   EpisodesResponse,
   FollowersResponse,
   FollowResponse,
   FollowsResponse,
+  IngestionRunResponse,
   IngestionRunsResponse,
   MeResponse,
 } from "@media-digest/shared";
@@ -147,8 +149,9 @@ export const api = {
       "GET",
       `/channels/${enc(channelId)}/episodes${limit === undefined ? "" : `?limit=${limit}`}`,
     ),
+  /** The episode and its new attempt: `running` when work started, `blocked` when pre-flight refused it. */
   retryEpisode: (channelId: string, videoId: string) =>
-    request<EpisodeResponse>(
+    request<EpisodeRetryResponse>(
       "POST",
       `/channels/${enc(channelId)}/episodes/${enc(videoId)}/retry`,
     ),
@@ -159,6 +162,9 @@ export const api = {
     ),
   listIngestionRuns: (channelId: string) =>
     request<IngestionRunsResponse>("GET", `/channels/${enc(channelId)}/runs`),
+  /** Start: check the channel's feed now, paused or not; 502 when YouTube does not answer. */
+  startRun: (channelId: string) =>
+    request<IngestionRunResponse>("POST", `/channels/${enc(channelId)}/runs`),
   listFollowers: (channelId: string) =>
     request<FollowersResponse>("GET", `/channels/${enc(channelId)}/followers`),
 

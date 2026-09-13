@@ -3,7 +3,8 @@
 -- discovery runs are completed feed history, one attempt ledger records every episode execution, episodes
 -- carry a processing window with its intent and vector generations, and reasons live on attempts. Migration governance is open
 -- (docs/PRD.md §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be
--- wiped for an edit to run.
+-- wiped for an edit to run. Edited 2026-09-13 (M3.7): episode_ingestion_attempts.outcome_code gained the CHECK
+-- listing the fifteen AttemptOutcomeCode values, once every outcome had run for real or through the fakes.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
 
 -- Identities. `role` is read by GET /me for the web's rendering; the API itself enforces no authorization
@@ -174,8 +175,8 @@ CREATE TABLE episode_summaries (
 
 -- The one execution ledger: first processing, scheduled recovery, and owner Retry are each one row, and each
 -- launched row is one Workflow instance (docs/PRD.md §4.2 rules 6–9). A `blocked` row records a start that
--- pre-flight refused and never launched. outcome_code is the AttemptOutcomeCode enum of the API contract;
--- its CHECK lands at the end of M3 (docs/specs/m3-7-owner-ux-plan.md Step 3), once every outcome has run for real.
+-- pre-flight refused and never launched. outcome_code is the AttemptOutcomeCode enum of the API contract, and
+-- its CHECK below lists the same fifteen values (added 2026-09-13, M3.7, once every outcome had run).
 CREATE TABLE episode_ingestion_attempts (
   attempt_id TEXT PRIMARY KEY,
   video_id TEXT NOT NULL REFERENCES episodes (video_id),
@@ -187,7 +188,12 @@ CREATE TABLE episode_ingestion_attempts (
   workflow_id TEXT UNIQUE,
   requested_by_email TEXT REFERENCES global_users (email),
   status TEXT NOT NULL CHECK (status IN ('running', 'available', 'waiting', 'failed', 'skipped', 'blocked')),
-  outcome_code TEXT,
+  outcome_code TEXT CHECK (outcome_code IS NULL OR outcome_code IN (
+    'CAPTIONS', 'LIVE_OR_UPCOMING', 'PROVIDER_LIMIT',
+    'SHORT', 'NON_ENGLISH', 'UNPLAYABLE',
+    'PROVIDER_AUTH', 'PROVIDER_RATE_LIMIT', 'PROVIDER_HTTP', 'PROVIDER_PARSE', 'TRANSCRIPT_TOO_LARGE',
+    'EMBEDDING_FAILED', 'VECTORIZE_INCOMPLETE', 'SUMMARY_FAILED', 'WORKFLOW_LOST'
+  )),
   failure_detail TEXT,
   started_at INTEGER NOT NULL CHECK (started_at >= 0),
   finished_at INTEGER CHECK (finished_at IS NULL OR finished_at >= started_at),

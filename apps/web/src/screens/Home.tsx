@@ -81,6 +81,9 @@ function HomeScreen() {
     withBusy(channelId, () => api.requestChannel(channelId));
 
   const followList = follows.status === "ready" ? follows.data.follows : [];
+  const hasApprovedFollow = followList.some(
+    (f) => f.channel.status === "approved",
+  );
   const available =
     channels.status === "ready"
       ? channels.data.channels.filter((c) => !c.following)
@@ -114,12 +117,14 @@ function HomeScreen() {
       <Digest
         load={digest}
         hasFollows={follows.status !== "ready" || followList.length > 0}
+        hasApprovedFollow={follows.status !== "ready" || hasApprovedFollow}
         available={available}
         busy={busy}
         errors={errors}
         onFollow={follow}
         showingWeek={showingWeek}
         onToggleWeek={() => setShowingWeek((w) => !w)}
+        onRefresh={reloadLists}
         onRetry={reloadDigest}
       />
 

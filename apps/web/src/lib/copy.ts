@@ -10,9 +10,10 @@ import type {
   EpisodeStatus,
   EpisodeWaitReason,
   IngestionRun,
+  ProcessingIntent,
 } from "@media-digest/shared";
 import { ApiError } from "../api";
-import { absoluteTime } from "./time";
+import { absoluteTime, HOUR, MINUTE } from "./time";
 
 export const CHANNEL_STATUS_COPY: Record<ChannelStatus, string> = {
   requested: "Awaiting owner approval",
@@ -88,6 +89,38 @@ export function runResultCopy(run: IngestionRun): string {
   if (run.feedStatus === "unavailable") return "feed unavailable";
   if (run.discoveredCount === 0) return "nothing new";
   return `${run.discoveredCount} episode${run.discoveredCount === 1 ? "" : "s"} discovered`;
+}
+
+/** The open window's intent on an owner's episode row (PRD §7; docs/specs/m3-7-owner-ux.md §2). */
+export function intentCopy(intent: ProcessingIntent): string {
+  return intent === "publish"
+    ? "publishing"
+    : "replacing · current summary stays";
+}
+
+/** How long the latest attempt has been running: minutes under an hour, hours after (Retry waits for the hour). */
+export function runningForCopy(startedAt: number, now = Date.now()): string {
+  const elapsed = Math.max(0, now - startedAt);
+  if (elapsed < HOUR)
+    return `running for ${Math.max(1, Math.floor(elapsed / MINUTE))} min`;
+  return `running for ${Math.floor(elapsed / HOUR)} h`;
+}
+
+/** "3 launched attempts": the diagnostic count beside the latest attempt's phrase; blocked starts never count. */
+export function attemptCountCopy(count: number): string {
+  return `${count} launched attempt${count === 1 ? "" : "s"}`;
+}
+
+/** A timed-out episode's `failureDetail` is the latest attempt's code; phrase it when it is one. */
+export function failureDetailCopy(detail: string): string {
+  return (OUTCOME_CODE_COPY as Record<string, string>)[detail] ?? detail;
+}
+
+/** The message a failed owner action shows on its row; YouTube not answering reads "Feed unavailable" (PRD §7). */
+export function actionErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && error.code === "UPSTREAM_UNAVAILABLE")
+    return "Feed unavailable";
+  return error instanceof Error ? error.message : String(error);
 }
 
 /** The phrase under an episode title when there is no summary to show; null for an available one. */

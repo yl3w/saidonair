@@ -4,7 +4,7 @@
 `docs/specs/m3-ingestion-plan.md`.
 **Parent:** `docs/specs/m3-ingestion.md` §2 (Related episodes, Long episodes, Publishing, Embedding model id), §3.1,
 §3.2, §4; PRD §4.4 and §6. Hard rule 3 of `AGENTS.md` is enforced here.
-**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green; the probe against
+**Status:** implemented 2026-09-13 on `main`, committed as `795ca1b`; `pnpm check` green; the probe against
 the real bindings and `media-rag-dev` is recorded in `docs/specs/m3-3-ai-vectorize-plan.md`. No new dependencies.
 
 ## 1. Summary

@@ -9,13 +9,19 @@ import {
 import { Nav } from "../components/Nav";
 import { Time } from "../components/Time";
 import {
+  actionErrorCopy,
+  attemptCountCopy,
   channelStateCopy,
   EPISODE_STATUS_COPY,
+  failureDetailCopy,
+  intentCopy,
   OUTCOME_CODE_COPY,
+  runningForCopy,
   runResultCopy,
   SKIP_REASON_COPY,
   WAIT_REASON_COPY,
 } from "../lib/copy";
+import { HOUR } from "../lib/time";
 import { type Load, useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
@@ -27,7 +33,7 @@ export function OwnerChannel() {
   );
 }
 
-/** One channel for the owner (spec §8): management header, episodes, runs, followers. */
+/** One channel for the owner (spec §8; PRD §7): management header, discovery runs, episodes, followers. */
 function OwnerChannelScreen() {
   const { params } = useRoute();
   const channelId = params.id ?? "";
@@ -64,7 +70,7 @@ function OwnerChannelScreen() {
     try {
       await work();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(actionErrorCopy(caught));
     } finally {
       reloadChannel();
       reloadEpisodes();
@@ -72,9 +78,6 @@ function OwnerChannelScreen() {
       setBusy(false);
     }
   };
-
-  const channelApproved =
-    channel.status === "ready" && channel.data.channel.status === "approved";
 
   return (
     <main class="wide">
@@ -88,27 +91,11 @@ function OwnerChannelScreen() {
         )}
       </Section>
 
-      <h2>Episodes</h2>
-      <Section load={episodes} label="episodes" reload={reloadEpisodes}>
-        {({ episodes: list }) =>
-          list.length === 0 ? (
-            <p class="muted">No episodes yet.</p>
-          ) : (
-            <EpisodesTable
-              episodes={list}
-              channelApproved={channelApproved}
-              busy={busy}
-              act={act}
-            />
-          )
-        }
-      </Section>
-
-      <h2>Runs</h2>
+      <h2>Discovery runs</h2>
       <Section load={runs} label="discovery runs" reload={reloadRuns}>
         {({ runs: list }) =>
           list.length === 0 ? (
-            <p class="muted">No runs yet.</p>
+            <p class="muted">No runs yet: Start checks the feed now.</p>
           ) : (
             <ul>
               {list.map((run) => (
@@ -119,6 +106,17 @@ function OwnerChannelScreen() {
                 </li>
               ))}
             </ul>
+          )
+        }
+      </Section>
+
+      <h2>Episodes</h2>
+      <Section load={episodes} label="episodes" reload={reloadEpisodes}>
+        {({ episodes: list }) =>
+          list.length === 0 ? (
+            <p class="muted">No episodes yet.</p>
+          ) : (
+            <EpisodesTable episodes={list} busy={busy} act={act} />
           )
         }
       </Section>
@@ -193,6 +191,12 @@ function Header({
           <>
             {` · import count ${m.initialImportCount} · `}
             {followerLabel(c.followerCount)}
+            {" · feed read "}
+            <Time at={m.lastCheckedAt} fallback="never" />
+            {" · latest run "}
+            {m.latestRun
+              ? `${m.latestRun.kind} · ${runResultCopy(m.latestRun)}`
+              : "none"}
           </>
         )}
       </p>
@@ -207,15 +211,17 @@ function Header({
   );
 }
 
-/** Every episode of the channel, with retry and skip where the channel's status allows them. */
+/**
+ * Every episode of the channel (PRD §7): content status, the open window's intent with next attempt
+ * and deadline, launched attempts beside the latest attempt's phrase, summary format, and the
+ * actions. Channel status never disables an episode action.
+ */
 function EpisodesTable({
   episodes: list,
-  channelApproved,
   busy,
   act,
 }: {
   episodes: Episode[];
-  channelApproved: boolean;
   busy: boolean;
   act: ChannelAct;
 }) {
@@ -227,9 +233,8 @@ function EpisodesTable({
             <th>Title</th>
             <th>Published</th>
             <th>Status</th>
-            <th>Waiting</th>
+            <th>Window</th>
             <th>Attempts</th>
-            <th>Reason</th>
             <th>Chunks</th>
             <th>Summary</th>
             <th>Available since</th>
@@ -247,22 +252,31 @@ function EpisodesTable({
                 <td>
                   <Time at={e.publishedAt} />
                 </td>
-                <td>{EPISODE_STATUS_COPY[e.status]}</td>
-                <td>{e.waitReason ? WAIT_REASON_COPY[e.waitReason] : "—"}</td>
-                <td>{p.attemptCount}</td>
-                <td>{reasonCopy(e)}</td>
+                <td>{statusCopy(e)}</td>
+                <td>
+                  {p.intent === null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {intentCopy(p.intent)}
+                      {" · next attempt "}
+                      <Time at={p.nextAttemptAt} />
+                      {" · deadline "}
+                      <Time at={p.windowDeadlineAt} />
+                    </>
+                  )}
+                </td>
+                <td>
+                  {attemptCountCopy(p.attemptCount)}
+                  {p.latestAttempt && ` · ${latestAttemptCopy(e)}`}
+                </td>
                 <td>{p.chunkCount ?? "—"}</td>
                 <td>{e.summary?.format ?? "—"}</td>
                 <td>
                   <Time at={e.summaryAvailableAt} />
                 </td>
                 <td>
-                  <EpisodeActions
-                    episode={e}
-                    channelApproved={channelApproved}
-                    busy={busy}
-                    act={act}
-                  />
+                  <EpisodeActions episode={e} busy={busy} act={act} />
                 </td>
               </tr>
             );
@@ -273,35 +287,34 @@ function EpisodesTable({
   );
 }
 
-/** Retry (failed, skipped) and Skip (failed), only on an approved channel (spec §7). */
+/**
+ * Retry on every row, disabled only while the latest attempt has been running under an hour (after
+ * that the route reconciles a dead instance itself, PRD §4.2 rule 17); Skip on failed rows.
+ */
 function EpisodeActions({
   episode: e,
-  channelApproved,
   busy,
   act,
 }: {
   episode: Episode;
-  channelApproved: boolean;
   busy: boolean;
   act: ChannelAct;
 }) {
-  if (!channelApproved) return null;
-  const canRetry = e.status === "failed" || e.status === "skipped";
-  const canSkip = e.status === "failed";
-  if (!canRetry && !canSkip) return null;
+  const latest = e.processing.latestAttempt;
+  const runningRecently =
+    latest?.status === "running" && Date.now() - latest.startedAt < HOUR;
   return (
     <div class="actions">
-      {canRetry && (
-        <button
-          id={`detail-retry-${e.videoId}`}
-          type="button"
-          disabled={busy}
-          onClick={() => act(() => api.retryEpisode(e.channelId, e.videoId))}
-        >
-          Retry
-        </button>
-      )}
-      {canSkip && (
+      <button
+        id={`detail-retry-${e.videoId}`}
+        type="button"
+        disabled={busy || runningRecently}
+        title={runningRecently ? "An attempt is running" : undefined}
+        onClick={() => act(() => api.retryEpisode(e.channelId, e.videoId))}
+      >
+        Retry
+      </button>
+      {e.status === "failed" && (
         <button
           id={`detail-skip-${e.videoId}`}
           type="button"
@@ -311,21 +324,38 @@ function EpisodeActions({
           Skip
         </button>
       )}
+      {runningRecently && latest && (
+        <span class="muted">{runningForCopy(latest.startedAt)}</span>
+      )}
     </div>
   );
 }
 
-/** Skip reason, timeout detail, or the latest attempt's outcome, whichever explains the row. */
-function reasonCopy(e: Episode): string {
-  if (e.skipReason) return SKIP_REASON_COPY[e.skipReason];
+/** The content status with what explains it: the wait, the skip reason, or the timeout's last reason. */
+function statusCopy(e: Episode): string {
+  const base = EPISODE_STATUS_COPY[e.status];
+  if (e.status === "pending" && e.waitReason)
+    return `${base} · ${WAIT_REASON_COPY[e.waitReason]}`;
+  if (e.status === "skipped" && e.skipReason)
+    return `${base} · ${SKIP_REASON_COPY[e.skipReason]}`;
   const p = e.processing;
-  if (p.failureCode) {
+  if (e.status === "failed" && p.failureCode) {
     return p.failureDetail
-      ? `${p.failureCode} (${p.failureDetail})`
-      : p.failureCode;
+      ? `${base} · ${p.failureCode} · ${failureDetailCopy(p.failureDetail)}`
+      : `${base} · ${p.failureCode}`;
   }
-  const code = p.latestAttempt?.outcomeCode;
-  return code ? OUTCOME_CODE_COPY[code] : "—";
+  return base;
+}
+
+/** The latest attempt's phrase: how long it has run, its outcome, or its status when it has no code. */
+function latestAttemptCopy(e: Episode): string {
+  const latest = e.processing.latestAttempt;
+  if (!latest) return "";
+  if (latest.status === "running") return runningForCopy(latest.startedAt);
+  const phrase = latest.outcomeCode
+    ? OUTCOME_CODE_COPY[latest.outcomeCode]
+    : latest.status;
+  return `${phrase} (${latest.trigger.replace("_", " ")})`;
 }
 
 function followerLabel(count: number): string {

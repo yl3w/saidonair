@@ -5,7 +5,7 @@
 **Parent:** `docs/specs/m3-ingestion.md` §2 (Universal recovery rule, Reconciliation, Channel independence, Crons,
 Launch throttle), §3 "recovery cron", §3.4; PRD §4.2 rules 13–15. Acceptance 3, 4, 6 (automatic half), 7 (recovery
 half), 10, 14 (sweep half) of the parent.
-**Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green; the walkthrough
+**Status:** implemented 2026-09-13 on `main`, committed as `7818495`; `pnpm check` green; the walkthrough
 against the real engine is recorded in `docs/specs/m3-6-recovery-plan.md`. No new dependencies.
 
 ## 1. Summary
