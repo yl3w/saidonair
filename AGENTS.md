@@ -108,6 +108,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── lib/ai.ts             # Workers AI wrappers: embed, summarize (map and reduce), later chat; AI_FAKE in tests
 │   │   │   ├── lib/summary.ts        # pure: [h:mm:ss] transcript formatting, 20-minute sections, the takeaway budget
 │   │   │   │                         # and its allocation across sections, summary JSON validation
+│   │   │   ├── lib/summary-eval.ts   # pure, no model calls: scores a published summary against the faults real
+│   │   │   │                         # episodes showed, so a regression is visible without reading every digest
 │   │   │   ├── lib/vectorize.ts      # the namespaced vector store (upsert/getByIds/query/deleteByIds), generation ids,
 │   │   │   │                         # hard rule 3 in code; VECTORIZE_FAKE in tests
 │   │   │   ├── lib/workflows.ts      # ingestLauncher(env): the one path to INGEST_WORKFLOW (create, status folded to
