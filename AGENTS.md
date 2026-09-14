@@ -42,9 +42,13 @@ This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainabl
    `lib/vectorize.ts` for ID-based operations too; do not assume the underlying API accepts a namespace argument for
    every operation. Retrieval rules: `docs/PRD.md` §6.
 4. **Never run destructive commands**: no `DELETE FROM` without a `WHERE` on user data, no `wrangler delete`,
-   `wrangler d1/vectorize delete`, no resetting Durable Object storage, no `rm -rf` outside build output. If a task
-   seems to require one, stop and ask. `DROP` inside a migration file is DDL, not a command, and is allowed (owner
-   decision 2026-09-12, `docs/PRD.md` §5.4).
+   `wrangler d1/vectorize/workflows delete`, no resetting Durable Object storage, no `rm -rf` outside build output.
+   The single sanctioned exception is the `clean-local` skill, only when the owner asks in so many words, and only
+   by the routes it uses: the dev environment's local Durable Object and Workflow directories, and the vectors in
+   the dev Vectorize index deleted by enumerated id — never the index itself, never staging, never production.
+   Starting a deployed environment clean is a manual procedure (`docs/specs/clean-local-plan.md` → Appendix), never
+   a command an agent runs. If a task seems to require anything else, stop and ask. `DROP` inside a migration file
+   is DDL, not a command, and is allowed (owner decision 2026-09-12, `docs/PRD.md` §5.4).
 
 ## Repo layout
 
@@ -183,6 +187,12 @@ production `x`, staging `x-staging`, dev `x-dev` (`media-digest-api`, `media-rag
   local web.
 - Tests run under `environment: "dev"` in `vitest.config.ts` with the pool's `remoteBindings: false` (from M3.3), so
   no test reaches any environment's remote resources.
+- Resetting state is dev-only and manual. The `clean-local` skill clears the dev environment — local Durable Object
+  and Workflow directories, and the dev Vectorize index's vectors — on the owner's word. Staging and production are
+  refused: no CLI clears a deployed Durable Object's storage (there is no `wrangler durable-objects` command), so
+  emptying a deployed environment is a `deleted_classes` migration pair run by hand, never an agent's command. The
+  procedure and its footgun — `migrations` is inherited by every environment, so a wipe pair is never committed —
+  are in `docs/specs/clean-local-plan.md` → Appendix.
 
 ## One-time setup (owner runs these; agents may propose, not run)
 
@@ -220,6 +230,7 @@ pnpm check          # turbo run typecheck lint test — the pre-finish gate
 pnpm --filter api deploy               # staging (the top level of wrangler.jsonc)
 pnpm --filter api deploy:production    # production (--env production)
 pnpm skills:install --agent <agents…>   # copy skills/ into those agents' directories; see below
+pnpm skills:remove <name> -y            # prune a renamed or deleted skill from them
 ```
 
 Agent skills live in `skills/<name>/SKILL.md` following the Agent Skills standard (agentskills.io): standard frontmatter
@@ -231,13 +242,32 @@ pnpm skills:install --agent claude-code     # -> .claude/skills/   (Claude Code)
 pnpm skills:install --agent codex cursor    # -> .agents/skills/   (Codex, Cursor, Copilot, and other .agents readers)
 ```
 
+**The standard set is two sources**, both installed by that one command: `obra/superpowers` (the shared workflow
+skills — brainstorming, TDD, writing-plans, …) and this repo's own `./skills`. A fresh clone needs nothing else.
+Both go through `scripts/skills.sh`, which pins the CLI version once and passes your arguments to **both** sources —
+a plain `a && b` chain in `package.json` would not, because `pnpm run` appends arguments to the end of the command
+line, so `--agent` would reach the second source only and the first would silently land in the default agents.
+`install` uses `--skill '*' -y`, so every developer gets the same set unattended.
+
 The CLI copies `skills/` into the first agent directory and symlinks any further agents to that copy, so re-run it
 after editing anything under `skills/`. `.claude/skills/`, `.agents/skills/`, and `skills-lock.json` are generated and
-gitignored. `skills:install` is a root-only tooling script, not a Turborepo task; it pins the `skills` CLI version, so bump
-it deliberately (recent releases need Node 22.20+, which the 22 line satisfies).
+gitignored. `skills:install` and `skills:remove` are root-only tooling scripts, not Turborepo tasks. The CLI version
+is pinned in
+`scripts/skills.sh` — one place, bump it deliberately (recent releases need Node 22.20+, which the 22 line satisfies).
+`obra/superpowers` is fetched at its GitHub HEAD; `skills-lock.json` records exact hashes but is gitignored, so two
+clones installed on different days can differ. Commit the lock and switch to `experimental_install` if that matters.
 
-Skills so far: `clean-local-do` wipes local `wrangler dev` Durable Object state (`apps/api/.wrangler/state/v3/do/`
-only, never deployed state). Hard rule 4 still applies, so agents run it only when the owner asks in so many words.
+`skills:install` only adds — it never prunes. **Renaming or deleting a skill needs
+`pnpm skills:remove <old-name> -y`**, which clears the stale copy from every agent directory *and* its
+`skills-lock.json` entry. Deleting the directories by hand leaves the lock entry behind and a reinstall does not
+notice (verified 2026-09-14); a stale copy of a destructive skill still runs, so prune in the same commit as the
+rename. The agent directories themselves are disposable — `pnpm skills:install` rebuilds both sources from scratch.
+
+Skills so far: `clean-local` wipes the state the dev environment owns — local `wrangler dev` Durable Object storage
+(`apps/api/.wrangler/state/v3/do/`), optionally local Workflow state, and optionally every vector in the dev
+Vectorize index (`--include-vectors`, the one remote thing it touches). Dev only: staging and production are
+refused, and the index itself and its metadata indexes are never deleted. Hard rule 4 still applies, so agents run
+it only when the owner asks in so many words.
 
 `turbo.json` conventions: `build` depends on `^build` (so `packages/shared` builds first); `typecheck`, `lint`, `test`
 depend on `^build`; `dev` is `persistent: true, cache: false`. Add a new task to `turbo.json` and to the root
@@ -271,7 +301,7 @@ frozen-file rule since 2026-09-12; retention) are `docs/PRD.md` §5. In code:
   `apps/api/migrations/user/` (`0001_init.sql`, `0002_add_x.sql`, …). `do/migrations.ts` applies pending files on
   first access under `blockConcurrencyWhile`, tracked in `_migrations`. A file whose version is already recorded does
   not re-run when edited: after editing an applied migration, wipe the local Durable Object state that applied it
-  (the `clean-local-do` skill, on the owner's word; nothing is deployed).
+  (the `clean-local` skill, on the owner's word; nothing is deployed).
 - DO SQLite accepts at most 100 bound parameters per statement (verified against workerd 2026-09-07). Chunk `IN (...)`
   lists and multi-row writes with `lib/sql.ts`; never interpolate ids into SQL instead.
 - The DO classes in `do/registry.ts` and `do/user.ts` are thin RPC facades; logic lives in the store modules under

@@ -121,6 +121,13 @@ describe("the vector store", () => {
     expect(fakeVectorIds()).toEqual(generationIds(OTHER, GEN, 2));
   });
 
+  it("writes exactly one namespace, which is what lets `clean-local` wipe the dev index whole", () => {
+    // `wrangler vectorize list-vectors` returns ids without namespaces and `delete-vectors` takes none, so
+    // the skill's wipe is index-wide. That is namespace-scoped in substance only while this holds (hard
+    // rule 3). If a second namespace is ever added, this fails and the skill needs rethinking first.
+    expect(SHARED_NAMESPACE).toBe("shared-catalog");
+  });
+
   it("refuses every other namespace, ids that do not match their metadata, and an oversized topK", async () => {
     const store = fake();
     const ns = "alice@example.com" as never;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import cleanVectors from "../../../skills/clean-local/scripts/clean-vectors.mjs?raw";
 import raw from "../wrangler.jsonc?raw";
 
 /**
@@ -132,5 +133,47 @@ describe("wrangler.jsonc environments", () => {
       "WEB_ORIGINS",
       dev?.vars?.WEB_ORIGINS,
     );
+  });
+});
+
+/**
+ * The `clean-local` skill empties the dev Vectorize index by name, and that name is a constant in its
+ * script rather than an argument, so no input can redirect the wipe. These cases are what keeps the
+ * constant honest: a renamed index would otherwise leave the skill silently wiping nothing, and a
+ * deployed index name appearing in the script at all is the failure that matters most.
+ */
+describe("the clean-local skill", () => {
+  const devIndex = dev?.vectorize?.[0]?.index_name;
+
+  it("targets the dev index the config declares", () => {
+    expect(devIndex).toBe("media-rag-dev");
+    expect(cleanVectors).toContain(`const INDEX = "${devIndex}"`);
+  });
+
+  it("never names the staging or production index", () => {
+    // The production name is a prefix of the dev one (`media-rag` / `media-rag-dev`), so a substring test
+    // would fire on every correct script. Only a whole-name occurrence counts.
+    const namesWholly = (haystack: string, name: string) => {
+      for (
+        let i = haystack.indexOf(name);
+        i !== -1;
+        i = haystack.indexOf(name, i + 1)
+      ) {
+        if (!/[\w-]/.test(haystack[i + name.length] ?? "")) return true;
+      }
+      return false;
+    };
+    for (const env of [staging, production]) {
+      const index = env?.vectorize?.[0]?.index_name;
+      expect(index).toBeDefined();
+      expect(index).not.toBe(devIndex);
+      expect(namesWholly(cleanVectors, index as string)).toBe(false);
+    }
+  });
+
+  it("never calls the forbidden `wrangler vectorize delete`, which would drop the metadata indexes", () => {
+    // AGENTS.md hard rule 4 forbids it, and deleting the index would take `channelId` and `videoId` with
+    // it; vectors upserted afterwards would be unfilterable with no error to notice.
+    expect(cleanVectors).not.toMatch(/"vectorize",\s*"delete"/);
   });
 });
