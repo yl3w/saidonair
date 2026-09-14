@@ -15,6 +15,9 @@ API at `GET /docs` as the one exception to "JSON everywhere" (2026-09-07); the A
 (2026-09-07); blank optional text is `INVALID_INPUT` (2026-09-08); the API contract is restarted from the M3 model with
 no legacy member (2026-09-12); the product is Said on Air and the API document title follows the name (2026-09-12); the API enforces
 no authorization at all and is promiscuous about input and representation (2026-09-12).
+**Superseded in part 2026-09-14** by `docs/specs/discovery-long-form-feed.md`: discovery reads the long-form uploads
+playlist feed, live content is never discovered, and `LIVE_OR_UPCOMING` is retired from every enum, the
+`outcome_code` CHECK, `classify()`, and the web copy. Edited below where it said otherwise.
 
 ## 1. Summary
 
@@ -171,19 +174,19 @@ type MeResponse = { email: string; role: UserRole };
 | `ProcessingIntent` | `publication`, `replacement` | `episodes.intent`, attempts |
 | `EpisodeFailureCode` | `INGESTION_TIMEOUT` | `episodes.failure_code` |
 | `EpisodeSkipReason` | `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`, `OWNER` | `episodes.skip_reason` |
-| `EpisodeWaitReason` | `CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT` | the outcome codes of a `waiting` attempt, PRD §4.2 rule 11; derived, not stored |
+| `EpisodeWaitReason` | `CAPTIONS`, `PROVIDER_LIMIT` | the outcome codes of a `waiting` attempt, PRD §4.2 rule 11; derived, not stored |
 | `SummaryFormat` | `structured`, `raw_fallback` | `episode_summaries.format` |
 | `IngestionRunKind` | `initial`, `scheduled` | `ingestion_runs.kind` |
 | `FeedStatus` | `read`, `unavailable` | `ingestion_runs.feed_status` |
 | `AttemptTrigger` | `channel_ingestion`, `scheduled_recovery`, `owner_retry` | `episode_ingestion_attempts.trigger` |
 | `AttemptStatus` | `running`, `available`, `failed`, `skipped`, `waiting`, `blocked` | `episode_ingestion_attempts.status` |
-| `AttemptOutcomeCode` | `CAPTIONS`, `LIVE_OR_UPCOMING`, `PROVIDER_LIMIT`, `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`, `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `PROVIDER_HTTP`, `PROVIDER_PARSE`, `TRANSCRIPT_TOO_LARGE`, `EMBEDDING_FAILED`, `VECTORIZE_INCOMPLETE`, `SUMMARY_FAILED`, `WORKFLOW_LOST` | `episode_ingestion_attempts.outcome_code`, PRD §5.3 (closed 2026-09-12) |
+| `AttemptOutcomeCode` | `CAPTIONS`, `PROVIDER_LIMIT`, `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`, `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `PROVIDER_HTTP`, `PROVIDER_PARSE`, `TRANSCRIPT_TOO_LARGE`, `EMBEDDING_FAILED`, `VECTORIZE_INCOMPLETE`, `SUMMARY_FAILED`, `WORKFLOW_LOST` | `episode_ingestion_attempts.outcome_code`, PRD §5.3 (closed 2026-09-12; fourteen members since 2026-09-14) |
 | `TranscriptProviderStatus` | `ok`, `auth_failed`, `unreachable` | `m3-ingestion.md` §2, catalog health |
 | `ChatRole` | `user`, `assistant` | `chat_messages.role` |
 | `ChatMessageStatus` | `pending`, `completed`, `failed` | `chat_messages.status` |
 
 `AttemptOutcomeCode`'s description states the per-status families from PRD §5.3: `waiting` → `CAPTIONS`,
-`LIVE_OR_UPCOMING`, `PROVIDER_LIMIT`; `skipped` → `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`; `blocked` → `PROVIDER_AUTH`,
+`PROVIDER_LIMIT`; `skipped` → `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`; `blocked` → `PROVIDER_AUTH`,
 `PROVIDER_LIMIT`; `failed` → `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `PROVIDER_HTTP`, `PROVIDER_PARSE`,
 `TRANSCRIPT_TOO_LARGE`, `EMBEDDING_FAILED`, `VECTORIZE_INCOMPLETE`, `SUMMARY_FAILED`, `WORKFLOW_LOST`. `running` and
 `available` attempts carry null. `EpisodeWaitReason` is the `waiting` family on its own, for `Episode.waitReason`.
@@ -384,8 +387,7 @@ An empty `?limit=` or `?since=` is a 400, as since 2026-09-07.
 ### 5.11 Removed members
 
 The module exports none of these and the document contains none of them; the coverage test asserts each fact by name
-or by enum equality, not by grepping description text (some words, such as `LIVE_OR_UPCOMING`, legitimately appear in
-descriptions of attempt outcomes):
+or by enum equality, not by grepping description text:
 
 - Schemas and components: `EpisodeWaitingCode` and `EpisodeProcessing.waitingCode` (the stored column;
   `Episode.waitReason` is the derived replacement), `IngestionRunStatus`, `IngestionRunEpisode`,
@@ -394,7 +396,8 @@ descriptions of attempt outcomes):
   `RequestOutcome`, `FollowOrigin`, `CatalogState`, `ChannelFailureCode`, `ChannelAlreadyAvailableResponse`).
 - Properties: `waiting` and `tracked` in any counts object; `status`, `workflowId`, `failureCode`, `failureDetail`,
   `episodes` on a run.
-- Enum members: `NO_CAPTIONS` and `LIVE_OR_UPCOMING` in `EpisodeSkipReason`; `owner_retry` in `IngestionRunKind`.
+- Enum members: `NO_CAPTIONS` in `EpisodeSkipReason`; `owner_retry` in `IngestionRunKind`; `LIVE_OR_UPCOMING`
+  anywhere, retired 2026-09-14 from `EpisodeWaitReason` and `AttemptOutcomeCode` (which is now fourteen members).
 - Shapes: `takeaways` as `string[]` (it is `Takeaway[]`).
 - Renamed the same day, before any deployment: `RecoveryMode` and `EpisodeProcessing.recoveryMode`,
   `recoveryStartedAt`, `recoveryDeadlineAt` (now `ProcessingIntent`, `intent`, `windowStartedAt`, `windowDeadlineAt`).

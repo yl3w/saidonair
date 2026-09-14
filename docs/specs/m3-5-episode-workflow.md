@@ -9,6 +9,9 @@ and "one Workflow instance per attempt", §3.5, §4; PRD §4.2 rules 5–9, 16�
 **Status:** implemented 2026-09-13 on `main`, committed the same day at the owner's request; `pnpm check` green; the `wrangler
 dev` walkthrough on real channels, DownSub, Workers AI, Vectorize, and the local Workflows engine is recorded in
 `docs/specs/m3-5-episode-workflow-plan.md`. No new dependencies.
+**Superseded in part 2026-09-14** by `docs/specs/discovery-long-form-feed.md`: discovery reads the long-form uploads
+playlist feed, live content is never discovered, and `LIVE_OR_UPCOMING` is retired from every enum, the
+`outcome_code` CHECK, `classify()`, and the web copy. Edited below where it said otherwise.
 
 ## 1. Summary
 
@@ -99,9 +102,10 @@ per §2.
 
 ## 4. Acceptance criteria
 
-1. `classify`: English with a known duration of 180 s or more → process; under 180 s → `SHORT`; live or upcoming →
-   `LIVE_OR_UPCOMING` before any duration check; `non_english` → `NON_ENGLISH`; `none` → `CAPTIONS`; `UNPLAYABLE`
-   failure → skip; each `PROVIDER_*` failure → failed with that code; an unknown duration is never `SHORT`.
+1. `classify`: English with a known duration of 180 s or more → process; under 180 s → `SHORT` (duration is the
+   first check since 2026-09-14, when the live branch was removed); `non_english` → `NON_ENGLISH`; `none` →
+   `CAPTIONS`; `UNPLAYABLE` failure → skip, which is where live and upcoming videos now land; each `PROVIDER_*`
+   failure → failed with that code; an unknown duration is never `SHORT`.
 2. A complete attempt on the fakes: attempt `available`; episode `available` with `chunkCount` equal to the chunks,
    a structured summary with `startSec` takeaways, `processedAt` set; the fake store holds exactly the generation's
    ids; `processing.latestAttempt.stagedChunkCount` set.

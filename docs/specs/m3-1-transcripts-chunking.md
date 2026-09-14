@@ -8,6 +8,9 @@ the chunking contract of PRD §6.
 **Status:** implemented 2026-09-13 on `main`, committed as `5a73f18`; `pnpm check` green; the Step 0 answers
 and the DownSub probe are recorded in `docs/specs/m3-1-transcripts-chunking-plan.md`. §3.3's error rows were rewritten
 from what the probe showed (the plan's walkthrough record explains). No new dependencies.
+**Superseded in part 2026-09-14** by `docs/specs/discovery-long-form-feed.md`: discovery reads the long-form uploads
+playlist feed, live content is never discovered, and `LIVE_OR_UPCOMING` is retired from every enum, the
+`outcome_code` CHECK, `classify()`, and the web copy. Edited below where it said otherwise.
 
 ## 1. Summary
 
@@ -57,11 +60,11 @@ Mapping (parent §2 "DownSub specifics", PRD rule 22):
 | 429 | throw `PROVIDER_RATE_LIMIT` |
 | other non-2xx | throw `PROVIDER_HTTP` |
 | body not JSON, or JSON without `data.state` | throw `PROVIDER_PARSE` |
-| `state: error`, live metadata (`metadata.isLiveContent`, a `_live.jpg` thumbnail) | `{ segments: null, durationSec, isLive: true, captionStatus: "none" }` |
+| `state: error`, live metadata (`metadata.isLiveContent`, a `_live.jpg` thumbnail) | throw `UNPLAYABLE` ("live or upcoming") |
 | `state: error` with `metadata.playabilityReason` | throw `UNPLAYABLE` with the reason as detail |
-| `state: error`, no reason, body still describes a video (title, positive `duration`, or `channelId`) | `isLive: true` as above: a live or upcoming video reads this way (verified 2026-09-13) |
+| `state: error`, no reason, body still describes a video (title, positive `duration`, or `channelId`) | throw `UNPLAYABLE` ("…with no reason"): a catch-all since 2026-09-14, not a live detector (`docs/specs/discovery-long-form-feed.md` §5) |
 | `state: error`, no reason, no video described | throw `UNPLAYABLE` ("no video metadata"): the provider answers a bogus id this way, sometimes with a reason and sometimes with an empty `metadata` |
-| `state: no_subtitles` | `captionStatus: "none"`, `isLive: false` |
+| `state: no_subtitles` | `captionStatus: "none"` |
 | `state: subtitles_found`, no English track by `code` | `captionStatus: "non_english"`, nothing downloaded |
 | English track whose VTT parses to one cue or more | `captionStatus: "english"`, the segments |
 | English track whose VTT parses to zero cues | `captionStatus: "none"` (decided 2026-09-11) |
