@@ -3,6 +3,9 @@
  * is a title-only feed with no entries, null is YouTube's 404 for an unknown id, and an object is a
  * feed with entries, rendered as Atom by `lib/youtube/rss.ts` so the parser path is production's. No
  * `cloudflare:test` import here so vitest.config.ts can load it in Node.
+ *
+ * A key is either a `UC…` channel id, which serves both feed URL shapes, or a `UULF…` playlist id
+ * (`longFormKey`), which overrides just the long-form read that discovery makes.
  */
 
 export type FakeFeedEntry = {
@@ -14,6 +17,11 @@ export type FakeFeed =
   | string
   | null
   | { title: string; entries: FakeFeedEntry[] };
+
+/** The long-form playlist id of a channel: the fake's key for the feed discovery reads. */
+export function longFormKey(channelId: string): string {
+  return `UULF${channelId.slice(2)}`;
+}
 
 /** The discovery fixture channel: fifteen entries across two months before 2026-09-13. */
 export const CHANNEL_F = "UCFFFFFFFFFFFFFFFFFFFFFF";
