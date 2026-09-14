@@ -576,6 +576,9 @@ export const EpisodeProcessingSchema = z
       .nullable()
       .describe("Set exactly for an `OWNER` skip."),
     transcriptCheckedAt: UnixMs.nullable(),
+    durationSec: Count.nullable().describe(
+      "The episode's runtime, as the transcript provider reported it; null before a transcript was fetched.",
+    ),
     chunkCount: Count.nullable(),
     vectorizedAt: UnixMs.nullable(),
     createdAt: UnixMs,

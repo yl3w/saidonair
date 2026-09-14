@@ -34,6 +34,7 @@ type EpisodeRow = {
   skipped_at: number | null;
   skipped_by_email: string | null;
   transcript_checked_at: number | null;
+  duration_sec: number | null;
   chunk_count: number | null;
   vectorized_at: number | null;
   processed_at: number | null;
@@ -50,7 +51,7 @@ type EpisodeRow = {
 const EPISODE_SELECT = `SELECT e.video_id, e.channel_id, c.title AS channel_title, e.title, e.published_at,
     e.status, e.discovered_by_run_id, e.intent, e.window_started_at, e.window_deadline_at,
     e.next_attempt_at, e.attempt_count, e.failure_code, e.failure_detail, e.skip_reason, e.skipped_at,
-    e.skipped_by_email, e.transcript_checked_at, e.chunk_count, e.vectorized_at, e.processed_at,
+    e.skipped_by_email, e.transcript_checked_at, e.duration_sec, e.chunk_count, e.vectorized_at, e.processed_at,
     e.created_at, e.updated_at,
     s.format AS summary_format, s.executive_summary, s.takeaways_json, s.topic_tags_json,
     s.raw_text, s.related_video_ids_json
@@ -274,15 +275,22 @@ export function markTimedOut(
   );
 }
 
-/** The provider answered about this video (a transcript result or a deterministic classification). */
+/**
+ * The provider answered about this video (a transcript result or a deterministic classification).
+ * A known runtime is kept: `durationSec` is null for a deterministic answer that never fetched a
+ * transcript, and a later null must not erase what an earlier attempt learned.
+ */
 export function markTranscriptChecked(
   sql: SqlStorage,
   videoId: string,
+  durationSec: number | null,
   now: number,
 ): void {
   sql.exec(
-    "UPDATE episodes SET transcript_checked_at = ?, updated_at = ? WHERE video_id = ?",
+    `UPDATE episodes SET transcript_checked_at = ?, duration_sec = COALESCE(?, duration_sec),
+       updated_at = ? WHERE video_id = ?`,
     now,
+    durationSec === null ? null : Math.round(durationSec),
     now,
     videoId,
   );
@@ -722,6 +730,7 @@ function toRecord(
       skippedAt: row.skipped_at,
       skippedByEmail: row.skipped_by_email,
       transcriptCheckedAt: row.transcript_checked_at,
+      durationSec: row.duration_sec,
       chunkCount: row.chunk_count,
       vectorizedAt: row.vectorized_at,
       createdAt: row.created_at,

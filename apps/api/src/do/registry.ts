@@ -367,11 +367,18 @@ export class RegistryDO extends DurableObject<Env> {
     );
   }
 
-  /** How many vectors the current attempt is about to write, recorded before the first upsert. */
-  markStaged(attemptId: string, chunkCount: number): EpisodeIngestionAttempt {
+  /**
+   * How many vectors the current attempt is about to write, recorded before the first upsert, and
+   * the episode's runtime, which nothing else in the pipeline is in a position to store.
+   */
+  markStaged(
+    attemptId: string,
+    chunkCount: number,
+    durationSec: number | null,
+  ): EpisodeIngestionAttempt {
     const id = processing.requireAttemptId(attemptId);
     return this.#transaction(() =>
-      processing.markStaged(this.#sql, id, chunkCount, Date.now()),
+      processing.markStaged(this.#sql, id, chunkCount, durationSec, Date.now()),
     );
   }
 

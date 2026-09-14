@@ -12,7 +12,7 @@ import {
 
 /** The rewritten 0001 (2026-09-12) applies alone and its table checks reject what PRD §5.3 says they reject. */
 describe("registry migrations", () => {
-  it("creates every Registry table on first access and records 0001_init alone", async () => {
+  it("creates every Registry table on first access and records both migrations", async () => {
     const stub = registry();
     await stub.ensureUser(ALICE);
     const columnsOf = (sql: SqlStorage, table: string) =>
@@ -48,7 +48,7 @@ describe("registry migrations", () => {
       "global_users",
       "ingestion_runs",
     ]);
-    expect(versions).toEqual(["0001_init"]);
+    expect(versions).toEqual(["0001_init", "0002_episode_duration"]);
     // Gone with the 2026-09-12 restart: the run fence, the stored ingestion time, the waiting code,
     // and every run status or Workflow column.
     expect(channelColumns).not.toContain("lifecycle_version");

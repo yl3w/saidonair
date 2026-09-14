@@ -90,12 +90,14 @@ export function markStaged(
   sql: SqlStorage,
   attemptId: string,
   chunkCount: number,
+  durationSec: number | null,
   now: number,
 ): EpisodeIngestionAttempt {
   const { attempt, episode } = requireCurrent(sql, attemptId);
   requireCount(chunkCount, "chunkCount");
   attempts.setStagedChunkCount(sql, attempt.attempt_id, chunkCount);
-  episodes.markTranscriptChecked(sql, episode.videoId, now);
+  // The one point in the pipeline that has both the chunk count and the provider's runtime.
+  episodes.markTranscriptChecked(sql, episode.videoId, durationSec, now);
   return attempts.toAttempt(requireAttempt(sql, attemptId));
 }
 
@@ -121,7 +123,7 @@ export function finishAttempt(
     now,
   );
   if (TRANSCRIPT_STEP_CODES.has(checked.code)) {
-    episodes.markTranscriptChecked(sql, episode.videoId, now);
+    episodes.markTranscriptChecked(sql, episode.videoId, null, now);
   }
   if (checked.status === "skipped") {
     if (episode.intent === "publish") {

@@ -176,13 +176,20 @@ describe("the prompts", () => {
     // A `//` comment inside the skeleton would be copied into the answer and is not JSON.
     expect(map).not.toContain("//");
 
-    const reduce = reducePrompt(["{a}", "{b}"]);
+    const reduce = reducePrompt(["{a}", "{b}"], { min: 5, max: 8 });
     expect(reduce).toContain("consecutive sections of an episode");
     expect(reduce).toContain("REDUCTION RULES:");
     expect(reduce).toContain(
       "the core topic or problem, the main discussion or debate, the key conclusion",
     );
+    // The band is the episode's, not a constant, and the distribution rule is the load-bearing one.
     expect(reduce).toContain("select 5 to 8");
+    expect(reduce).toContain(
+      "take a fair share from every section, including the last",
+    );
+    expect(reducePrompt(["{a}"], { min: 15, max: 18 })).toContain(
+      "select 15 to 18",
+    );
     expect(reduce).toContain("chronological order");
     expect(reduce).toContain("Section 1:\n{a}\n\nSection 2:\n{b}");
 

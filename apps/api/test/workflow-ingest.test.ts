@@ -246,6 +246,9 @@ describe("ingestAttempt", () => {
         },
       },
     });
+    // The runtime reaches the episode from the transcript step, and is what the takeaway budget of a
+    // reduced summary is computed from (lib/summary.ts takeawayBudget).
+    expect(episode?.processing.durationSec).toBeGreaterThan(0);
     const summary = episode?.summary;
     if (summary?.format !== "structured")
       throw new Error("expected a structured summary");

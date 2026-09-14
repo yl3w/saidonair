@@ -23,6 +23,7 @@ import {
   parseSummary,
   type StructuredSummary,
   sectionize,
+  takeawayBudget,
 } from "../lib/summary";
 import { transcriptSource } from "../lib/transcripts";
 import {
@@ -266,7 +267,7 @@ export async function ingestAttempt(
     }
 
     await step.do("stage", REGISTRY_STEP, () =>
-      registry.markStaged(attemptId, chunks.length),
+      registry.markStaged(attemptId, chunks.length, durationSec),
     );
 
     stage = "embed";
@@ -517,10 +518,12 @@ async function summarize(
   let final = sectionAnswers[0];
   if (sections.length > 1) {
     // Markers, not the internal seconds: the reduce prompt promises the model [h:mm:ss] (lib/summary.ts).
+    // The band scales with the runtime, so a long episode's later sections are not crowded out.
     const prompt = reducePrompt(
       sectionAnswers.map((a) =>
         a.structured ? formatSectionSummary(a.structured) : a.raw,
       ),
+      takeawayBudget(durationSec),
     );
     final = await answer(
       step,

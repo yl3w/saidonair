@@ -131,8 +131,12 @@ describe("the attempt ledger", () => {
       },
     );
 
-    const marked = await stub.markStaged(start.attempt.attemptId, 12);
+    const marked = await stub.markStaged(start.attempt.attemptId, 12, 8787);
     expect(marked.stagedChunkCount).toBe(12);
+    // The runtime the provider reported is the only place it is ever stored (0002).
+    expect(
+      (await registry().getEpisode(CHANNEL_A, VIDEO_A))?.processing.durationSec,
+    ).toBe(8787);
     expect((await generations(VIDEO_A)).checked).toEqual(expect.any(Number));
 
     const done = await stub.completeAttempt(
@@ -192,7 +196,7 @@ describe("the attempt ledger", () => {
       "INVALID_STATE",
     );
     await expectDomainError(
-      stub.markStaged(start.attempt.attemptId, 1),
+      stub.markStaged(start.attempt.attemptId, 1, null),
       "INVALID_STATE",
     );
     await expectDomainError(
@@ -213,7 +217,7 @@ describe("the attempt ledger", () => {
 
     const first = await started(VIDEO_A);
     const firstGeneration = (await generations(VIDEO_A)).staged;
-    await stub.markStaged(first.attempt.attemptId, 30);
+    await stub.markStaged(first.attempt.attemptId, 30, null);
     const before = Date.now();
     const failed = await stub.finishAttempt(first.attempt.attemptId, {
       status: "failed",
@@ -671,7 +675,7 @@ describe("the attempt ledger", () => {
     const start = await stub.beginAttempt(VIDEO_A, "owner_retry", OWNER);
     if (start.kind !== "started") throw new Error("expected started");
     const newGeneration = (await generations(VIDEO_A)).staged;
-    await stub.markStaged(start.attempt.attemptId, 7);
+    await stub.markStaged(start.attempt.attemptId, 7, null);
 
     const done = await stub.completeAttempt(
       start.attempt.attemptId,
@@ -773,9 +777,12 @@ describe("the attempt ledger", () => {
     );
     const start = await started(VIDEO_A);
     const id = start.attempt.attemptId;
-    await expectDomainError(stub.markStaged(id, 0), "INVALID_INPUT");
-    await expectDomainError(stub.markStaged("", 3), "INVALID_INPUT");
-    await expectDomainError(stub.markStaged("no-such-attempt", 3), "NOT_FOUND");
+    await expectDomainError(stub.markStaged(id, 0, null), "INVALID_INPUT");
+    await expectDomainError(stub.markStaged("", 3, null), "INVALID_INPUT");
+    await expectDomainError(
+      stub.markStaged("no-such-attempt", 3, null),
+      "NOT_FOUND",
+    );
     await expectDomainError(
       stub.finishAttempt(id, { status: "waiting", code: "SHORT" } as never),
       "INVALID_INPUT",

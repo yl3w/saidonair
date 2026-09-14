@@ -14,8 +14,16 @@ import type { TranscriptChunk } from "./chunk";
 
 export const SECTION_MAX_SEC = 45 * 60;
 export const MIN_TAKEAWAYS = 3;
-/** The map prompt asks for 3 to 6 and the reduce for 5 to 8; one bound holds both. */
-export const MAX_TAKEAWAYS = 8;
+/**
+ * One bound holds both calls. It is 20 because a reduced summary's budget scales with the episode
+ * (`takeawayBudget`): the map still asks for 3 to 6 per section, but a two-and-a-half-hour interview
+ * earns far more than the eight that used to be the ceiling for everything.
+ */
+export const MAX_TAKEAWAYS = 20;
+/** A reduced summary never returns fewer than this, however short the episode. */
+export const MIN_REDUCED_TAKEAWAYS = 5;
+/** About one takeaway per this many minutes of episode. */
+export const TAKEAWAY_MINUTES = 8;
 export const MIN_TAGS = 1;
 export const MAX_TAGS = 8;
 
@@ -50,6 +58,26 @@ export const SUMMARY_RESPONSE_SCHEMA = {
   },
   required: ["executiveSummary", "takeaways", "topicTags"],
 } as const;
+
+/**
+ * How many takeaways a reduced summary should carry, from the episode's runtime.
+ *
+ * Measured on 2026-09-14 (docs/specs/summary-quality.md §2): a 146-minute episode's four sections
+ * offered the reduce 23 good timestamped takeaways and the fixed 5-to-8 band kept 7 — all of them
+ * from the first 75 minutes. A band that ignores duration asks one number to serve a 50-minute panel
+ * and a two-and-a-half-hour interview alike, and the back of the long one is what it drops.
+ */
+export function takeawayBudget(durationSec: number | null): {
+  min: number;
+  max: number;
+} {
+  if (durationSec === null || durationSec <= 0) {
+    return { min: MIN_REDUCED_TAKEAWAYS, max: 8 };
+  }
+  const target = Math.round(durationSec / 60 / TAKEAWAY_MINUTES);
+  const max = Math.min(MAX_TAKEAWAYS, Math.max(MIN_REDUCED_TAKEAWAYS, target));
+  return { min: Math.max(MIN_REDUCED_TAKEAWAYS, max - 3), max };
+}
 
 export type StructuredSummary = {
   executiveSummary: string;

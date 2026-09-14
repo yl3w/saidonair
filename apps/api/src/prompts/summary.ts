@@ -6,7 +6,7 @@
  * bumps it to the date of the edit. Changing a prompt is a product decision.
  */
 
-export const PROMPT_VERSION = "2026-09-14";
+export const PROMPT_VERSION = "2026-09-14.2";
 
 // No comments inside the skeletons: a model copies one into its answer, and `//` is not JSON.
 const MAP_PROMPT = `You are an expert editor summarising a transcript of an episode for a reader who has not consumed it.
@@ -46,7 +46,7 @@ OUTPUT STRUCTURE:
 
 REDUCTION RULES:
 1. executiveSummary: exactly three sentences: the core topic or problem, the main discussion or debate, the key conclusion. A narrative of the whole episode, never a list of the sections. Plain prose, objective, no hype.
-2. takeaways: select 5 to 8 of the most insightful across all sections, deduplicated, in chronological order. "at" is the exact [h:mm:ss] marker of the section takeaway it comes from; when merging overlapping takeaways keep the earliest marker; null only if the source had none.
+2. takeaways: select {{MIN}} to {{MAX}} of the most insightful, deduplicated, in chronological order. Draw them from the whole episode: take a fair share from every section, including the last, and never fill the list from the earliest sections and stop. "at" is the exact [h:mm:ss] marker of the section takeaway it comes from; when merging overlapping takeaways keep the earliest marker; null only if the source had none.
 3. topicTags: consolidate and deduplicate the section tags down to the 3 to 8 most overarching themes, lowercase.
 
 Section summaries follow, in order.`;
@@ -62,10 +62,22 @@ export function mapPrompt(transcript: string): string {
   return `${MAP_PROMPT}\n\n${transcript}`;
 }
 
-/** Every section's validated answer, in order, rendered by `formatSectionSummary`. */
-export function reducePrompt(sectionSummaries: readonly string[]): string {
+/**
+ * Every section's validated answer, in order, rendered by `formatSectionSummary`, and the takeaway
+ * budget the episode's runtime earns (`takeawayBudget`). The band is interpolated rather than fixed
+ * because the reduce was measured filling a fixed band from the earliest sections and discarding the
+ * rest of the episode (docs/specs/summary-quality.md §2).
+ */
+export function reducePrompt(
+  sectionSummaries: readonly string[],
+  budget: { min: number; max: number },
+): string {
   const sections = sectionSummaries
     .map((summary, index) => `Section ${index + 1}:\n${summary}`)
     .join("\n\n");
-  return `${REDUCE_PROMPT}\n\n${sections}`;
+  const rules = REDUCE_PROMPT.replace("{{MIN}}", String(budget.min)).replace(
+    "{{MAX}}",
+    String(budget.max),
+  );
+  return `${rules}\n\n${sections}`;
 }

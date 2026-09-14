@@ -234,7 +234,7 @@ describe("the recovery cron", () => {
       );
     }
     // The reconciled instance can no longer write (the attempt gate).
-    await expectDomainError(stub.markStaged(gone, 3), "INVALID_STATE");
+    await expectDomainError(stub.markStaged(gone, 3, null), "INVALID_STATE");
 
     // Due in six hours, not at once: the tick that follows starts nothing for them.
     expect(await runRecoveryTick(env, now)).toEqual({

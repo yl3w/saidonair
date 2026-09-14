@@ -13,6 +13,7 @@ import {
   SECTION_MAX_SEC,
   SUMMARY_RESPONSE_SCHEMA,
   sectionize,
+  takeawayBudget,
 } from "../src/lib/summary";
 import { englishSegments } from "./fixtures/transcripts";
 
@@ -136,7 +137,7 @@ describe("parseSummary", () => {
     expect(summary?.takeaways).toHaveLength(3);
   });
 
-  it("accepts the eight takeaways the reduce prompt may return", () => {
+  it("accepts as many takeaways as a long reduce may return", () => {
     const eight = Array.from({ length: MAX_TAKEAWAYS }, (_, i) => ({
       text: `point ${i}`,
       at: "0:01:00",
@@ -191,10 +192,13 @@ describe("parseSummary", () => {
       JSON.stringify({ ...VALID, takeaways: VALID.takeaways.slice(0, 2) }),
     ],
     [
-      "nine takeaways",
+      "one takeaway more than the ceiling",
       JSON.stringify({
         ...VALID,
-        takeaways: [...VALID.takeaways, ...VALID.takeaways, ...VALID.takeaways],
+        takeaways: Array.from({ length: MAX_TAKEAWAYS + 1 }, (_, i) => ({
+          text: `point ${i}`,
+          at: "0:01:00",
+        })),
       }),
     ],
     [
@@ -268,5 +272,29 @@ describe("formatSectionSummary", () => {
       { text: "No marker", startSec: null },
       { text: "Then test", startSec: 3723 },
     ]);
+  });
+});
+
+describe("takeawayBudget", () => {
+  it("scales the reduced band with the runtime, within the validator's bounds", () => {
+    // The 146-minute episode that exposed the fault: 23 takeaways were offered and 7 kept.
+    expect(takeawayBudget(146 * 60)).toEqual({ min: 15, max: 18 });
+    // A fifty-minute panel keeps roughly the band it had before.
+    expect(takeawayBudget(50 * 60)).toEqual({ min: 5, max: 6 });
+    // Nothing exceeds the ceiling, however long the episode.
+    expect(takeawayBudget(6 * 3600)).toEqual({ min: 17, max: MAX_TAKEAWAYS });
+    // Nothing drops below the floor, and an unknown runtime keeps the old fixed band.
+    expect(takeawayBudget(10 * 60)).toEqual({ min: 5, max: 5 });
+    expect(takeawayBudget(null)).toEqual({ min: 5, max: 8 });
+    expect(takeawayBudget(0)).toEqual({ min: 5, max: 8 });
+  });
+
+  it("never asks for more than parseSummary accepts", () => {
+    for (const minutes of [45, 60, 90, 120, 146, 180, 300]) {
+      const { min, max } = takeawayBudget(minutes * 60);
+      expect(min).toBeGreaterThanOrEqual(MIN_TAKEAWAYS);
+      expect(max).toBeLessThanOrEqual(MAX_TAKEAWAYS);
+      expect(min).toBeLessThanOrEqual(max);
+    }
   });
 });
