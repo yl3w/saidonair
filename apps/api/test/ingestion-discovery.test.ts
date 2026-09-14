@@ -19,7 +19,7 @@ import {
   startDiscovery,
 } from "../src/lib/ingestion";
 import { createdInstances } from "../src/lib/workflows";
-import { CHANNEL_F, FEED_F_ENTRIES } from "./fixtures/feeds";
+import { CHANNEL_F, CHANNEL_G, FEED_F_ENTRIES } from "./fixtures/feeds";
 import {
   ALICE,
   CHANNEL_A,
@@ -66,6 +66,10 @@ async function scheduled(cron: string): Promise<void> {
 }
 
 const NEWEST_FIVE = FEED_F_ENTRIES.slice(0, 5).map((e) => e.videoId);
+
+// Every count in this file is also an assertion about *which* feed was read: F's entries are
+// registered under its long-form key alone and its `channel_id=` feed is title-only, so a discovery
+// run that fell back to the channel feed would discover nothing (spec §7.4, no fallback).
 
 describe("discovery on approval", () => {
   it("performs the initial run at first approval, answers with it, and does nothing on re-approval", async () => {
@@ -202,6 +206,24 @@ describe("POST /channels/:id/runs", () => {
       (await call(OWNER, "POST", `/channels/${CHANNEL_F}/runs`)).status,
     ).toBe(200);
     expect(await stub.listRuns(CHANNEL_F)).toHaveLength(3);
+
+    // A channel whose long-form feed 404s: the unavailable run is recorded, then 502. No fallback
+    // to `channel_id=`, which would have answered here (spec §7.4).
+    await seedApprovedChannel(CHANNEL_G, "G");
+    const unavailable = await call(
+      OWNER,
+      "POST",
+      `/channels/${CHANNEL_G}/runs`,
+    );
+    expect(unavailable.status).toBe(502);
+    expect(unavailable.json.code).toBe("UPSTREAM_UNAVAILABLE");
+    expect(await stub.listRuns(CHANNEL_G)).toMatchObject([
+      { channelId: CHANNEL_G, feedStatus: "unavailable", discoveredCount: 0 },
+    ]);
+    expect((await stub.getChannel(CHANNEL_G))?.lastCheckedAt).toBeNull();
+    expect(await stub.listEpisodes(CHANNEL_G, { relatedScope: [] })).toEqual(
+      [],
+    );
 
     await stub.createChannel({ channelId: CHANNEL_B, title: "B" });
     const requested = await call(OWNER, "POST", `/channels/${CHANNEL_B}/runs`);

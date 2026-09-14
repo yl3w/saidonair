@@ -35,7 +35,8 @@ const workersOptions = {
       WEB_ORIGINS: "http://localhost:5173,https://*.example.pages.dev",
       // Canned YouTube feeds so no test reaches the network (test/fixtures/feeds.ts; see
       // lib/youtube/rss.ts feedFetcher). CHANNEL_A…D are title-only feeds, E has no feed like
-      // YouTube's 404 for an unknown id, F carries fifteen entries for the discovery tests.
+      // YouTube's 404 for an unknown id, F carries fifteen entries under its long-form key for the
+      // discovery tests, and G's long-form feed 404s while its channel feed verifies.
       YOUTUBE_FEEDS_FAKE: JSON.stringify(FAKE_FEEDS),
     },
   },

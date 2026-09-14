@@ -39,11 +39,19 @@ export const FEED_F_ENTRIES: FakeFeedEntry[] = Array.from(
   }),
 );
 
+/** Its channel feed verifies at add time; its long-form feed 404s, so discovery is unavailable. */
+export const CHANNEL_G = "UCGGGGGGGGGGGGGGGGGGGGGG";
+
 export const FAKE_FEEDS: Record<string, FakeFeed> = {
   UCAAAAAAAAAAAAAAAAAAAAAA: "Feed A",
   UCBBBBBBBBBBBBBBBBBBBBBB: "Feed B",
   UCCCCCCCCCCCCCCCCCCCCCCC: "Feed C",
   UCDDDDDDDDDDDDDDDDDDDDDD: "Feed D",
   UCEEEEEEEEEEEEEEEEEEEEEE: null,
-  [CHANNEL_F]: { title: "Feed F", entries: FEED_F_ENTRIES },
+  // F's entries sit under the long-form key alone, and its channel feed is title-only: a discovery
+  // run that read `channel_id=` would find nothing, so every count below proves which feed was read.
+  [CHANNEL_F]: "Feed F",
+  [longFormKey(CHANNEL_F)]: { title: "Feed F", entries: FEED_F_ENTRIES },
+  [CHANNEL_G]: "Feed G",
+  [longFormKey(CHANNEL_G)]: null,
 };

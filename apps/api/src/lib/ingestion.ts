@@ -13,7 +13,11 @@ import type { Env } from "../env";
 import { domainErrorCode } from "./errors";
 import { transcriptProviderHealth } from "./transcripts/status";
 import { type IngestParams, ingestLauncher } from "./workflows";
-import { type ChannelFeed, feedFetcher, fetchChannelFeed } from "./youtube/rss";
+import {
+  type ChannelFeed,
+  feedFetcher,
+  fetchLongFormFeed,
+} from "./youtube/rss";
 
 /**
  * The start points of ingestion (docs/PRD.md §4.2; docs/specs/m3-4-discovery.md §3;
@@ -338,12 +342,18 @@ export async function runScheduled(cron: string, env: Env): Promise<void> {
   console.log({ event: "scheduled.unknown_cron", cron });
 }
 
+/**
+ * The channel's long-form uploads feed, never its own feed: Shorts and live streams are excluded at
+ * discovery (PRD §4.2 rule 1). A 404 or an unreachable YouTube is `null`, an unavailable feed, and
+ * there is no fallback to `channel_id=` — that would re-import exactly what this excludes. Add-time
+ * verification still reads the channel feed (`routes/channels.ts`).
+ */
 async function readFeed(
   env: Env,
   channelId: string,
 ): Promise<ChannelFeed | null> {
   try {
-    return await fetchChannelFeed(channelId, feedFetcher(env));
+    return await fetchLongFormFeed(channelId, feedFetcher(env));
   } catch (error) {
     if (domainErrorCode(error) !== "UPSTREAM_UNAVAILABLE") throw error;
     console.log({

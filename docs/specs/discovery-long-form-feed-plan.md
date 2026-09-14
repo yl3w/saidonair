@@ -53,10 +53,14 @@ unregistered playlist id answering 500.
   proving that is the point.
 - 2.3 Fixtures: a channel keyed `"UULF…": null` for the unavailable path, alongside its `UC…` entry so the channel
   itself still verifies at add time. **Plan decision:** reuse `CHANNEL_F` (the fifteen-entry discovery fixture)
-  rather than adding a seventh channel; a new `CHANNEL_G` carries the `UULF…: null` case only.
+  rather than adding a seventh channel; a new `CHANNEL_G` carries the `UULF…: null` case only. `CHANNEL_F`'s
+  fifteen entries move to its `UULF…` key and its `UC…` key becomes title-only, per the corrected test note.
 
-**Tests:** spec §7.3, §7.4, §7.5. Assert no `channel_id=` request is made during a discovery run (the fake records
-the URLs it served).
+**Tests:** spec §7.3, §7.4, §7.5. **Corrected 2026-09-14 during Step 2:** the fake records nothing, and
+`readFeed` builds its fetcher from `env` inside the call, so a test has no handle on the URLs served. The
+no-fallback proof is the fixture's shape instead — `CHANNEL_F`'s entries live under its `UULF…` key alone and its
+`channel_id=` feed is title-only, so a run that read the channel feed discovers nothing and six existing discovery
+tests fail. Verified by reverting `readFeed` before committing.
 
 **Done when:** `pnpm check` green.
 

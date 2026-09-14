@@ -11,6 +11,7 @@ import {
   IngestionRunsResponseSchema,
 } from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
+import { CHANNEL_G } from "./fixtures/feeds";
 import {
   ALICE,
   BOB,
@@ -56,7 +57,8 @@ async function call(
 }
 
 // Feeds come from the YOUTUBE_FEEDS_FAKE binding in vitest.config.ts: CHANNEL_A…D have titles
-// "Feed A"…"Feed D"; CHANNEL_E answers 404 like an unknown id. Nothing here reaches YouTube.
+// "Feed A"…"Feed D"; CHANNEL_E answers 404 like an unknown id; CHANNEL_G's channel feed verifies
+// while its long-form feed 404s. Nothing here reaches YouTube.
 
 /** A: approved with two available episodes and one failed; B: requested; C: declined (was approved). */
 async function seedCatalog() {
@@ -217,6 +219,17 @@ describe("channel and catalog routes", () => {
     });
     expect(missing.status).toBe(400);
     expect(String(missing.json.error)).toContain("no YouTube channel");
+
+    // Verification reads `channel_id=`, not the feed discovery reads: a channel with no long-form
+    // uploads yet is a real channel, and its title comes from that feed (spec §7.5).
+    const noLongForm = await call(ALICE, "POST", "/channels", {
+      channelId: CHANNEL_G,
+    });
+    expect(noLongForm.status).toBe(201);
+    expect(noLongForm.json.channel).toMatchObject({
+      channelId: CHANNEL_G,
+      title: "Feed G",
+    });
 
     const created = await call(OWNER, "POST", "/channels", {
       channelId: `https://www.youtube.com/channel/${CHANNEL_D}`,
