@@ -308,26 +308,26 @@ describe("the attempt ledger", () => {
       processing.finishAttempt(
         sql,
         final.attempt.attemptId,
-        { status: "waiting", code: "LIVE_OR_UPCOMING" },
+        { status: "waiting", code: "CAPTIONS" },
         deadline,
       ),
     );
     // The attempt keeps its own reason; the episode records the timeout with that reason as detail.
     expect(timedOut.attempt).toMatchObject({
       status: "waiting",
-      outcomeCode: "LIVE_OR_UPCOMING",
+      outcomeCode: "CAPTIONS",
     });
     expect(timedOut.episode).toMatchObject({
       status: "failed",
       processing: {
         failureCode: "INGESTION_TIMEOUT",
-        failureDetail: "LIVE_OR_UPCOMING",
+        failureDetail: "CAPTIONS",
         intent: null,
         windowStartedAt: null,
         windowDeadlineAt: null,
         nextAttemptAt: null,
         attemptCount: 2,
-        latestAttempt: { status: "waiting", outcomeCode: "LIVE_OR_UPCOMING" },
+        latestAttempt: { status: "waiting", outcomeCode: "CAPTIONS" },
       },
     });
     expect((await generations(VIDEO_A)).staged).toBeNull();
@@ -405,6 +405,29 @@ describe("the attempt ledger", () => {
       ]);
     },
   );
+
+  it("rejects the retired LIVE_OR_UPCOMING outcome code at the CHECK", async () => {
+    // The closed set is fourteen values since 2026-09-14; the schema is where that is enforced
+    // for anything that bypasses the typed path (spec §7.9).
+    await seedApprovedChannel(CHANNEL_A, "A");
+    await pendingNow(VIDEO_A, CHANNEL_A);
+    const start = await started(VIDEO_A);
+    await expect(
+      inRegistry((sql) =>
+        sql.exec(
+          "UPDATE episode_ingestion_attempts SET outcome_code = 'LIVE_OR_UPCOMING' WHERE attempt_id = ?",
+          start.attempt.attemptId,
+        ),
+      ),
+    ).rejects.toThrow(/CHECK/i);
+    // Still writable with a live value, so the CHECK is what refused, not the row or the column.
+    await inRegistry((sql) =>
+      sql.exec(
+        "UPDATE episode_ingestion_attempts SET outcome_code = 'CAPTIONS' WHERE attempt_id = ?",
+        start.attempt.attemptId,
+      ),
+    );
+  });
 
   it("counts launched attempts only, never making the episode terminal", async () => {
     const stub = registry();

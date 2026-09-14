@@ -20,10 +20,14 @@ describe("the transcript fake", () => {
     const english = await source.fetch(VIDEO_ENGLISH);
     expect(english.captionStatus).toBe("english");
     expect(english.segments?.length).toBe(120);
-    expect(await source.fetch(VIDEO_LIVE)).toMatchObject({
-      isLive: true,
-      segments: null,
-    });
+    // Live content is never discovered, so the fake's live video is a canned UNPLAYABLE failure.
+    let live: unknown;
+    try {
+      await source.fetch(VIDEO_LIVE);
+    } catch (error) {
+      live = error;
+    }
+    expect(transcriptFailure(live)).toBe("UNPLAYABLE");
   });
 
   it("throws the canned failure with its reason", async () => {

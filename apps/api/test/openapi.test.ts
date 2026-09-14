@@ -224,7 +224,15 @@ describe("the 2026-09-12 restart", () => {
       "initial",
       "scheduled",
     ]);
-    expect(component(doc, "AttemptOutcomeCode")?.enum).toHaveLength(15);
+    // Fourteen since LIVE_OR_UPCOMING was retired on 2026-09-14.
+    expect(component(doc, "AttemptOutcomeCode")?.enum).toHaveLength(14);
+    expect(component(doc, "AttemptOutcomeCode")?.enum).not.toContain(
+      "LIVE_OR_UPCOMING",
+    );
+    expect(component(doc, "EpisodeWaitReason")?.enum).toEqual([
+      "CAPTIONS",
+      "PROVIDER_LIMIT",
+    ]);
     const properties = (name: string) =>
       Object.keys(component(doc, name)?.properties ?? {});
     expect(properties("EpisodeCounts")).toEqual([

@@ -21,7 +21,6 @@ export type FakeSegment = {
 export type FakeTranscriptResult = {
   segments: FakeSegment[] | null;
   durationSec: number | null;
-  isLive: boolean;
   captionStatus: "english" | "none" | "non_english";
 };
 
@@ -37,7 +36,11 @@ export type FakeTranscripts = {
   videos: Record<string, FakeTranscriptEntry>;
 };
 
-/** Eleven-character ids, so `requireVideoId` accepts them. */
+/**
+ * Eleven-character ids, so `requireVideoId` accepts them. `VIDEO_LIVE` is an `UNPLAYABLE` failure
+ * since 2026-09-14: live content is no longer discovered, and the provider's live `error` bodies all
+ * throw (docs/specs/discovery-long-form-feed.md).
+ */
 export const VIDEO_ENGLISH = "english0001";
 export const VIDEO_NO_CAPTIONS = "nocaption01";
 export const VIDEO_NON_ENGLISH = "nonenglish1";
@@ -82,31 +85,22 @@ export const FAKE_TRANSCRIPTS: FakeTranscripts = {
     [VIDEO_ENGLISH]: {
       segments: englishSegments(),
       durationSec: 600,
-      isLive: false,
       captionStatus: "english",
     },
     [VIDEO_NO_CAPTIONS]: {
       segments: null,
       durationSec: 900,
-      isLive: false,
       captionStatus: "none",
     },
     [VIDEO_NON_ENGLISH]: {
       segments: null,
       durationSec: 1200,
-      isLive: false,
       captionStatus: "non_english",
     },
-    [VIDEO_LIVE]: {
-      segments: null,
-      durationSec: null,
-      isLive: true,
-      captionStatus: "none",
-    },
+    [VIDEO_LIVE]: { failure: "UNPLAYABLE" },
     [VIDEO_SHORT]: {
       segments: englishSegments(12),
       durationSec: 60,
-      isLive: false,
       captionStatus: "english",
     },
     [VIDEO_UNPLAYABLE]: { failure: "UNPLAYABLE" },

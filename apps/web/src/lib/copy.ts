@@ -54,25 +54,23 @@ export const EPISODE_STATUS_COPY: Record<EpisodeStatus, string> = {
 export const SKIP_REASON_COPY: Record<EpisodeSkipReason, string> = {
   SHORT: "under three minutes",
   NON_ENGLISH: "no English captions",
-  UNPLAYABLE: "video unavailable",
+  UNPLAYABLE: "video unavailable or live",
   OWNER: "skipped by the owner",
 };
 
 /** Why a pending episode is not summarised yet, from `Episode.waitReason` (every caller sees it). */
 export const WAIT_REASON_COPY: Record<EpisodeWaitReason, string> = {
   CAPTIONS: "waiting for captions",
-  LIVE_OR_UPCOMING: "waiting for the stream to end",
   PROVIDER_LIMIT: "waiting for transcript credits",
 };
 
 /** The owner's phrase for an attempt's outcome. Exhaustive: a new code is a compile error here first. */
 export const OUTCOME_CODE_COPY: Record<AttemptOutcomeCode, string> = {
   CAPTIONS: "no captions yet",
-  LIVE_OR_UPCOMING: "live or upcoming",
   PROVIDER_LIMIT: "transcript credits exhausted",
   SHORT: "under three minutes",
   NON_ENGLISH: "no English captions",
-  UNPLAYABLE: "video unavailable",
+  UNPLAYABLE: "video unavailable or live",
   PROVIDER_AUTH: "transcript key rejected",
   PROVIDER_RATE_LIMIT: "transcript provider rate-limited",
   PROVIDER_HTTP: "transcript provider error",

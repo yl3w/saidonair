@@ -133,11 +133,11 @@ export const EpisodeSkipReasonSchema = z
 export type EpisodeSkipReason = z.infer<typeof EpisodeSkipReasonSchema>;
 
 export const EpisodeWaitReasonSchema = z
-  .enum(["CAPTIONS", "LIVE_OR_UPCOMING", "PROVIDER_LIMIT"])
+  .enum(["CAPTIONS", "PROVIDER_LIMIT"])
   .meta({
     id: "EpisodeWaitReason",
     description:
-      "Why a pending episode is waiting for a later attempt, derived from its latest attempt: no captions yet, the video is live or scheduled, or transcript credits are exhausted.",
+      "Why a pending episode is waiting for a later attempt, derived from its latest attempt: no captions yet, or transcript credits are exhausted.",
   });
 export type EpisodeWaitReason = z.infer<typeof EpisodeWaitReasonSchema>;
 
@@ -180,7 +180,6 @@ export type AttemptStatus = z.infer<typeof AttemptStatusSchema>;
 export const AttemptOutcomeCodeSchema = z
   .enum([
     "CAPTIONS",
-    "LIVE_OR_UPCOMING",
     "PROVIDER_LIMIT",
     "SHORT",
     "NON_ENGLISH",
@@ -198,7 +197,7 @@ export const AttemptOutcomeCodeSchema = z
   .meta({
     id: "AttemptOutcomeCode",
     description:
-      "The attempt's reason, by status: `waiting` → CAPTIONS, LIVE_OR_UPCOMING, PROVIDER_LIMIT; `skipped` → SHORT, NON_ENGLISH, UNPLAYABLE; `blocked` → PROVIDER_AUTH, PROVIDER_LIMIT; `failed` → PROVIDER_AUTH, PROVIDER_RATE_LIMIT, PROVIDER_HTTP, PROVIDER_PARSE, TRANSCRIPT_TOO_LARGE, EMBEDDING_FAILED, VECTORIZE_INCOMPLETE, SUMMARY_FAILED, WORKFLOW_LOST. `running` and `available` attempts carry null.",
+      "The attempt's reason, by status: `waiting` → CAPTIONS, PROVIDER_LIMIT; `skipped` → SHORT, NON_ENGLISH, UNPLAYABLE; `blocked` → PROVIDER_AUTH, PROVIDER_LIMIT; `failed` → PROVIDER_AUTH, PROVIDER_RATE_LIMIT, PROVIDER_HTTP, PROVIDER_PARSE, TRANSCRIPT_TOO_LARGE, EMBEDDING_FAILED, VECTORIZE_INCOMPLETE, SUMMARY_FAILED, WORKFLOW_LOST. `running` and `available` attempts carry null.",
   });
 export type AttemptOutcomeCode = z.infer<typeof AttemptOutcomeCodeSchema>;
 

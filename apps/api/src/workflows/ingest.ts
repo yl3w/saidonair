@@ -151,8 +151,7 @@ export type TranscriptStepResult =
 
 /**
  * What one transcript answer means for the attempt: a deterministic skip, a wait, a technical
- * failure, or work. Known live state is classified before duration and captions; an unknown duration
- * never means short.
+ * failure, or work. Duration is the first check, and an unknown duration never means short.
  */
 export function classify(input: TranscriptStepResult): Classification {
   if ("tooLarge" in input) {
@@ -164,12 +163,6 @@ export function classify(input: TranscriptStepResult): Classification {
   if ("failure" in input)
     return { kind: "finish", outcome: outcomeForFailure(input.failure) };
   const { result } = input;
-  if (result.isLive) {
-    return {
-      kind: "finish",
-      outcome: { status: "waiting", code: "LIVE_OR_UPCOMING" },
-    };
-  }
   if (result.durationSec !== null && result.durationSec < SHORT_UNDER_SEC) {
     return { kind: "finish", outcome: { status: "skipped", code: "SHORT" } };
   }

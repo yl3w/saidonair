@@ -14,8 +14,6 @@ export type TranscriptResult = {
   /** Present only for `captionStatus: "english"`, and then never empty. */
   segments: TranscriptSegment[] | null;
   durationSec: number | null;
-  /** Live now, or scheduled: the video is waiting, not unplayable. */
-  isLive: boolean;
   captionStatus: "english" | "none" | "non_english";
 };
 

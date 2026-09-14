@@ -189,7 +189,7 @@ CREATE TABLE episode_ingestion_attempts (
   requested_by_email TEXT REFERENCES global_users (email),
   status TEXT NOT NULL CHECK (status IN ('running', 'available', 'waiting', 'failed', 'skipped', 'blocked')),
   outcome_code TEXT CHECK (outcome_code IS NULL OR outcome_code IN (
-    'CAPTIONS', 'LIVE_OR_UPCOMING', 'PROVIDER_LIMIT',
+    'CAPTIONS', 'PROVIDER_LIMIT',
     'SHORT', 'NON_ENGLISH', 'UNPLAYABLE',
     'PROVIDER_AUTH', 'PROVIDER_RATE_LIMIT', 'PROVIDER_HTTP', 'PROVIDER_PARSE', 'TRANSCRIPT_TOO_LARGE',
     'EMBEDDING_FAILED', 'VECTORIZE_INCOMPLETE', 'SUMMARY_FAILED', 'WORKFLOW_LOST'

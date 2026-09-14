@@ -122,7 +122,6 @@ const english = (
 ): FakeTranscriptEntry => ({
   segments,
   durationSec,
-  isLive: false,
   captionStatus: "english",
 });
 
@@ -137,17 +136,12 @@ describe("classify", () => {
     result: {
       segments: englishSegments(3),
       durationSec: 600,
-      isLive: false,
       captionStatus: "english" as const,
       ...over,
     },
   });
-  it("orders live before duration before captions, and never calls an unknown duration short", () => {
+  it("orders duration before captions, and never calls an unknown duration short", () => {
     expect(classify(result({}))).toMatchObject({ kind: "process" });
-    expect(classify(result({ isLive: true, durationSec: 10 }))).toEqual({
-      kind: "finish",
-      outcome: { status: "waiting", code: "LIVE_OR_UPCOMING" },
-    });
     expect(
       classify(
         result({ durationSec: 179, captionStatus: "none", segments: null }),
@@ -282,7 +276,8 @@ describe("ingestAttempt", () => {
     [VIDEO_SHORT, "skipped", "SHORT", "skipped", 1],
     [VIDEO_NON_ENGLISH, "skipped", "NON_ENGLISH", "skipped", 1],
     [VIDEO_UNPLAYABLE, "skipped", "UNPLAYABLE", "skipped", 1],
-    [VIDEO_LIVE, "waiting", "LIVE_OR_UPCOMING", "pending", 1],
+    // A live or upcoming video is a deterministic skip, one provider call, window closed.
+    [VIDEO_LIVE, "skipped", "UNPLAYABLE", "skipped", 1],
     [VIDEO_NO_CAPTIONS, "waiting", "CAPTIONS", "pending", 1],
     [VIDEO_LIMIT_FAILS, "waiting", "PROVIDER_LIMIT", "pending", 1],
     [VIDEO_AUTH_FAILS, "failed", "PROVIDER_AUTH", "pending", 1],

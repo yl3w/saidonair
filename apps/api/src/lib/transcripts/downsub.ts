@@ -18,7 +18,9 @@ import { parseVtt } from "./vtt";
  * translatedSubtitles } }`. `state` is `subtitles_found`, `no_subtitles`, or `error`. An unplayable
  * video's `error` sometimes carries `metadata.playabilityReason` and sometimes an empty `metadata`
  * (both seen for one bogus id within minutes on 2026-09-13); a live stream's `error` carries no
- * reason but does carry the video's title, duration, and channel. The classifier uses both signals.
+ * reason but does carry the video's title, duration, and channel. Since 2026-09-14 every `error`
+ * throws `UNPLAYABLE` and those signals only choose the detail, because live content is no longer
+ * discovered (docs/specs/discovery-long-form-feed.md).
  */
 
 export const DOWNSUB_DOWNLOAD_URL = "https://api.downsub.com/download";
@@ -179,14 +181,16 @@ async function classify(
   body: DownloadBody,
   fetchImpl: FetchLike,
 ): Promise<TranscriptResult> {
-  const base = { durationSec: body.durationSec, isLive: false } as const;
+  const base = { durationSec: body.durationSec } as const;
   switch (body.state) {
     case "error":
-      // Known live metadata wins (PRD §4.2 rule 12). Then YouTube's reason means unplayable. A
-      // reason-less error that still describes a video is a live or upcoming one: waiting, not
-      // gone. One that describes nothing is a video YouTube does not have.
+      // All four branches are UNPLAYABLE (PRD §4.2 rule 12) and differ only in the detail. They
+      // stay textually separate because the last is a catch-all for provider flakiness, not a live
+      // detector: a transient error whose body happens to describe a video lands there and is
+      // skipped permanently, and that is the branch to split back out if it bites
+      // (docs/specs/discovery-long-form-feed.md §5).
       if (body.isLiveContent || body.liveThumbnail) {
-        return { ...base, isLive: true, segments: null, captionStatus: "none" };
+        throw new TranscriptError("UNPLAYABLE", "live or upcoming");
       }
       if (body.playabilityReason) {
         throw new TranscriptError("UNPLAYABLE", body.playabilityReason);
@@ -197,7 +201,10 @@ async function classify(
           "provider reported an error and no video metadata",
         );
       }
-      return { ...base, isLive: true, segments: null, captionStatus: "none" };
+      throw new TranscriptError(
+        "UNPLAYABLE",
+        "provider reported an error with no reason",
+      );
     case "no_subtitles":
       return { ...base, segments: null, captionStatus: "none" };
     case "subtitles_found": {

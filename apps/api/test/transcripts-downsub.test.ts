@@ -57,6 +57,22 @@ const found = (subtitles: unknown[], duration = 213) =>
     },
   });
 
+/** The four `error` branches all throw UNPLAYABLE and differ only in the detail (spec §4.3). */
+async function unplayable(
+  promise: Promise<unknown>,
+  detail: string,
+): Promise<void> {
+  let caught: unknown;
+  try {
+    await promise;
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(TranscriptError);
+  expect((caught as TranscriptError).reason).toBe("UNPLAYABLE");
+  expect((caught as TranscriptError).message).toBe(`UNPLAYABLE: ${detail}`);
+}
+
 async function failure(
   promise: Promise<unknown>,
 ): Promise<TranscriptFailure | null> {
@@ -81,7 +97,6 @@ describe("downsubSource", () => {
         { text: "General Kenobi", startSec: 3, durationSec: 2 },
       ],
       durationSec: 213,
-      isLive: false,
       captionStatus: "english",
     });
     expect(calls).toHaveLength(2);
@@ -110,7 +125,6 @@ describe("downsubSource", () => {
     expect(await downsubSource("k", fetchImpl).fetch(VIDEO)).toEqual({
       segments: null,
       durationSec: 900,
-      isLive: false,
       captionStatus: "none",
     });
     expect(calls).toHaveLength(1);
@@ -145,12 +159,12 @@ describe("downsubSource", () => {
     expect(await downsubSource("k", fetchImpl).fetch(VIDEO)).toEqual({
       segments: null,
       durationSec: 213,
-      isLive: false,
       captionStatus: "none",
     });
   });
 
-  it("reads a live stream's reason-less error as waiting, with its duration", async () => {
+  it("reads a reason-less error that still describes a video as unplayable", async () => {
+    // A live stream's error body reads like this. The catch-all, not a live detector (spec §5).
     const { fetchImpl } = canned(() =>
       json({
         status: "success",
@@ -162,12 +176,10 @@ describe("downsubSource", () => {
         },
       }),
     );
-    expect(await downsubSource("k", fetchImpl).fetch(VIDEO)).toEqual({
-      segments: null,
-      durationSec: 36712,
-      isLive: true,
-      captionStatus: "none",
-    });
+    await unplayable(
+      downsubSource("k", fetchImpl).fetch(VIDEO),
+      "provider reported an error with no reason",
+    );
   });
 
   it("reads an error with a playability reason as unplayable, carrying the reason", async () => {
@@ -186,16 +198,9 @@ describe("downsubSource", () => {
         },
       }),
     );
-    let caught: unknown;
-    try {
-      await downsubSource("k", fetchImpl).fetch(VIDEO);
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(TranscriptError);
-    expect((caught as TranscriptError).reason).toBe("UNPLAYABLE");
-    expect((caught as TranscriptError).message).toBe(
-      "UNPLAYABLE: This video is unavailable",
+    await unplayable(
+      downsubSource("k", fetchImpl).fetch(VIDEO),
+      "This video is unavailable",
     );
   });
 
@@ -214,18 +219,14 @@ describe("downsubSource", () => {
         },
       }),
     );
-    let caught: unknown;
-    try {
-      await downsubSource("k", fetchImpl).fetch(VIDEO);
-    } catch (error) {
-      caught = error;
-    }
-    expect(transcriptFailure(caught)).toBe("UNPLAYABLE");
-    expect((caught as TranscriptError).message).toMatch(/no video metadata/);
+    await unplayable(
+      downsubSource("k", fetchImpl).fetch(VIDEO),
+      "provider reported an error and no video metadata",
+    );
   });
 
-  it("reads a reason-less error for a video with a title but no duration yet as waiting", async () => {
-    // An upcoming premiere: known to YouTube, not started.
+  it("reads a reason-less error for an upcoming premiere as unplayable", async () => {
+    // Known to YouTube, not started: no longer a wait, since it is never discovered.
     const { fetchImpl } = canned(() =>
       json({
         status: "success",
@@ -238,15 +239,13 @@ describe("downsubSource", () => {
         },
       }),
     );
-    expect(await downsubSource("k", fetchImpl).fetch(VIDEO)).toEqual({
-      segments: null,
-      durationSec: null,
-      isLive: true,
-      captionStatus: "none",
-    });
+    await unplayable(
+      downsubSource("k", fetchImpl).fetch(VIDEO),
+      "provider reported an error with no reason",
+    );
   });
 
-  it("reads a live thumbnail as live even with a playability reason", async () => {
+  it("reads a live thumbnail as live or upcoming, before any playability reason", async () => {
     const { fetchImpl } = canned(() =>
       json({
         status: "success",
@@ -260,9 +259,10 @@ describe("downsubSource", () => {
         },
       }),
     );
-    expect(await downsubSource("k", fetchImpl).fetch(VIDEO)).toMatchObject({
-      isLive: true,
-    });
+    await unplayable(
+      downsubSource("k", fetchImpl).fetch(VIDEO),
+      "live or upcoming",
+    );
   });
 
   it("lets known live metadata win over a playability reason", async () => {
@@ -280,9 +280,10 @@ describe("downsubSource", () => {
         },
       }),
     );
-    expect(await downsubSource("k", fetchImpl).fetch(VIDEO)).toMatchObject({
-      isLive: true,
-    });
+    await unplayable(
+      downsubSource("k", fetchImpl).fetch(VIDEO),
+      "live or upcoming",
+    );
   });
 
   it.each([

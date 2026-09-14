@@ -521,9 +521,9 @@ describe("channel and catalog routes", () => {
         "CAPTIONS",
       ],
       [
-        "waitlive000",
-        { status: "waiting", outcomeCode: "LIVE_OR_UPCOMING" },
-        "LIVE_OR_UPCOMING",
+        "waitlimit00",
+        { status: "waiting", outcomeCode: "PROVIDER_LIMIT" },
+        "PROVIDER_LIMIT",
       ],
       [
         "waitblocked",

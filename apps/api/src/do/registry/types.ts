@@ -140,7 +140,6 @@ export type AttemptStart =
 /** Reasons an attempt finishes `waiting`: the episode stays in its window (docs/PRD.md §4.2 rule 11). */
 export const WAITING_CODES = [
   "CAPTIONS",
-  "LIVE_OR_UPCOMING",
   "PROVIDER_LIMIT",
 ] as const satisfies readonly AttemptOutcomeCode[];
 /** Deterministic content results: skip a publication, leave a replacement's content alone (rule 12). */
