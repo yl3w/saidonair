@@ -107,8 +107,13 @@ file. One call per observation over the ten-minute English fixture (`englishSegm
   `docs/specs/m3-3-ai-vectorize.md` §3.4 (its texts marked superseded, pointing here), `AGENTS.md` → AI code (the
   schema beside the validator's bounds; the version names texts and schema together) and the `docs/specs/` layout
   comment.
-- 3.2 **not run.** It approves a real channel and spends a DownSub credit on a captioned talk longer than 45 minutes,
-  which is the owner's call and the owner's catalog. Until it runs, the reduce path over a real model answer is
-  covered only by the fake: `test/workflow-ingest.test.ts` proves the reduce prompt now carries `[h:mm:ss]` markers
-  and that the published takeaways come back with non-null `startSec` (it fails against the old
-  `JSON.stringify(a.structured)`, which is the defect spec §2 names).
+- 3.2 **done 2026-09-14**, by the owner and on a real episode rather than the scratch channel this step imagined: CBC
+  News, "The House: Why separatists still think they can win Alberta's referendum", 49 minutes, two sections, the
+  reduce ran. Structured through the reduce; seven takeaways, inside the 5–8 band; chronological; exactly three
+  sentences. Four takeaways come from the second section, 44:16 to 49:02, **carrying correct timestamps** — the
+  observable proof of the fix, since every reduced takeaway was null before `formatSectionSummary`. Criterion 5 is
+  satisfied and this spec is complete.
+- The same episode showed two faults that belong to the pipeline rather than to JSON mode: the greedy 45-minute
+  section split left a five-minute tail speaking as loudly as the body before it, and a section containing no
+  introduction can only call its subject "the speaker". Both are `docs/specs/summary-quality.md`; the split is already
+  fixed.

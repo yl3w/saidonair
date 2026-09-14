@@ -90,25 +90,59 @@ export function formatSectionSummary(summary: StructuredSummary): string {
 }
 
 /**
- * Consecutive chunks grouped so no section spans more than `maxSec` from its first chunk's start to
- * its last chunk's end. A single section means the reduce call is skipped.
+ * Consecutive chunks grouped into the sections one map call each reads, no section spanning more
+ * than `maxSec`. The count is the fewest sections of that size the episode needs, and the span is
+ * then divided evenly between them rather than filling each to the cap: filling greedily left a
+ * fifty-minute episode as forty-five minutes plus a five-minute tail, and the reduce weighs every
+ * section's takeaways alike, so that tail spoke as loudly as the whole body before it (found on a
+ * real episode 2026-09-14, docs/specs/summary-quality.md §2). A single section skips the reduce.
  */
 export function sectionize(
   chunks: readonly TranscriptChunk[],
   maxSec: number = SECTION_MAX_SEC,
 ): TranscriptChunk[][] {
+  const first = chunks[0];
+  const last = chunks[chunks.length - 1];
+  if (!first || !last) return [];
+  const span = last.endSec - first.startSec;
+  const count = Math.max(1, Math.ceil(span / maxSec));
+  if (count === 1) return [[...chunks]];
+
+  const target = span / count;
   const sections: TranscriptChunk[][] = [];
   let current: TranscriptChunk[] = [];
   for (const chunk of chunks) {
-    const first = current[0];
-    if (first && chunk.endSec - first.startSec > maxSec) {
+    const head = current[0];
+    if (head && chunk.endSec - head.startSec > target) {
       sections.push(current);
       current = [];
     }
     current.push(chunk);
   }
   if (current.length > 0) sections.push(current);
-  return sections;
+  return foldTrailingRunt(sections, target, maxSec);
+}
+
+/**
+ * Dividing on chunk boundaries can round a section past the target and leave a short last one — the
+ * very thing even sections exist to prevent — so fold it back when the cap still allows.
+ */
+function foldTrailingRunt(
+  sections: TranscriptChunk[][],
+  target: number,
+  maxSec: number,
+): TranscriptChunk[][] {
+  const tail = sections[sections.length - 1];
+  const previous = sections[sections.length - 2];
+  const tailHead = tail?.[0];
+  const tailLast = tail?.[tail.length - 1];
+  const previousHead = previous?.[0];
+  if (!tail || !previous || !tailHead || !tailLast || !previousHead) {
+    return sections;
+  }
+  if (tailLast.endSec - tailHead.startSec >= target / 2) return sections;
+  if (tailLast.endSec - previousHead.startSec > maxSec) return sections;
+  return [...sections.slice(0, -2), [...previous, ...tail]];
 }
 
 /**

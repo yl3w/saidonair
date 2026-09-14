@@ -5,8 +5,10 @@
 `docs/specs/m3-5-episode-workflow.md`; PRD §4.4 governs.
 **Status:** APPROVED and IMPLEMENTED on 2026-09-14, Steps 0 to 3.1; `PROMPT_VERSION` is `2026-09-14`. The owner rewrote
 the two persona lines on the prompts themselves during that implementation; §2 and §3.1 below carry their wording, not
-the draft's. Criterion 5's second half, the real episode over 45 minutes summarised end to end, is still owed and is the
-owner's to run (it spends a DownSub credit on a channel of their choosing). Plan:
+the draft's. **COMPLETE:** criterion 5's second half, the real episode over 45 minutes summarised end to end, was
+satisfied later the same day by a 49-minute CBC episode that reduced over two sections with its timestamps intact —
+which only `formatSectionSummary` makes possible. That episode also exposed two quality faults that are not this
+spec's, and they are `docs/specs/summary-quality.md` §2. Plan:
 `docs/specs/summary-json-mode-plan.md`, whose Walkthrough record carries the probe's three observations. No new
 dependencies. Changing a prompt is a product decision (`AGENTS.md` → AI code); the owner asked for this one.
 

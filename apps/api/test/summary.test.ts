@@ -59,10 +59,11 @@ describe("formatting", () => {
 });
 
 describe("sectionize", () => {
-  it("keeps forty minutes in one section and splits a hundred into three on chunk boundaries", () => {
+  it("keeps forty minutes in one section and divides a hundred evenly, on chunk boundaries", () => {
     expect(sectionize(minutes(40))).toHaveLength(1);
     const sections = sectionize(minutes(100));
-    expect(sections.map((s) => s.length)).toEqual([45, 45, 10]);
+    // Three sections of about 33 minutes, not the cap twice over and a ten-minute remainder.
+    expect(sections.map((s) => s.length)).toEqual([33, 33, 34]);
     for (const section of sections) {
       const first = section[0];
       const last = section[section.length - 1];
@@ -72,6 +73,27 @@ describe("sectionize", () => {
     }
     expect(sections.flat()).toEqual(minutes(100));
     expect(sectionize([])).toEqual([]);
+  });
+
+  it("splits the episode that exposed the runt tail into halves, not a cap and a remainder", () => {
+    // A fifty-minute public-affairs episode: greedy filling gave 45 + 5, and the reduce weighed the
+    // five-minute tail as heavily as the forty-five minutes before it (docs/specs/summary-quality.md).
+    expect(sectionize(minutes(50)).map((s) => s.length)).toEqual([25, 25]);
+  });
+
+  it("leaves no section shorter than half of the longest, at any length", () => {
+    for (const total of [46, 50, 67, 90, 91, 100, 135, 136, 200]) {
+      const sections = sectionize(minutes(total));
+      const spans = sections.map((section) => {
+        const first = section[0];
+        const last = section[section.length - 1];
+        return (last?.endSec ?? 0) - (first?.startSec ?? 0);
+      });
+      const longest = Math.max(...spans);
+      expect(Math.min(...spans)).toBeGreaterThan(longest / 2);
+      expect(longest).toBeLessThanOrEqual(SECTION_MAX_SEC);
+      expect(sections.flat()).toEqual(minutes(total));
+    }
   });
 
   it("works on real chunker output", () => {
