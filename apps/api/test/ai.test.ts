@@ -11,12 +11,15 @@ import {
   resetAiFake,
   SUMMARY_MODEL,
 } from "../src/lib/ai";
-import { SUMMARY_RESPONSE_SCHEMA } from "../src/lib/summary";
+import {
+  SUMMARY_RESPONSE_SCHEMA,
+  SYNTHESIS_RESPONSE_SCHEMA,
+} from "../src/lib/summary";
 import {
   mapPrompt,
   PROMPT_VERSION,
-  reducePrompt,
   STRICTER_RETRY_SUFFIX,
+  synthesisPrompt,
 } from "../src/prompts/summary";
 
 const fake = () => ai({ AI_FAKE: "{}" });
@@ -70,7 +73,7 @@ describe("the Workers AI fake", () => {
     expect(() => JSON.parse(third)).toThrow();
 
     // Invalid always, and a failure.
-    const never = await client.reduceSections(`${prompt} ${FAKE_INVALID}`);
+    const never = await client.synthesise(`${prompt} ${FAKE_INVALID}`);
     expect(() => JSON.parse(never)).toThrow();
     await expect(
       client.summarizeSection(`${prompt} ${FAKE_THROW}`),
@@ -122,16 +125,21 @@ describe("the Workers AI client", () => {
     const s = stub(() => ({ response: '{"ok":true}' }));
     const client = realClient(s.binding);
     expect(await client.summarizeSection("map me")).toBe('{"ok":true}');
-    expect(await client.reduceSections("reduce me")).toBe('{"ok":true}');
+    expect(await client.synthesise("synthesise me")).toBe('{"ok":true}');
     expect(s.calls.map((c) => c.model)).toEqual([SUMMARY_MODEL, SUMMARY_MODEL]);
-    for (const call of s.calls) {
-      expect(call.inputs).toMatchObject({
-        response_format: {
-          type: "json_schema",
-          json_schema: SUMMARY_RESPONSE_SCHEMA,
-        },
-      });
-    }
+    // Each call carries its own schema: the synthesis one admits no takeaways at all.
+    expect(s.calls[0]?.inputs).toMatchObject({
+      response_format: {
+        type: "json_schema",
+        json_schema: SUMMARY_RESPONSE_SCHEMA,
+      },
+    });
+    expect(s.calls[1]?.inputs).toMatchObject({
+      response_format: {
+        type: "json_schema",
+        json_schema: SYNTHESIS_RESPONSE_SCHEMA,
+      },
+    });
     expect(s.calls[0]?.inputs).toMatchObject({
       messages: [{ role: "user", content: "map me" }],
     });
@@ -172,26 +180,23 @@ describe("the prompts", () => {
     expect(map).toContain("must be enclosed in double quotes");
     expect(map).toContain('"takeaways": [{ "text": "…", "at": "[h:mm:ss]" }]');
     expect(map).toContain("3 to 6 objects");
+    // v3: the faults measured across the twenty-episode corpus, named in the rules.
+    expect(map).toContain('do not begin a sentence with "The conversation"');
+    expect(map).toContain("No two takeaways may make the same point");
+    expect(map).toContain("a definition of a term the reader could look up");
+    expect(map).toContain("one or two words each");
     expect(map).toContain("[h:mm:ss] markers.\n\n[0:00:01] hello");
     // A `//` comment inside the skeleton would be copied into the answer and is not JSON.
     expect(map).not.toContain("//");
 
-    const reduce = reducePrompt(["{a}", "{b}"], { min: 5, max: 8 });
-    expect(reduce).toContain("consecutive sections of an episode");
-    expect(reduce).toContain("REDUCTION RULES:");
-    expect(reduce).toContain(
-      "the core topic or problem, the main discussion or debate, the key conclusion",
-    );
-    // The band is the episode's, not a constant, and the distribution rule is the load-bearing one.
-    expect(reduce).toContain("select 5 to 8");
-    expect(reduce).toContain(
-      "take a fair share from every section, including the last",
-    );
-    expect(reducePrompt(["{a}"], { min: 15, max: 18 })).toContain(
-      "select 15 to 18",
-    );
-    expect(reduce).toContain("chronological order");
-    expect(reduce).toContain("Section 1:\n{a}\n\nSection 2:\n{b}");
+    const synth = synthesisPrompt(["{a}", "{b}"], [{ text: "chosen point" }]);
+    expect(synth).toContain("consecutive sections of an episode");
+    expect(synth).toContain("Section 1:\n{a}\n\nSection 2:\n{b}");
+    // Two fields only: choosing takeaways is no longer its job.
+    expect(synth).toContain('"topicTags": ["…"]');
+    expect(synth).not.toContain('"takeaways"');
+    expect(synth).toContain("- chosen point");
+    expect(synth).toContain('never write "The key conclusion is"');
 
     expect(STRICTER_RETRY_SUFFIX).toContain("JSON object only");
     expect(STRICTER_RETRY_SUFFIX).toContain("double quotes");

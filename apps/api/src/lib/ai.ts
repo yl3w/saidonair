@@ -8,7 +8,7 @@
  */
 
 import { STRICTER_RETRY_SUFFIX } from "../prompts/summary";
-import { SUMMARY_RESPONSE_SCHEMA } from "./summary";
+import { SUMMARY_RESPONSE_SCHEMA, SYNTHESIS_RESPONSE_SCHEMA } from "./summary";
 
 export const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 export const EMBEDDING_DIMENSIONS = 768;
@@ -26,8 +26,11 @@ export type Embedder = {
 export type Summarizer = {
   /** The model's raw text for one section's map prompt. */
   summarizeSection(prompt: string): Promise<string>;
-  /** The model's raw text for the reduce prompt over the section answers. */
-  reduceSections(prompt: string): Promise<string>;
+  /**
+   * The model's raw text for the synthesis prompt: the executive summary and the tags of the whole
+   * episode. It is not asked for takeaways and its schema does not admit them.
+   */
+  synthesise(prompt: string): Promise<string>;
 };
 
 export type AiClient = Embedder & Summarizer;
@@ -41,23 +44,22 @@ export function ai(env: { AI?: Ai; AI_FAKE?: string }): AiClient {
 
 /** The client over a binding. Exported so tests can drive it with a stub. */
 export function realClient(binding: Ai): AiClient {
-  const complete = async (prompt: string): Promise<string> => {
-    const result = (await binding.run(SUMMARY_MODEL, {
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: SUMMARY_MAX_TOKENS,
-      response_format: {
-        type: "json_schema",
-        json_schema: SUMMARY_RESPONSE_SCHEMA,
-      },
-    })) as { response?: unknown };
-    // JSON mode answers a parsed object; a string passes through unchanged; anything else, including
-    // the platform's "JSON Mode couldn't be met", is a failed call the Workflow step retries.
-    if (typeof result?.response === "string") return result.response;
-    if (result?.response !== null && typeof result?.response === "object") {
-      return JSON.stringify(result.response);
-    }
-    throw new Error("SUMMARY_FAILED: the model returned no response");
-  };
+  const complete =
+    (schema: unknown) =>
+    async (prompt: string): Promise<string> => {
+      const result = (await binding.run(SUMMARY_MODEL, {
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: SUMMARY_MAX_TOKENS,
+        response_format: { type: "json_schema", json_schema: schema },
+      })) as { response?: unknown };
+      // JSON mode answers a parsed object; a string passes through unchanged; anything else, including
+      // the platform's "JSON Mode couldn't be met", is a failed call the Workflow step retries.
+      if (typeof result?.response === "string") return result.response;
+      if (result?.response !== null && typeof result?.response === "object") {
+        return JSON.stringify(result.response);
+      }
+      throw new Error("SUMMARY_FAILED: the model returned no response");
+    };
   return {
     async embed(texts) {
       requireBatch(texts);
@@ -68,8 +70,8 @@ export function realClient(binding: Ai): AiClient {
       };
       return requireVectors(result?.data, texts.length);
     },
-    summarizeSection: complete,
-    reduceSections: complete,
+    summarizeSection: complete(SUMMARY_RESPONSE_SCHEMA),
+    synthesise: complete(SYNTHESIS_RESPONSE_SCHEMA),
   };
 }
 
@@ -120,27 +122,38 @@ export function resetAiFake(): void {
 type FakeOptions = {
   /** `embed` throws, for the EMBEDDING_FAILED path. */
   embedThrows: boolean;
+  /**
+   * `synthesise` never answers valid JSON, for the path where the three sentences are lost and the
+   * allocated takeaways are published anyway. A prompt marker cannot drive this one: the synthesis
+   * prompt is built from the section answers, so a marker in the transcript fails the map instead.
+   */
+  synthesisInvalid: boolean;
 };
 
 function parseFakeOptions(raw: string): FakeOptions {
   const value = JSON.parse(raw) as Partial<FakeOptions> | null;
-  return { embedThrows: value?.embedThrows ?? false };
+  return {
+    embedThrows: value?.embedThrows ?? false,
+    synthesisInvalid: value?.synthesisInvalid ?? false,
+  };
 }
 
 function fakeClient(options: FakeOptions): AiClient {
-  const complete = async (prompt: string): Promise<string> => {
-    if (prompt.includes(FAKE_THROW))
-      throw new Error("SUMMARY_FAILED: canned failure");
-    if (prompt.includes(FAKE_INVALID))
-      return "I am sorry, I cannot produce that JSON.";
-    // The retry re-sends the prompt with the stricter suffix: same prompt, second answer.
-    const key = prompt.replace(STRICTER_RETRY_SUFFIX, "");
-    if (prompt.includes(FAKE_INVALID_ONCE) && !invalidOnceSeen.has(key)) {
-      invalidOnceSeen.add(key);
-      return "Here is my answer: { not: json";
-    }
-    return cannedSummary(prompt);
-  };
+  const complete =
+    (canned: (prompt: string) => string) =>
+    async (prompt: string): Promise<string> => {
+      if (prompt.includes(FAKE_THROW))
+        throw new Error("SUMMARY_FAILED: canned failure");
+      if (prompt.includes(FAKE_INVALID))
+        return "I am sorry, I cannot produce that JSON.";
+      // The retry re-sends the prompt with the stricter suffix: same prompt, second answer.
+      const key = prompt.replace(STRICTER_RETRY_SUFFIX, "");
+      if (prompt.includes(FAKE_INVALID_ONCE) && !invalidOnceSeen.has(key)) {
+        invalidOnceSeen.add(key);
+        return "Here is my answer: { not: json";
+      }
+      return canned(prompt);
+    };
   return {
     async embed(texts) {
       requireBatch(texts);
@@ -148,9 +161,22 @@ function fakeClient(options: FakeOptions): AiClient {
         throw new Error("EMBEDDING_FAILED: canned failure");
       return texts.map((text) => fakeEmbedding(text));
     },
-    summarizeSection: complete,
-    reduceSections: complete,
+    summarizeSection: complete(cannedSummary),
+    synthesise: complete(
+      options.synthesisInvalid
+        ? () => "I am sorry, I cannot produce that JSON."
+        : cannedSynthesis,
+    ),
   };
+}
+
+/** The synthesis answer's two fields; the takeaways are not its to produce. */
+function cannedSynthesis(_prompt: string): string {
+  return JSON.stringify({
+    executiveSummary:
+      "A canned synthesis of the episode. It says what the sections say. Nothing more.",
+    topicTags: ["canned", "test"],
+  });
 }
 
 /** Valid JSON of the expected shape whose takeaways reuse the first markers found in the prompt. */

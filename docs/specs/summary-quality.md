@@ -2,9 +2,10 @@
 
 **Written:** 2026-09-14, against `main` at `8eef9a6` (summary prompt v2 and JSON mode). A follow-up to
 `docs/specs/summary-json-mode.md`, whose Step 3.2 walkthrough produced the evidence below; PRD §4.4 governs.
-**Status:** §3's first two rows are IMPLEMENTED (the even-section split, on the owner's go of 2026-09-14). Everything
-else is a **draft awaiting the owner's approval**: prompt v3 is a product decision (`AGENTS.md` → AI code) and the
-attribution work changes a function signature. Plan: `docs/specs/summary-quality-plan.md`. No new dependencies.
+**Status:** §3's first two rows shipped on 2026-09-14 and were then **superseded the same day** by
+`docs/specs/summary-coverage.md`, which replaced greedy even-splitting with a split by chunk count and moved the
+section length from 45 minutes to 20. §4.2's prompt v3 shipped as that spec's Step 4. §4.3's attribution proposal is
+still open and unimplemented. Plan: `docs/specs/summary-quality-plan.md`. No new dependencies.
 
 ## 1. Summary
 

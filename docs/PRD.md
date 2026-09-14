@@ -392,13 +392,20 @@ episode's row, phrased from its latest attempt.
 
 ### 4.4 Shared summaries, digests, and unread state
 
-- Store one summary per episode: an executive summary the prompt asks to keep to three sentences, 3–8 takeaways (the
-  map prompt asks for 3–6, the reduce for 5–8) each with the timestamp of the moment it comes from, and topic tags.
-  The model is asked for JSON in JSON mode — a `response_format` whose schema mirrors the validator's bounds — with
+- Store one summary per episode: an executive summary the prompt asks to keep to three sentences, takeaways each with
+  the timestamp of the moment it comes from, and topic tags. **How many takeaways is a function of the episode's
+  runtime**, about one per eight minutes between 5 and 20: one number cannot serve a nine-minute clip and a
+  two-and-a-half-hour interview. A long episode is read in sections of at most twenty minutes, one model call each,
+  and **which takeaways survive is decided in code, not by the model** — a quota spread across every section, because
+  a model asked to choose across sections fills the list from the earliest and stops (measured 2026-09-14). A second
+  call then writes the three sentences and consolidates the tags over the takeaways already chosen.
+- The model is asked for JSON in JSON mode — a `response_format` whose schema mirrors the validator's bounds — with
   `[h:mm:ss]` markers in the prompt; a takeaway's timestamp is taken from those markers and is null when absent or out
   of range. The platform does not guarantee the schema is met, so validate the JSON shape by hand anyway, though not
   the sentence count (owner decision 2026-09-13: a structured summary that runs long serves the reader better than the
-  raw text a rejection would leave). Retry invalid output once, then retain raw text with a `raw_fallback` flag.
+  raw text a rejection would leave). Retry invalid output once. A failed second call costs the episode its three
+  sentences and nothing else, since the takeaways never depended on it; raw text with a `raw_fallback` flag is kept
+  only when no section produced a valid answer at all.
 - Summaries publish automatically after that validation, retry, and raw fallback. There is no manual approval and no
   summary-quality review gate (owner decision 2026-09-10). Prompts are versioned; changing one is a product decision.
 - User preferences affect chat answers only, not shared summaries.
@@ -791,6 +798,22 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
+- **Twenty-minute sections, and the takeaways chosen in code — decided 2026-09-14.** A 146-minute episode's summary
+  reached 1:56:41 and stopped, losing 29 minutes that contained several concrete, quotable claims. Two independent
+  causes were measured and both are fixed. Sections of 45 minutes were too long: a model call trails off in its own
+  last third whatever its length, so a long section leaves a long hole. Across two episodes, 45-minute sections left
+  the last half hour unrepresented and touched 7 of 10 deciles, while 20-minute sections lost about a minute, touched
+  every decile, halved the widest gap, and — unexpectedly — repeated run to run where the 45-minute split had varied
+  by ten minutes. Twenty is the knee: thirty recovers most of the benefit for two fewer calls, twelve buys nothing and
+  makes the tail worse. And the model would not distribute: asked to select 15 to 18 takeaways across its sections it
+  filled the list from the earliest and stopped, twice measured, discarding whole sections. That selection now happens
+  in code — a quota round-robined across sections and spread within each — and the second model call is demoted to
+  writing the three sentences and consolidating the tags, which is what it is good at. Two consequences worth naming:
+  a failed second call no longer destroys the summary, because the takeaways were chosen before it ran, so
+  `raw_fallback` now means "no section parsed at all" rather than "the reduce failed"; and the cost of a long episode
+  roughly doubles, eight or nine model calls where there were four. Sections are divided by chunk count rather than by
+  filling each to a time target, because filling by time left a 2-minute remainder at some lengths that would have
+  drawn a full call and a full share of the budget. Reasoning and measurements: `docs/specs/summary-coverage.md`.
 - **Summary prompt v2, and both summary calls in JSON mode — decided 2026-09-14.** On 2026-09-13, the first day
   summaries existed, two episodes fell back to raw text. One was our own three-sentence cap, since relaxed. The other
   was the model's: a news clip came back as JSON whose `executiveSummary` value carried no quotation marks, twice, so

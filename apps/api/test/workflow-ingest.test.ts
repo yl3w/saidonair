@@ -420,7 +420,7 @@ describe("ingestAttempt", () => {
     ).toBe("pending");
   });
 
-  it("reduces a long episode over its sections", async () => {
+  it("summarises a long episode section by section and synthesises over them", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
     withVideo("longepisode", english(englishSegments(1200, 5), 6000)); // 100 minutes
     await pendingNow("longepisode");
@@ -432,8 +432,8 @@ describe("ingestAttempt", () => {
     const names = stepNames(step);
     expect(
       names.filter((n) => n.startsWith("summarize:")).length,
-    ).toBeGreaterThanOrEqual(3);
-    expect(names).toContain("reduce");
+    ).toBeGreaterThanOrEqual(5);
+    expect(names).toContain("synthesise");
     expect(names.filter((n) => n.startsWith("stage:")).length).toBeGreaterThan(
       1,
     );
@@ -446,6 +446,50 @@ describe("ingestAttempt", () => {
       throw new Error("expected a structured summary");
     expect(summary.takeaways.length).toBeGreaterThan(0);
     expect(summary.takeaways.every((t) => t.startSec !== null)).toBe(true);
+  });
+
+  it("keeps the allocated takeaways when the synthesis fails, instead of falling back to raw text", async () => {
+    await seedApprovedChannel(CHANNEL_A, "A");
+    env.AI_FAKE = JSON.stringify({ synthesisInvalid: true });
+    withVideo("nosynthesis", english(englishSegments(1200, 5), 6000)); // 100 minutes
+    await pendingNow("nosynthesis");
+    const { step, result } = await run(
+      "nosynthesis",
+      await begin("nosynthesis"),
+    );
+    expect(result).toMatchObject({ ended: "published" });
+    expect(stepNames(step)).toContain("synthesise:retry");
+
+    const summary = (await registry().getEpisode(CHANNEL_A, "nosynthesis"))
+      ?.summary;
+    // The takeaways never depended on that call, so the reader keeps a navigable summary.
+    if (summary?.format !== "structured")
+      throw new Error("expected a structured summary, not a raw fallback");
+    expect(summary.takeaways.length).toBeGreaterThan(1);
+    expect(summary.takeaways.every((t) => t.startSec !== null)).toBe(true);
+    // The prose falls back to the first section's, which is a real summary of a real section.
+    expect(summary.executiveSummary).toContain("canned summary");
+  });
+
+  it("falls back to raw text only when no section parsed at all", async () => {
+    await seedApprovedChannel(CHANNEL_A, "A");
+    // The marker rides the transcript, so it reaches every section's map prompt.
+    withVideo(
+      "allmapsfail",
+      english(
+        englishSegments(1200, 5).map((seg) => ({
+          ...seg,
+          text: `${seg.text} [[invalid]]`,
+        })),
+        6000,
+      ),
+    );
+    await pendingNow("allmapsfail");
+    const { result } = await run("allmapsfail", await begin("allmapsfail"));
+    expect(result).toMatchObject({ ended: "published" });
+    expect(
+      (await registry().getEpisode(CHANNEL_A, "allmapsfail"))?.summary?.format,
+    ).toBe("raw_fallback");
   });
 
   it("finishes TRANSCRIPT_TOO_LARGE for a transcript over the step ceiling, recoverably", async () => {

@@ -12,7 +12,15 @@ import type { TranscriptChunk } from "./chunk";
  * (docs/specs/summary-json-mode.md §3.2).
  */
 
-export const SECTION_MAX_SEC = 45 * 60;
+/**
+ * One map call reads at most this much of an episode. Twenty minutes, not the forty-five it was
+ * until 2026-09-14: a map call trails off in its own last third whatever its length, so a long
+ * section leaves a long hole. Measured on two episodes (docs/specs/summary-coverage.md §2): at 45
+ * minutes the last half hour went unrepresented and 7 of 10 deciles were touched; at 20 the tail
+ * loss is a minute, every decile is touched, the widest gap halves, and the result repeats run to
+ * run where the 45-minute one did not.
+ */
+export const SECTION_MAX_SEC = 20 * 60;
 export const MIN_TAKEAWAYS = 3;
 /**
  * One bound holds both calls. It is 20 because a reduced summary's budget scales with the episode
@@ -60,23 +68,38 @@ export const SUMMARY_RESPONSE_SCHEMA = {
 } as const;
 
 /**
- * How many takeaways a reduced summary should carry, from the episode's runtime.
- *
- * Measured on 2026-09-14 (docs/specs/summary-quality.md §2): a 146-minute episode's four sections
- * offered the reduce 23 good timestamped takeaways and the fixed 5-to-8 band kept 7 — all of them
- * from the first 75 minutes. A band that ignores duration asks one number to serve a 50-minute panel
- * and a two-and-a-half-hour interview alike, and the back of the long one is what it drops.
+ * The synthesis call's schema: two fields, because it is no longer asked to choose takeaways.
+ * A shorter answer is also a smaller surface for a malformed timestamp it can no longer emit.
  */
-export function takeawayBudget(durationSec: number | null): {
-  min: number;
-  max: number;
-} {
-  if (durationSec === null || durationSec <= 0) {
-    return { min: MIN_REDUCED_TAKEAWAYS, max: 8 };
-  }
+export const SYNTHESIS_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    executiveSummary: { type: "string" },
+    topicTags: {
+      type: "array",
+      minItems: MIN_TAGS,
+      maxItems: MAX_TAGS,
+      items: { type: "string" },
+    },
+  },
+  required: ["executiveSummary", "topicTags"],
+} as const;
+
+/**
+ * How many takeaways a multi-section episode's summary carries, from its runtime: about one per
+ * eight minutes, never fewer than five or more than the validator's ceiling.
+ *
+ * Measured on 2026-09-14 (docs/specs/summary-quality.md §2): a 146-minute episode's sections offered
+ * 23 good timestamped takeaways and a fixed 5-to-8 band kept 7, all from the first 75 minutes. This
+ * is a single number rather than a band because nothing negotiates inside it any more —
+ * `allocateTakeaways` spends it, not the model.
+ */
+export function takeawayCount(durationSec: number | null): number {
+  // An unknown runtime cannot happen on the path that uses this (the Workflow resolves one from the
+  // chunks), so this is a floor for safety, not a case worth tuning.
+  if (durationSec === null || durationSec <= 0) return 8;
   const target = Math.round(durationSec / 60 / TAKEAWAY_MINUTES);
-  const max = Math.min(MAX_TAKEAWAYS, Math.max(MIN_REDUCED_TAKEAWAYS, target));
-  return { min: Math.max(MIN_REDUCED_TAKEAWAYS, max - 3), max };
+  return Math.min(MAX_TAKEAWAYS, Math.max(MIN_REDUCED_TAKEAWAYS, target));
 }
 
 export type StructuredSummary = {
@@ -84,6 +107,54 @@ export type StructuredSummary = {
   takeaways: { text: string; startSec: number | null }[];
   topicTags: string[];
 };
+
+/**
+ * The takeaway budget spent across a multi-section episode's sections.
+ *
+ * This exists because the model would not do it. Asked to select across sections it filled the list
+ * from the earliest and stopped, twice measured, losing the back half of a two-hour episode
+ * (docs/specs/summary-coverage.md §2). Round-robin, so every section is represented before any is
+ * represented twice; evenly spaced within a section, because a section's takeaways are chronological
+ * and taking its first few reproduces the same front-loading one level down; and a section with less
+ * to give hands its remainder to the others rather than holding places open.
+ *
+ * Pure, and chronological by construction: sections arrive in order and each keeps its own order.
+ */
+export function allocateTakeaways(
+  sections: readonly StructuredSummary[],
+  total: number,
+): StructuredSummary["takeaways"] {
+  const pools = sections.map((section) => section.takeaways);
+  const quota = pools.map(() => 0);
+  let remaining = Math.max(0, total);
+  let gave = true;
+  while (remaining > 0 && gave) {
+    gave = false;
+    for (const [i, pool] of pools.entries()) {
+      if (remaining === 0) break;
+      const taken = quota[i] ?? 0;
+      if (taken < pool.length) {
+        quota[i] = taken + 1;
+        remaining--;
+        gave = true;
+      }
+    }
+  }
+  return pools.flatMap((pool, i) => spread(pool, quota[i] ?? 0));
+}
+
+/** `count` items of `items`, spaced evenly across it by index; the whole thing when it is short. */
+function spread<T>(items: readonly T[], count: number): T[] {
+  if (count <= 0) return [];
+  if (count >= items.length) return [...items];
+  if (count === 1) return items[0] === undefined ? [] : [items[0]];
+  const picked: T[] = [];
+  for (let i = 0; i < count; i++) {
+    const item = items[Math.round((i * (items.length - 1)) / (count - 1))];
+    if (item !== undefined) picked.push(item);
+  }
+  return picked;
+}
 
 /** `h:mm:ss`, hours always present so the prompt's marker shape is one shape (`0:04:12`, `1:02:03`). */
 export function formatTimestamp(sec: number): string {
@@ -119,11 +190,16 @@ export function formatSectionSummary(summary: StructuredSummary): string {
 
 /**
  * Consecutive chunks grouped into the sections one map call each reads, no section spanning more
- * than `maxSec`. The count is the fewest sections of that size the episode needs, and the span is
- * then divided evenly between them rather than filling each to the cap: filling greedily left a
- * fifty-minute episode as forty-five minutes plus a five-minute tail, and the reduce weighs every
- * section's takeaways alike, so that tail spoke as loudly as the whole body before it (found on a
- * real episode 2026-09-14, docs/specs/summary-quality.md §2). A single section skips the reduce.
+ * than `maxSec`.
+ *
+ * The count is the fewest sections of that size the episode needs, and the chunks are then divided
+ * into that many near-equal groups *by count*, not by filling each group to a time target. Filling
+ * by time leaves a remainder — 135 minutes came out as seven 19-minute sections and a 2-minute tail
+ * that no fold could absorb, because its neighbour was already at the cap — and a 2-minute section
+ * would draw a map call and a share of the takeaway budget equal to a full one. Dividing by count
+ * cannot leave a remainder, and since chunks are token-bounded it also balances what each call
+ * reads. If speech is sparse enough that a group still spans more than the cap, one more section is
+ * tried. A single section skips the synthesis call.
  */
 export function sectionize(
   chunks: readonly TranscriptChunk[],
@@ -133,44 +209,35 @@ export function sectionize(
   const last = chunks[chunks.length - 1];
   if (!first || !last) return [];
   const span = last.endSec - first.startSec;
-  const count = Math.max(1, Math.ceil(span / maxSec));
-  if (count === 1) return [[...chunks]];
-
-  const target = span / count;
-  const sections: TranscriptChunk[][] = [];
-  let current: TranscriptChunk[] = [];
-  for (const chunk of chunks) {
-    const head = current[0];
-    if (head && chunk.endSec - head.startSec > target) {
-      sections.push(current);
-      current = [];
+  let count = Math.max(1, Math.ceil(span / maxSec));
+  while (count < chunks.length) {
+    const sections = splitEvenly(chunks, count);
+    if (sections.every((section) => sectionSpan(section) <= maxSec)) {
+      return sections;
     }
-    current.push(chunk);
+    count++;
   }
-  if (current.length > 0) sections.push(current);
-  return foldTrailingRunt(sections, target, maxSec);
+  return splitEvenly(chunks, count);
 }
 
-/**
- * Dividing on chunk boundaries can round a section past the target and leave a short last one — the
- * very thing even sections exist to prevent — so fold it back when the cap still allows.
- */
-function foldTrailingRunt(
-  sections: TranscriptChunk[][],
-  target: number,
-  maxSec: number,
+/** `count` consecutive groups of as near the same number of chunks as the array allows. */
+function splitEvenly(
+  chunks: readonly TranscriptChunk[],
+  count: number,
 ): TranscriptChunk[][] {
-  const tail = sections[sections.length - 1];
-  const previous = sections[sections.length - 2];
-  const tailHead = tail?.[0];
-  const tailLast = tail?.[tail.length - 1];
-  const previousHead = previous?.[0];
-  if (!tail || !previous || !tailHead || !tailLast || !previousHead) {
-    return sections;
+  const sections: TranscriptChunk[][] = [];
+  for (let i = 0; i < count; i++) {
+    const from = Math.floor((i * chunks.length) / count);
+    const to = Math.floor(((i + 1) * chunks.length) / count);
+    if (to > from) sections.push(chunks.slice(from, to));
   }
-  if (tailLast.endSec - tailHead.startSec >= target / 2) return sections;
-  if (tailLast.endSec - previousHead.startSec > maxSec) return sections;
-  return [...sections.slice(0, -2), [...previous, ...tail]];
+  return sections;
+}
+
+function sectionSpan(section: readonly TranscriptChunk[]): number {
+  const first = section[0];
+  const last = section[section.length - 1];
+  return first && last ? last.endSec - first.startSec : 0;
 }
 
 /**
@@ -196,16 +263,7 @@ export function parseSummary(
   raw: string,
   durationSec: number | null,
 ): StructuredSummary | null {
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-  const value = record(parsed);
+  const value = jsonObject(raw);
   if (!value) return null;
 
   const executiveSummary = nonEmpty(value.executiveSummary);
@@ -243,6 +301,42 @@ export function parseSummary(
   }
 
   return { executiveSummary, takeaways, topicTags };
+}
+
+/**
+ * The synthesis call's answer: the executive summary and the tags, or null when it is not one.
+ * Shares `parseSummary`'s tolerance for prose and fences around the object.
+ */
+export function parseSynthesis(
+  raw: string,
+): { executiveSummary: string; topicTags: string[] } | null {
+  const value = jsonObject(raw);
+  if (!value) return null;
+  const executiveSummary = nonEmpty(value.executiveSummary);
+  if (executiveSummary === null) return null;
+  if (!Array.isArray(value.topicTags)) return null;
+  if (value.topicTags.length < MIN_TAGS || value.topicTags.length > MAX_TAGS) {
+    return null;
+  }
+  const topicTags: string[] = [];
+  for (const tag of value.topicTags) {
+    const text = nonEmpty(tag);
+    if (text === null) return null;
+    topicTags.push(text.toLowerCase());
+  }
+  return { executiveSummary, topicTags };
+}
+
+/** The JSON object between the first `{` and the last `}`, or null. Models wrap answers. */
+function jsonObject(raw: string): Record<string, unknown> | null {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  try {
+    return record(JSON.parse(raw.slice(start, end + 1)));
+  } catch {
+    return null;
+  }
 }
 
 function startSecOf(

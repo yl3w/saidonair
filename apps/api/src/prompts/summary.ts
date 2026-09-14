@@ -6,7 +6,7 @@
  * bumps it to the date of the edit. Changing a prompt is a product decision.
  */
 
-export const PROMPT_VERSION = "2026-09-14.2";
+export const PROMPT_VERSION = "2026-09-14.3";
 
 // No comments inside the skeletons: a model copies one into its answer, and `//` is not JSON.
 const MAP_PROMPT = `You are an expert editor summarising a transcript of an episode for a reader who has not consumed it.
@@ -24,13 +24,13 @@ OUTPUT STRUCTURE:
 }
 
 FIELD RULES:
-1. executiveSummary: exactly three sentences on the core theme and the main conclusion. Plain prose, objective, no hype.
-2. takeaways: 3 to 6 objects, each one distinct, concrete claim, insight, framework, or recommendation a speaker made; lean toward 6 when the transcript runs past twenty minutes. "at" is the exact [h:mm:ss] marker that precedes the point in the transcript, or null if none applies. Keep them in the order they occur.
-3. topicTags: 3 to 8 short lowercase tags.
+1. executiveSummary: exactly three sentences on the core theme and the main conclusion this section reaches. Write about the subject, never about the recording: do not begin a sentence with "The conversation", "The discussion", "The speakers", or "This episode". Plain prose, objective, no hype.
+2. takeaways: 3 to 6 objects, each one distinct, concrete claim, insight, framework, or recommendation a speaker made. Name the person who made it when the transcript identifies them. No two takeaways may make the same point. Do not include a definition of a term the reader could look up, and do not include a statement of what the episode is about. "at" is the exact [h:mm:ss] marker that precedes the point in the transcript, or null if none applies. Keep them in the order they occur.
+3. topicTags: 3 to 8 lowercase tags of one or two words each.
 
 Transcript follows, with [h:mm:ss] markers.`;
 
-const REDUCE_PROMPT = `You are an expert editor. You are given the JSON summaries of consecutive sections of an episode, in order, each with timestamped takeaways. Synthesise them into one cohesive summary of the whole episode.
+const SYNTHESIS_PROMPT = `You are an expert editor. You are given the JSON summaries of consecutive sections of an episode, in order, and the takeaways already selected from them. Write one cohesive summary of the whole episode.
 
 STRICT REQUIREMENTS:
 - Output ONLY a JSON object. No markdown fences, no text before or after it.
@@ -40,16 +40,14 @@ STRICT REQUIREMENTS:
 OUTPUT STRUCTURE:
 {
   "executiveSummary": "…",
-  "takeaways": [{ "text": "…", "at": "[h:mm:ss]" }],
   "topicTags": ["…"]
 }
 
-REDUCTION RULES:
-1. executiveSummary: exactly three sentences: the core topic or problem, the main discussion or debate, the key conclusion. A narrative of the whole episode, never a list of the sections. Plain prose, objective, no hype.
-2. takeaways: select {{MIN}} to {{MAX}} of the most insightful, deduplicated, in chronological order. Draw them from the whole episode: take a fair share from every section, including the last, and never fill the list from the earliest sections and stop. "at" is the exact [h:mm:ss] marker of the section takeaway it comes from; when merging overlapping takeaways keep the earliest marker; null only if the source had none.
-3. topicTags: consolidate and deduplicate the section tags down to the 3 to 8 most overarching themes, lowercase.
+FIELD RULES:
+1. executiveSummary: exactly three sentences: the core topic or problem, the main discussion or debate, the key conclusion. One narrative of the whole episode, never a list of the sections. Do not label the parts: never write "The key conclusion is". Write about the subject, never about the recording: do not begin a sentence with "The conversation", "The discussion", "The speakers", or "This episode". Plain prose, objective, no hype.
+2. topicTags: consolidate and deduplicate the section tags down to the 3 to 8 most overarching themes, one or two words each, lowercase.
 
-Section summaries follow, in order.`;
+Choosing the takeaways is not your task; they are listed only so your summary agrees with them. Section summaries follow, in order.`;
 
 /** Appended once, when the first answer was not valid JSON of the expected shape. */
 export const STRICTER_RETRY_SUFFIX =
@@ -63,21 +61,18 @@ export function mapPrompt(transcript: string): string {
 }
 
 /**
- * Every section's validated answer, in order, rendered by `formatSectionSummary`, and the takeaway
- * budget the episode's runtime earns (`takeawayBudget`). The band is interpolated rather than fixed
- * because the reduce was measured filling a fixed band from the earliest sections and discarding the
- * rest of the episode (docs/specs/summary-quality.md §2).
+ * The section answers, in order, and the takeaways `allocateTakeaways` has already chosen. The
+ * synthesis call writes the three sentences and consolidates the tags; it is not asked for
+ * takeaways, and its schema does not admit them, because selecting across sections is the one thing
+ * it was measured doing badly (docs/specs/summary-coverage.md §2).
  */
-export function reducePrompt(
+export function synthesisPrompt(
   sectionSummaries: readonly string[],
-  budget: { min: number; max: number },
+  takeaways: readonly { text: string }[],
 ): string {
   const sections = sectionSummaries
     .map((summary, index) => `Section ${index + 1}:\n${summary}`)
     .join("\n\n");
-  const rules = REDUCE_PROMPT.replace("{{MIN}}", String(budget.min)).replace(
-    "{{MAX}}",
-    String(budget.max),
-  );
-  return `${rules}\n\n${sections}`;
+  const chosen = takeaways.map((t) => `- ${t.text}`).join("\n");
+  return `${SYNTHESIS_PROMPT}\n\nTakeaways already selected:\n${chosen}\n\n${sections}`;
 }

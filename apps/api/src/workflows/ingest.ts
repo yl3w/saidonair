@@ -18,12 +18,14 @@ import { ai, EMBEDDING_BATCH, SUMMARY_MODEL } from "../lib/ai";
 import { chunkTranscript, type TranscriptChunk } from "../lib/chunk";
 import { domainErrorCode } from "../lib/errors";
 import {
+  allocateTakeaways,
   formatSectionSummary,
   formatTranscript,
   parseSummary,
+  parseSynthesis,
   type StructuredSummary,
   sectionize,
-  takeawayBudget,
+  takeawayCount,
 } from "../lib/summary";
 import { transcriptSource } from "../lib/transcripts";
 import {
@@ -43,8 +45,8 @@ import type { IngestParams } from "../lib/workflows";
 import {
   mapPrompt,
   PROMPT_VERSION,
-  reducePrompt,
   STRICTER_RETRY_SUFFIX,
+  synthesisPrompt,
 } from "../prompts/summary";
 
 /**
@@ -499,54 +501,62 @@ async function summarize(
 ): Promise<EpisodeSummaryInput> {
   const client = ai(env);
   const sections = sectionize(chunks);
-  const sectionAnswers: {
-    structured: StructuredSummary | null;
-    raw: string;
-  }[] = [];
+  const answers: { structured: StructuredSummary | null; raw: string }[] = [];
   for (const [i, section] of sections.entries()) {
-    const prompt = mapPrompt(formatTranscript(section));
-    sectionAnswers.push(
+    answers.push(
       await answer(
         step,
         `summarize:${i}`,
         (p) => client.summarizeSection(p),
-        prompt,
+        mapPrompt(formatTranscript(section)),
         durationSec,
       ),
     );
   }
-  let final = sectionAnswers[0];
-  if (sections.length > 1) {
-    // Markers, not the internal seconds: the reduce prompt promises the model [h:mm:ss] (lib/summary.ts).
-    // The band scales with the runtime, so a long episode's later sections are not crowded out.
-    const prompt = reducePrompt(
-      sectionAnswers.map((a) =>
-        a.structured ? formatSectionSummary(a.structured) : a.raw,
-      ),
-      takeawayBudget(durationSec),
-    );
-    final = await answer(
-      step,
-      "reduce",
-      (p) => client.reduceSections(p),
-      prompt,
-      durationSec,
-    );
-  }
-  if (!final) throw new Error("SUMMARY_FAILED: no section to summarise");
-  if (final.structured) {
+  const structured = answers
+    .map((a) => a.structured)
+    .filter((a): a is StructuredSummary => a !== null);
+
+  // Nothing parsed: there is no structured summary to publish, so the reader gets the raw text.
+  if (structured.length === 0) {
+    const first = answers[0];
+    if (!first) throw new Error("SUMMARY_FAILED: no section to summarise");
     return {
-      format: "structured",
-      executiveSummary: final.structured.executiveSummary,
-      takeaways: final.structured.takeaways,
-      topicTags: final.structured.topicTags,
+      format: "raw_fallback",
+      rawText: first.raw,
       model: SUMMARY_MODEL,
       promptVersion: PROMPT_VERSION,
     };
   }
+
+  const single = sections.length === 1 ? structured[0] : undefined;
+  if (single) {
+    return {
+      format: "structured",
+      executiveSummary: single.executiveSummary,
+      takeaways: single.takeaways,
+      topicTags: single.topicTags,
+      model: SUMMARY_MODEL,
+      promptVersion: PROMPT_VERSION,
+    };
+  }
+
+  // The takeaways are ours, not the model's: it fills from the earliest sections and stops
+  // (docs/specs/summary-coverage.md §2). The synthesis call writes the prose over what we chose.
+  const takeaways = allocateTakeaways(structured, takeawayCount(durationSec));
+  const synthesis = await synthesise(
+    step,
+    (p) => client.synthesise(p),
+    synthesisPrompt(structured.map(formatSectionSummary), takeaways),
+  );
+  // A failed synthesis costs the three sentences, never the takeaways: they never depended on it.
+  const fallback = structured[0];
   return {
-    format: "raw_fallback",
-    rawText: final.raw,
+    format: "structured",
+    executiveSummary:
+      synthesis?.executiveSummary ?? fallback?.executiveSummary ?? "",
+    takeaways,
+    topicTags: synthesis?.topicTags ?? fallback?.topicTags ?? [],
     model: SUMMARY_MODEL,
     promptVersion: PROMPT_VERSION,
   };
@@ -567,6 +577,24 @@ async function answer(
     call(prompt + STRICTER_RETRY_SUFFIX),
   );
   return { structured: parseSummary(second, durationSec), raw: second };
+}
+
+/**
+ * The synthesis call and its one stricter retry. Null when neither answer parses, which costs the
+ * episode its three sentences and nothing else: the takeaways were chosen before this ran.
+ */
+async function synthesise(
+  step: StepLike,
+  call: (prompt: string) => Promise<string>,
+  prompt: string,
+): Promise<{ executiveSummary: string; topicTags: string[] } | null> {
+  const first = await step.do("synthesise", AI_STEP, () => call(prompt));
+  const parsed = parseSynthesis(first);
+  if (parsed) return parsed;
+  const second = await step.do("synthesise:retry", AI_STEP, () =>
+    call(prompt + STRICTER_RETRY_SUFFIX),
+  );
+  return parseSynthesis(second);
 }
 
 /** Related candidates by centroid; a failure here publishes with none (docs/PRD.md §4.4). */

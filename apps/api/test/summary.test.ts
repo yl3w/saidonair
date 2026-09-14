@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { chunkTranscript, type TranscriptChunk } from "../src/lib/chunk";
+import type { StructuredSummary } from "../src/lib/summary";
 import {
+  allocateTakeaways,
   formatSectionSummary,
   formatTimestamp,
   formatTranscript,
@@ -9,11 +11,13 @@ import {
   MIN_TAGS,
   MIN_TAKEAWAYS,
   parseSummary,
+  parseSynthesis,
   parseTimestampMarker,
   SECTION_MAX_SEC,
   SUMMARY_RESPONSE_SCHEMA,
+  SYNTHESIS_RESPONSE_SCHEMA,
   sectionize,
-  takeawayBudget,
+  takeawayCount,
 } from "../src/lib/summary";
 import { englishSegments } from "./fixtures/transcripts";
 
@@ -60,30 +64,30 @@ describe("formatting", () => {
 });
 
 describe("sectionize", () => {
-  it("keeps forty minutes in one section and divides a hundred evenly, on chunk boundaries", () => {
-    expect(sectionize(minutes(40))).toHaveLength(1);
+  it("keeps twenty minutes in one section and divides a hundred into five", () => {
+    expect(sectionize(minutes(20))).toHaveLength(1);
     const sections = sectionize(minutes(100));
-    // Three sections of about 33 minutes, not the cap twice over and a ten-minute remainder.
-    expect(sections.map((s) => s.length)).toEqual([33, 33, 34]);
-    for (const section of sections) {
-      const first = section[0];
-      const last = section[section.length - 1];
-      expect((last?.endSec ?? 0) - (first?.startSec ?? 0)).toBeLessThanOrEqual(
-        SECTION_MAX_SEC,
-      );
-    }
+    expect(sections.map((s) => s.length)).toEqual([20, 20, 20, 20, 20]);
     expect(sections.flat()).toEqual(minutes(100));
     expect(sectionize([])).toEqual([]);
   });
 
-  it("splits the episode that exposed the runt tail into halves, not a cap and a remainder", () => {
-    // A fifty-minute public-affairs episode: greedy filling gave 45 + 5, and the reduce weighed the
-    // five-minute tail as heavily as the forty-five minutes before it (docs/specs/summary-quality.md).
-    expect(sectionize(minutes(50)).map((s) => s.length)).toEqual([25, 25]);
+  it("divides the episode that exposed the problem into eight even sections", () => {
+    // q2cg1gEYWJQ, 146 minutes: eight sections of about eighteen, where 45-minute sections left
+    // the last half hour unrepresented (docs/specs/summary-coverage.md §2).
+    const sections = sectionize(minutes(146));
+    expect(sections).toHaveLength(8);
+    expect(sections.map((s) => s.length)).toEqual([
+      18, 18, 18, 19, 18, 18, 18, 19,
+    ]);
   });
 
-  it("leaves no section shorter than half of the longest, at any length", () => {
-    for (const total of [46, 50, 67, 90, 91, 100, 135, 136, 200]) {
+  it("never leaves a runt, and never exceeds the cap, at any length", () => {
+    // 135 minutes used to come out as seven 19-minute sections and a 2-minute tail no fold could
+    // absorb; a 2-minute section would draw a full map call and a full share of the budget.
+    for (const total of [
+      21, 25, 40, 46, 50, 67, 90, 91, 100, 135, 136, 146, 200,
+    ]) {
       const sections = sectionize(minutes(total));
       const spans = sections.map((section) => {
         const first = section[0];
@@ -91,8 +95,8 @@ describe("sectionize", () => {
         return (last?.endSec ?? 0) - (first?.startSec ?? 0);
       });
       const longest = Math.max(...spans);
-      expect(Math.min(...spans)).toBeGreaterThan(longest / 2);
       expect(longest).toBeLessThanOrEqual(SECTION_MAX_SEC);
+      expect(Math.min(...spans)).toBeGreaterThan(longest / 2);
       expect(sections.flat()).toEqual(minutes(total));
     }
   });
@@ -100,7 +104,7 @@ describe("sectionize", () => {
   it("works on real chunker output", () => {
     const chunks = chunkTranscript(englishSegments(1200, 5)); // 100 minutes of speech
     const sections = sectionize(chunks);
-    expect(sections.length).toBeGreaterThanOrEqual(3);
+    expect(sections.length).toBeGreaterThanOrEqual(5);
     expect(sections.flat()).toEqual(chunks);
   });
 });
@@ -275,26 +279,121 @@ describe("formatSectionSummary", () => {
   });
 });
 
-describe("takeawayBudget", () => {
-  it("scales the reduced band with the runtime, within the validator's bounds", () => {
-    // The 146-minute episode that exposed the fault: 23 takeaways were offered and 7 kept.
-    expect(takeawayBudget(146 * 60)).toEqual({ min: 15, max: 18 });
-    // A fifty-minute panel keeps roughly the band it had before.
-    expect(takeawayBudget(50 * 60)).toEqual({ min: 5, max: 6 });
-    // Nothing exceeds the ceiling, however long the episode.
-    expect(takeawayBudget(6 * 3600)).toEqual({ min: 17, max: MAX_TAKEAWAYS });
-    // Nothing drops below the floor, and an unknown runtime keeps the old fixed band.
-    expect(takeawayBudget(10 * 60)).toEqual({ min: 5, max: 5 });
-    expect(takeawayBudget(null)).toEqual({ min: 5, max: 8 });
-    expect(takeawayBudget(0)).toEqual({ min: 5, max: 8 });
+describe("takeawayCount", () => {
+  it("scales with the runtime, within the validator's bounds", () => {
+    // The 146-minute episode that exposed the fault: 23 takeaways offered, 7 kept.
+    expect(takeawayCount(146 * 60)).toBe(18);
+    expect(takeawayCount(50 * 60)).toBe(6);
+    expect(takeawayCount(6 * 3600)).toBe(MAX_TAKEAWAYS);
+    expect(takeawayCount(10 * 60)).toBe(5);
+    expect(takeawayCount(null)).toBe(8);
+    for (const minutes of [25, 45, 60, 90, 146, 180, 300]) {
+      const n = takeawayCount(minutes * 60);
+      expect(n).toBeGreaterThanOrEqual(MIN_TAKEAWAYS);
+      expect(n).toBeLessThanOrEqual(MAX_TAKEAWAYS);
+    }
+  });
+});
+
+/** `count` takeaways a minute apart, starting at `fromSec`. */
+function section(fromSec: number, count: number): StructuredSummary {
+  return {
+    executiveSummary: `section at ${fromSec}`,
+    takeaways: Array.from({ length: count }, (_, i) => ({
+      text: `point ${fromSec}/${i}`,
+      startSec: fromSec + i * 60,
+    })),
+    topicTags: ["tag"],
+  };
+}
+
+describe("allocateTakeaways", () => {
+  it("represents every section before it represents any section twice", () => {
+    const sections = [section(0, 6), section(1200, 6), section(2400, 6)];
+    const picked = allocateTakeaways(sections, 3);
+    // One from each, not three from the first: the failure this replaces.
+    expect(picked.map((t) => t.startSec)).toEqual([0, 1200, 2400]);
   });
 
-  it("never asks for more than parseSummary accepts", () => {
-    for (const minutes of [45, 60, 90, 120, 146, 180, 300]) {
-      const { min, max } = takeawayBudget(minutes * 60);
-      expect(min).toBeGreaterThanOrEqual(MIN_TAKEAWAYS);
-      expect(max).toBeLessThanOrEqual(MAX_TAKEAWAYS);
-      expect(min).toBeLessThanOrEqual(max);
+  it("spreads within a section instead of taking its first few", () => {
+    const picked = allocateTakeaways([section(0, 5)], 3);
+    // Indices 0, 2, 4 of five - not 0, 1, 2, which would front-load one level down.
+    expect(picked.map((t) => t.startSec)).toEqual([0, 120, 240]);
+  });
+
+  it("hands an underfilled section's quota to the others", () => {
+    const sections = [section(0, 1), section(1200, 6), section(2400, 6)];
+    const picked = allocateTakeaways(sections, 9);
+    expect(picked).toHaveLength(9);
+    // The short section gives its one; the other two cover the rest.
+    expect(
+      picked.filter((t) => t.startSec !== null && t.startSec < 1200),
+    ).toHaveLength(1);
+  });
+
+  it("returns everything when more is asked for than exists, and nothing for nothing", () => {
+    const sections = [section(0, 3), section(1200, 2)];
+    expect(allocateTakeaways(sections, 99)).toHaveLength(5);
+    expect(allocateTakeaways(sections, 0)).toEqual([]);
+    expect(allocateTakeaways([], 5)).toEqual([]);
+  });
+
+  it("keeps the result chronological across sections", () => {
+    const sections = [
+      section(0, 6),
+      section(1200, 6),
+      section(2400, 6),
+      section(3600, 6),
+    ];
+    const picked = allocateTakeaways(sections, 18);
+    const marks = picked.map((t) => t.startSec ?? 0);
+    expect(marks).toEqual([...marks].sort((a, b) => a - b));
+    // Every section contributes: the guarantee the model would not give us.
+    for (const from of [0, 1200, 2400, 3600]) {
+      expect(marks.some((m) => m >= from && m < from + 600)).toBe(true);
     }
+  });
+});
+
+describe("parseSynthesis", () => {
+  it("accepts the two fields and rejects anything else", () => {
+    expect(
+      parseSynthesis(
+        JSON.stringify({
+          executiveSummary: "One. Two. Three.",
+          topicTags: ["A", " b "],
+        }),
+      ),
+    ).toEqual({ executiveSummary: "One. Two. Three.", topicTags: ["a", "b"] });
+    expect(parseSynthesis("not json")).toBeNull();
+    expect(
+      parseSynthesis(
+        JSON.stringify({ executiveSummary: " ", topicTags: ["a"] }),
+      ),
+    ).toBeNull();
+    expect(
+      parseSynthesis(JSON.stringify({ executiveSummary: "x", topicTags: [] })),
+    ).toBeNull();
+    expect(
+      parseSynthesis(
+        JSON.stringify({
+          executiveSummary: "x",
+          topicTags: "abcdefghi".split(""),
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("carries the validator's tag bounds into the schema", () => {
+    expect(SYNTHESIS_RESPONSE_SCHEMA.properties.topicTags.minItems).toBe(
+      MIN_TAGS,
+    );
+    expect(SYNTHESIS_RESPONSE_SCHEMA.properties.topicTags.maxItems).toBe(
+      MAX_TAGS,
+    );
+    expect(SYNTHESIS_RESPONSE_SCHEMA.required).toEqual([
+      "executiveSummary",
+      "topicTags",
+    ]);
   });
 });
