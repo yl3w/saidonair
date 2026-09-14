@@ -86,8 +86,9 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── do/user/              # User store modules: reads, chats, preferences, types (follows live in the Registry)
 │   │   │   ├── workflows/ingest.ts   # IngestWorkflow: one instance per episode attempt; ingestAttempt(step, env, params)
 │   │   │   │                         # is the pipeline over a StepLike, classify is pure; step policies are exported constants
-│   │   │   ├── lib/youtube/          # ids.ts (id validation, /channel/UC… extraction), rss.ts (feed verification,
-│   │   │   │                         # title, episodes); nothing else in the codebase talks to YouTube
+│   │   │   ├── lib/youtube/          # ids.ts (id validation, /channel/UC… extraction), rss.ts (channel feed for
+│   │   │   │                         # verification and title, UULF playlist feed for discovery); nothing else
+│   │   │   │                         # in the codebase talks to YouTube
 │   │   │   ├── lib/channel-view.ts   # the one projection from the Registry channel onto the shared Channel (+ management)
 │   │   │   ├── lib/episode-view.ts   # the one projection from the Registry episode onto the shared Episode
 │   │   │   ├── lib/validation.ts     # validate(target, schema): hono-openapi validator with the INVALID_INPUT 400 contract
@@ -310,9 +311,15 @@ Discovery runs, episode attempts, recovery, transcripts, and generation-safe pub
   values so the transcript step spends no retries on them.
 - `lib/workflows.ts` `ingestLauncher(env)` is the one path to the `INGEST_WORKFLOW` binding (create, status);
   `WORKFLOW_FAKE` replaces it in tests.
-- `lib/youtube/ids.ts` and `lib/youtube/rss.ts` are the only code that talks to YouTube. `feedFetcher(env)` serves
-  canned feeds when `YOUTUBE_FEEDS_FAKE` is set: a title-only feed, YouTube's 404, or `{ title, entries }` rendered as
-  Atom so the parser path is production's (`test/fixtures/feeds.ts`; channel F carries the entries).
+- `lib/youtube/ids.ts` and `lib/youtube/rss.ts` are the only code that talks to YouTube. Two feeds of the one public
+  endpoint: `fetchChannelFeed` reads `channel_id=` for add-time verification and the channel title, and
+  `fetchLongFormFeed` reads `playlist_id=UULF…` for every discovery run, so Shorts and live streams never become
+  episodes (PRD §4.2 rule 1). One `parseFeed` serves both heads: the title comes from `<author><name>` (the playlist
+  feed's `<title>` is "Videos"), and the channel id from the alternate link when present, else the `UC`-tolerant
+  `<yt:channelId>` (the channel feed strips the prefix, the playlist feed does not). `feedFetcher(env)` serves canned
+  feeds when `YOUTUBE_FEEDS_FAKE` is set: a title-only feed, YouTube's 404, or `{ title, entries }` rendered as
+  Atom so the parser path is production's (`test/fixtures/feeds.ts`; channel F carries the entries). Its keys are
+  `UC…` ids, serving both URL shapes, or a full `UULF…` id overriding just the long-form read.
 - `lib/chunk.ts` implements the PRD §6 chunking contract as a pure function. `lib/vectorize.ts` owns namespaced
   upsert, query, `getByIds`, and delete; hard rule 3 is enforced there.
 
@@ -326,7 +333,6 @@ export type TranscriptSegment = { text: string; startSec: number; durationSec: n
 export type TranscriptResult = {
   segments: TranscriptSegment[] | null;   // present only for captionStatus "english", then never empty
   durationSec: number | null;
-  isLive: boolean;                        // includes upcoming videos
   captionStatus: "english" | "none" | "non_english";
 };
 export type TranscriptSource = { fetch(videoId: string): Promise<TranscriptResult> };
@@ -344,12 +350,15 @@ export class TranscriptError extends Error { readonly reason: TranscriptFailure 
   `Authorization: Bearer <DOWNSUB_API_KEY>`. `data.state` is `subtitles_found` (choose a track by its `code`, never its
   label; GET its VTT; parse cues with `vtt.ts`), `no_subtitles`, or `error`. An `error` is classified from what the
   body still says (verified 2026-09-13; the provider is inconsistent about `metadata.playabilityReason`, the same
-  bogus id carried it once and an empty `metadata` minutes later): live metadata (`metadata.isLiveContent`, a
-  `_live.jpg` thumbnail) → waiting; else a `playabilityReason` → `UNPLAYABLE` with it as the detail; else a body that
-  still describes a video (title, positive `duration`, or `channelId`) → waiting, since that is how a live or upcoming
-  video reads; else `UNPLAYABLE`. Discard the `translatedSubtitles` array (most of the ~400 KB body). The adapter never
-  retries; the Workflow step does, with a timeout generous enough for the provider's slow error states (up to a
-  minute).
+  bogus id carried it once and an empty `metadata` minutes later). Since 2026-09-14 all four branches throw
+  `UNPLAYABLE` and differ only in the detail, because live content is no longer discovered (PRD §4.2 rules 1 and 12):
+  live metadata (`metadata.isLiveContent`, a `_live.jpg` thumbnail) → `"live or upcoming"`; else a
+  `playabilityReason` → that reason; else a body describing no video → `"…no video metadata"`; else → `"…no reason"`.
+  Keep the four branches textually separate: the last is a catch-all for provider flakiness, not a live detector, and
+  is the one to split back out if a transient error is ever seen skipping a real episode
+  (`docs/specs/discovery-long-form-feed.md` §5). Discard the `translatedSubtitles` array (most of the ~400 KB body).
+  The adapter never retries; the Workflow step does, with a timeout generous enough for the provider's slow error
+  states (up to a minute).
 - Do not reintroduce the InnerTube path (PRD §4.2 rule 19). It survives only on the throwaway branch
   `spike/transcript-remote`.
 

@@ -48,8 +48,10 @@ deployment, and general admin dashboards beyond owner catalog management.
 - The only external services called are YouTube's public RSS feed, Cloudflare services, and DownSub's API for
   transcripts (owner decision 2026-09-08). DownSub receives nothing but a public YouTube video URL and is
   authenticated with the `DOWNSUB_API_KEY` secret. No other YouTube endpoint is used: no InnerTube calls, no
-  watch-page scraping, no YouTube Data API or API keys. No other AI providers, scraping services, analytics SDKs, or
-  proxies.
+  watch-page scraping, no YouTube Data API or API keys. The feed endpoint
+  `https://www.youtube.com/feeds/videos.xml` is read with either `channel_id=` (channel verification, §4.1) or
+  `playlist_id=` (discovery, §4.2); both are the same public, unauthenticated endpoint, and neither is a new service.
+  No other AI providers, scraping services, analytics SDKs, or proxies.
 - Transcript text and chat content are never logged. Private user data (chats, preferences, read receipts) never
   leaves the user's own Durable Object except in that user's own responses.
 - Shared episode vectors live in one Vectorize namespace, `shared-catalog`, never in a per-user namespace. Every
@@ -99,7 +101,7 @@ catalog, follows, episodes,            read receipts,
 shared summaries, discovery runs,      chats/messages/sources, preferences
 episode processing attempts
        |
-First approval, Start, or channel cron → RSS discovery run → new episodes
+First approval, Start, or channel cron → long-form RSS discovery run → new episodes
 New episode, recovery cron, or Owner Retry → episode attempt → one Workflow
        stagger → transcript → classify → chunk → Workers AI embed → Vectorize (staged generation)
                               → verify → shared summary → publish: episode available in the Registry
@@ -142,8 +144,10 @@ summaries are never copied into a User DO. See
   instructions; there is no handle resolution (decided 2026-09-07) and the YouTube Data API is not used. The id is
   validated offline, then verified by fetching its RSS feed, `https://www.youtube.com/feeds/videos.xml?channel_id=UC…`:
   a 404 means no such channel (`INVALID_INPUT`); success supplies the channel title, which any caller may override at
-  add and the owner at approval; the UI offers the override to the owner only (the API is promiscuous, §9). Nothing
-  else in the system talks to YouTube.
+  add and the owner at approval; the UI offers the override to the owner only (the API is promiscuous, §9).
+  Verification always reads `channel_id=`, the only feed that tells an unknown channel apart from one with no
+  long-form uploads; discovery reads a different feed of the same endpoint (§4.2 rule 1). Nothing else in the system
+  talks to YouTube.
 - Channel status is `requested`, `approved`, or `declined` (decided 2026-09-10). It records the owner's answer about
   catalog membership and nothing about imports; import outcomes are episode state (§4.2). Channels are never deleted,
   softly or otherwise, and there is no channel failure code, channel waiting code, channel retry, or restore. A
@@ -185,7 +189,14 @@ import outcome.
 
 1. The first approval, the owner's Start (`POST /channels/:id/runs`), or the channel cron
    performs one RSS discovery run for one channel and records it as completed feed history with its feed result. A
-   run never fetches transcripts, checks the transcript provider, or waits for episode outcomes.
+   run never fetches transcripts, checks the transcript provider, or waits for episode outcomes. Discovery reads
+   YouTube's auto-generated **long-form uploads playlist**, `…/feeds/videos.xml?playlist_id=UULF<channel id without
+   the UC prefix>` (decided 2026-09-14), so **Shorts and live streams are never discovered and never become
+   episodes**. The three auto-playlists — `UULF` long-form, `UUSH` Shorts, `UULV` live — partition a channel's
+   uploads exactly, and a stream stays in `UULV` permanently after it ends, so live content is dropped from the
+   catalog by design and not merely deferred. Shorts also stop consuming the feed's fifteen-entry cap, which is what
+   made an `initial` run import mostly Shorts on a Shorts-heavy channel. A feed that cannot be read is recorded
+   `unavailable` like any other; there is no fallback to the channel feed.
 2. A channel's run kind is `initial` until one of its runs has created an episode, and `scheduled` afterwards. An
    `initial` run creates at most the newest `initial_import_count` feed entries, whatever their dates; the default is
    five and the count is a positive value any caller may set at add and the owner at approval (the UI offers it to the
@@ -235,7 +246,8 @@ import outcome.
     48-hour deadline, next-attempt time, and staged vector generation. A `publish` window belongs to a `pending`
     episode; a `replace` window belongs to an `available` one whose current summary and vectors stay readable
     throughout. Both use the same scheduler.
-11. Reasons live on attempts only (decided 2026-09-12). An attempt may finish `waiting` for one of three reasons.
+11. Reasons live on attempts only (decided 2026-09-12). An attempt may finish `waiting` for one of two reasons
+    (three until 2026-09-14, when `LIVE_OR_UPCOMING` was retired with the move to the long-form feed, rule 1).
     The API derives a pending episode's `waitReason` from its latest attempt for every caller (a `waiting`
     attempt's code; a `blocked PROVIDER_LIMIT` attempt reads `PROVIDER_LIMIT`; anything else is null) and gives
     the owner the whole attempt; the episode row carries no reason during recovery:
@@ -243,7 +255,6 @@ import outcome.
 | Waiting code | Meaning |
 |---|---|
 | `CAPTIONS` | The latest attempt found no captions, or a caption track with no usable cues |
-| `LIVE_OR_UPCOMING` | The latest attempt found the video live or scheduled |
 | `PROVIDER_LIMIT` | The latest attempt found transcript credits exhausted |
 
 12. Deterministic content classifications end the attempt at once and never reach the owner's queue. Under
@@ -255,7 +266,7 @@ import outcome.
 |---|---|
 | `SHORT` | Under 180 seconds; nothing is stored |
 | `NON_ENGLISH` | Captions exist but none is an English track (decided 2026-09-08) |
-| `UNPLAYABLE` | The provider reports the video cannot be played; known live or upcoming metadata takes precedence and waits instead |
+| `UNPLAYABLE` | The provider reports the video cannot be played, reports it live or upcoming, or errors with no reason on a body that still describes a video. All four end the attempt at once (decided 2026-09-14, replacing the live wait); `failure_detail` distinguishes them |
 | `OWNER` | The owner skipped a failed episode by hand |
 
 There is no `waiting` count on channels or the catalog (decided 2026-09-12): episode counts are `available`,
@@ -306,11 +317,12 @@ episode's row, phrased from its latest attempt.
     tested (30 player calls: 21 `LOGIN_REQUIRED`, 4 hard 403s, 5 OKs on one video), and no unsigned caption endpoint
     exists any more. It must not be reintroduced. The source sits behind one seam so it can change without ingestion
     noticing.
-20. A transcript result reports the segments, the video duration, whether the video is live or upcoming, and a caption
-    status of `english`, `none`, or `non_english`. Segments are present only for English, and `english` always
+20. A transcript result reports the segments, the video duration, and a caption status of `english`, `none`, or
+    `non_english`. Segments are present only for English, and `english` always
     carries at least one segment: a chosen track whose file has no usable cues is reported as `none` (decided
-    2026-09-11), so the 48-hour rule applies and nothing downstream meets an empty transcript. Duration and liveness
-    drive the classification in rules 11 and 12.
+    2026-09-11), so the 48-hour rule applies and nothing downstream meets an empty transcript. Duration drives the
+    classification in rules 11 and 12; liveness no longer does, because a live or upcoming video is reported as the
+    `UNPLAYABLE` failure of rule 22 rather than as a result (decided 2026-09-14, rule 1).
 21. Track choice (decided 2026-09-10): a manual `en` or `en-*` track, else an `en_auto` or `en-*_auto` track; if
     captions exist but neither qualifies, the result is `non_english` without downloading a non-English track, and the
     episode is `skipped NON_ENGLISH`. Track labels are unreliable and never matched; codes are. Machine translations
@@ -491,13 +503,13 @@ Use `CHECK` constraints for these enums:
 | `episode_ingestion_attempts.trigger` | `channel_ingestion`, `scheduled_recovery`, `owner_retry` |
 | `episode_ingestion_attempts.intent` | `publication`, `replacement` |
 | `episode_ingestion_attempts.status` | `running`, `available`, `failed`, `skipped`, `waiting`, `blocked` |
-| `episode_ingestion_attempts.outcome_code` | null, or one of the fifteen `AttemptOutcomeCode` values below (since 2026-09-13, M3.7) |
+| `episode_ingestion_attempts.outcome_code` | null, or one of the fourteen `AttemptOutcomeCode` values below (since 2026-09-13, M3.7; `LIVE_OR_UPCOMING` retired 2026-09-14) |
 | `chat_messages.role` | `user`, `assistant` |
 | `chat_messages.status` | `pending`, `completed`, `failed` |
 
 `episode_ingestion_attempts.outcome_code` carries the attempt's reason, a closed set since 2026-09-12: a `waiting`
-attempt has `CAPTIONS`, `LIVE_OR_UPCOMING`, or `PROVIDER_LIMIT`; a `skipped` attempt has `SHORT`, `NON_ENGLISH`, or
-`UNPLAYABLE` (Owner Skip is an episode write, not an attempt, §4.2 rule 6); a `failed` attempt has a technical
+attempt has `CAPTIONS` or `PROVIDER_LIMIT`; a `skipped` attempt has `SHORT`, `NON_ENGLISH`, or `UNPLAYABLE` (Owner
+Skip is an episode write, not an attempt, §4.2 rule 6); a `failed` attempt has a technical
 code — `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `PROVIDER_HTTP`, `PROVIDER_PARSE` (§4.2 rule 22),
 `TRANSCRIPT_TOO_LARGE`, `EMBEDDING_FAILED`, `VECTORIZE_INCOMPLETE`, `SUMMARY_FAILED`, or `WORKFLOW_LOST`; a
 `blocked` attempt has `PROVIDER_AUTH` or `PROVIDER_LIMIT`, the pre-flight reason; `running` and `available` attempts
