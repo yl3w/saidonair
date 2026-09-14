@@ -8,7 +8,8 @@ carry timestamps), §7 and §8; PRD §7 Screens (Home, Owner, Owner channel deta
 parent, and its end-to-end walkthrough.
 **Status:** implemented 2026-09-13 on `main`, uncommitted until the owner asks; `pnpm check` green, the web builds
 with no Zod in `dist`; the eight-scenario walkthrough is recorded in `docs/specs/m3-7-owner-ux-plan.md`. The owner's
-click-through of the four screens is still to do (the agent has no browser). No new dependencies; the web keeps
+click-through of the four screens is **skipped** (owner decision, 2026-09-14): the Design phase rebuilds these screens,
+and they will be walked through then. No new dependencies; the web keeps
 `preact`, `preact-iso`, `vite`, `@preact/preset-vite`.
 
 ## 1. Summary

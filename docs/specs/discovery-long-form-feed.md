@@ -5,8 +5,9 @@ discovery and the transcript classifier after M3, before M4.
 **Parent:** PRD §4.1 (channel verification), §4.2 rules 1–5 (discovery runs), 11 (waiting), 12 (skipping), §5.4
 (enumerations). Supersedes the live-or-upcoming half of `docs/specs/m3-ingestion.md` §2 "Shorts, live streams,
 premieres" and `docs/specs/m3-1-transcripts-chunking.md` §3.3.
-**Status:** written 2026-09-14, awaiting owner approval. No new dependencies. Edits an applied migration, so the owner
-runs `/clean-local-do` before the next `pnpm dev`.
+**Status:** APPROVED and IMPLEMENTED 2026-09-14 (`fcf482a`…`37cfba1`), `pnpm check` green at 297 tests. It edits an
+applied migration; the owner ran the local wipe the same day. The Step 5 walkthrough is **SKIPPED — owner decision,
+2026-09-14**. Nothing here is outstanding. No new dependencies.
 
 ## 1. Summary
 

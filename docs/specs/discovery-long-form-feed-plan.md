@@ -2,11 +2,13 @@
 
 **Implements:** `docs/specs/discovery-long-form-feed.md` under `AGENTS.md`.
 **Written:** 2026-09-14, against `main` at `c0c745d`.
-**Status:** written 2026-09-14, awaiting owner approval. Nothing implemented. No new dependencies.
+**Status:** CLOSED 2026-09-14. Steps 1 to 4 IMPLEMENTED that day (`87223e7`, `cee9781`, `1331ced`, `37cfba1`),
+`pnpm check` green at 297 tests. Step 5's walkthrough is **SKIPPED — owner decision, 2026-09-14**. No new dependencies.
 **Shape:** four code steps and a walkthrough, each code step one commit when the owner asks, with `pnpm check` green
 before the next begins. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 
-**Before Step 3 lands, the owner runs `/clean-local-do`.** Step 3 edits an applied migration
+**Before Step 3 lands, the owner runs `/clean-local`** (the skill was renamed from `/clean-local-do` on 2026-09-14;
+the owner ran it that day)**.** Step 3 edits an applied migration
 (`0001_init.sql`), so local Durable Object state must be wiped for the new CHECK to take. One wipe already stood
 pending from M3.7's `outcome_code` CHECK; this is the same wipe, not a second one.
 
@@ -117,9 +119,12 @@ records of what was decided then and are **not** edited; only living specs are.
 
 **Done when:** `pnpm check` green and no living spec still describes a wait for live content.
 
-### Step 5 — Walkthrough  (size: S)
+### Step 5 — Walkthrough  (size: S)  — SKIPPED (owner decision, 2026-09-14)
 
-Under `wrangler dev` on a scratch `--persist-to`, after `/clean-local-do`:
+Not run. The feed split is covered by the `YOUTUBE_FEEDS_FAKE` tests added in Steps 1 and 2, and the screens it would
+have exercised are rebuilt in the Design phase. The legs are kept below as the recipe, should anyone want it.
+
+Under `wrangler dev` on a scratch `--persist-to`, after `/clean-local`:
 
 1. Add and approve a real channel that posts both Shorts and long-form with `initialImportCount: 5` — MKBHD
    (`UCBJycsmduvYEL83R_U4JriQ`) had 11 long-form and 4 Shorts in its newest fifteen on 2026-09-14.
@@ -133,4 +138,4 @@ Record the legs below.
 
 ## Walkthrough record
 
-_(to be filled in when Step 5 runs)_
+_(none: Step 5 was skipped on 2026-09-14)_

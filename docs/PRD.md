@@ -798,6 +798,19 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
+- **Nothing is owed outside §10 — recorded 2026-09-14.** Four items were reading as work in flight. Two had in fact
+  been settled the same day and the specs had not caught up; two are now skipped. **Settled:** the summary
+  regeneration (`summary-coverage-plan.md` Step 5) ran — thirteen episodes retried, eleven republished, three
+  sentences held 9/9 against 6/11 untouched, no republished summary opens by narrating the recording against 6 of 11,
+  median coverage gap 49% to 25% — and the owner accepted it as v1; and attribution (`summary-quality.md` §4.3) was
+  built, A/B'd against the live model and discarded uncommitted, because `llama-3.3-70b` keeps writing "The guest"
+  whether or not it is handed the name, 30% anonymous falling only to 22%. **Skipped:** M3.7's owner click-through of
+  the four screens and the long-form feed plan's Step 5 walkthrough, both of which exercise screens the Design phase
+  rebuilds, so they are walked through against the design instead; the feed split keeps its `YOUTUBE_FEEDS_FAKE`
+  coverage meanwhile. Two episodes of the regeneration failed `VECTORIZE_INCOMPLETE` under twelve simultaneous
+  retries, kept their old summaries, and want a manual Retry run on its own. The next work is the Design phase (§10),
+  with nothing trailing it.
+
 - **Twenty-minute sections, and the takeaways chosen in code — decided 2026-09-14.** A 146-minute episode's summary
   reached 1:56:41 and stopped, losing 29 minutes that contained several concrete, quotable claims. Two independent
   causes were measured and both are fixed. Sections of 45 minutes were too long: a model call trails off in its own

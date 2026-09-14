@@ -6,7 +6,9 @@
 **Status:** complete 2026-09-13 in the working tree on `main` (uncommitted until the owner asks): Steps 1, 3, and 4
 landed, Step 2 run against real channels and recorded below; `pnpm check` green (36 test files, 293 tests; the
 migrations test grew one rejecting insert inside an existing case), `pnpm build` clean with no Zod in `apps/web/dist`.
-The owner's browser click-through of the four screens against a scratch state remains (the agent has no browser).
+The owner's browser click-through of the four screens against a scratch state is **SKIPPED — owner decision,
+2026-09-14**: the Design phase (PRD §10) rebuilds all five built screens, so they will be walked through against the
+design rather than against this one. Nothing here is outstanding.
 **Shape:** one web step, one walkthrough step, one migration step, one documentation step; each a commit when the
 owner asks with `pnpm check` green. The web stays typecheck and lint only (AGENTS.md → Testing). Decisions this plan
 makes are marked **plan decision** and stand unless vetoed.

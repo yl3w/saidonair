@@ -3,7 +3,9 @@
 **Implements:** `docs/specs/summary-coverage.md` under `AGENTS.md`; follows `docs/specs/summary-quality.md` and
 `docs/specs/summary-json-mode.md`.
 **Written:** 2026-09-14, against `main` at `e23df5f`.
-**Status:** draft, awaiting the owner's approval of the spec. No new dependencies.
+**Status:** CLOSED 2026-09-14, every step run. Code in commits `e23df5f`, `b0d6d17` and `4030d46`, `pnpm check` green
+at 316 tests; the Step 5 regeneration and its verdict are recorded below. The owner accepted the result as v1. No new
+dependencies.
 **Shape:** one verification step, four code steps, one docs-and-regeneration step. One commit when the owner asks,
 `pnpm check` green. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 
@@ -86,7 +88,7 @@ section and quota changes can be evaluated without the prompt edit confounding t
 
 **Done when:** `pnpm check` green.
 
-### Step 5 — Docs, regeneration, and the verdict  (size: M)
+### Step 5 — Docs, regeneration, and the verdict  (size: M)  — DONE 2026-09-14
 
 **Files:** `docs/PRD.md` §4.4 and §9, `AGENTS.md`, `docs/specs/summary-quality.md` (marking §4.2–§4.3 superseded),
 this file.
@@ -140,4 +142,26 @@ minutes. Against the 45-minute config, which has ended anywhere between 1:54:46 
 sections are not only better but markedly more repeatable — each map call has an easier job and less room to vary.
 That also means the A/B comparisons in Step 5 need fewer samples to be trustworthy than the earlier ones did.
 
-_Step 5 to be filled in._
+### Step 5 — the regeneration and the verdict, 2026-09-14
+
+Thirteen episodes retried by the owner, **eleven republished**; two failed `VECTORIZE_INCOMPLETE` because twelve
+retries ran at once and the verify step timed out at 60 s — Huberman `MGxcosNuC8k` and CBC `eI7S1fXovY4`. Both are
+recoverable and kept their old summaries; dev has no cron, so they need a manual Retry, run on their own rather than
+alongside a dozen others. Two Computerphile episodes (`kVXp6UNVPTo`, `iuHddnIzKRA`) were never retried.
+
+`q2cg1gEYWJQ`, the episode of spec §2, against its old summary:
+
+| | before | after |
+|---|---|---|
+| takeaways | 7 | 18 |
+| last marker | 1:48:07 | 2:19:26 |
+| tail lost | 38 min | 7 min |
+| deciles touched | 5 | 10 |
+
+The scorer sweep, republished (9 clean) against untouched (11): exactly three sentences **9/9 vs 6/11**; opens by
+narrating the recording **0/9 vs 6/11**; median coverage gap **25% vs 49%**. `takeawayCount` predicted 16, 14 and 13
+and each episode landed on its number exactly.
+
+Accepted at v1 rather than fixed: one widest gap of 17 minutes, mid-episode where two sections join, and attribution —
+anonymous subjects went 5/65 to 8/87, and the three fixes tried for it are recorded in `summary-quality.md` §4.3. The
+owner stopped here.

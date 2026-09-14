@@ -2,11 +2,13 @@
 
 **Implements:** `docs/specs/summary-quality.md` under `AGENTS.md`; follows `docs/specs/summary-json-mode.md`.
 **Written:** 2026-09-14, against `main` at `8eef9a6`.
-**Status:** Step 1 IMPLEMENTED 2026-09-14 on the owner's go, `pnpm check` green at 306 tests, uncommitted at the time of
-writing. Steps 2 to 4 await the owner's approval of the spec — a prompt change is a product decision, and Step 3
-changes a function signature. No new dependencies.
-**Shape:** one landed code step, two proposed steps, one docs-and-walkthrough step. Decisions this plan makes are
-marked **plan decision** and stand unless vetoed.
+**Status:** CLOSED 2026-09-14. Step 1 IMPLEMENTED that day on the owner's go (commit `67540ad`) and then superseded by
+`docs/specs/summary-coverage.md`, which split by chunk count instead. Step 2's prompt v3 shipped as that spec's Step 4.
+Step 3 was built, A/B'd against the live model, and **discarded uncommitted** the same day (spec §4.3); Step 4.1's
+doc edits landed with the coverage work and 4.2's re-run was answered corpus-wide by that plan's Step 5. Nothing here
+is outstanding. No new dependencies.
+**Shape:** one landed code step, one step shipped elsewhere, one reverted, one answered elsewhere. Decisions this plan
+makes are marked **plan decision** and stand unless vetoed.
 
 ## Definition of complete
 
@@ -29,7 +31,7 @@ is what tells a stored summary which contract produced it.
 
 **Done when:** `pnpm check` green. *It is: 306 tests.*
 
-### Step 2 — Prompt v3  (size: S)
+### Step 2 — Prompt v3  (size: S)  — SHIPPED ELSEWHERE (`summary-coverage-plan.md` Step 4)
 
 **Files:** `apps/api/src/prompts/summary.ts`, `apps/api/test/ai.test.ts`.
 
@@ -41,7 +43,7 @@ is what tells a stored summary which contract produced it.
 
 **Done when:** `pnpm check` green.
 
-### Step 3 — Attribution  (size: S)
+### Step 3 — Attribution  (size: S)  — BUILT AND REVERTED 2026-09-14 (spec §4.3)
 
 **Files:** `apps/api/src/prompts/summary.ts`, `apps/api/src/workflows/ingest.ts`, `apps/api/test/ai.test.ts`,
 `apps/api/test/workflow-ingest.test.ts`.
@@ -58,7 +60,7 @@ spec if the title proves not to be enough.
 
 **Done when:** `pnpm check` green.
 
-### Step 4 — Docs and the re-run  (size: S)
+### Step 4 — Docs and the re-run  (size: S)  — 4.1 DONE, 4.2 ANSWERED BY `summary-coverage-plan.md` STEP 5
 
 **Files:** `docs/PRD.md` §4.4 and §9, `AGENTS.md` (layout comment), this file.
 
@@ -77,4 +79,5 @@ Not a live run: `sectionize` is pure, and the evidence that drove it is the CBC 
 The old behaviour is pinned by the test that changed — `[45, 45, 10]` for a hundred minutes became `[33, 33, 34]` —
 and the runt it produced is pinned by the new 50-minute case, `[25, 25]` where greedy filling gave 45 + 5.
 
-_Steps 2 to 4 to be filled in._
+_Nothing further to record here: Step 2 shipped under `summary-coverage-plan.md`, Step 3's measurements are in spec
+§4.3, and Step 4.2's re-run became that plan's Step 5 regeneration._

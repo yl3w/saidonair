@@ -4,8 +4,9 @@
 `docs/specs/summary-json-mode.md`, whose Step 3.2 walkthrough produced the evidence below; PRD §4.4 governs.
 **Status:** §3's first two rows shipped on 2026-09-14 and were then **superseded the same day** by
 `docs/specs/summary-coverage.md`, which replaced greedy even-splitting with a split by chunk count and moved the
-section length from 45 minutes to 20. §4.2's prompt v3 shipped as that spec's Step 4. §4.3's attribution proposal is
-still open and unimplemented. Plan: `docs/specs/summary-quality-plan.md`. No new dependencies.
+section length from 45 minutes to 20. §4.2's prompt v3 shipped as that spec's Step 4. §4.3's attribution proposal was
+**built, measured against the live model, and abandoned on 2026-09-14** — the numbers are in §4.3. Nothing in this
+spec is outstanding. Plan: `docs/specs/summary-quality-plan.md`. No new dependencies.
 
 ## 1. Summary
 
@@ -98,7 +99,30 @@ the skeletons are v2's and stay exactly as they are.
 > 2. takeaways: select 5 to 8 of the most insightful across all sections, in chronological order, drawing from the whole episode rather than mostly from one section. Merge every group of section takeaways making the same point into a single takeaway and keep its earliest marker. Drop any that only state what the episode is about. Prefer those naming a person, a number, or a specific claim. "at" is the exact [h:mm:ss] marker of the section takeaway it comes from; null only if the source had none.
 > 3. topicTags: consolidate and deduplicate the section tags down to the 3 to 8 most overarching themes, one or two words each, lowercase.
 
-### 4.3 Attribution — proposed, and separable
+### 4.3 Attribution — TRIED, FAILED, ABANDONED (2026-09-14)
+
+The proposal below was implemented and A/B'd against the live model on `OYg6BTjb90E`, seven sections, and then
+**discarded uncommitted** on the owner's call. Three interventions, share of takeaways with an anonymous subject:
+
+| | anonymous |
+|---|---|
+| baseline, transcript only | 30% |
+| episode title and channel in the map prompt, plus an explicit ban on "the speaker", "the guest", "the host" | 22% |
+| a participant-extraction call over section 1, its names fed into every map prompt | 23%, **0% named** |
+
+The ban was obeyed literally and evaded in substance: "The speaker predicts" became "The guest believes", never the
+role the title handed it. The extraction fared no better — the model had "David Freeberg (guest, former White House
+advisor)" in its prompt and still wrote "The guest" — and the extracted name looks possibly hallucinated, so a cast
+list adds a hallucination risk for no gain. `llama-3.3-70b` has a stylistic prior for "The guest…" in summary bullets
+that prompt instructions do not shift. Shorter sections did make the fault worse (5/65 anonymous before the
+regeneration, 8/87 after), and it is accepted at v1.
+
+**Do not retry these three.** The untried idea, if this is ever reopened: stop asking for attribution at all. The best
+takeaways in the corpus have no subject, the reader already sees the episode title above the summary, and the fault
+may be self-inflicted by asking. One rule change, cheap to test. A different map model is the other option and a much
+bigger decision.
+
+The proposal as written:
 
 `mapPrompt(transcript)` becomes `mapPrompt(transcript, { title })`, rendering one line above the transcript: `Episode
 title: <title>.` The Workflow passes the episode's title, which it already holds. Rule 2 gains: *when this excerpt does
@@ -110,12 +134,13 @@ can only carry forward what the map wrote.
 1. `sectionize` divides 50 minutes into two 25-minute halves and 100 into three of about 33; no section spans more than
    `SECTION_MAX_SEC` and none is shorter than half the longest, across a range of lengths. (Landed.)
 2. `mapPrompt` and `reducePrompt` carry the §4.2 rules; `PROMPT_VERSION` is neither `2026-09-13` nor `2026-09-14`.
-3. With the attribution step, `mapPrompt` renders the title above the transcript and the Workflow passes the episode's
-   own; `test/workflow-ingest.test.ts` sees it in the prompt.
+3. ~~With the attribution step, `mapPrompt` renders the title above the transcript and the Workflow passes the
+   episode's own; `test/workflow-ingest.test.ts` sees it in the prompt.~~ (Built and reverted on 2026-09-14; §4.3.)
 4. `pnpm check` green.
-5. The two episodes of §2 re-run under `wrangler dev --env dev` by owner Retry, and judged against §2's specific
-   faults: whether the CBC takeaways now cover minutes 20 to 44, whether anyone is still called "the speaker", whether
-   any two takeaways still make one point, and whether the summaries still open by narrating the speakers.
+5. Answered corpus-wide instead of on these two episodes, by the regeneration recorded in
+   `docs/specs/summary-coverage-plan.md` Step 5: of the republished episodes, 9 of 9 hold three sentences against
+   6 of 11 untouched, **none** opens by narrating the recording against 6 of 11, and the median coverage gap falls
+   from 49% to 25%. Anonymous subjects did not improve; §4.3 is why.
 
 ## 6. Out of scope
 

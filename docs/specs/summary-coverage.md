@@ -2,9 +2,11 @@
 
 **Written:** 2026-09-14, against `main` at `e23df5f`. Supersedes `docs/specs/summary-quality.md` §4.2–§4.3, whose
 proposals were written before the measurements below and are partly contradicted by them; PRD §4.4 governs.
-**Status:** APPROVED and IMPLEMENTED 2026-09-14, Steps 0 to 5.1; `pnpm check` green at 316 tests. Only the
-regeneration and its verdict (plan Steps 5.2–5.4) are outstanding, and they are the owner's to trigger — each episode
-spends a provider credit. One decision below (§3, splitting by chunk count) was made during implementation, not
+**Status:** APPROVED, IMPLEMENTED and CLOSED 2026-09-14, all steps including the regeneration and its verdict;
+`pnpm check` green at 316 tests. Thirteen episodes were retried, eleven republished, and the scorer sweep is in the
+plan's walkthrough record. **The owner accepted this as v1 and stopped here** — do not reopen it unasked. Two faults
+are accepted rather than fixed: one 17-minute gap where two sections join, and attribution (`summary-quality.md`
+§4.3). One decision below (§3, splitting by chunk count) was made during implementation, not
 before: the even split this spec inherited leaves a runt at some lengths. Plan:
 `docs/specs/summary-coverage-plan.md`. No new dependencies.
 
