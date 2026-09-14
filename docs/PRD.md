@@ -392,12 +392,13 @@ episode's row, phrased from its latest attempt.
 
 ### 4.4 Shared summaries, digests, and unread state
 
-- Store one summary per episode: an executive summary the prompt asks to keep to three sentences, 3–5 takeaways each
-  with the timestamp of the moment it comes from, and topic tags. The model is asked for JSON with `[h:mm:ss]` markers
-  in the prompt; a takeaway's timestamp is taken from those markers and is null when absent or out of range. Validate
-  the JSON shape, not the sentence count (owner decision 2026-09-13: a structured summary that runs long serves the
-  reader better than the raw text a rejection would leave). Retry invalid output once, then retain raw text with a
-  `raw_fallback` flag.
+- Store one summary per episode: an executive summary the prompt asks to keep to three sentences, 3–8 takeaways (the
+  map prompt asks for 3–6, the reduce for 5–8) each with the timestamp of the moment it comes from, and topic tags.
+  The model is asked for JSON in JSON mode — a `response_format` whose schema mirrors the validator's bounds — with
+  `[h:mm:ss]` markers in the prompt; a takeaway's timestamp is taken from those markers and is null when absent or out
+  of range. The platform does not guarantee the schema is met, so validate the JSON shape by hand anyway, though not
+  the sentence count (owner decision 2026-09-13: a structured summary that runs long serves the reader better than the
+  raw text a rejection would leave). Retry invalid output once, then retain raw text with a `raw_fallback` flag.
 - Summaries publish automatically after that validation, retry, and raw fallback. There is no manual approval and no
   summary-quality review gate (owner decision 2026-09-10). Prompts are versioned; changing one is a product decision.
 - User preferences affect chat answers only, not shared summaries.
@@ -790,6 +791,26 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
+- **Summary prompt v2, and both summary calls in JSON mode — decided 2026-09-14.** On 2026-09-13, the first day
+  summaries existed, two episodes fell back to raw text. One was our own three-sentence cap, since relaxed. The other
+  was the model's: a news clip came back as JSON whose `executiveSummary` value carried no quotation marks, twice, so
+  the validator could not read it and the reader saw JSON under "unformatted summary". Three changes answer that. The
+  map and reduce prompts are rewritten around a literal JSON skeleton with the rules numbered below it, because a model
+  copies a skeleton more reliably than it follows prose. Both calls now ask Workers AI for JSON mode, a
+  `response_format` carrying a JSON Schema built from the validator's own bounds, so the platform shapes the answer
+  before we see it and the two constraints cannot drift apart; Cloudflare does not guarantee conformance, so the hand
+  validation of §4.4, the one stricter retry, and the raw fallback all stay exactly where they were. And the takeaway
+  bound widens from 3–5 to 3–8, the map prompt asking for 3–6 and the reduce for 5–8: a three-minute clip cannot
+  honestly give five distinct points, while the reduce runs only on episodes past 45 minutes and has earned the room.
+  The sentence count is still not validated (the 2026-09-13 decision stands). The same edit fixes a latent defect the
+  reduce prompt had hidden since M3.5: the section summaries handed to the reduce call carried raw seconds where the
+  prompt promised `[h:mm:ss]` markers, so no multi-section episode could have kept its timestamps. `PROMPT_VERSION`
+  becomes `2026-09-14` and names the whole output contract, the texts and the schema together. Existing summaries are
+  not regenerated; owner Retry per episode is the path, one transcript credit each. A probe against the live model that
+  day recorded two platform behaviours worth keeping: in JSON mode the answer arrives as a parsed object rather than a
+  string, and a schema the model cannot satisfy produces no "JSON Mode couldn't be met" error but a best-effort answer
+  truncated at the token ceiling — which reaches us as an invalid answer, so the retry and the fallback are what handle
+  it. Reasoning and the probe record: `docs/specs/summary-json-mode.md` and its plan.
 - **daisyUI over Tailwind is the component library — decided 2026-09-14.** `daisyui` 5, `tailwindcss` 4, and
   `@tailwindcss/vite` join the approved dependencies (`AGENTS.md`), and the rule requiring one plain CSS file with no
   component library and no CSS framework is withdrawn (§3). daisyUI is pure CSS with no JavaScript bundle and is

@@ -94,8 +94,9 @@ beyond `durationSec` when known; `topicTags` one to eight non-empty strings, low
 ### 3.4 `prompts/summary.ts`
 
 `PROMPT_VERSION` (a TEXT identifier stored with every summary; changing a prompt bumps it), `mapPrompt(transcript)`,
-`reducePrompt(sectionSummaries)`, and `stricterRetrySuffix` appended on the one retry. The approved texts, moved here
-from the 2026-09-12 plan:
+`reducePrompt(sectionSummaries)`, and `stricterRetrySuffix` appended on the one retry. The texts below were replaced on
+2026-09-14: `docs/specs/summary-json-mode.md` §3.1 carries the current ones, and the JSON Schema both calls now send
+with them. The approved texts as of 2026-09-13, moved here from the 2026-09-12 plan:
 
 > You summarise one episode of a YouTube channel for a reader who has not watched it. Return only JSON with three
 > fields: `executiveSummary` (at most three sentences, plain prose, no hype), `takeaways` (three to five objects

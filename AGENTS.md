@@ -61,10 +61,10 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 ├── .cursor/rules/            # pointer to AGENTS.md
 ├── docs/PRD.md               # canonical product specification
 ├── docs/specs/               # design reasoning and plans behind the PRD, each with its -plan.md: home-read-experience,
-│                             # api-reference, channel-simplification, follows-single-owner, and M3 as the decision record
-│                             # m3-ingestion (its -plan.md is the roadmap) plus seven child chunks m3-1-transcripts-chunking,
-│                             # m3-2-attempt-ledger, m3-3-ai-vectorize, m3-4-discovery, m3-5-episode-workflow, m3-6-recovery,
-│                             # m3-7-owner-ux
+│                             # api-reference, channel-simplification, follows-single-owner, summary-json-mode, and M3 as
+│                             # the decision record m3-ingestion (its -plan.md is the roadmap) plus seven child chunks
+│                             # m3-1-transcripts-chunking, m3-2-attempt-ledger, m3-3-ai-vectorize, m3-4-discovery,
+│                             # m3-5-episode-workflow, m3-6-recovery, m3-7-owner-ux
 ├── package.json              # workspace root: volta.node, packageManager, turbo scripts
 ├── pnpm-workspace.yaml
 ├── .npmrc                    # engine-strict=true
@@ -409,8 +409,11 @@ Summary, digest, retrieval, and chat behaviour are `docs/PRD.md` §4.4, §4.5, a
 - All Workers AI calls go through `lib/ai.ts`; route code never calls `env.AI.run` directly. `AI_FAKE` and
   `VECTORIZE_FAKE` select fakes in tests.
 - Prompts live in `apps/api/src/prompts/` as exported template functions, not inline strings; `summary.ts` carries
-  `prompt_version`. Changing a prompt is non-trivial — ask first.
-- Validate AI JSON by hand at the boundary: shape, not just parseability.
+  `prompt_version`. Changing a prompt is non-trivial — ask first. The version names the whole output contract, the
+  texts and the schema together, so bump it for either.
+- Validate AI JSON by hand at the boundary: shape, not just parseability. The JSON Schema both summary calls pass as
+  `response_format` lives in `lib/summary.ts` beside the validator's bounds and is built from them, so the platform's
+  constraint and ours cannot drift; the platform does not guarantee conformance, so the hand validation stays.
 
 ## API code
 

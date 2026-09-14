@@ -6,16 +6,50 @@ import type { TranscriptChunk } from "./chunk";
  * episode into sections of at most 45 minutes on chunk boundaries, one map call each; and the hand
  * validation of the model's JSON, shape and not just parseability (AGENTS.md → AI code), with each
  * takeaway's marker mapped to a `startSec` a reader can jump to. The prompt asks for an executive
- * summary of at most three sentences; the count is not validated (owner decision 2026-09-13): a
+ * summary of exactly three sentences; the count is not validated (owner decision 2026-09-13): a
  * structured answer that runs long serves the reader better than the raw-text fallback a rejection
- * would leave them with.
+ * would leave them with. Since 2026-09-14 the bounds here also shape the JSON Schema both calls send
+ * (docs/specs/summary-json-mode.md §3.2).
  */
 
 export const SECTION_MAX_SEC = 45 * 60;
 export const MIN_TAKEAWAYS = 3;
-export const MAX_TAKEAWAYS = 5;
+/** The map prompt asks for 3 to 6 and the reduce for 5 to 8; one bound holds both. */
+export const MAX_TAKEAWAYS = 8;
 export const MIN_TAGS = 1;
 export const MAX_TAGS = 8;
+
+/**
+ * The JSON Schema both summary calls pass as `response_format.json_schema` (lib/ai.ts), built from
+ * the bounds above so the platform's constraint and this file's validation cannot drift. Cloudflare
+ * does not guarantee conformance, so `parseSummary` still checks every answer.
+ */
+export const SUMMARY_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    executiveSummary: { type: "string" },
+    takeaways: {
+      type: "array",
+      minItems: MIN_TAKEAWAYS,
+      maxItems: MAX_TAKEAWAYS,
+      items: {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          at: { type: ["string", "null"] },
+        },
+        required: ["text", "at"],
+      },
+    },
+    topicTags: {
+      type: "array",
+      minItems: MIN_TAGS,
+      maxItems: MAX_TAGS,
+      items: { type: "string" },
+    },
+  },
+  required: ["executiveSummary", "takeaways", "topicTags"],
+} as const;
 
 export type StructuredSummary = {
   executiveSummary: string;
@@ -37,6 +71,22 @@ export function formatTranscript(chunks: readonly TranscriptChunk[]): string {
   return chunks
     .map((chunk) => `[${formatTimestamp(chunk.startSec)}] ${chunk.text}`)
     .join("\n");
+}
+
+/**
+ * A validated section answer as the reduce prompt must see it: `[h:mm:ss]` markers, not the internal
+ * seconds. Serialising `StructuredSummary` directly would hand the reduce call an `at` the prompt
+ * never promised, and a numeric `at` in its answer fails validation.
+ */
+export function formatSectionSummary(summary: StructuredSummary): string {
+  return JSON.stringify({
+    executiveSummary: summary.executiveSummary,
+    takeaways: summary.takeaways.map((t) => ({
+      text: t.text,
+      at: t.startSec === null ? null : `[${formatTimestamp(t.startSec)}]`,
+    })),
+    topicTags: summary.topicTags,
+  });
 }
 
 /**

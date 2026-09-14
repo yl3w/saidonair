@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { chunkTranscript, type TranscriptChunk } from "../src/lib/chunk";
 import {
+  formatSectionSummary,
   formatTimestamp,
   formatTranscript,
+  MAX_TAGS,
+  MAX_TAKEAWAYS,
+  MIN_TAGS,
+  MIN_TAKEAWAYS,
   parseSummary,
   parseTimestampMarker,
   SECTION_MAX_SEC,
+  SUMMARY_RESPONSE_SCHEMA,
   sectionize,
 } from "../src/lib/summary";
 import { englishSegments } from "./fixtures/transcripts";
@@ -108,6 +114,18 @@ describe("parseSummary", () => {
     expect(summary?.takeaways).toHaveLength(3);
   });
 
+  it("accepts the eight takeaways the reduce prompt may return", () => {
+    const eight = Array.from({ length: MAX_TAKEAWAYS }, (_, i) => ({
+      text: `point ${i}`,
+      at: "0:01:00",
+    }));
+    const summary = parseSummary(
+      JSON.stringify({ ...VALID, takeaways: eight }),
+      3600,
+    );
+    expect(summary?.takeaways).toHaveLength(MAX_TAKEAWAYS);
+  });
+
   it("nulls a timestamp that is absent, unparsable, or past the known duration, and keeps it with no known duration", () => {
     const summary = parseSummary(
       JSON.stringify({
@@ -151,10 +169,10 @@ describe("parseSummary", () => {
       JSON.stringify({ ...VALID, takeaways: VALID.takeaways.slice(0, 2) }),
     ],
     [
-      "six takeaways",
+      "nine takeaways",
       JSON.stringify({
         ...VALID,
-        takeaways: [...VALID.takeaways, ...VALID.takeaways],
+        takeaways: [...VALID.takeaways, ...VALID.takeaways, ...VALID.takeaways],
       }),
     ],
     [
@@ -183,5 +201,50 @@ describe("parseSummary", () => {
     ],
   ])("rejects %s", (_label, raw) => {
     expect(parseSummary(raw, 3600)).toBeNull();
+  });
+});
+
+describe("the response schema", () => {
+  it("carries the validator's own bounds, so the platform and parseSummary cannot drift", () => {
+    const { takeaways, topicTags } = SUMMARY_RESPONSE_SCHEMA.properties;
+    expect(takeaways.minItems).toBe(MIN_TAKEAWAYS);
+    expect(takeaways.maxItems).toBe(MAX_TAKEAWAYS);
+    expect(topicTags.minItems).toBe(MIN_TAGS);
+    expect(topicTags.maxItems).toBe(MAX_TAGS);
+    expect(SUMMARY_RESPONSE_SCHEMA.required).toEqual([
+      "executiveSummary",
+      "takeaways",
+      "topicTags",
+    ]);
+    expect(takeaways.items.properties.at.type).toEqual(["string", "null"]);
+  });
+});
+
+describe("formatSectionSummary", () => {
+  it("renders a validated section back into the markers the reduce prompt promises", () => {
+    const rendered = formatSectionSummary({
+      executiveSummary: "One. Two. Three.",
+      takeaways: [
+        { text: "Plan first", startSec: 223 },
+        { text: "No marker", startSec: null },
+        { text: "Then test", startSec: 3723 },
+      ],
+      topicTags: ["planning"],
+    });
+    expect(JSON.parse(rendered)).toEqual({
+      executiveSummary: "One. Two. Three.",
+      takeaways: [
+        { text: "Plan first", at: "[0:03:43]" },
+        { text: "No marker", at: null },
+        { text: "Then test", at: "[1:02:03]" },
+      ],
+      topicTags: ["planning"],
+    });
+    // And the reduce call's answer round-trips: what it echoes back validates to the same seconds.
+    expect(parseSummary(rendered, 7200)?.takeaways).toEqual([
+      { text: "Plan first", startSec: 223 },
+      { text: "No marker", startSec: null },
+      { text: "Then test", startSec: 3723 },
+    ]);
   });
 });

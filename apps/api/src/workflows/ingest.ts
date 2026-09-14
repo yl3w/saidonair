@@ -18,6 +18,7 @@ import { ai, EMBEDDING_BATCH, SUMMARY_MODEL } from "../lib/ai";
 import { chunkTranscript, type TranscriptChunk } from "../lib/chunk";
 import { domainErrorCode } from "../lib/errors";
 import {
+  formatSectionSummary,
   formatTranscript,
   parseSummary,
   type StructuredSummary,
@@ -515,9 +516,10 @@ async function summarize(
   }
   let final = sectionAnswers[0];
   if (sections.length > 1) {
+    // Markers, not the internal seconds: the reduce prompt promises the model [h:mm:ss] (lib/summary.ts).
     const prompt = reducePrompt(
       sectionAnswers.map((a) =>
-        a.structured ? JSON.stringify(a.structured) : a.raw,
+        a.structured ? formatSectionSummary(a.structured) : a.raw,
       ),
     );
     final = await answer(

@@ -434,6 +434,15 @@ describe("ingestAttempt", () => {
     expect(names.filter((n) => n.startsWith("stage:")).length).toBeGreaterThan(
       1,
     );
+    // The reduce prompt is built from formatSectionSummary, so it carries [h:mm:ss] markers and the
+    // fake echoes real times back. Serialising the internal shape gave seconds, and every reduced
+    // takeaway came back null.
+    const summary = (await registry().getEpisode(CHANNEL_A, "longepisode"))
+      ?.summary;
+    if (summary?.format !== "structured")
+      throw new Error("expected a structured summary");
+    expect(summary.takeaways.length).toBeGreaterThan(0);
+    expect(summary.takeaways.every((t) => t.startSec !== null)).toBe(true);
   });
 
   it("finishes TRANSCRIPT_TOO_LARGE for a transcript over the step ceiling, recoverably", async () => {

@@ -11,6 +11,7 @@ import {
   resetAiFake,
   SUMMARY_MODEL,
 } from "../src/lib/ai";
+import { SUMMARY_RESPONSE_SCHEMA } from "../src/lib/summary";
 import {
   mapPrompt,
   PROMPT_VERSION,
@@ -117,18 +118,36 @@ describe("the Workers AI client", () => {
     expect(s.calls).toHaveLength(0);
   });
 
-  it("sends the prompt as one user message to the summary model and returns its response text", async () => {
+  it("asks both summary calls for JSON against the schema and returns the answer as text", async () => {
     const s = stub(() => ({ response: '{"ok":true}' }));
     const client = realClient(s.binding);
     expect(await client.summarizeSection("map me")).toBe('{"ok":true}');
     expect(await client.reduceSections("reduce me")).toBe('{"ok":true}');
     expect(s.calls.map((c) => c.model)).toEqual([SUMMARY_MODEL, SUMMARY_MODEL]);
+    for (const call of s.calls) {
+      expect(call.inputs).toMatchObject({
+        response_format: {
+          type: "json_schema",
+          json_schema: SUMMARY_RESPONSE_SCHEMA,
+        },
+      });
+    }
     expect(s.calls[0]?.inputs).toMatchObject({
       messages: [{ role: "user", content: "map me" }],
     });
+
+    // JSON mode answers a parsed object; the wrapper's contract stays text, so parseSummary is unchanged.
+    const object = stub(() => ({ response: { executiveSummary: "One." } }));
+    expect(await realClient(object.binding).summarizeSection("x")).toBe(
+      '{"executiveSummary":"One."}',
+    );
     const silent = stub(() => ({ usage: {} }));
     await expect(
       realClient(silent.binding).summarizeSection("x"),
+    ).rejects.toThrow(/SUMMARY_FAILED/);
+    const empty = stub(() => ({ response: null }));
+    await expect(
+      realClient(empty.binding).summarizeSection("x"),
     ).rejects.toThrow(/SUMMARY_FAILED/);
   });
 
@@ -138,15 +157,37 @@ describe("the Workers AI client", () => {
 });
 
 describe("the prompts", () => {
-  it("carry the approved texts, a version, and number the sections for the reduce call", () => {
+  it("carry the v2 texts, a version, and number the sections for the reduce call", () => {
     expect(PROMPT_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}/);
+    // The v1 version is taken; a summary's version names its prompts and its schema together.
+    expect(PROMPT_VERSION).not.toBe("2026-09-13");
+
     const map = mapPrompt("[0:00:01] hello");
-    expect(map).toContain("Return only JSON");
-    expect(map).toContain("`[h:mm:ss]` markers.\n\n[0:00:01] hello");
+    // The owner's persona wording (2026-09-14): a transcript, and neither podcast nor YouTube.
+    expect(map).toContain(
+      "You are an expert editor summarising a transcript of an episode",
+    );
+    expect(map).toContain("STRICT REQUIREMENTS:");
+    expect(map).toContain("Output ONLY a JSON object.");
+    expect(map).toContain("must be enclosed in double quotes");
+    expect(map).toContain('"takeaways": [{ "text": "…", "at": "[h:mm:ss]" }]');
+    expect(map).toContain("3 to 6 objects");
+    expect(map).toContain("[h:mm:ss] markers.\n\n[0:00:01] hello");
+    // A `//` comment inside the skeleton would be copied into the answer and is not JSON.
+    expect(map).not.toContain("//");
+
     const reduce = reducePrompt(["{a}", "{b}"]);
-    expect(reduce).toContain("consecutive sections");
+    expect(reduce).toContain("consecutive sections of an episode");
+    expect(reduce).toContain("REDUCTION RULES:");
+    expect(reduce).toContain(
+      "the core topic or problem, the main discussion or debate, the key conclusion",
+    );
+    expect(reduce).toContain("select 5 to 8");
+    expect(reduce).toContain("chronological order");
     expect(reduce).toContain("Section 1:\n{a}\n\nSection 2:\n{b}");
+
     expect(STRICTER_RETRY_SUFFIX).toContain("JSON object only");
+    expect(STRICTER_RETRY_SUFFIX).toContain("double quotes");
   });
 });
 

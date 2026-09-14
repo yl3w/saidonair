@@ -1,19 +1,21 @@
 /**
  * Workers AI, behind the one seam route and Workflow code use (AGENTS.md → AI code): embeddings
- * with the 768-dimension BGE model and the map and reduce summary calls with Llama 3.3. Wrappers do
- * not retry; the Workflow step does. The test-only `AI_FAKE` binding selects a deterministic fake:
+ * with the 768-dimension BGE model and the map and reduce summary calls with Llama 3.3, both in JSON
+ * mode against `SUMMARY_RESPONSE_SCHEMA` (docs/specs/summary-json-mode.md §3.3). Wrappers do not
+ * retry; the Workflow step does. The test-only `AI_FAKE` binding selects a deterministic fake:
  * embeddings are a seeded hash of the text, summaries are canned JSON that echoes the transcript's
  * own `[h:mm:ss]` markers, and a marker in the prompt drives the failure paths.
  */
 
 import { STRICTER_RETRY_SUFFIX } from "../prompts/summary";
+import { SUMMARY_RESPONSE_SCHEMA } from "./summary";
 
 export const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 export const EMBEDDING_DIMENSIONS = 768;
 /** Texts per `embed` call: well under the model's input cap, one Vectorize upsert batch each. */
 export const EMBEDDING_BATCH = 20;
 export const SUMMARY_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-/** Room for five takeaways with timestamps and a three-sentence summary, several times over. */
+/** Room for eight takeaways with timestamps, a three-sentence summary, and eight tags, several times over. */
 export const SUMMARY_MAX_TOKENS = 1024;
 
 export type Embedder = {
@@ -43,11 +45,18 @@ export function realClient(binding: Ai): AiClient {
     const result = (await binding.run(SUMMARY_MODEL, {
       messages: [{ role: "user", content: prompt }],
       max_tokens: SUMMARY_MAX_TOKENS,
+      response_format: {
+        type: "json_schema",
+        json_schema: SUMMARY_RESPONSE_SCHEMA,
+      },
     })) as { response?: unknown };
-    if (typeof result?.response !== "string") {
-      throw new Error("SUMMARY_FAILED: the model returned no response text");
+    // JSON mode answers a parsed object; a string passes through unchanged; anything else, including
+    // the platform's "JSON Mode couldn't be met", is a failed call the Workflow step retries.
+    if (typeof result?.response === "string") return result.response;
+    if (result?.response !== null && typeof result?.response === "object") {
+      return JSON.stringify(result.response);
     }
-    return result.response;
+    throw new Error("SUMMARY_FAILED: the model returned no response");
   };
   return {
     async embed(texts) {
