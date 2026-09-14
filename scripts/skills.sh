@@ -4,6 +4,7 @@
 #
 # Usage: sh scripts/skills.sh install [--agent <agents…>]
 #        sh scripts/skills.sh remove <name…> [-y]
+#        sh scripts/skills.sh remove --all
 #
 # `install` adds every skill from both sources, so a fresh clone gets the same set every time. Arguments are
 # passed to BOTH sources: a `pnpm run` script appends its arguments to the end of the command line, so a plain
@@ -21,7 +22,7 @@ SUPERPOWERS="obra/superpowers"
 LOCAL_SKILLS="./skills"
 
 usage() {
-  sed -n '/^# Usage:/,/^#        sh scripts/p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '/^# Usage:/,/remove --all/p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 command=${1:-}
@@ -35,11 +36,26 @@ case "$command" in
     ;;
   remove)
     if [ "$#" -eq 0 ]; then
-      printf 'remove needs at least one skill name\n\n' >&2
+      printf 'remove needs at least one skill name, or --all\n\n' >&2
       usage >&2
       exit 2
     fi
-    pnpm dlx "$SKILLS_CLI" remove "$@"
+    # The CLI deletes the SOURCE directory of a locally-sourced skill, not just the agent copies: an
+    # unscoped `skills remove clean-local` (or --all) removes skills/clean-local from the repo itself.
+    # Verified against skills@1.5.24 on 2026-09-14. Passing --agent avoids it, but then removal is
+    # per-agent-registration and the shared .agents directory survives while another agent claims it, so
+    # the unscoped form is the one worth keeping. Snapshot the source and put back whatever it eats.
+    snapshot=$(mktemp -d)
+    cp -R "$LOCAL_SKILLS"/. "$snapshot"/ 2>/dev/null || true
+    status=0
+    pnpm dlx "$SKILLS_CLI" remove "$@" || status=$?
+    if ! diff -rq "$LOCAL_SKILLS" "$snapshot" >/dev/null 2>&1; then
+      mkdir -p "$LOCAL_SKILLS"
+      cp -R "$snapshot"/. "$LOCAL_SKILLS"/
+      printf '\nnote: the skills CLI deleted files under %s; restored from a pre-run snapshot.\n' "$LOCAL_SKILLS"
+    fi
+    rm -rf "$snapshot"
+    exit "$status"
     ;;
   -h|--help)
     usage

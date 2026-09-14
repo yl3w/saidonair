@@ -231,6 +231,7 @@ pnpm --filter api deploy               # staging (the top level of wrangler.json
 pnpm --filter api deploy:production    # production (--env production)
 pnpm skills:install --agent <agents…>   # copy skills/ into those agents' directories; see below
 pnpm skills:remove <name> -y            # prune a renamed or deleted skill from them
+pnpm skills:remove --all                # clear every installed skill (skills/ itself is protected)
 ```
 
 Agent skills live in `skills/<name>/SKILL.md` following the Agent Skills standard (agentskills.io): standard frontmatter
@@ -259,9 +260,18 @@ clones installed on different days can differ. Commit the lock and switch to `ex
 
 `skills:install` only adds — it never prunes. **Renaming or deleting a skill needs
 `pnpm skills:remove <old-name> -y`**, which clears the stale copy from every agent directory *and* its
-`skills-lock.json` entry. Deleting the directories by hand leaves the lock entry behind and a reinstall does not
-notice (verified 2026-09-14); a stale copy of a destructive skill still runs, so prune in the same commit as the
-rename. The agent directories themselves are disposable — `pnpm skills:install` rebuilds both sources from scratch.
+`skills-lock.json` entry; `pnpm skills:remove --all` clears everything. Deleting the directories by hand leaves the
+lock entry behind and a reinstall does not notice (verified 2026-09-14); a stale copy of a destructive skill still
+runs, so prune in the same commit as the rename. The agent directories are disposable — `pnpm skills:install`
+rebuilds both sources from scratch.
+
+**The CLI has a destructive bug that `scripts/skills.sh` works around.** An unscoped `skills remove <name>` (and
+`--all`) deletes the *source* directory of a locally-sourced skill — `skills/<name>/` in this repo, committed files
+and all — not just the agent copies. Verified against `skills@1.5.24` on 2026-09-14, for a single named skill as
+well as `--all`. Passing `--agent` avoids it, but then removal is per-agent-registration and the shared
+`.agents/skills/` directory survives while any other agent still claims it, so the unscoped form is the one worth
+keeping. `skills:remove` therefore snapshots `skills/` first and restores anything the CLI deletes, printing a note
+when it does. Never call `pnpm dlx skills … remove` directly — go through `pnpm skills:remove`.
 
 Skills so far: `clean-local` wipes the state the dev environment owns — local `wrangler dev` Durable Object storage
 (`apps/api/.wrangler/state/v3/do/`), optionally local Workflow state, and optionally every vector in the dev
