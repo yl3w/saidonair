@@ -13,7 +13,8 @@ statuses, follows, and episode states (decided 2026-09-10), `m3-ingestion` for d
 `follows-single-owner` for follows living only in the Registry (decided 2026-09-13). Where a spec and this
 document disagree, this document governs and the spec is due for revision.
 **Implementation status:** This document defines the target requirements and logical schema, not completed
-features. Items marked M4 are not yet built (§10); M3 shipped 2026-09-13.
+features. Items marked M4 are not yet built (§10); M3 shipped 2026-09-13. The Design phase between M3 and M4 (§10)
+is not started, so the screens described in §7 are the ones built during M2 and M3, not the designed ones.
 
 ## 1. Summary
 
@@ -23,9 +24,9 @@ approves or declines. The system ingests, vectorizes, and summarizes each episod
 followers. Users receive personalized digests through their follows and can maintain multiple independent
 conversations across all channels they currently follow.
 
-The application runs entirely on Cloudflare with a text-only UI. Maintainability and privacy of user activity matter
-more than speed of delivery. Channel discovery and episode recovery each run on a six-hour schedule (decided
-2026-09-12). This is a long-lived personal tool, not a demo: maintainable beats clever.
+The application runs entirely on Cloudflare with a designed web UI (decided 2026-09-14, §9). Maintainability and
+privacy of user activity matter more than speed of delivery. Channel discovery and episode recovery each run on a
+six-hour schedule (decided 2026-09-12). This is a long-lived personal tool, not a demo: maintainable beats clever.
 
 ### Goals
 
@@ -39,7 +40,7 @@ more than speed of delivery. Channel discovery and episode recovery each run on 
 ### Non-goals
 
 Authentication, per-channel chat, non-YouTube sources, transcript generation for captionless videos, resolution of
-`@handle` or `/c/…` channel URLs, notifications, email delivery, rich media, mobile apps, rate limiting, multi-region
+`@handle` or `/c/…` channel URLs, notifications, email delivery, mobile apps, rate limiting, multi-region
 deployment, and general admin dashboards beyond owner catalog management.
 
 ### External services and privacy constraints
@@ -123,7 +124,7 @@ Chat query: current follows ∩ approved channels
 | Embeddings | Workers AI `@cf/baai/bge-base-en-v1.5`, 768 dimensions, 512-token input cap (the deployed model id carries `.5`, corrected 2026-09-08) |
 | Vectors | Vectorize, cosine, explicit `shared-catalog` namespace, `channelId` and `videoId` metadata indexes; one index per environment: `media-rag` (production), `media-rag-staging`, `media-rag-dev` (decided 2026-09-13) |
 | Transcripts | DownSub's API behind one transcript seam (`DOWNSUB_API_KEY` secret); a canned fake in tests |
-| UI | Cloudflare Pages, Vite + Preact + TypeScript, `preact-iso` history routing, one plain CSS file; no component, CSS, or state library |
+| UI | Cloudflare Pages, Vite + Preact + TypeScript, `preact-iso` history routing; daisyUI 5 components over Tailwind CSS 4 with one custom theme, in the single `styles.css`; no state library (decided 2026-09-14, §9) |
 | Tests | Vitest + `@cloudflare/vitest-pool-workers`; env-selected fakes for Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds |
 | Formatting | Biome |
 
@@ -583,7 +584,7 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
 
 ### Screens
 
-The UI is text only: no images, avatars, thumbnails, or rich embeds; structured text (lists, headings) is fine.
+The UI is web based: images, avatars, thumbnails, and rich embeds are permitted; structured text (lists, headings) is fine.
 Routing is history mode, and deep links and reloads must work. Section navigation within a page uses anchors, not
 client-side tab state. Assistant messages render as plain text with newlines preserved; only `youtube.com` URLs are
 linkified, and a chat source with a start time links to `https://youtu.be/<videoId>?t=<startSec>`. The owner label is
@@ -777,6 +778,32 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
+- **daisyUI over Tailwind is the component library — decided 2026-09-14.** `daisyui` 5, `tailwindcss` 4, and
+  `@tailwindcss/vite` join the approved dependencies (`AGENTS.md`), and the rule requiring one plain CSS file with no
+  component library and no CSS framework is withdrawn (§3). daisyUI is pure CSS with no JavaScript bundle and is
+  framework agnostic, so it raises none of the Preact compatibility questions that ruled out the React-based
+  libraries: the web's JavaScript does not grow at all, and its CSS grows from about 1 kB compressed to an expected
+  12 to 20 kB. Its components cover what §7 already asks for, notably `badge` and `status` for the attempt-outcome
+  vocabulary, `stat` for the catalog health strip, `table` for the owner catalog, `collapse` for the reviewed
+  history, `skeleton` for the per-section loading states, `avatar` for channel avatars, `chat` for M4 conversations,
+  and `modal` on the native `<dialog>` element. Four conditions are rules rather than preferences and live in
+  `AGENTS.md`: one custom theme with all 35 built-ins excluded, so the product inherits no recognisable default look;
+  the native `<dialog>` modal method only, never the checkbox or anchor variants, which drop escape-key closing and
+  focus containment; the `tabs` component unused, because §7's section navigation is anchors and that rule stands;
+  and `lib/copy.ts` stays the single home for user-facing phrases, so daisyUI supplies form and our code supplies
+  words. Not installed yet: Tailwind's preflight reset would restyle the five screens built during M2 and M3 before
+  there is a design to rebuild them to, so the install is the Design phase's first step (§10). The library supplies
+  parts, not a system; mapping the channel, episode, wait, skip, and outcome states onto daisyUI's handful of
+  semantic colours is design work the phase still owes.
+- **A designed web UI, and a Design phase before M4 — decided 2026-09-14.** The UI is no longer text only. Images,
+  avatars, thumbnails, and rich embeds are permitted (§7), and rich media stops being a non-goal (§1). A Design phase
+  takes the place between M3 and M4 (§10): it produces the visual system and a design for every screen of §7, then
+  rebuilds the five screens built during M2 and M3 to match, so M5 keeps conversations alone. It is deliberately
+  unnumbered so that every existing `M4`, `M5`, and `M6` reference in the specs stays correct; renumbering would have
+  touched forty-three of them, sixteen inside closed records of past decisions. This entry originally recorded that
+  the stack was unchanged and the design had to be executable in hand-written CSS; that constraint was reversed
+  later the same day by the decision above. The screens of §7 describe what is built today; the Design phase's own
+  spec will carry the designed replacements, and neither the spec nor its plan is written yet.
 - **Follows have one owner — decided 2026-09-13.** The Registry's `channel_followers` is the only record of follows;
   the User DO's `channel_follows` table is dropped (its `0001` edited in place, local state wiped). Since 2026-09-10
   every follow was written twice, User DO first, with the promise that a failed second write would be corrected by
@@ -883,7 +910,15 @@ M2 Catalog       anyone adds a channel · owner approve/decline · pause · foll
 M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunking · embeddings · staged vector
                  generations · shared summaries · one Workflow instance per episode attempt · two six-hour crons ·
                  Start route · Retry/Skip · availability-ordered digest
+   Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
 M4 Intelligence  unread receipts · multiple chats · filtered retrieval/citations
-M5 UI            account · home (digest · channels · add a channel) · owner queue · catalog health · channel details · conversations
+M5 UI            conversations
 M6 Hardening     isolation/lifecycle tests · wrangler verification · docs
 ```
+
+The Design phase sits between M3 and M4 and carries no number on purpose (decided 2026-09-14, §9): forty-three `M4`,
+`M5`, and `M6` references across `docs/specs/` and this document keep their meaning, and none has to be rewritten.
+It is a milestone in every other respect, with its own spec, plan, and owner approval before any web change. It
+rebuilds the Account, Home, Channel, Owner, and Owner channel detail screens against the new design, which is why M5
+now holds conversations alone: every other screen it once listed is built, and the Design phase is where it is
+rebuilt. Its first step is the daisyUI and Tailwind install (§3, §9), which no screen can be rebuilt without.

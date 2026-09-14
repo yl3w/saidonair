@@ -6,7 +6,7 @@ work here**. `CLAUDE.md` and `.cursor/rules/` point here. Do not duplicate conte
 ## What this is
 
 A personal, multi-user tool with a shared global YouTube channel catalog, per-user follows, digests, and chats,
-running entirely on Cloudflare with a text-only UI.
+running entirely on Cloudflare with a designed web UI (PRD §7; the text-only rule was lifted 2026-09-14).
 
 **`docs/PRD.md` is the canonical product specification.** What the product does, the channel and episode models, the
 logical schema, the API contract, the screens, the acceptance criteria, the non-goals, and the decisions behind them
@@ -391,8 +391,18 @@ contract". In code:
 Screens, copy, and behaviour are `docs/PRD.md` §7 "Screens"; wireframes and acceptance criteria are in
 `docs/specs/home-read-experience.md` and `docs/specs/channel-simplification.md` §7. In code:
 
-- Approved dependencies: `preact`, `preact-iso`, `vite`, `@preact/preset-vite`. Anything else requires approval. No UI
-  component library, no CSS framework, no state library; one plain CSS file; `useState`/`useReducer` for state.
+- Approved dependencies: `preact`, `preact-iso`, `vite`, `@preact/preset-vite`, `tailwindcss`, `@tailwindcss/vite`,
+  `daisyui`. Anything else requires approval. daisyUI 5 is the component library and Tailwind 4 the styling system
+  (decided 2026-09-14, PRD §9, which withdrew the no-component-library and no-CSS-framework rules). No state
+  library; `useState`/`useReducer` for state. `src/styles.css` stays the single stylesheet: it imports Tailwind,
+  loads the daisyUI plugin, and declares one custom theme.
+- Four rules come with daisyUI. One custom theme, with all 35 built-in themes excluded, so no recognisable default
+  look ships. The native `<dialog>` modal method only; never the checkbox or anchor variants, which drop escape-key
+  closing and focus containment. The `tabs` component is unused, because section navigation is anchors, not
+  client-side tab state (PRD §7), and that rule stands. And `lib/copy.ts` remains the one home for every
+  user-facing phrase: daisyUI supplies form, our code supplies words.
+- Because daisyUI is CSS only, component behaviour is ours to get right, and the web has no tests (see Testing), so
+  every interactive component is verified by hand under `pnpm dev` before its commit.
 - `zod` reaches the web only through `packages/shared`, and only as types: import from shared with `import type`, and
   keep Zod out of the web bundle (`grep -ril zod apps/web/dist` after `pnpm build` must find nothing).
 - `src/api.ts` is the only place `fetch` is called; it sets `X-User-Email` from the identity `session.tsx` binds into it
