@@ -680,8 +680,11 @@ somewhere extra to go.
   the newest landed; then decide. The owner's title, import count and note are in the third step, which is the
   one-step approval; a reader's add is the request. One source shows the channel, the reader's relationship to it,
   and its episodes newest **published** with the ones lacking a summary carrying their phrase, paged by year, with
-  the owner's **adjustments** beside the channel they govern — check the feed, pause and resume ingestion, and
-  nothing else: approving, declining and withdrawing approval are decisions and live in Curate (§9, 2026-09-15).
+  **one line of controls under the header, for whoever is reading**: the owner's adjustments first, amber — check
+  the feed, pause and resume ingestion, and a `square-pen` through to Curate — then the follower count and the
+  follow, which are everyone's. Approving, declining and withdrawing approval are decisions and live in Curate
+  (§9, 2026-09-15). Follow has no separate place and no separate line; it keeps its border, which is what tells a
+  reader's own act from the owner's.
   Every row on that page is the same channel, so **a row is
   led by its publication date and carries no mark and no channel name** — summarised or not, one shape for the
   whole history (§9, 2026-09-15). Its header carries the mark, the title, and a meta line of how much the channel

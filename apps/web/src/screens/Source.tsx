@@ -1,5 +1,5 @@
 import type { Channel, Episode } from "@media-digest/shared";
-import { ArrowLeft, ExternalLink } from "lucide-preact";
+import { ArrowLeft, ExternalLink, SquarePen } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
@@ -20,6 +20,7 @@ import { goBack } from "../lib/back";
 import {
   actionErrorCopy,
   BACK_COPY,
+  CURATE_LINK_COPY,
   channelExceptionCopy,
   episodeCountCopy,
   episodePhrase,
@@ -287,6 +288,43 @@ function Header({
             ))}
           </p>
         </div>
+      </div>
+
+      {review !== null && (
+        <p class="mt-3 font-reading text-excerpt text-ink-2">{review}</p>
+      )}
+
+      {/* One line of controls, in one order, for whoever is reading. The owner's are amber and come
+          first because they are about the channel; the follower count and the follow are everyone's
+          and come last because they are about the reader. No separate strip and no label: a page
+          that offers a reader's act and an owner's act tells them apart by colour and by the border
+          on the reader's own, not by a heading over half of them. */}
+      <div class="mt-3 flex flex-wrap items-center gap-3 border-t border-rule pt-3">
+        {isOwner && (
+          <>
+            <ChannelStatusActions
+              channel={channel}
+              busy={busy}
+              idPrefix="source-"
+              scope="adjustments"
+              tone="owner"
+              act={act}
+            />
+            <a
+              class="flex size-11 shrink-0 items-center justify-center rounded text-owner"
+              href={`/curate/${channel.channelId}`}
+              title={CURATE_LINK_COPY}
+            >
+              <Icon of={SquarePen} size={20} label={CURATE_LINK_COPY} />
+            </a>
+          </>
+        )}
+
+        {/* Who a catalog decision reaches, in front of everyone rather than only in the dialog it
+            opens: a consequence should be visible before it is chosen (docs/design.md §4). */}
+        <span class="text-meta text-ink-3">
+          {followerCountCopy(channel.followerCount)}
+        </span>
 
         {channel.status !== "declined" && (
           <FollowButton
@@ -297,34 +335,6 @@ function Header({
           />
         )}
       </div>
-
-      {review !== null && (
-        <p class="mt-3 font-reading text-excerpt text-ink-2">{review}</p>
-      )}
-
-      {isOwner && (
-        <div class="mt-3 flex flex-wrap items-center gap-3 border-t border-rule pt-3 text-ui text-owner">
-          <span class="text-label uppercase">Owner</span>
-          <ChannelStatusActions
-            channel={channel}
-            busy={busy}
-            idPrefix="source-"
-            scope="adjustments"
-            act={act}
-          />
-          {/* Who a catalog decision reaches, beside the control rather than only in the dialog it
-              opens: a consequence should be visible before it is chosen (docs/design.md §4). */}
-          <span class="text-meta text-ink-3">
-            {followerCountCopy(channel.followerCount)}
-          </span>
-          <a
-            class="inline-flex min-h-11 items-center text-primary"
-            href={`/curate/${channel.channelId}`}
-          >
-            Open in Curate
-          </a>
-        </div>
-      )}
     </header>
   );
 }

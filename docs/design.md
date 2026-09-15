@@ -133,7 +133,7 @@ rules are 1 px `--rule`. One shadow, and only on things that float: popovers, sh
 **Lucide**, through `lucide-preact`, at stroke-width 2 with round caps and joins, rendered at 16, 20 or 24 px —
 `Icon.tsx` fixes those defaults so no screen sets them by hand. The set in use is small and deliberate: `chevron-*`,
 `plus`, `check`, `search`, `calendar`, `list`, `list-filter`, `message-square`, `circle-plus`, `circle-alert`,
-`table`, `external-link`, `rotate-cw`, `pause`, `play`, `minus`, `x`. When a feature needs another, take it from
+`table`, `external-link`, `rotate-cw`, `pause`, `play`, `minus`, `square-pen`, `x`. When a feature needs another, take it from
 Lucide by name; never draw your own, and never use emoji anywhere in the product.
 
 **When a control may be a glyph instead of a word** (2026-09-15, PRD §9). All three have to hold: it is
@@ -144,6 +144,11 @@ there is no honest glyph in any case, since `x`, `ban` and `circle-minus` all re
 deletes nothing. The word is still the control's name: a glyph takes it as its accessible name and its tooltip, and
 a list with room for the word uses the word. **A mixed group is the point, not a compromise** — two quiet glyphs
 beside one red word say which acts are knobs and which is a decision, without a divider.
+
+**Amber marks an owner power only where a reader's controls sit beside it.** On a channel's page the owner's glyphs
+are `--owner` and the reader's follow is the accent, so one line carries both and says which is which; on Curate,
+where every control belongs to the owner, amber would mark nothing, and the accent is right. A mark that never
+varies marks nothing (2026-09-15, PRD §9).
 
 Following is `plus` and unfollowing `minus`, not the commoner `plus`/`check`, because **`check` already means "mark
 this summary done"** and one glyph with two meanings on screens a reader crosses in a session is worse than a long

@@ -38,12 +38,20 @@ export function ChannelStatusActions({
   busy,
   idPrefix,
   scope,
+  tone = "safe",
   act,
 }: {
   channel: Channel;
   busy: boolean;
   idPrefix: string;
   scope: "adjustments" | "everything";
+  /**
+   * `owner` paints these amber, which `docs/design.md` §2.1 reserves for an owner-only affordance.
+   * It is worth saying beside an object, where the owner's controls sit among a reader's own; it is
+   * noise on Curate, where every control on the screen is the owner's and a mark that never varies
+   * marks nothing.
+   */
+  tone?: "safe" | "owner";
   act: ChannelAct;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -104,6 +112,7 @@ export function ChannelStatusActions({
           id={`${idPrefix}start-${c.channelId}`}
           busy={busy}
           icon={RotateCw}
+          tone={tone}
           label={CHANNEL_ACTION_COPY.checkFeed}
           hint={CHANNEL_ACTION_COPY.checkFeedHint}
           onClick={() => act(() => api.startRun(c.channelId))}
@@ -112,6 +121,7 @@ export function ChannelStatusActions({
           id={`${idPrefix}${c.paused ? "resume" : "pause"}-${c.channelId}`}
           busy={busy}
           icon={c.paused ? Play : Pause}
+          tone={tone}
           label={
             c.paused ? CHANNEL_ACTION_COPY.resume : CHANNEL_ACTION_COPY.pause
           }
@@ -183,6 +193,7 @@ export function IconAction({
   icon,
   label,
   hint,
+  tone = "safe",
   onClick,
 }: {
   id?: string;
@@ -191,6 +202,7 @@ export function IconAction({
   label: string;
   /** A fuller sentence for the tooltip where the name alone still leaves a question. */
   hint?: string;
+  tone?: "safe" | "owner";
   onClick: () => void;
 }) {
   return (
@@ -199,7 +211,9 @@ export function IconAction({
       type="button"
       title={hint ?? label}
       disabled={busy}
-      class="flex size-11 shrink-0 items-center justify-center rounded text-primary"
+      class={`flex size-11 shrink-0 items-center justify-center rounded ${
+        tone === "owner" ? "text-owner" : "text-primary"
+      }`}
       onClick={onClick}
     >
       <Icon of={icon} size={20} label={label} />
