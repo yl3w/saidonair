@@ -10,11 +10,15 @@ design reasoning, wireframes, acceptance criteria, and implementation plans behi
 `home-read-experience` for the Home and Owner screens (decided 2026-09-07), `channel-simplification` for channel
 statuses, follows, and episode states (decided 2026-09-10), `m3-ingestion` for discovery, recovery, and transcripts
 (revised 2026-09-12), `api-reference` for the generated API document (decided 2026-09-07, contract restated and approved 2026-09-12), and
-`follows-single-owner` for follows living only in the Registry (decided 2026-09-13). Where a spec and this
+`follows-single-owner` for follows living only in the Registry (decided 2026-09-13), and `design-phase` for the
+visual system and the screens this phase rebuilds (written 2026-09-14). `docs/design.md` is the standing design
+guide — principles, tokens, patterns, the scale playbook and the accessibility floor — and governs how a screen looks
+and behaves the way this document governs what it does. Where a spec and this
 document disagree, this document governs and the spec is due for revision.
 **Implementation status:** This document defines the target requirements and logical schema, not completed
 features. Items marked M4 are not yet built (§10); M3 shipped 2026-09-13. The Design phase between M3 and M4 (§10)
-is not started, so the screens described in §7 are the ones built during M2 and M3, not the designed ones.
+has its architecture approved and nothing built, so the screens described in §7 are the ones built during M2 and M3,
+not the designed ones; three approved changes already contradict them and are marked where they apply (§9).
 
 ## 1. Summary
 
@@ -413,16 +417,26 @@ episode's row, phrased from its latest attempt.
   current video, deduplicated to at most five available related videos. A lookup failure or no qualifying result
   stores an empty list and never blocks publication. Display only related titles belonging to the reader's eligible
   channels; the UI omits an empty section.
-- Digest windows and ordering use the summary's first availability time, `episodes.processed_at` exposed as
+- Digest ordering and grouping use the summary's first availability time, `episodes.processed_at` exposed as
   `summaryAvailableAt`, not the video's publication time (owner decision 2026-09-10; carried by the digest route since
-  M3.5, 2026-09-13). The default window is the last 24 hours and the expanded window seven
-  days, newest availability first, within eligible followed channels. Reads, refollows, re-approval, and enrichment
-  never reset availability. Publication time stays separate metadata, and channel history stays publication-ordered.
+  M3.5, 2026-09-13). The reader has two views over one list. **Unread is the queue**: only summaries with no receipt,
+  grouped by the **day** they became available, newest day first, within eligible followed channels — a summary marked
+  done leaves it. **History is the library**: every summary the reader has been eligible for, over the same days,
+  navigated by a calendar, and the one place a receipt can be undone. Neither has a time window and **every day is
+  kept** (decided 2026-09-14, §9; the built route still defaults to 24 hours and clamps at seven days). One receipt
+  serves both views; no second piece of per-user state exists or is needed. Day boundaries are the reader's local ones, so
+  the route takes a range and never a timezone, and a day's address carries its year: `/history/2026-09-12`. Reads,
+  refollows, re-approval, enrichment and replacement summaries never reset availability, so **a summary's day is
+  permanent** — its membership of that day is a fact about the summary and never moves. **A day's contents are not**:
+  History renders the reader's current eligible follows, so following or unfollowing a channel changes which rows a
+  past day shows, and receipts change how they read. Publication time stays separate metadata and is shown beside the
+  day the summary arrived; channel history stays publication-ordered.
 - Channel pages show recent episodes to followers, with a summary on the available ones and a phrase on the rest.
-- A summary is unread until actually returned in the digest or viewed on its channel page. Record a user-specific
-  read receipt only for summaries returned to an eligible caller, an active follower of an approved channel, including
-  when paginated; a summary returned to anyone else records nothing, so first follow still starts unread. Absence of a
-  receipt means unread.
+- **Unread means not dealt with, not unseen.** A read receipt is recorded only when an eligible caller — an active
+  follower of an approved channel — explicitly marks a summary done, from its own screen or from its queue row. No
+  read records one: not returning it in a list, not opening it, not arriving by deep link, not paging back through
+  history. Every read route is a pure read, and one explicit write records the receipt. Absence of a receipt means
+  unread. **Changed 2026-09-14 (§9); the built digest route still marks on return, and the Design phase changes it.**
 - Existing summaries start unread on first follow. Preserve read receipts through unfollow, refollow, decline, and
   re-approval. Unread counts span all currently eligible summaries, while NEW markers apply only to the items a
   response returned; no shared summary row contains `read_at`.
@@ -623,7 +637,8 @@ wait reasons live in one place in the web app.
   count. Owners see an attention card first ("2 channels waiting for review · 1 episode failed · 1 channel approved
   but never started", from `GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the
   count is zero. Then:
-  1. **Today's digest** — eligible followed channels only; summaries first available in the last 24 hours, newest
+  1. **Today's digest** — **superseded 2026-09-14 (§9): the queue is grouped by day with no window, and filtered by
+     channel rather than by time.** Eligible followed channels only; summaries first available in the last 24 hours, newest
      availability first (the basis since M3.5), as a flat list with the channel as
      byline: shared summary, takeaways with `youtu.be/<id>?t=<startSec>` links where a timestamp exists, tags, and
      related titles filtered to eligible channels. Items with no read receipt at fetch time are marked NEW, and
@@ -643,7 +658,8 @@ wait reasons live in one place in the web app.
      owner shortcut), an id
      already in the catalog follows, and a declined id shows "Declined on <date>: '<note>'" with Request again.
      Poll about every 15 seconds only while a followed channel is still awaiting the owner's decision.
-  3. **Chats** — joins Home in M4, with no placeholder before then. List, create, and select independent
+  3. **Chats** — **superseded 2026-09-14 (§9): chats are their own destination, `/chats` and `/chats/:id`, not a
+     section of Home**, which no longer exists in that form. List, create, and select independent
      conversations; preserve each chat's messages and source links. Chat controls are never disabled for lack of
      follows; the fixed follow-required response of §4.5 applies instead.
 - **Channel `/channel/:id`:** any status. Requested shows the header, "Awaiting owner approval", and Follow or
@@ -728,7 +744,7 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | `GET /channels/:id/followers` | anyone; UI: owner | Emails and follow times of the channel's active followers |
 | `GET /follows` | anyone (own) | Own active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
 | `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for a declined one) / retain an unfollow tombstone on a channel in any status; the Registry's follower record is the follow |
-| `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt` (since M3.5); default last 24h, clamped to 7 days; marks returned items read and reports `wasUnread` per item |
+| `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt` (since M3.5); default last 24h, clamped to 7 days; marks returned items read and reports `wasUnread` per item. **Changing (§9):** gains an end bound and a cursor, loses the clamp, and stops recording receipts |
 | `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats |
 | `GET /chats/:id/messages?limit=50` | anyone (own) | Selected chat history with citation snapshots |
 | `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources using current eligible follows |
@@ -797,6 +813,84 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   `wrangler dev`. Follow the engineering constraints and setup commands in `AGENTS.md`.
 
 ## 9. Decisions and retention
+
+- **Lucide icons, and monograms where artwork is missing — decided 2026-09-14.** The icon set is Lucide: one stroke
+  weight, one grid, and a name for every glyph, so a screen never invents its own. Channel avatars are **deterministic
+  monograms** — two letters on a tint derived from the channel id — because nothing in the product stores channel
+  artwork and no permitted source for it exists; if one is ever added, the monogram becomes the fallback rather than
+  the design. Adding a channel is three steps rather than one field: paste an id, verify it against the long-form feed
+  (the title, the count of long-form videos, when the newest landed), then decide — a reader files a request there,
+  and the owner gets the title, the import count and the note in the same step, which is the one-step approval §7
+  already describes.
+- **Owner operations are desktop only — decided 2026-09-14.** Curate and channel review have no phone breakpoint and
+  no phone entry point: a phone shows no Curate item at all, and Account tells the owner how many things are waiting
+  and that they need a larger screen. Approving, declining, retrying, skipping and the catalog table are dense,
+  consequential and rare; designing them twice would cost more than it returns. Every **reader** screen has a phone
+  breakpoint — queue, reading, history, sources, one source, account, the nothing-waiting state, and the channel and
+  date pickers as sheets.
+- **The design carries its own accessibility floor — decided 2026-09-14.** Four rules, checked at both sizes and both
+  breakpoints, because the paper-and-ink palette makes it easy to drift pale. Text meets 4.5:1 against the page — the
+  tertiary grey that carried most secondary labels sat at 2.8:1 and the meta grey at 4.0:1, and both moved. Nothing
+  bearing meaning is smaller than 12px, uppercase labels included, which are the hardest to read small. Every control
+  a finger reaches is 44px, and owner-table actions, which are text, carry the vertical padding and the weight to be
+  found. And **state is never colour alone**: a read summary says "read" and an unread one says "unread" in the same
+  ink, a calendar day still holding something is bold and underscored before it is tinted, and no row is dimmed with
+  opacity to mean anything. This is the concrete half of the state-mapping work the daisyUI decision below left open.
+- **The queue keeps every day, and splits from the library — decided 2026-09-14.** The digest's 24-hour window is
+  dropped, and what was one list becomes two views over the same data. **Unread** answers "what still needs me" and
+  holds nothing else: no greyed-out rows, no calendar, only the days that still carry something. **History** answers
+  "what arrived, and when": every day kept, newest first, each day its own address, navigated by the calendar, and the
+  only place a receipt can be undone. The first draft conflated them, showing done rows under a filter labelled
+  Unread, and called the second view "Everything" — a name that says what it contains rather than what it is for. Both
+  run off the single read receipt: no `archived_at` and no second pile. The first calendar was also unusable as a
+  calendar: its cells showed counts without dates, so no one could find Saturday the 12th in it. And the first owner
+  wireframe offered Skip on a pending episode, which §7 does not allow — Skip belongs to failed episodes alone, and a
+  pending one offers Retry with the wait named. The window was never a decision anyone took — "the last 24
+  hours" is in the founding PRD, in the paragraph that defines the word digest, and the seven-day expansion was added
+  with the Home read-experience spec (2026-09-07) as an escape hatch. Its one real effect was loss: because `since` is
+  clamped at seven days (`apps/api/src/routes/digest.ts`), an episode a reader did not get to became unreachable from
+  the queue and survived only on its channel page. A day is the right unit because this product's content genuinely
+  arrives in daily batches, because availability never resets so a day never changes once written, and because a
+  bounded day is a natural page where an unbounded list is not. **Channel becomes the only other filter** — time
+  within a day is not something a reader triages by — and at any catalog size it is one control opening a searchable
+  list sorted by what is unread, never a row of chips, which is four lines of chrome at thirty follows. Filters are
+  never sticky across sessions, so a quiet queue is never a filter someone forgot. Days are navigated by a
+  **calendar of the last five weeks** rather than a list, because a calendar's height is fixed whatever the depth of
+  the history and it shows where a week went; a day with nothing costs a pale cell instead of being skipped. The
+  calendar belongs to History: in Unread it would be mostly empty cells, so that view carries only the days still
+  holding something and a way through to browse by date. **A calendar cell is a date first**: the day of the month is
+  the glyph, what arrived that day is the number beneath it, and a tint marks a day still holding something unread.
+  Today, the open day, a day with nothing, and keyboard focus are four distinct treatments; each cell carries its full
+  date and counts as its accessible name, and arrow keys walk the grid. A **density switch** trades the excerpt away, never the
+  title, so a heavy day fits one screen. Counts can be switched off entirely, for a reader who would rather the queue
+  did not keep score. **Every screen is designed at two sizes** — a handful of follows and thirty, a few chats and
+  forty — because volume, not layout, is what breaks these screens: the controls that carry a long list (search, a
+  sort order, status tabs, pagination, a sheet on a phone) are invisible at the size a mockup flatters. This also retires Archive as a separate idea: with days kept,
+  permanence comes from the structure and triage from the read receipt, so the reading view's button is **Done** and
+  no `archived_at` is needed. Cost: `GET /digest` gains an end bound and a cursor and loses `MAX_WINDOW_MS`.
+
+- **Reading is a place, and reading is an act — decided 2026-09-14.** Three decisions settle the Design phase's
+  architecture before its spec is written, and the wireframes for both roles are drawn against them. **One:** a
+  summary is read only when the reader says so (§4.4). The digest's return-marks-read rule was right for a page that
+  expanded every summary inline and is wrong for a queue, which would empty itself the moment it was glanced at. The
+  first version of this decision had *opening* a summary mark it read as well, which left the Done button with
+  nothing left to do by the time it could be pressed; revised the same day. So **Done is the only write**, it is
+  available on the queue row as well as on the summary's own screen so nothing has to be opened to be dismissed, and
+  it advances to the next unread. Every read route stays a pure read, which is the simpler API and the testable one,
+  and an accidental open or a shared link cannot cost a reader an item. **Two:** a summary gets its own screen and its own URL,
+  `/read/:videoId` — a measured column, the executive summary, the takeaways with their timestamps as the body, and
+  nothing else — so the API gains a single-episode read, since deep links and reloads must work (§7). **Three:**
+  Home splits in two. `/queue` is what is waiting to be read, one row per episode with the executive summary as the
+  excerpt; `/sources` holds following, the catalog, and adding a channel, and M4's chats become `/chats` rather than
+  a third section of Home. §7's one-page Home with jump links is retired. The reading experience is modelled on Instapaper: a queue rather than a wall, one screen per piece,
+  type and theme controls, archive as the act that clears an item.
+- **The owner does not choose a role — decided 2026-09-14.** There is no role selection at sign-in and no reader/owner
+  mode. The owner is a reader who also curates: one nav, one extra destination (`/curate`, holding Needs you, Catalog,
+  and the reviewed history) whose nav item carries a count only when something is waiting, and owner controls beside
+  the objects they govern — approve, decline, pause, resume, and start a run on the channel's own page. A role gate
+  would tax a daily act for a weekly one, duplicate the account switch the product already has, and invent a mode to
+  explain when a screen looks empty. Owner-ness attaches to objects, not to sessions. The API still answers every
+  identity the same way; this hierarchy is the web's rendering, and the web is the only gate.
 
 - **Nothing is owed outside §10 — recorded 2026-09-14.** Four items were reading as work in flight. Two had in fact
   been settled the same day and the specs had not caught up; two are now skipped. **Settled:** the summary

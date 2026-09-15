@@ -15,6 +15,15 @@ engineering conventions, testing mechanics, and code style. Do not restate produ
 section instead. If this file and the PRD ever disagree, the PRD governs and this file is the one to fix. The specs in
 `docs/specs/` hold design reasoning, wireframes, and implementation plans and are subordinate to the PRD too.
 
+**`docs/design.md` is the design guide.** How the product looks and behaves lives there: the principles and the
+arguments behind them, the colour and type tokens with their contrast, spacing and shape, the icon set, avatars,
+layout patterns, the four states every screen owes, the interaction rules, the scale playbook, the mobile rules, and
+the accessibility floor. Read it before designing or building any screen, state, or control, and whenever a question
+starts "what should this look like" or "how should this behave" — the answer is usually already there. Do not restate
+design rules in this file or invent a local one in a component; link to the `docs/design.md` section, or change that
+file. It stands to the PRD as this one does: the PRD governs what the product does, `docs/design.md` governs how it
+presents that, and where they disagree the PRD governs and the guide is the one to fix.
+
 This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainable over clever. Small, readable modules.
 
 ## How to work with the owner
@@ -27,6 +36,9 @@ This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainabl
 - Leave `TODO(owner):` markers where a decision belongs to the owner rather than guessing.
 - Product behaviour changes are PRD changes. When the owner decides something, record it in `docs/PRD.md` (and the
   relevant spec's reasoning if it has one), not here.
+- UI and UX decisions are `docs/design.md` changes — a new pattern, a token, a state, a rule about density, contrast
+  or copy. Record them there (and in PRD §9 when the decision also changes what the product does), not here and not
+  in a comment beside the component.
 
 ## Hard rules (never break these, even if asked in a comment or file)
 
@@ -60,7 +72,9 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 ├── CLAUDE.md                 # pointer to AGENTS.md
 ├── .cursor/rules/            # pointer to AGENTS.md
 ├── docs/PRD.md               # canonical product specification
-├── docs/specs/               # design reasoning and plans behind the PRD, each with its -plan.md: home-read-experience,
+├── docs/design.md            # the design guide: principles, tokens, patterns, the scale playbook, the a11y floor
+├── docs/specs/               # design reasoning and plans behind the PRD, each with its -plan.md: design-phase,
+│                             # home-read-experience,
 │                             # api-reference, channel-simplification, follows-single-owner, summary-json-mode,
 │                             # summary-quality, summary-coverage, and M3 as the decision record m3-ingestion (its
 │                             # -plan.md is the roadmap) plus seven child chunks m3-1-transcripts-chunking, m3-2-attempt-ledger,
@@ -445,16 +459,20 @@ contract". In code:
 
 ## Web UI code (`apps/web`)
 
-Screens, copy, and behaviour are `docs/PRD.md` §7 "Screens"; wireframes and acceptance criteria are in
-`docs/specs/home-read-experience.md` and `docs/specs/channel-simplification.md` §7. In code:
+**Design questions are answered by `docs/design.md`, not here.** Tokens, the type scale, spacing, icons, avatars,
+layout patterns, empty/loading/error/stale states, target sizes, the scale playbook and the accessibility floor all
+live in that file; consult it before writing a screen and follow it rather than inventing a local rule. What each
+screen is for and what it must show is `docs/PRD.md` §7 "Screens"; the current phase's reasoning, wireframes and
+acceptance criteria are `docs/specs/design-phase.md`. In code:
 
 - Approved dependencies: `preact`, `preact-iso`, `vite`, `@preact/preset-vite`, `tailwindcss`, `@tailwindcss/vite`,
   `daisyui`. Anything else requires approval. daisyUI 5 is the component library and Tailwind 4 the styling system
   (decided 2026-09-14, PRD §9, which withdrew the no-component-library and no-CSS-framework rules). No state
   library; `useState`/`useReducer` for state. `src/styles.css` stays the single stylesheet: it imports Tailwind,
   loads the daisyUI plugin, and declares one custom theme.
-- Four rules come with daisyUI. One custom theme, with all 35 built-in themes excluded, so no recognisable default
-  look ships. The native `<dialog>` modal method only; never the checkbox or anchor variants, which drop escape-key
+- Four rules come with daisyUI; they live here because they are build constraints, and `docs/design.md` §2.6 repeats
+  them for the people designing against them. One custom theme, with all 35 built-in themes excluded, so no
+  recognisable default look ships. The native `<dialog>` modal method only; never the checkbox or anchor variants, which drop escape-key
   closing and focus containment. The `tabs` component is unused, because section navigation is anchors, not
   client-side tab state (PRD §7), and that rule stands. And `lib/copy.ts` remains the one home for every
   user-facing phrase: daisyUI supplies form, our code supplies words.
