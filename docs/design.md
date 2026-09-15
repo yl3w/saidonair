@@ -223,14 +223,19 @@ centred. A right rail carries navigation *about* the list — days still waiting
 content.
 
 **A summary row.** Monogram, then: channel and when it became readable, in uppercase meta; the title in serif; up to
-three lines of the executive summary as the excerpt; a meta line of read state, takeaway count, episode length, and
-the publication date when it differs from the day it arrived. A check at the right marks it done without opening it.
-The excerpt is always the executive summary, never a takeaway.
+three lines of the executive summary as the excerpt; a meta line of takeaway count, episode length, and the
+publication date when it differs from the day it arrived, led by "Read" or "Unread" **in a mixed list**. A check at
+the right marks it done without opening it. The excerpt is always the executive summary, never a takeaway.
 
-**Every item on that line is a measured fact.** There is no reading-time estimate: the takeaway budget bounds a
-summary tightly enough that the number could only ever say one, two or three minutes, and said two on nearly every
-row (PRD §9, 2026-09-15). The takeaway count answers how much is in there, and it is counted rather than guessed.
-The general rule, and the one to apply to the next number somebody wants on a row: **a value that cannot vary is not
+**Every item on that line is a measured fact, and every one of them can vary.** Two consequences, both settled on
+2026-09-15 (PRD §9). There is no reading-time estimate: the takeaway budget bounds a summary tightly enough that the
+number could only ever say one, two or three minutes, and said two on nearly every row. And the read state is
+printed where it varies — History, a source, the reading view — but not in the queue, whose every row is unread by
+definition, so the word carried nothing. Where a list *is* mixed the word is owed, and §7 is why: the difference
+between a read row and an unread one may never live in colour or a dimmed row. Nor is the word printed for a caller
+the API gave no receipt state to — not following a channel is not the same as not having read something.
+
+The general rule, and the one to apply to the next thing somebody wants on a row: **a value that cannot vary is not
 information, and a guess among facts devalues the facts.**
 
 **The reading column.** Channel, title, a meta line opening with "Read" or "Unread", the lede set off by a rule, then

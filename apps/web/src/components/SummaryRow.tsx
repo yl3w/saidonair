@@ -19,11 +19,18 @@ export type Density = "full" | "compact";
  * `onOpen` fires as the title is followed, so the list can record itself as the way back
  * (lib/reading-origin.ts). The row carries its anchor id for the same reason: it is what the return
  * scrolls to.
+ *
+ * `state` says whether to print "Read" or "Unread". A mixed list owes the word — that is the
+ * accessibility floor, which forbids the difference living in colour or a dimmed row — but the queue
+ * holds unread summaries only, where the word is a constant rather than information
+ * (owner decision 2026-09-15, docs/PRD.md §9). It is never printed for a caller the API gave no
+ * receipt state to: not following an approved channel is not the same as not having read something.
  */
 export function SummaryRow({
   episode,
   density = "full",
   busy = false,
+  state = true,
   onOpen,
   onDone,
   onUndo,
@@ -31,6 +38,7 @@ export function SummaryRow({
   episode: Episode;
   density?: Density;
   busy?: boolean;
+  state?: boolean;
   onOpen?: (episode: Episode) => void;
   onDone?: (episode: Episode) => void;
   onUndo?: (episode: Episode) => void;
@@ -46,6 +54,23 @@ export function SummaryRow({
   const arrivedAt = episode.summaryAvailableAt;
   const publishedElsewhere =
     arrivedAt !== null && dayKeyOf(episode.publishedAt) !== dayKeyOf(arrivedAt);
+
+  // Built rather than written out, so the separator belongs to the line and not to whichever item
+  // happens to be second once the ones that do not apply have dropped out.
+  const meta: { key: string; text: string }[] = [];
+  if (state && episode.read !== undefined) {
+    meta.push({ key: "state", text: readStateCopy(episode.read) });
+  }
+  if (takeaways > 0) {
+    meta.push({ key: "takeaways", text: `${takeaways} takeaways` });
+  }
+  if (runtime !== null) meta.push({ key: "runtime", text: runtime });
+  if (publishedElsewhere) {
+    meta.push({
+      key: "published",
+      text: `published ${shortDate(episode.publishedAt)}`,
+    });
+  }
 
   return (
     <article
@@ -86,12 +111,11 @@ export function SummaryRow({
         )}
 
         <p class="mt-1 flex flex-wrap gap-x-2 text-meta text-ink-3">
-          <span>{readStateCopy(episode.read === true)}</span>
-          {takeaways > 0 && <span>· {takeaways} takeaways</span>}
-          {runtime !== null && <span>· {runtime}</span>}
-          {publishedElsewhere && (
-            <span>· published {shortDate(episode.publishedAt)}</span>
-          )}
+          {meta.map((item, index) => (
+            <span key={item.key}>
+              {index === 0 ? item.text : `· ${item.text}`}
+            </span>
+          ))}
         </p>
       </div>
 

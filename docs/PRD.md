@@ -639,10 +639,10 @@ somewhere extra to go.
   account it displays, and tabs do not synchronise, so two tabs may act as two people (decided 2026-09-08).
 - **Queue `/queue`:** what still needs the reader, and nothing else. Summaries with no read receipt, grouped by the
   local day they became readable, newest day first; each row carries the channel's mark, the channel and time, the
-  title, the executive summary as the excerpt — never a takeaway — and a meta line of read state, takeaway count,
-  runtime, and the publication date when it differs from the day it arrived; there is no reading-time estimate
-  (§9, 2026-09-15). A check on the row marks it done
-  without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
+  title, the executive summary as the excerpt — never a takeaway — and a meta line of takeaway count, runtime, and
+  the publication date when it differs from the day it arrived. There is no reading-time estimate, and no row says
+  "unread": every row here is, so the word would be a constant rather than the distinction it draws in a mixed list
+  (§9, 2026-09-15). A check on the row marks it done without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
   sticky across sessions; a density switch trades the excerpt, never the title; a rail lists the days still holding
   something. **It holds everything waiting, however much that is**: pages of fifty with a Show more, to the end of
   the range, never a hand-off to History at row fifty (corrected 2026-09-15, §9). It ends by saying what is
@@ -1071,6 +1071,18 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
+- **The read state is printed where it varies — decided 2026-09-15.** The same test as the entry below, applied to
+  the word beside it. A mixed list owes "read" or "unread" in words, and that is the accessibility floor talking:
+  the difference between the two kinds of row may never live in colour or a dimmed row alone. The queue is not a
+  mixed list. Every row in it is unread by definition — that is the screen — so the word was a constant with a
+  label, and it is gone from the queue's rows while staying on History's, a source's, and the reading view's, all
+  three of which hold both kinds. The reading view keeps both words rather than printing "Read" alone, because
+  making the unread state the absence of a word is the shape the floor rule exists to prevent; pairing the word
+  with the action is what History's rows already do, saying "Unread" beside the check. The same reading fixed a
+  defect: `read` is **optional** in the API, absent for anyone who is not an active follower of an approved channel
+  (§7), and the row rendered absent as "Unread" — so browsing a source you do not follow labelled every episode
+  unread, asserting a receipt state the caller cannot have and the API never claimed. The word is now printed only
+  when the API supplied one.
 - **The reading-time estimate is removed — decided 2026-09-15.** Every summary in the dev catalog read "1 min",
   including one carrying an executive summary and twelve takeaways: `Math.round(words / 220)` on 221 to 311 words,
   all of which round down to one. The first fix considered was arithmetic — a ceiling, and a slower words-per-minute

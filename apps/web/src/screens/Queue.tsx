@@ -155,6 +155,7 @@ function QueueScreen() {
                 episode={episode}
                 density={density}
                 busy={queue.busy.has(episode.episodeId)}
+                state={false}
                 onOpen={() =>
                   rememberOrigin({
                     kind: "queue",
