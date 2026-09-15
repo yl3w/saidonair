@@ -182,6 +182,15 @@ export function episodePhrase(episode: Episode): string | null {
 /** What Curate says when nothing is outstanding, once, in place of three headings and three zeroes. */
 export const NEEDS_YOU_CLEAR_COPY = "Nothing needs your attention.";
 
+/**
+ * The mark on a catalog row that is also in Needs you. It says only *that* the row is work; why is
+ * already in the row's own columns, so nothing is stated twice.
+ */
+export const NEEDS_YOU_MARK_COPY = "Needs you";
+
+/** An approved channel whose feed has never been read: a dash read as missing data, not as a fault. */
+export const NEVER_STARTED_COPY = "never started";
+
 export const BACK_COPY = "Back";
 
 /** The way through from a channel to the screen where its decisions are made. */

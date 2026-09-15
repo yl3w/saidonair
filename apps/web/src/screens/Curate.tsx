@@ -188,6 +188,7 @@ function CurateScreen() {
               filter={filter}
               busy={busy}
               errors={errors}
+              needsAttention={attention.ids}
               act={act}
             />
           </section>

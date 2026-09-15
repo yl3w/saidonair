@@ -1,6 +1,11 @@
 import type { Channel } from "@media-digest/shared";
 import { useState } from "preact/hooks";
-import { channelStateCopy, runResultCopy } from "../lib/copy";
+import {
+  channelStateCopy,
+  NEEDS_YOU_MARK_COPY,
+  NEVER_STARTED_COPY,
+  runResultCopy,
+} from "../lib/copy";
 import { relativeTime } from "../lib/time";
 import type { Act } from "./AttentionList";
 import type { CatalogFilter } from "./CatalogHealth";
@@ -24,6 +29,13 @@ const COLUMNS: { column: Column; label: string; sortable: boolean }[] = [
  * are 13.5 px, primaries at full ink, and the density comes from structure rather than small type
  * (docs/design.md §1, §3). What a long table needs is here — a sorted column, the status filters
  * above it, and 25 rows at a time — because those controls are part of the design, not a later fix.
+ *
+ * `needsAttention` is the set of channels that are also in **Needs you**, marked here so the
+ * inventory and the worklist cannot disagree (owner decision 2026-09-15, docs/PRD.md §9). The mark
+ * says only *that* a row is work; **why** is already in the row's own columns — "Awaiting owner
+ * approval" under State, "1 failed" in the episodes cell, "never started" under Latest run — so
+ * nothing is said twice. It comes from the same `needsYou` derivation the section renders from,
+ * passed in rather than recomputed, because two answers to one question is the fault being fixed.
  */
 export function CatalogTable({
   channels,
@@ -31,6 +43,7 @@ export function CatalogTable({
   filter,
   busy,
   errors,
+  needsAttention,
   act,
 }: {
   channels: Channel[];
@@ -38,6 +51,7 @@ export function CatalogTable({
   filter: CatalogFilter;
   busy: Record<string, boolean>;
   errors: Record<string, string>;
+  needsAttention: ReadonlySet<string>;
   act: Act;
 }) {
   const [sort, setSort] = useState<Sort>({ column: "title", ascending: true });
@@ -115,6 +129,11 @@ export function CatalogTable({
                   >
                     {c.title}
                   </a>
+                  {needsAttention.has(c.channelId) && (
+                    <p class="text-label uppercase text-owner">
+                      {NEEDS_YOU_MARK_COPY}
+                    </p>
+                  )}
                   {errors[c.channelId] && (
                     <p class="text-meta text-consequence">
                       {errors[c.channelId]}
@@ -146,7 +165,9 @@ export function CatalogTable({
                 <td class="py-2 pr-4 text-ink-2">
                   {c.management.latestRun
                     ? `${c.management.latestRun.kind} · ${runResultCopy(c.management.latestRun)}`
-                    : "—"}
+                    : c.management.neverStarted
+                      ? NEVER_STARTED_COPY
+                      : "—"}
                 </td>
                 <td class="py-2">
                   <ChannelStatusActions

@@ -24,6 +24,8 @@ export type NeedsYou = {
   failed: Channel[];
   /** Approved channels with no discovery run at all. */
   neverStarted: Channel[];
+  /** Every channel in any of the three, so the catalog table can mark the rows that are work. */
+  ids: ReadonlySet<string>;
   total: number;
 };
 
@@ -48,6 +50,9 @@ export function needsYou(channels: readonly Channel[]): NeedsYou {
     waiting,
     failed,
     neverStarted,
+    ids: new Set(
+      [...waiting, ...failed, ...neverStarted].map((c) => c.channelId),
+    ),
     total: waiting.length + failed.length + neverStarted.length,
   };
 }

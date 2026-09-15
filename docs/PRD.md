@@ -720,7 +720,10 @@ somewhere extra to go.
   - **Catalog**: the health strip from `GET /catalog` — channel counts, which double as the table's status
     filters, then episodes by status, transcript credits and key status, and the last successful ingestion — then
     every channel in a table with a sorted column and 25 rows at a time: state, available over tracked episodes
-    with skipped and failed counts, last summary, followers, latest run, and the actions its status allows.
+    with skipped and failed counts, last summary, followers, latest run, and the actions its status allows. **A row
+    that is also in Needs you is marked** (§9, 2026-09-15) — the mark says only that it is work, because why is
+    already in the row's own columns; and a channel whose feed has never been read says **never started** under
+    Latest run rather than showing a dash.
     Follower counts are real; the emails behind them appear only beside a channel waiting for review.
   - **Reviewed**: every decision already made, newest first, with the reviewer, the time and the note.
 - **Channel review `/curate/:id`:** the management header — identity, then the channel's facts in a labelled grid
@@ -1188,6 +1191,15 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **The inventory marks what the worklist holds — decided 2026-09-15.** Curate shows the same catalog twice: Needs
+  you is the handful outstanding, the table is every channel. A row in the table gave no sign it was also in the
+  worklist, so an owner scrolling the inventory could not tell what was urgent without scrolling back up. Each row
+  in both now carries an amber **Needs you** in the title cell, from the same `needsYou` derivation the section
+  renders from — passed in rather than recomputed, because two answers to one question is the fault being fixed.
+  The mark says only **that** a row is work; *why* is already in the columns that own it, so nothing is stated
+  twice. Which turned up the one fact no column stated: an approved channel whose feed has never been read showed a
+  dash under Latest run, and a dash reads as missing data rather than as a fault — it says **never started** now,
+  in words, in the column that owns it.
 - **`attention.failedEpisodes` counts approved channels only — corrected 2026-09-15.** It read `episodes.failed`,
   the catalog-wide total, and a failed episode can outlive its channel's place in the catalog: declining stops
   discovery but not recovery (§4.2 rule 28), so an episode can exhaust its 48 hours after the channel is gone.

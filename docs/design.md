@@ -368,6 +368,12 @@ radios — one group split across two copies, of which the visible half shows no
 A popover that can only be closed by the button that opened it is a trap, on a touch screen most of all. Every one
 closes on Escape and on a press outside it; a sheet is a native `<dialog>` and has both already (§2.6).
 
+**Two views of one set agree, and say so from one derivation.** Where a screen shows both a worklist and the
+inventory it is drawn from, a row in the inventory carries a mark saying it is in the worklist — and both read from
+the same computed answer, never from two filters written twice (2026-09-15, PRD §9). The mark says only *that* the
+row is work: **why** belongs to the columns that own it, and a row that states its reason twice is worse than one
+that states it once.
+
 **An empty category does not announce itself.** A screen that lists several kinds of outstanding work shows the
 kinds that have some, and says the whole thing is clear **once** — not a heading, a zero and a sentence per kind,
 which is what a healthy day looked like in Curate (2026-09-15, PRD §9). The counts belong on the headings that
