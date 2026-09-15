@@ -3,8 +3,7 @@
 **Implements:** `docs/specs/design-phase.md` under `AGENTS.md`; PRD §7, §4.4, §9, §10.
 **Written:** 2026-09-14, against `main` at `f86ebfb`.
 **Status:** APPROVED 2026-09-15 with both dependency questions answered — fonts are self-hosted, and `lucide-preact`
-is the icon dependency (owner decision, hard rule 1 satisfied). **Steps 1 to 7 implemented 2026-09-15**; Steps 8 and 9
-remain. What each step actually landed, and what it owes, is in the record at the end of this file.
+is the icon dependency (owner decision, hard rule 1 satisfied). **Steps 1 to 8 implemented 2026-09-15**; Step 9 remains. What each step actually landed, and what it owes, is in the record at the end of this file.
 **Shape:** nine steps, reordered 2026-09-15 so the two API steps come first. Steps 1 and 2 are API and carry tests; Steps 3 to 9 are web and carry a hand
 walkthrough, because `apps/web` is typecheck and lint only (`AGENTS.md` → Testing). One commit per step, `pnpm check`
 green before the next begins. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
@@ -205,6 +204,8 @@ turned out to be wrong about the world, the correction is here rather than rewri
 | 6 | `56bfd69` | **The calendar steps five weeks, not a month** — a month view is four, five or six rows and `docs/design.md` §5 asks for a height that does not grow; the heading names the months covered. Also closed a Step 5 shortfall now that `Sheet` existed: the channel filter is a bottom sheet on a phone (§3), which moves when the choice lands — a popover applies each tap, a sheet applies on its footer button. `lib/day.ts` was checked in node against the two days a year that are not 24 hours long. |
 
 | 7 | `7c9b59a` | **A third route the plan assumed existed.** §4.6's middle step — verify against the long-form feed — had nothing to call: `POST /channels` verifies but creates and follows in the same breath, which would add a channel to the shared catalog on every paste. `GET /channels/feed?channelId=` reads both public feeds, counts the overlap and stores nothing. The add box left Curate for Sources, where §4.6 puts it. |
+
+| 8 | `1afde9e` | **8.3 was already right.** The plan said the built screen offered Skip on a pending row; both the channel screen and the attention list already gated it on `status === "failed"` — a *wireframe* was what got it wrong, and §4.8's rule is what kept it out of the rebuild. The decline confirmation moved from `window.confirm` to a native `<dialog>` naming what followers lose; an unavailable Retry carries its reason on the row; a screen that could not refresh names how old its numbers are. `Owner.tsx` / `OwnerChannel.tsx` became `Curate.tsx` / `CurateChannel.tsx`, and with this every class name in the app resolves in the built CSS — the unstyled middle is over. |
 
 **Owed:** the hand walkthroughs of Steps 3 to 5 — open → Done → next, and the row check — which need a dev catalog
 with summaries in it. The local Durable Objects were wiped on 2026-09-15 for the `episodeId` rename, so they wait on
