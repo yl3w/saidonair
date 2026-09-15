@@ -169,6 +169,15 @@ export const CHANNEL_ACTION_COPY = {
   withdraw: "Withdraw approval",
 } as const;
 
+/**
+ * A reader's own act on a channel, named with the channel: the control is a glyph, so this is what
+ * assistive technology and a resting pointer are told, and a list of twenty-five must not answer
+ * "Follow" twenty-five times.
+ */
+export function followActionCopy(following: boolean, title: string): string {
+  return `${following ? "Unfollow" : "Follow"} ${title}`;
+}
+
 /** How many readers a catalog decision reaches, beside the controls rather than only in the dialog. */
 export function followerCountCopy(count: number): string {
   if (count === 0) return "No followers";

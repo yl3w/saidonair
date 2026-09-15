@@ -5,6 +5,7 @@ import { useLocation } from "preact-iso";
 import { api } from "../api";
 import { AddChannel } from "../components/AddChannel";
 import { Avatar } from "../components/Avatar";
+import { FollowButton } from "../components/FollowButton";
 import { Icon } from "../components/Icon";
 import { Page } from "../components/Page";
 import {
@@ -253,24 +254,13 @@ function SourceRow({
         >
           Request again
         </button>
-      ) : channel.following ? (
-        <button
-          type="button"
-          class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-ink-2"
-          disabled={busy}
-          onClick={onUnfollow}
-        >
-          Unfollow
-        </button>
       ) : (
-        <button
-          type="button"
-          class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
-          disabled={busy}
-          onClick={onFollow}
-        >
-          Follow
-        </button>
+        <FollowButton
+          title={channel.title}
+          following={channel.following}
+          busy={busy}
+          onClick={channel.following ? onUnfollow : onFollow}
+        />
       )}
     </article>
   );

@@ -7,6 +7,7 @@ import {
   type ChannelAct,
   ChannelStatusActions,
 } from "../components/ChannelStatusActions";
+import { FollowButton } from "../components/FollowButton";
 import { Page } from "../components/Page";
 import {
   fullDate,
@@ -240,16 +241,12 @@ function Header({
           </p>
         </div>
         {channel.status !== "declined" && (
-          <button
-            type="button"
-            class={`btn btn-sm min-h-11 border-edge bg-panel text-ui ${
-              channel.following ? "text-ink-2" : "text-primary"
-            }`}
-            disabled={busy}
+          <FollowButton
+            title={channel.title}
+            following={channel.following}
+            busy={busy}
             onClick={onFollow}
-          >
-            {channel.following ? "Unfollow" : "Follow"}
-          </button>
+          />
         )}
       </div>
 

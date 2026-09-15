@@ -125,8 +125,8 @@ rules are 1 px `--rule`. One shadow, and only on things that float: popovers, sh
 **Lucide**, through `lucide-preact`, at stroke-width 2 with round caps and joins, rendered at 16, 20 or 24 px —
 `Icon.tsx` fixes those defaults so no screen sets them by hand. The set in use is small and deliberate: `chevron-*`,
 `plus`, `check`, `search`, `calendar`, `list`, `list-filter`, `message-square`, `circle-plus`, `circle-alert`,
-`table`, `external-link`, `rotate-cw`, `pause`, `play`, `x`. When a feature needs another, take it from Lucide by
-name; never draw your own, and never use emoji anywhere in the product.
+`table`, `external-link`, `rotate-cw`, `pause`, `play`, `minus`, `x`. When a feature needs another, take it from
+Lucide by name; never draw your own, and never use emoji anywhere in the product.
 
 **When a control may be a glyph instead of a word** (2026-09-15, PRD §9). All three have to hold: it is
 **reversible**, so a mis-tap costs nothing; the glyph is **conventional**, meaning the reader has met it in other
@@ -136,6 +136,13 @@ there is no honest glyph in any case, since `x`, `ban` and `circle-minus` all re
 deletes nothing. The word is still the control's name: a glyph takes it as its accessible name and its tooltip, and
 a list with room for the word uses the word. **A mixed group is the point, not a compromise** — two quiet glyphs
 beside one red word say which acts are knobs and which is a decision, without a divider.
+
+Following is `plus` and unfollowing `minus`, not the commoner `plus`/`check`, because **`check` already means "mark
+this summary done"** and one glyph with two meanings on screens a reader crosses in a session is worse than a long
+word. Beware the `user-*` family here: `user-plus` means *add a person*, and on screens that also count followers it
+would read as "add a follower". **A reader's own act is a bordered box; the owner's are bare** — the personal and
+catalog-wide separation carried by form. Where a glyph names a specific thing, its accessible name names that thing
+too: "Follow Computerphile", never twenty-five buttons all called "Follow".
 
 ### 2.5 Avatars
 
@@ -421,6 +428,11 @@ from, and offers `Done` only where there is no receipt yet (§3, §4; PRD §9).
   principle 7 says words are design. Against it: thirty text buttons are louder in a long list than thirty ticks,
   and `check` is in the icon set on purpose. The accessible name is already right — *Mark "…" done* — so this is
   about what a sighted reader is shown, not about the floor.
+- **Whether a source row should say "Following" as a state** (raised 2026-09-15). Today the only sign is the
+  button's own verb — a `minus` where a `plus` would be — so telling which of twenty-five channels you follow means
+  reading twenty-five controls. An action label is doing a state's job, which §4 says it should not: words first,
+  then weight or shape, then colour. The counter is that a row already carries "12 unread" when there is something
+  to read, which implies a follow, and a second marker beside it may be noise.
 - Whether losing a read summary from History when its channel is unfollowed surprises people enough to change the
   rule. Today History renders current eligible follows; the receipt survives and returns on a refollow.
 - Chat titles: nothing sets `chats.title`, so a chat is named by its first question. Either a rename route or drop

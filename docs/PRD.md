@@ -1090,6 +1090,19 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the attention list, which has room, spells "Check feed" out. Last, the **follower count now sits beside the
   controls** on a channel page rather than appearing for the first time in the confirmation dialog: a consequence
   should be visible before it is chosen, not explained after.
+- **Follow is a glyph too — decided 2026-09-15.** `plus` to follow, `minus` to unfollow, on a source's row and on
+  its own page, through one `FollowButton` the two screens had been spelling out separately. It passes the three
+  conditions comfortably: trivially reversible, since the glyph beside it is the reversal; conventional wherever
+  anything is subscribed to; and the thing a reader does most on that screen. It also reads faster down a list than
+  the words did, two shapes differing at a glance where "Follow" and "Unfollow" differ by a prefix. **Not** the
+  commoner `plus`/`check` pair: `check` already means "mark this summary done" on every queue and History row, and
+  one glyph with two meanings on screens a reader crosses in a session is worse than a long word. Not the `user-*`
+  family either, which means *add a person* — on screens that also count followers, `user-plus` would read as "add
+  a follower". The control keeps its border where the owner's glyphs beside it have none, so a reader's own act and
+  a decision about the shared catalog are told apart by form; and its accessible name carries the channel, so a
+  reader tabbing twenty-five rows does not meet twenty-five buttons called "Follow". **Request again** stays a
+  word: it is a different act, it is rare, and no glyph means it. Whether a *state* marker should say "Following"
+  beside a channel's name — the list currently leaves that to the button's verb — is open in `docs/design.md` §9.
 - **A row is identified by what the list does not already say — decided 2026-09-15.** In a queue or a day of
   History, which mix channels, that is the source: the mark, the name, and the time it arrived. On a channel's own
   page it is not, and repeating one monogram and one name down thirty rows says nothing thirty times. Those rows
