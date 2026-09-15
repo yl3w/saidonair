@@ -55,7 +55,7 @@ function SettingsScreen() {
 
   return (
     <Page measure="reading">
-      <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+      <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
         Account
       </h1>
 
@@ -83,7 +83,7 @@ function SettingsScreen() {
 
       <Section
         title="Reading"
-        note="Kept in this browser. Another machine of yours can read differently."
+        note="Applies to every page, and kept in this browser \u2014 another machine of yours can read differently."
       >
         <div class="flex flex-col gap-3">
           <Choice
@@ -114,24 +114,10 @@ function SettingsScreen() {
             onChange={(readingTheme) => change({ readingTheme })}
           />
         </div>
-        <div
-          data-reading-theme={settings.readingTheme}
-          class={`mt-4 rounded border border-reading-rule p-4 ${
-            settings.readingFont === "serif" ? "font-serif" : "font-sans"
-          } ${
-            settings.readingSize === "small"
-              ? "text-excerpt"
-              : settings.readingSize === "large"
-                ? "text-lede"
-                : "text-body"
-          }`}
-        >
-          <p class="text-reading-ink-3 text-label uppercase">Preview</p>
-          <p class="mt-1 text-reading-ink">
-            He spent the first twenty minutes on why the old measurement was
-            wrong, and the rest on what replaces it.
-          </p>
-        </div>
+        <p class="mt-4 font-reading text-body text-ink-2">
+          He spent the first twenty minutes on why the old measurement was
+          wrong, and the rest on what replaces it.
+        </p>
       </Section>
 
       <Section
@@ -159,7 +145,7 @@ function SettingsScreen() {
 
       {isOwner && (
         <Section title="Curate" class="lg:hidden">
-          <p class="font-serif text-body text-ink-2">
+          <p class="font-reading text-body text-ink-2">
             {curateWaitingCopy(waiting)}
           </p>
         </Section>
@@ -248,7 +234,7 @@ function Section({
     <section class={`mt-8 border-t border-rule pt-5 ${className}`}>
       <h2 class="text-label uppercase text-ink-3">{title}</h2>
       {note !== undefined && (
-        <p class="mt-1 font-serif text-excerpt text-ink-2">{note}</p>
+        <p class="mt-1 font-reading text-excerpt text-ink-2">{note}</p>
       )}
       <div class="mt-3">{children}</div>
     </section>

@@ -32,7 +32,7 @@ export function ReviewQueue({
         <span>{waiting.length}</span>
       </h3>
       {waiting.length === 0 ? (
-        <p class="mt-1 font-serif text-excerpt text-ink-2">
+        <p class="mt-1 font-reading text-excerpt text-ink-2">
           Nothing is waiting for a decision.
         </p>
       ) : (
@@ -58,12 +58,14 @@ export function ReviewedList({ channels }: { channels: Channel[] }) {
     .sort((a, b) => (b.reviewedAt ?? 0) - (a.reviewedAt ?? 0));
   return (
     <section id="reviewed" class="mt-10">
-      <h2 class="flex items-baseline gap-2 font-serif text-section font-semibold text-ink">
+      <h2 class="flex items-baseline gap-2 font-reading text-section font-semibold text-ink">
         Reviewed
         <span class="text-meta font-normal text-ink-3">{reviewed.length}</span>
       </h2>
       {reviewed.length === 0 ? (
-        <p class="mt-2 font-serif text-excerpt text-ink-2">No decisions yet.</p>
+        <p class="mt-2 font-reading text-excerpt text-ink-2">
+          No decisions yet.
+        </p>
       ) : (
         <div class="mt-2 border-t border-rule">
           {reviewed.map((c) => (

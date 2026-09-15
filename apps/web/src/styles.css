@@ -76,14 +76,14 @@
   --tint-6-bg: #e8dfe6;
   --tint-6-ink: #4f4350;
 
-  /* The reading surface's own tokens, defaulting to light so the column renders before a reader
-   * has chosen anything. `[data-reading-theme]` below overrides them. */
-  --reading-ground: var(--ground);
-  --reading-ink: var(--ink);
-  --reading-ink-2: var(--ink-2);
-  --reading-ink-3: var(--ink-3);
-  --reading-rule: var(--rule);
-  --reading-accent: var(--accent);
+  /**
+   * How the reader has set their type. `--font-reading` is the family everything written to be read
+   * uses — titles, excerpts, summaries, takeaways, empty-state sentences — and `--reading-scale`
+   * multiplies those sizes and nothing else, so the chrome keeps its own scale and the 12 px floor
+   * holds at every setting. Both are switched by the attributes on `<html>` further down.
+   */
+  --font-reading: var(--font-serif);
+  --reading-scale: 1;
 }
 
 /**
@@ -96,6 +96,8 @@
  * its `primary` (see the theme block). Use `text-primary` / `bg-primary`, or `var(--accent)`.
  */
 @theme inline {
+  --font-reading: var(--font-reading);
+
   /* 6 px, the one radius a card does not use (docs/design.md §2.3). */
   --radius-modal: var(--radius-modal);
 
@@ -108,13 +110,6 @@
   --color-edge: var(--edge);
   --color-owner: var(--owner);
   --color-consequence: var(--consequence);
-
-  --color-reading-ground: var(--reading-ground);
-  --color-reading-ink: var(--reading-ink);
-  --color-reading-ink-2: var(--reading-ink-2);
-  --color-reading-ink-3: var(--reading-ink-3);
-  --color-reading-rule: var(--reading-rule);
-  --color-reading-accent: var(--reading-accent);
 }
 
 /**
@@ -126,32 +121,53 @@
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif;
 
-  --text-reading-title: 2.25rem; /* 36 px */
+  --text-reading-title: calc(2.25rem * var(--reading-scale)); /* 36 px */
   --text-reading-title--line-height: 1.16;
   --text-reading-title--letter-spacing: -0.015em;
-  --text-reading-title-sm: 1.5625rem; /* 25 px, a phone */
+  --text-reading-title-sm: calc(
+    1.5625rem *
+    var(--reading-scale)
+  ); /* 25 px, a phone */
   --text-reading-title-sm--line-height: 1.2;
   --text-reading-title-sm--letter-spacing: -0.015em;
 
-  --text-screen-title: 1.6875rem; /* 27 px */
+  --text-screen-title: calc(1.6875rem * var(--reading-scale)); /* 27 px */
   --text-screen-title--line-height: 1.2;
   --text-screen-title--letter-spacing: -0.01em;
 
-  --text-section: 1.1875rem; /* 19 px, day headers and chat titles */
+  --text-section: calc(
+    1.1875rem *
+    var(--reading-scale)
+  ); /* 19 px, day headers and chat titles */
   --text-section--line-height: 1.3;
 
-  --text-row: 1.25rem; /* 20 px, a row title at full density */
+  --text-row: calc(
+    1.25rem *
+    var(--reading-scale)
+  ); /* 20 px, a row title at full density */
   --text-row--line-height: 1.25;
-  --text-row-sm: 1.0625rem; /* 17 px, a phone */
+  --text-row-sm: calc(1.0625rem * var(--reading-scale)); /* 17 px, a phone */
   --text-row-sm--line-height: 1.3;
-  --text-row-compact: 1rem; /* 16 px; the density switch trades the excerpt, never the title */
+  --text-row-compact: calc(
+    1rem *
+    var(--reading-scale)
+  ); /* 16 px; the density switch trades the excerpt, never the title */
   --text-row-compact--line-height: 1.35;
 
-  --text-lede: 1.1875rem; /* 19 px, the executive summary */
+  --text-lede: calc(
+    1.1875rem *
+    var(--reading-scale)
+  ); /* 19 px, the executive summary */
   --text-lede--line-height: 1.58;
-  --text-body: 1.0625rem; /* 17 px, takeaways and chat answers */
+  --text-body: calc(
+    1.0625rem *
+    var(--reading-scale)
+  ); /* 17 px, takeaways and chat answers */
   --text-body--line-height: 1.55;
-  --text-excerpt: 0.9375rem; /* 15 px, three lines at most in a row */
+  --text-excerpt: calc(
+    0.9375rem *
+    var(--reading-scale)
+  ); /* 15 px, three lines at most in a row */
   --text-excerpt--line-height: 1.5;
 
   --text-ui: 0.875rem; /* 14 px, nav, buttons, inputs */
@@ -250,40 +266,130 @@
 }
 
 /**
- * The reading surface, and only the reading surface (docs/design.md §2.7). Three themes through a
- * `data-reading-theme` attribute and its own token block: this is not a product-wide dark mode and
- * it never touches the daisyUI theme, so the one-custom-theme rule stands untouched. Every value
- * below meets the 4.5:1 floor against its own ground.
+ * The reader's theme, applied to the whole product (owner decision 2026-09-15, reversing
+ * §2.7's "the reading surface, and only the reading surface" — reading preferences apply to every
+ * page). Three attributes on `<html>`, set by `lib/settings.ts` and again by a small script in
+ * `index.html` before first paint so dark never starts white.
+ *
+ * Because every colour in the product is one of the tokens above and every utility resolves through
+ * `var(--token)`, a theme is a block of token values and nothing else: no component knows which one
+ * is on. daisyUI's own slots are redefined with them, or its components would stay light around a
+ * dark page — the selector here outranks the `:where(:root)` the theme plugin emits.
+ *
+ * Every value was derived and measured rather than picked: each theme's six text colours against
+ * both its grounds, the inverted calendar cell, and all six avatar monograms on their tints. The
+ * palest is 5.21:1 and nothing is below the 4.5:1 floor.
  */
-[data-reading-theme] {
-  background-color: var(--reading-ground);
-  color: var(--reading-ink);
-}
-
-[data-reading-theme="light"] {
-  --reading-ground: #fdfcfa;
-  --reading-ink: #1b1917;
-  --reading-ink-2: #57524c;
-  --reading-ink-3: #726b63;
-  --reading-rule: #e6e1d9;
-  --reading-accent: #35618f;
-}
-
 [data-reading-theme="sepia"] {
-  --reading-ground: #f3ead7;
-  --reading-ink: #241f18;
-  --reading-ink-2: #55493a;
-  --reading-ink-3: #6b5d49;
-  --reading-rule: #ded0b4;
-  --reading-accent: #2d567f;
+  color-scheme: light;
+
+  --ground: #f3ead7;
+  --panel: #faf3e3;
+  --ink: #241f18;
+  --ink-2: #55493a;
+  --ink-3: #6b5d49;
+  --rule: #ded0b4;
+  --edge: #d2c3a4;
+  --accent: #2d567f;
+  --owner: #7a5c15;
+  --consequence: #8a2f28;
+
+  --tint-1-bg: #e6dcc4;
+  --tint-1-ink: #443c2c;
+  --tint-2-bg: #dee0c6;
+  --tint-2-ink: #3d4430;
+  --tint-3-bg: #ecdcc6;
+  --tint-3-ink: #4e4030;
+  --tint-4-bg: #dcdfdf;
+  --tint-4-ink: #3c4348;
+  --tint-5-bg: #e2e2c2;
+  --tint-5-ink: #42472f;
+  --tint-6-bg: #e8dad9;
+  --tint-6-ink: #4a3a3a;
+
+  --color-base-100: #faf3e3;
+  --color-base-200: #f3ead7;
+  --color-base-300: #ded0b4;
+  --color-base-content: #241f18;
+  --color-primary: #2d567f;
+  --color-primary-content: #faf3e3;
+  --color-secondary: #55493a;
+  --color-secondary-content: #faf3e3;
+  --color-accent: #7a5c15;
+  --color-accent-content: #faf3e3;
+  --color-neutral: #241f18;
+  --color-neutral-content: #f3ead7;
+  --color-info: #2d567f;
+  --color-info-content: #faf3e3;
+  --color-success: #2d567f;
+  --color-success-content: #faf3e3;
+  --color-warning: #7a5c15;
+  --color-warning-content: #faf3e3;
+  --color-error: #8a2f28;
+  --color-error-content: #faf3e3;
 }
 
 [data-reading-theme="dark"] {
   color-scheme: dark;
-  --reading-ground: #16181b;
-  --reading-ink: #e9e7e3;
-  --reading-ink-2: #b9b4ad;
-  --reading-ink-3: #9a948c;
-  --reading-rule: #2e3136;
-  --reading-accent: #8fb6e3;
+
+  --ground: #16181b;
+  --panel: #1e2127;
+  --ink: #e9e7e3;
+  --ink-2: #b9b4ad;
+  --ink-3: #9a948c;
+  --rule: #2e3136;
+  --edge: #3c4149;
+  --accent: #8fb6e3;
+  --owner: #d7b262;
+  --consequence: #ee9d95;
+
+  --tint-1-bg: #31353c;
+  --tint-1-ink: #cfd4dc;
+  --tint-2-bg: #2f3a34;
+  --tint-2-ink: #c7d8cb;
+  --tint-3-bg: #3b3430;
+  --tint-3-ink: #ddcfc4;
+  --tint-4-bg: #2f3644;
+  --tint-4-ink: #c8d3e6;
+  --tint-5-bg: #353a2e;
+  --tint-5-ink: #d3dbc2;
+  --tint-6-bg: #3a3140;
+  --tint-6-ink: #d8c9de;
+
+  --color-base-100: #1e2127;
+  --color-base-200: #16181b;
+  --color-base-300: #2e3136;
+  --color-base-content: #e9e7e3;
+  --color-primary: #8fb6e3;
+  --color-primary-content: #16181b;
+  --color-secondary: #b9b4ad;
+  --color-secondary-content: #16181b;
+  --color-accent: #d7b262;
+  --color-accent-content: #16181b;
+  --color-neutral: #e9e7e3;
+  --color-neutral-content: #16181b;
+  --color-info: #8fb6e3;
+  --color-info-content: #16181b;
+  --color-success: #8fb6e3;
+  --color-success-content: #16181b;
+  --color-warning: #d7b262;
+  --color-warning-content: #16181b;
+  --color-error: #ee9d95;
+  --color-error-content: #16181b;
+}
+
+/** The reader's type. Serif is the default because the reading column is the product. */
+[data-reading-font="sans"] {
+  --font-reading: var(--font-sans);
+}
+
+/**
+ * The reader's size, as a multiplier on the content roles alone. 0.92 keeps the smallest content
+ * role — a 15 px excerpt — at 13.8 px, above the 12 px floor (docs/design.md §7).
+ */
+[data-reading-size="small"] {
+  --reading-scale: 0.92;
+}
+[data-reading-size="large"] {
+  --reading-scale: 1.12;
 }

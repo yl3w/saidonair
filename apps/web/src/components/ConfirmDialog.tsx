@@ -44,8 +44,10 @@ export function ConfirmDialog({
       onCancel={onClose}
     >
       <div class="modal-box rounded-modal border border-edge bg-panel">
-        <h2 class="font-serif text-section font-semibold text-ink">{title}</h2>
-        <p class="mt-2 font-serif text-body text-ink-2">{question}</p>
+        <h2 class="font-reading text-section font-semibold text-ink">
+          {title}
+        </h2>
+        <p class="mt-2 font-reading text-body text-ink-2">{question}</p>
         <div class="mt-5 flex justify-end gap-2">
           <button
             type="button"

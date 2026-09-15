@@ -90,7 +90,7 @@ function CurateScreen() {
   return (
     <Page measure="wide" desktopOnly>
       <header class="flex flex-wrap items-baseline gap-4">
-        <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+        <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
           Curate
         </h1>
         <nav class="flex flex-wrap gap-4" aria-label="Sections">
@@ -131,7 +131,7 @@ function CurateScreen() {
       {channels.status === "ready" && (
         <>
           <section id="needs-you" class="mt-8">
-            <h2 class="font-serif text-section font-semibold text-ink">
+            <h2 class="font-reading text-section font-semibold text-ink">
               Needs you
             </h2>
             <ReviewQueue
@@ -149,7 +149,7 @@ function CurateScreen() {
           </section>
 
           <section id="catalog" class="mt-10">
-            <h2 class="font-serif text-section font-semibold text-ink">
+            <h2 class="font-reading text-section font-semibold text-ink">
               Catalog
             </h2>
             <div class="mt-3">

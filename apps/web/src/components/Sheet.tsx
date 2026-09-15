@@ -47,7 +47,9 @@ export function Sheet({
           class="mx-auto mb-3 h-1 w-10 rounded-full bg-edge"
           aria-hidden="true"
         />
-        <h2 class="font-serif text-section font-semibold text-ink">{title}</h2>
+        <h2 class="font-reading text-section font-semibold text-ink">
+          {title}
+        </h2>
 
         <div class="mt-3">{children}</div>
 

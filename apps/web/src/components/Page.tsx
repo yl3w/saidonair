@@ -32,7 +32,7 @@ export function Page({
   const column = (
     <main class={`w-full min-w-0 ${MEASURES[measure]}`}>
       {desktopOnly && (
-        <p class="font-serif text-body text-ink-2 lg:hidden">
+        <p class="font-reading text-body text-ink-2 lg:hidden">
           Curate needs a wider screen than this one. What is waiting is on your
           Account screen, and the decisions that take five seconds are beside
           each channel on{" "}

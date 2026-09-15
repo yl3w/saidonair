@@ -77,21 +77,18 @@ function ReadingScreen() {
   const summary = episode?.summary ?? null;
 
   return (
-    <div
-      data-reading-theme={settings.readingTheme}
-      class="min-h-dvh bg-reading-ground text-reading-ink"
-    >
+    <div class="min-h-dvh bg-ground text-ink">
       <div
-        class="fixed inset-x-0 top-0 z-30 h-0.5 bg-reading-accent"
+        class="fixed inset-x-0 top-0 z-30 h-0.5 bg-primary"
         style={{ width: `${progress}%` }}
         role="presentation"
       />
 
-      <header class="sticky top-0 z-20 border-b border-reading-rule bg-reading-ground">
+      <header class="sticky top-0 z-20 border-b border-rule bg-ground">
         <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
           <a
             href="/queue"
-            class="flex size-11 items-center justify-center text-reading-ink-2"
+            class="flex size-11 items-center justify-center text-ink-2"
           >
             <Icon of={ArrowLeft} size={20} label="Back to the queue" />
           </a>
@@ -99,7 +96,7 @@ function ReadingScreen() {
           <div class="relative ml-auto">
             <button
               type="button"
-              class="min-h-11 px-3 font-serif text-ui text-reading-ink-2"
+              class="min-h-11 px-3 font-reading text-ui text-ink-2"
               aria-expanded={panelOpen}
               onClick={() => setPanelOpen(!panelOpen)}
             >
@@ -140,7 +137,7 @@ function ReadingScreen() {
 
           {episode !== null && (
             <a
-              class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-reading-accent"
+              class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
               href={`https://youtu.be/${episode.episodeId}`}
             >
               Watch
@@ -182,20 +179,16 @@ function ReadingScreen() {
         {error !== null && <p class="mb-4 text-ui text-consequence">{error}</p>}
 
         {episode !== null && (
-          <article
-            class={
-              settings.readingFont === "serif" ? "font-serif" : "font-sans"
-            }
-          >
-            <p class="text-label uppercase text-reading-ink-3">
+          <article class="font-reading">
+            <p class="text-label uppercase text-ink-3">
               <a href={`/sources/${episode.channelId}`}>
                 {episode.channelTitle}
               </a>
             </p>
-            <h1 class="mt-2 font-serif text-reading-title-sm font-semibold text-reading-ink md:text-reading-title">
+            <h1 class="mt-2 font-reading text-reading-title-sm font-semibold text-ink md:text-reading-title">
               {episode.title}
             </h1>
-            <p class="mt-3 flex flex-wrap gap-x-2 text-meta text-reading-ink-3">
+            <p class="mt-3 flex flex-wrap gap-x-2 text-meta text-ink-3">
               <span>{longDate(episode.publishedAt)}</span>
               {runtimeCopy(episode.processing.durationSec) !== null && (
                 <span>· {runtimeCopy(episode.processing.durationSec)}</span>
@@ -204,22 +197,16 @@ function ReadingScreen() {
             </p>
 
             {summary === null ? (
-              <p
-                class={`mt-6 border-t border-reading-rule pt-6 ${bodySize(settings)} text-reading-ink-2`}
-              >
+              <p class="mt-6 border-t border-rule pt-6 text-body text-ink-2">
                 This episode has no summary yet.
               </p>
             ) : summary.format === "raw_fallback" ? (
-              <p
-                class={`mt-6 whitespace-pre-wrap border-t border-reading-rule pt-6 ${bodySize(settings)} text-reading-ink`}
-              >
+              <p class="mt-6 border-t border-rule pt-6 text-body whitespace-pre-wrap text-ink">
                 {summary.rawText}
               </p>
             ) : (
               <>
-                <p
-                  class={`mt-6 border-t border-reading-rule pt-6 ${ledeSize(settings)} text-reading-ink-2`}
-                >
+                <p class="mt-6 border-t border-rule pt-6 text-lede text-ink-2">
                   {summary.executiveSummary}
                 </p>
 
@@ -229,21 +216,19 @@ function ReadingScreen() {
                       key={takeaway.text}
                       class="mt-5 md:grid md:grid-cols-[4rem_1fr] md:gap-4"
                     >
-                      <span class="block text-meta text-reading-ink-3 md:pt-1 md:text-right">
+                      <span class="block text-meta text-ink-3 md:pt-1 md:text-right">
                         {takeaway.startSec === null ? (
                           "—"
                         ) : (
                           <a
-                            class="inline-flex min-h-11 items-center text-reading-accent md:justify-end"
+                            class="inline-flex min-h-11 items-center text-primary md:justify-end"
                             href={`https://youtu.be/${episode.episodeId}?t=${Math.floor(takeaway.startSec)}`}
                           >
                             {momentCopy(takeaway.startSec)}
                           </a>
                         )}
                       </span>
-                      <span
-                        class={`block ${bodySize(settings)} text-reading-ink`}
-                      >
+                      <span class="block text-body text-ink">
                         {takeaway.text}
                       </span>
                     </li>
@@ -251,7 +236,7 @@ function ReadingScreen() {
                 </ol>
 
                 {summary.topicTags.length > 0 && (
-                  <p class="mt-8 text-meta text-reading-ink-3">
+                  <p class="mt-8 text-meta text-ink-3">
                     {summary.topicTags.join(" · ")}
                   </p>
                 )}
@@ -259,13 +244,13 @@ function ReadingScreen() {
             )}
 
             {episode.related.length > 0 && (
-              <section class="mt-10 border-t border-reading-rule pt-5">
-                <h2 class="text-label uppercase text-reading-ink-3">Related</h2>
+              <section class="mt-10 border-t border-rule pt-5">
+                <h2 class="text-label uppercase text-ink-3">Related</h2>
                 <ul class="mt-2">
                   {episode.related.map((related) => (
                     <li key={related.episodeId} class="mt-1">
                       <a
-                        class="inline-flex min-h-11 items-center font-serif text-excerpt text-reading-accent"
+                        class="inline-flex min-h-11 items-center font-reading text-excerpt text-primary"
                         href={`/read/${related.episodeId}`}
                       >
                         {related.title}
@@ -280,18 +265,6 @@ function ReadingScreen() {
       </main>
     </div>
   );
-}
-
-function ledeSize(settings: ReaderSettings): string {
-  if (settings.readingSize === "small") return "text-body";
-  if (settings.readingSize === "large") return "text-reading-title-sm";
-  return "text-lede";
-}
-
-function bodySize(settings: ReaderSettings): string {
-  if (settings.readingSize === "small") return "text-excerpt";
-  if (settings.readingSize === "large") return "text-lede";
-  return "text-body";
 }
 
 function longDate(at: number): string {

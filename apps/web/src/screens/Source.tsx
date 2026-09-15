@@ -123,7 +123,7 @@ function SourceScreen() {
 
       <section class="mt-8">
         <div class="flex flex-wrap items-baseline gap-3">
-          <h2 class="mr-auto font-serif text-section font-semibold text-ink">
+          <h2 class="mr-auto font-reading text-section font-semibold text-ink">
             Episodes
           </h2>
           {years.length > 1 && (
@@ -156,7 +156,7 @@ function SourceScreen() {
         )}
 
         {episodes.status === "ready" && rows.length === 0 && (
-          <p class="mt-3 font-serif text-body text-ink-2">
+          <p class="mt-3 font-reading text-body text-ink-2">
             Nothing has been published here yet, or nothing has been discovered
             yet.
           </p>
@@ -201,7 +201,7 @@ function Header({
       <div class="flex flex-wrap items-center gap-3">
         <Avatar id={channel.channelId} name={channel.title} size={46} />
         <div class="min-w-0 flex-1">
-          <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+          <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
             {channel.title}
           </h1>
           <p class="mt-0.5 flex flex-wrap gap-x-2 text-meta text-ink-3">
@@ -233,7 +233,7 @@ function Header({
       </div>
 
       {review !== null && (
-        <p class="mt-3 font-serif text-excerpt text-ink-2">{review}</p>
+        <p class="mt-3 font-reading text-excerpt text-ink-2">{review}</p>
       )}
 
       {isOwner && (
@@ -262,7 +262,7 @@ function WaitingRow({ episode }: { episode: Episode }) {
   return (
     <article class="flex gap-3 border-b border-rule py-[18px]">
       <div class="min-w-0 flex-1">
-        <h3 class="font-serif text-row-compact font-semibold text-ink-2">
+        <h3 class="font-reading text-row-compact font-semibold text-ink-2">
           <a href={`https://youtu.be/${episode.episodeId}`}>{episode.title}</a>
         </h3>
         <p class="mt-1 flex flex-wrap gap-x-2 text-meta text-ink-3">

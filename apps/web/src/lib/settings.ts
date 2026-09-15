@@ -63,7 +63,25 @@ export function writeSettings(patch: Partial<ReaderSettings>): ReaderSettings {
   } catch {
     // Storage unavailable: the choice lives only for this page load.
   }
+  applyReaderSettings(next);
   return next;
+}
+
+/**
+ * Puts the reader's type and theme on `<html>`, where `styles.css` reads them (owner decision
+ * 2026-09-15: reading preferences apply to every page, not only the reading column). Three
+ * attributes and nothing else: no component knows which theme is on, because every colour in the
+ * product resolves through a token the theme redefines.
+ *
+ * `<html>` rather than the app root, because a native `<dialog>` renders in the top layer and would
+ * otherwise inherit nothing. `index.html` calls the same thing before first paint, so dark never
+ * starts white.
+ */
+export function applyReaderSettings(settings: ReaderSettings): void {
+  const root = document.documentElement;
+  root.dataset.readingTheme = settings.readingTheme;
+  root.dataset.readingFont = settings.readingFont;
+  root.dataset.readingSize = settings.readingSize;
 }
 
 function oneOf<T extends string>(

@@ -8,6 +8,33 @@
   </head>
   <body>
     <div id="app"></div>
+    <!--
+      The reader's theme before first paint, so dark never starts white. Deliberately duplicated
+      from lib/settings.ts rather than imported: the module bundle loads after paint, which is the
+      whole flash this avoids. Defensive throughout — blocked storage, a corrupt value and an
+      unknown name all fall through to the light default the stylesheet already carries.
+    -->
+    <script>
+      (() => {
+        const allowed = {
+          readingTheme: ["light", "sepia", "dark"],
+          readingFont: ["serif", "sans"],
+          readingSize: ["small", "medium", "large"],
+        };
+        try {
+          const stored = JSON.parse(
+            localStorage.getItem("media-digest:settings") || "{}",
+          );
+          for (const [key, values] of Object.entries(allowed)) {
+            if (values.includes(stored[key])) {
+              document.documentElement.dataset[key] = stored[key];
+            }
+          }
+        } catch {
+          // Blocked storage or a corrupt value: the stylesheet's light default already applies.
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

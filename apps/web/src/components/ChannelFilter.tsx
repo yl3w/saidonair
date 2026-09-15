@@ -189,7 +189,7 @@ function List({
           );
         })}
         {channels.length === 0 && (
-          <li class="px-3 py-3 font-serif text-excerpt text-ink-2">
+          <li class="px-3 py-3 font-reading text-excerpt text-ink-2">
             No channel by that name.
           </li>
         )}

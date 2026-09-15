@@ -670,8 +670,8 @@ somewhere extra to go.
   one-step approval; a reader's add is the request. One source shows the channel, the reader's relationship to it,
   and its episodes newest **published** with the ones lacking a summary carrying their phrase, paged by year, with
   the owner's controls beside the channel they govern.
-- **Account `/account`:** which email is reading and the only Switch account in the product; the reading column's
-  type, size and theme, kept in that browser; `system_rules` through `GET`/`PUT /preferences`, labelled as reaching
+- **Account `/account`:** which email is reading and the only Switch account in the product; the reader's type, size
+  and theme, which apply to **every page** (§9, 2026-09-15) and are kept in that browser; `system_rules` through `GET`/`PUT /preferences`, labelled as reaching
   chat answers alone; and a toggle that turns every count off. For the owner below the desktop breakpoint, one line
   saying how many things wait in Curate and that it needs a wider screen.
 - **Chats `/chats` and `/chats/:id`:** designed in the Design phase and built in M4. Independent conversations, each
@@ -1033,6 +1033,14 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   line wide: the feed parser reading `<yt:videoId>` into a `FeedEntry`, and the watch URL the transcript provider is
   given. `AGENTS.md` → Ingestion implementation states the rule. The `0001_init.sql` of both Durable Objects was
   rewritten rather than migrated, which is allowed while nothing is deployed (§5.4); dev state was wiped once.
+- **Reading preferences apply to every page — decided 2026-09-15**, reversing the Design phase's rule that the
+  theme belonged to the reading surface alone (`docs/design.md` §2.7, and §6 of the phase spec, which had put a
+  theme outside the reading column out of scope). Light, sepia and dark now repaint the whole product, and the
+  reader's type family and size govern everything written to be read. The reasoning is that someone who wants to
+  read in the dark wants to use the product in the dark, and light chrome around a dark column is the worst of both.
+  The cost was a palette: each theme needed its own ground, panel, three inks, two lines, accent, owner amber,
+  consequence red and six avatar tints, all measured against the 4.5:1 floor before being applied. Kept per browser,
+  never sent to the API: how a page looks is not something the product needs to know.
 - **Cron cadence — decided 2026-09-12:** channel discovery runs at `0 */6 * * *` UTC and episode recovery at
   `30 */6 * * *` UTC; both have a six-hour cadence. The triggers exist in production only (2026-09-13, below).
 - **Environments — decided 2026-09-13: three, dev, staging, production.** Local `wrangler dev` runs as dev against

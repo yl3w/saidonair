@@ -103,7 +103,7 @@ function QueueScreen() {
   return (
     <Page rail={<DayRail days={days.map((day) => day.key)} />}>
       <header class="flex flex-wrap items-center gap-3">
-        <h1 class="mr-auto font-serif text-screen-title font-semibold tracking-tight text-ink">
+        <h1 class="mr-auto font-reading text-screen-title font-semibold tracking-tight text-ink">
           Queue
         </h1>
         {channels.length > 1 && (
@@ -135,10 +135,10 @@ function QueueScreen() {
 
       {page.status === "ready" && rows.length === 0 && (
         <section class="mt-10">
-          <h2 class="font-serif text-section font-semibold text-ink">
+          <h2 class="font-reading text-section font-semibold text-ink">
             {nothingFollowed ? "Nothing followed yet" : QUEUE_EMPTY_TITLE}
           </h2>
-          <p class="mt-2 font-serif text-body text-ink-2">
+          <p class="mt-2 font-reading text-body text-ink-2">
             {nothingFollowed ? QUEUE_NO_FOLLOWS_NOTE : QUEUE_EMPTY_NOTE}
           </p>
           <p class="mt-4">
@@ -155,7 +155,7 @@ function QueueScreen() {
       {page.status === "ready" &&
         days.map((day) => (
           <section key={day.key} class="mt-8" id={`day-${day.key}`}>
-            <h2 class="font-serif text-section font-semibold text-ink">
+            <h2 class="font-reading text-section font-semibold text-ink">
               <a
                 class="inline-flex min-h-11 items-center"
                 href={`/history/${day.key}`}
@@ -180,7 +180,7 @@ function QueueScreen() {
       {page.status === "ready" && rows.length > 0 && (
         <footer class="mt-8">
           {page.data.nextCursor === null ? (
-            <p class="font-serif text-body text-ink-2">
+            <p class="font-reading text-body text-ink-2">
               {endOfQueueCopy(inHistory)}{" "}
               <a class="text-primary" href="/history">
                 History

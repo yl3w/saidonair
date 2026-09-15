@@ -33,10 +33,10 @@ export function Account() {
 
   return (
     <main class="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-16">
-      <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+      <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
         Said on Air
       </h1>
-      <p class="mt-1 font-serif text-body text-ink-2">
+      <p class="mt-1 font-reading text-body text-ink-2">
         What was said on the air, in text, with the minute it was said.
       </p>
 

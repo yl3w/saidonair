@@ -163,7 +163,7 @@ export function CatalogTable({
       </div>
 
       {rows.length === 0 && (
-        <p class="mt-3 font-serif text-excerpt text-ink-2">
+        <p class="mt-3 font-reading text-excerpt text-ink-2">
           No channel is in that state.
         </p>
       )}

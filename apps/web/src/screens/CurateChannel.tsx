@@ -98,13 +98,13 @@ function CurateChannelScreen() {
         )}
       </Section>
 
-      <h2 class="mt-8 font-serif text-section font-semibold text-ink">
+      <h2 class="mt-8 font-reading text-section font-semibold text-ink">
         Discovery runs
       </h2>
       <Section load={runs} label="discovery runs" reload={reloadRuns}>
         {({ runs: list }) =>
           list.length === 0 ? (
-            <p class="mt-2 font-serif text-excerpt text-ink-2">
+            <p class="mt-2 font-reading text-excerpt text-ink-2">
               No runs yet: Start checks the feed now.
             </p>
           ) : (
@@ -121,13 +121,13 @@ function CurateChannelScreen() {
         }
       </Section>
 
-      <h2 class="mt-8 font-serif text-section font-semibold text-ink">
+      <h2 class="mt-8 font-reading text-section font-semibold text-ink">
         Episodes
       </h2>
       <Section load={episodes} label="episodes" reload={reloadEpisodes}>
         {({ episodes: list }) =>
           list.length === 0 ? (
-            <p class="mt-2 font-serif text-excerpt text-ink-2">
+            <p class="mt-2 font-reading text-excerpt text-ink-2">
               No episodes yet.
             </p>
           ) : (
@@ -136,7 +136,7 @@ function CurateChannelScreen() {
         }
       </Section>
 
-      <h2 class="mt-8 font-serif text-section font-semibold text-ink">
+      <h2 class="mt-8 font-reading text-section font-semibold text-ink">
         Followers
       </h2>
       <Section load={channel} label="the channel" reload={reloadChannel}>
@@ -149,7 +149,7 @@ function CurateChannelScreen() {
             >
               {({ followers: list }) =>
                 list.length === 0 ? (
-                  <p class="mt-2 font-serif text-excerpt text-ink-2">
+                  <p class="mt-2 font-reading text-excerpt text-ink-2">
                     Nobody is waiting.
                   </p>
                 ) : (
@@ -189,7 +189,7 @@ function Header({
   const m = c.management;
   return (
     <>
-      <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+      <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
         {c.title}
       </h1>
       <p class="mt-1 text-meta text-ink-3">

@@ -1,6 +1,7 @@
 import { render } from "preact";
 import { useEffect } from "preact/hooks";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
+import { applyReaderSettings, readSettings } from "./lib/settings";
 import { Account } from "./screens/Account";
 import { Chats } from "./screens/Chats";
 import { Curate } from "./screens/Curate";
@@ -53,6 +54,10 @@ export function App() {
     </LocationProvider>
   );
 }
+
+// The theme is already on `<html>` from index.html's pre-paint script; this re-applies it from the
+// same source so a stale or hand-edited attribute cannot outlive what is stored.
+applyReaderSettings(readSettings());
 
 const root = document.getElementById("app");
 

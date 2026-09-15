@@ -78,10 +78,10 @@ function HistoryScreen() {
   if (day !== undefined && validDay === null) {
     return (
       <Page rail={calendar} railMeasure="rail-wide">
-        <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+        <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
           History
         </h1>
-        <p class="mt-3 font-serif text-body text-ink-2">
+        <p class="mt-3 font-reading text-body text-ink-2">
           {HISTORY_NOT_A_DAY_NOTE}
         </p>
         <p class="mt-4">
@@ -101,7 +101,7 @@ function HistoryScreen() {
   return (
     <Page rail={calendar} railMeasure="rail-wide">
       <header class="flex flex-wrap items-center gap-3">
-        <h1 class="mr-auto font-serif text-screen-title font-semibold tracking-tight text-ink">
+        <h1 class="mr-auto font-reading text-screen-title font-semibold tracking-tight text-ink">
           {validDay === null ? "History" : dayLabel(validDay)}
         </h1>
         <button
@@ -139,7 +139,7 @@ function HistoryScreen() {
       )}
 
       {rows.status === "ready" && rows.rows.length === 0 && (
-        <p class="mt-8 font-serif text-body text-ink-2">
+        <p class="mt-8 font-reading text-body text-ink-2">
           {validDay === null ? HISTORY_EMPTY_NOTE : HISTORY_DAY_EMPTY_NOTE}
         </p>
       )}
@@ -147,7 +147,7 @@ function HistoryScreen() {
       {days.map((group) => (
         <section key={group.key} class="mt-8">
           {validDay === null && (
-            <h2 class="font-serif text-section font-semibold text-ink">
+            <h2 class="font-reading text-section font-semibold text-ink">
               <a
                 class="inline-flex min-h-11 items-center"
                 href={`/history/${group.key}`}
@@ -182,7 +182,7 @@ function HistoryScreen() {
       )}
 
       {rows.status === "ready" && rows.rows.length > 0 && (
-        <p class="mt-8 font-serif text-excerpt text-ink-3">
+        <p class="mt-8 font-reading text-excerpt text-ink-3">
           {HISTORY_SCOPE_NOTE}
         </p>
       )}

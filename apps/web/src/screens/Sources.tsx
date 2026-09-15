@@ -95,7 +95,7 @@ function SourcesScreen() {
 
   return (
     <Page>
-      <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+      <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
         Sources
       </h1>
 
@@ -161,7 +161,7 @@ function SourcesScreen() {
       {!ready && <div class="skeleton mt-6 h-24 w-full" />}
 
       {ready && filtered.length === 0 && (
-        <p class="mt-8 font-serif text-body text-ink-2">
+        <p class="mt-8 font-reading text-body text-ink-2">
           {emptyNote(tab, needle)}
         </p>
       )}
@@ -227,7 +227,7 @@ function SourceRow({
     <article class="flex flex-wrap items-center gap-3 border-b border-rule py-[18px]">
       <Avatar id={channel.channelId} name={channel.title} size={34} />
       <div class="min-w-0 flex-1">
-        <h3 class="font-serif text-row-compact font-semibold text-ink">
+        <h3 class="font-reading text-row-compact font-semibold text-ink">
           <a href={`/sources/${channel.channelId}`}>{channel.title}</a>
         </h3>
         <p class="mt-0.5 flex flex-wrap gap-x-2 text-meta text-ink-3">
@@ -240,7 +240,7 @@ function SourceRow({
           )}
         </p>
         {review !== null && (
-          <p class="mt-1 font-serif text-excerpt text-ink-2">{review}</p>
+          <p class="mt-1 font-reading text-excerpt text-ink-2">{review}</p>
         )}
       </div>
 

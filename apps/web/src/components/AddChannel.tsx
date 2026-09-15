@@ -121,7 +121,7 @@ export function AddChannel({
 
   return (
     <section class="rounded border border-edge bg-panel p-4">
-      <h2 class="font-serif text-section font-semibold text-ink">
+      <h2 class="font-reading text-section font-semibold text-ink">
         Add a channel
       </h2>
 
@@ -153,7 +153,7 @@ export function AddChannel({
               {busy ? "Reading its feed…" : "Check it"}
             </button>
           </div>
-          <p class="mt-2 font-serif text-excerpt text-ink-2">
+          <p class="mt-2 font-reading text-excerpt text-ink-2">
             {CHANNEL_ID_HELP}
           </p>
         </form>
@@ -164,14 +164,14 @@ export function AddChannel({
           <div class="flex items-center gap-3">
             <Avatar id={step.feed.channelId} name={step.feed.title} size={34} />
             <div class="min-w-0">
-              <p class="font-serif text-row-compact font-semibold text-ink">
+              <p class="font-reading text-row-compact font-semibold text-ink">
                 {step.feed.title}
               </p>
               <p class="text-meta text-ink-3">{step.feed.channelId}</p>
             </div>
           </div>
 
-          <p class="mt-3 font-serif text-excerpt text-ink-2">
+          <p class="mt-3 font-reading text-excerpt text-ink-2">
             {feedVerdict(step.feed)}
           </p>
           <p class="mt-1 text-meta text-ink-3">
@@ -269,7 +269,7 @@ export function AddChannel({
 
       {step.name === "done" && (
         <div class="mt-3">
-          <p class="font-serif text-body text-ink">{step.message}</p>
+          <p class="font-reading text-body text-ink">{step.message}</p>
           <button
             type="button"
             class="btn mt-3 min-h-11 border-edge bg-panel text-ui text-primary"

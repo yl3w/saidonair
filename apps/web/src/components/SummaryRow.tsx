@@ -57,7 +57,7 @@ export function SummaryRow({
         </p>
 
         <h3
-          class={`mt-0.5 font-serif font-semibold text-ink ${
+          class={`mt-0.5 font-reading font-semibold text-ink ${
             density === "full"
               ? "text-row-sm md:text-row"
               : "truncate text-row-compact"
@@ -67,7 +67,7 @@ export function SummaryRow({
         </h3>
 
         {density === "full" && excerpt !== null && (
-          <p class="mt-1 line-clamp-3 font-serif text-excerpt text-ink-2">
+          <p class="mt-1 line-clamp-3 font-reading text-excerpt text-ink-2">
             {excerpt}
           </p>
         )}

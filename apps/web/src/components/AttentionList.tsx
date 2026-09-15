@@ -118,7 +118,7 @@ function Group({
         <span>{count}</span>
       </h3>
       {count === 0 ? (
-        <p class="mt-1 font-serif text-excerpt text-ink-2">{empty}</p>
+        <p class="mt-1 font-reading text-excerpt text-ink-2">{empty}</p>
       ) : (
         <div class="mt-1 border-t border-rule">{children}</div>
       )}

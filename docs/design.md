@@ -173,10 +173,42 @@ Four rules that are not preferences — they are build constraints and their hom
 - every user-facing phrase in `lib/copy.ts`;
 - component behaviour is ours to verify by hand, because daisyUI is CSS only and the web has no tests.
 
-### 2.7 Reading themes
+### 2.7 Themes
 
-The reading surface — and only the reading surface — offers light, sepia and dark, through a `data-reading-theme`
-attribute with its own token block. This is not a product-wide dark mode and does not touch the daisyUI theme.
+Light, sepia and dark, and they apply to **the whole product** — nav, queue, history, sources, Curate's tables, every
+modal (owner decision 2026-09-15, reversing this section, which had said "the reading surface, and only the reading
+surface"). A reader who wants to read in the dark wants to *use* the product in the dark; a light chrome around a
+dark column is the worst of both.
+
+A theme is a block of token values and nothing else. Every colour in the product is one of §2.1's tokens and every
+utility resolves through `var(--token)`, so a theme redefines the tokens under one attribute on `<html>` and no
+component knows which one is on. daisyUI's own slots are redefined with them, or its components would stay light.
+
+| | light | sepia | dark |
+|---|---|---|---|
+| `--ground` | `#fdfcfa` | `#f3ead7` | `#16181b` |
+| `--panel` | `#ffffff` | `#faf3e3` | `#1e2127` |
+| `--ink` | `#1b1917` | `#241f18` | `#e9e7e3` |
+| `--ink-2` | `#57524c` | `#55493a` | `#b9b4ad` |
+| `--ink-3` | `#726b63` | `#6b5d49` | `#9a948c` |
+| `--rule` | `#e6e1d9` | `#ded0b4` | `#2e3136` |
+| `--edge` | `#ddd8d0` | `#d2c3a4` | `#3c4149` |
+| `--accent` | `#35618f` | `#2d567f` | `#8fb6e3` |
+| `--owner` | `#8a6a1f` | `#7a5c15` | `#d7b262` |
+| `--consequence` | `#8f3a34` | `#8a2f28` | `#ee9d95` |
+
+Every value was derived and measured, not picked: each theme's six text colours against both its grounds, the
+inverted calendar cell, and all six avatar monograms on their own tints (§2.5 lists the light six; sepia and dark
+have their own). The palest across all three is 4.92:1 and nothing is below the 4.5:1 floor. **Add a colour and you
+owe three values and their measurements**, or the product has a theme it was never checked in.
+
+**Type is the reader's too.** `--font-reading` is the family everything written to be read uses — the serif by
+default, the sans when they ask for it — and `--reading-scale` multiplies the content type roles alone, so the
+chrome keeps its own scale and the 12 px floor holds at every setting. The smallest content role at the smallest
+setting is a 15 px excerpt at 0.92, which is 13.8 px.
+
+The three attributes are set on `<html>` by `lib/settings.ts`, and again by a small script in `index.html` before
+first paint, so dark never starts white.
 
 ---
 
@@ -305,6 +337,9 @@ Not a review stage. It is part of "done".
 URL; Home split into Queue and Sources; the 24-hour window dropped; Unread and History as two views over one receipt;
 a calendar cell is a date first; design at two sizes; owner operations desktop only; the accessibility floor; Lucide
 and monograms.
+
+**Reversed 2026-09-15:** §2.7's "the reading surface, and only the reading surface" — the reader's theme, type and
+size now apply to every page. The three palettes are in §2.7 and were measured before they were applied.
 
 **Open, and yours to close if you get there first:**
 

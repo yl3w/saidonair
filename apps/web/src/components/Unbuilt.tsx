@@ -9,10 +9,10 @@ import { Page } from "./Page";
 export function Unbuilt({ title, note }: { title: string; note: string }) {
   return (
     <Page>
-      <h1 class="font-serif text-screen-title font-semibold text-ink">
+      <h1 class="font-reading text-screen-title font-semibold text-ink">
         {title}
       </h1>
-      <p class="mt-3 font-serif text-body text-ink-2">{note}</p>
+      <p class="mt-3 font-reading text-body text-ink-2">{note}</p>
     </Page>
   );
 }
