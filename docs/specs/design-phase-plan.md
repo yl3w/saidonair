@@ -3,7 +3,7 @@
 **Implements:** `docs/specs/design-phase.md` under `AGENTS.md`; PRD §7, §4.4, §9, §10.
 **Written:** 2026-09-14, against `main` at `f86ebfb`.
 **Status:** APPROVED 2026-09-15 with both dependency questions answered — fonts are self-hosted, and `lucide-preact`
-is the icon dependency (owner decision, hard rule 1 satisfied). **Steps 1 to 6 implemented 2026-09-15**; Steps 7 to 9
+is the icon dependency (owner decision, hard rule 1 satisfied). **Steps 1 to 7 implemented 2026-09-15**; Steps 8 and 9
 remain. What each step actually landed, and what it owes, is in the record at the end of this file.
 **Shape:** nine steps, reordered 2026-09-15 so the two API steps come first. Steps 1 and 2 are API and carry tests; Steps 3 to 9 are web and carry a hand
 walkthrough, because `apps/web` is typecheck and lint only (`AGENTS.md` → Testing). One commit per step, `pnpm check`
@@ -163,6 +163,8 @@ deleted; `lib/copy.ts`, `lib/day.ts` (new, local day boundaries).
     body with `nextCursor`. Its "**Changing (§9)**" annotation goes: it has changed.
   - **Step 4** — `GET` and `PUT /preferences` were listed but had never been registered; they exist now, so the row
     stops being aspirational.
+  - **Step 7** — one new row, `GET /channels/feed?channelId=`: what YouTube's two feeds say about an id, read on
+    demand and stored nowhere, so the middle of the three-step add can show a reader what they are adding.
   - **Step 5** — one new row, `GET /episodes/:episodeId`. `/read/:episodeId` names the episode and not its channel,
     so the channel-scoped single-episode read cannot serve a cold load; `episodes.episode_id` is a catalog-wide
     primary key, so an episode names itself. The channel-scoped twin stays, for callers that already know the
@@ -201,6 +203,8 @@ turned out to be wrong about the world, the correction is here rather than rewri
 | 4 | `ea5fff7` | **4.3 was wrong: there were no "existing preferences routes".** PRD §7 has listed `GET`/`PUT /preferences` since the restart, and the shared schemas, the User DO methods and their migration were all written — but no handler was ever registered, so Account's one server-backed field had nothing to call. Both routes were added here with tests. |
 | 5 | `6c60b03` | **§4.5's deep link could not work as specified.** `GET /channels/:channelId/episodes/:episodeId` needs a channel id that `/read/:episodeId` does not carry, so a cold load had nothing to call; `GET /episodes/:episodeId` was added. |
 | 6 | `56bfd69` | **The calendar steps five weeks, not a month** — a month view is four, five or six rows and `docs/design.md` §5 asks for a height that does not grow; the heading names the months covered. Also closed a Step 5 shortfall now that `Sheet` existed: the channel filter is a bottom sheet on a phone (§3), which moves when the choice lands — a popover applies each tap, a sheet applies on its footer button. `lib/day.ts` was checked in node against the two days a year that are not 24 hours long. |
+
+| 7 | `7c9b59a` | **A third route the plan assumed existed.** §4.6's middle step — verify against the long-form feed — had nothing to call: `POST /channels` verifies but creates and follows in the same breath, which would add a channel to the shared catalog on every paste. `GET /channels/feed?channelId=` reads both public feeds, counts the overlap and stores nothing. The add box left Curate for Sources, where §4.6 puts it. |
 
 **Owed:** the hand walkthroughs of Steps 3 to 5 — open → Done → next, and the row check — which need a dev catalog
 with summaries in it. The local Durable Objects were wiped on 2026-09-15 for the `episodeId` rename, so they wait on
