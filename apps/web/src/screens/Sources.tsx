@@ -128,7 +128,7 @@ function SourcesScreen() {
           <Icon of={Search} size={16} class="text-ink-3" />
           <input
             type="search"
-            class="w-full bg-transparent text-ui text-ink outline-none"
+            class="min-h-11 w-full bg-transparent text-ui text-ink outline-none"
             placeholder="Find a channel"
             aria-label="Find a channel"
             value={needle}

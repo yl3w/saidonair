@@ -85,7 +85,10 @@ function HistoryScreen() {
           {HISTORY_NOT_A_DAY_NOTE}
         </p>
         <p class="mt-4">
-          <a class="text-ui text-primary" href="/history">
+          <a
+            class="inline-flex min-h-11 items-center text-ui text-primary"
+            href="/history"
+          >
             Every day
           </a>
         </p>
@@ -145,7 +148,12 @@ function HistoryScreen() {
         <section key={group.key} class="mt-8">
           {validDay === null && (
             <h2 class="font-serif text-section font-semibold text-ink">
-              <a href={`/history/${group.key}`}>{dayLabel(group.key)}</a>
+              <a
+                class="inline-flex min-h-11 items-center"
+                href={`/history/${group.key}`}
+              >
+                {dayLabel(group.key)}
+              </a>
             </h2>
           )}
           <div class="mt-2 border-t border-rule">

@@ -9,6 +9,7 @@ import {
 import { relativeTime } from "../lib/time";
 import { useLoad } from "../lib/use-load";
 import { Action } from "./ChannelStatusActions";
+import { Retry } from "./Retry";
 
 export type Act = (
   channelId: string,
@@ -159,14 +160,7 @@ function FailedEpisodes({
       {load.status === "error" && (
         <p class="mt-1 text-meta text-consequence">
           Couldn't load its failed episodes: {load.error.message}.{" "}
-          <button
-            id={`attention-reload-${c.channelId}`}
-            type="button"
-            class="link text-primary"
-            onClick={reload}
-          >
-            Retry
-          </button>
+          <Retry id={`attention-reload-${c.channelId}`} onClick={reload} />
         </p>
       )}
 

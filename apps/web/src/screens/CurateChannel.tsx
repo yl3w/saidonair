@@ -9,6 +9,7 @@ import {
   ChannelStatusActions,
 } from "../components/ChannelStatusActions";
 import { Page } from "../components/Page";
+import { Retry } from "../components/Retry";
 import { Time } from "../components/Time";
 import {
   actionErrorCopy,
@@ -84,7 +85,10 @@ function CurateChannelScreen() {
   return (
     <Page measure="wide" desktopOnly>
       <p>
-        <a class="text-ui text-primary" href="/curate">
+        <a
+          class="inline-flex min-h-11 items-center text-ui text-primary"
+          href="/curate"
+        >
           ← Curate
         </a>
       </p>
@@ -402,10 +406,7 @@ function Section<T>({
   if (load.status === "error") {
     return (
       <p class="mt-2 text-ui text-consequence">
-        Couldn't load {label}: {load.error.message}.{" "}
-        <button type="button" class="link text-primary" onClick={reload}>
-          Retry
-        </button>
+        Couldn't load {label}: {load.error.message}. <Retry onClick={reload} />
       </p>
     );
   }

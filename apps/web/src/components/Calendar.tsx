@@ -211,7 +211,7 @@ function Cell({
       >
         <span>{dayNumber(day)}</span>
         {holds && showCounts && (
-          <span class="text-[0.625rem] leading-none" aria-hidden="true">
+          <span class="text-label leading-none" aria-hidden="true">
             {unread > 0 ? unread : total}
           </span>
         )}

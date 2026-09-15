@@ -268,7 +268,11 @@ Not a review stage. It is part of "done".
 
 - Text meets **4.5:1** against its background. Check it; the paper palette makes it easy to drift pale.
 - Nothing bearing meaning is under **12 px**, uppercase labels included.
-- Every control a finger reaches is **44 px**.
+- Every control a finger reaches is **44 px** — every button, every form control, every link that is
+  a destination or an action on its own. **Two things are text rather than controls and are sized by
+  the type scale instead**: a link inside a sentence, and the title of a row or a heading, which is
+  content that happens to be clickable. The line to hold is that a *control* never inherits its size
+  from the words in it; clarified 2026-09-15, when the floor was walked for the first time.
 - **State is never colour alone.** Words first, then weight or shape, then colour.
 - Every grid is keyboard-traversable, and every cell has a full accessible name — "12 September 2026, 3 summaries,
   3 unread", not "12".

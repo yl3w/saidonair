@@ -15,6 +15,14 @@ revised against §12 the same day (`docs/specs/m3-ingestion.md`, `docs/specs/m3-
 (channel failure rows), §3.3, §3.4, and the approval path in §3; `docs/specs/m3-ingestion-plan.md` Steps 4, 7, 8, 9
 (§12 below lists the edits). It also takes a one-time, owner-approved exception to two `AGENTS.md` schema rules (§6).
 
+**Superseded for screens 2026-09-15.** The Design phase (`docs/specs/design-phase.md`) rebuilt the reader's and the
+owner's screens: Home is gone, split into `/queue`, `/sources` and `/chats`; a summary has its own screen at
+`/read/:episodeId`; `/history` is the library and the only place a receipt is undone; `/channel/:id` became
+`/sources/:id` and `/owner*` became `/curate*`; the digest's 24-hour window and its marks-on-return rule are both
+gone. The screen descriptions below are what was on `main` until then and are kept for their reasoning, not as a
+description of the product. `docs/PRD.md` §7 is current; `docs/design.md` governs how any of it looks.
+
+
 ## 1. Summary
 
 A channel becomes an approval container with three statuses, `requested`, `approved`, and `declined`, and stops

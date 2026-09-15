@@ -5,6 +5,7 @@ import { actionErrorCopy, decisionCopy, reviewCopy } from "../lib/copy";
 import { relativeTime } from "../lib/time";
 import { useLoad } from "../lib/use-load";
 import { Action } from "./ChannelStatusActions";
+import { Retry } from "./Retry";
 
 /**
  * The channels waiting for a decision: the first thing in **Needs you**, oldest request first, each
@@ -162,14 +163,10 @@ function WaitingRow({
           {followers.status === "error" && (
             <p class="text-meta text-consequence">
               Couldn't load who is waiting: {followers.error.message}.{" "}
-              <button
+              <Retry
                 id={`followers-retry-${c.channelId}`}
-                type="button"
-                class="link text-primary"
                 onClick={reloadFollowers}
-              >
-                Retry
-              </button>
+              />
             </p>
           )}
         </div>

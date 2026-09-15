@@ -5,9 +5,10 @@
 decisions this phase rests on.
 **Wireframes:** `https://claude.ai/code/artifact/61ac5352-ede9-49ba-a5e2-792dbeb76557` — twenty-six artboards over
 four pages (Architecture, Reader, Owner, Chats), each screen drawn at two sizes and at 390 px.
-**Status:** APPROVED 2026-09-15. Both §4.1 dependency questions are answered: fonts are self-hosted, and icons ship
-as `lucide-preact` rather than inlined path data. Plan: `docs/specs/design-phase-plan.md`, whose steps were reordered
-the same day so the two API steps run before the Tailwind install. Nothing implemented.
+**Status:** APPROVED 2026-09-15, and **built the same day**, in the nine steps of
+`docs/specs/design-phase-plan.md` — whose record carries what each step actually landed, the four routes this spec
+needed that did not exist, and the owner's click-through, which is what remains. Both §4.1 dependency questions were
+answered before the build: fonts are self-hosted, and icons ship as `lucide-preact` rather than inlined path data.
 
 ## 1. Summary
 

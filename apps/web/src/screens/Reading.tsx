@@ -5,6 +5,7 @@ import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
 import { Choice } from "../components/Choice";
 import { Icon } from "../components/Icon";
+import { Retry } from "../components/Retry";
 import {
   actionErrorCopy,
   momentCopy,
@@ -174,9 +175,7 @@ function ReadingScreen() {
         {load.status === "error" && (
           <p class="text-ui text-consequence">
             Couldn't load this summary: {actionErrorCopy(load.error)}.{" "}
-            <button type="button" class="link text-primary" onClick={reload}>
-              Retry
-            </button>
+            <Retry onClick={reload} />
           </p>
         )}
 
@@ -235,7 +234,7 @@ function ReadingScreen() {
                           "—"
                         ) : (
                           <a
-                            class="text-reading-accent"
+                            class="inline-flex min-h-11 items-center text-reading-accent md:justify-end"
                             href={`https://youtu.be/${episode.episodeId}?t=${Math.floor(takeaway.startSec)}`}
                           >
                             {momentCopy(takeaway.startSec)}
@@ -266,7 +265,7 @@ function ReadingScreen() {
                   {episode.related.map((related) => (
                     <li key={related.episodeId} class="mt-1">
                       <a
-                        class="font-serif text-excerpt text-reading-accent"
+                        class="inline-flex min-h-11 items-center font-serif text-excerpt text-reading-accent"
                         href={`/read/${related.episodeId}`}
                       >
                         {related.title}

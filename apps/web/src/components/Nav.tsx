@@ -38,7 +38,7 @@ export function Nav() {
         <div class="mx-auto flex h-14 w-full items-center gap-6 px-5 md:px-8">
           <a
             href="/queue"
-            class="font-serif text-section font-semibold tracking-tight text-ink"
+            class="flex min-h-11 items-center font-serif text-section font-semibold tracking-tight text-ink"
           >
             Said on Air
           </a>

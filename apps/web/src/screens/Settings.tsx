@@ -6,6 +6,7 @@ import { Avatar } from "../components/Avatar";
 import { attentionCount } from "../components/CatalogHealth";
 import { Choice } from "../components/Choice";
 import { Page } from "../components/Page";
+import { Retry } from "../components/Retry";
 import { actionErrorCopy, curateWaitingCopy } from "../lib/copy";
 import {
   READING_FONTS,
@@ -181,9 +182,7 @@ function ChatRules() {
     return (
       <p class="text-ui text-consequence">
         Couldn't load your rules: {actionErrorCopy(preferences.error)}.{" "}
-        <button type="button" class="link text-primary" onClick={reload}>
-          Retry
-        </button>
+        <Retry onClick={reload} />
       </p>
     );
   }

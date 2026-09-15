@@ -6,6 +6,7 @@ import { type CatalogFilter, CatalogHealth } from "../components/CatalogHealth";
 import { CatalogTable } from "../components/CatalogTable";
 import { Page } from "../components/Page";
 import { ReviewedList, ReviewQueue } from "../components/RequestQueue";
+import { Retry } from "../components/Retry";
 import { actionErrorCopy, staleCopy } from "../lib/copy";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
@@ -112,13 +113,7 @@ function CurateScreen() {
       {channels.status === "error" && (
         <p class="mt-6 text-ui text-consequence">
           Couldn't load the channels: {actionErrorCopy(channels.error)}.{" "}
-          <button
-            type="button"
-            class="link text-primary"
-            onClick={reloadChannels}
-          >
-            Retry
-          </button>
+          <Retry onClick={reloadChannels} />
         </p>
       )}
 
@@ -129,10 +124,7 @@ function CurateScreen() {
       {stale && (
         <p class="mt-4 rounded border border-consequence bg-panel px-3 py-2 text-ui text-consequence">
           {staleCopy(loadedAt.current)} Nothing here can be acted on until they
-          are current.{" "}
-          <button type="button" class="link" onClick={reloadChannels}>
-            Try again
-          </button>
+          are current. <Retry onClick={reloadChannels}>Try again</Retry>
         </p>
       )}
 
@@ -165,13 +157,7 @@ function CurateScreen() {
                 <p class="text-ui text-consequence">
                   Couldn't load the catalog's numbers:{" "}
                   {actionErrorCopy(catalog.error)}.{" "}
-                  <button
-                    type="button"
-                    class="link text-primary"
-                    onClick={reloadCatalog}
-                  >
-                    Retry
-                  </button>
+                  <Retry onClick={reloadCatalog} />
                 </p>
               ) : catalog.status === "loading" ? (
                 <div class="skeleton h-11 w-full" />

@@ -3,7 +3,7 @@
 **Implements:** `docs/specs/design-phase.md` under `AGENTS.md`; PRD §7, §4.4, §9, §10.
 **Written:** 2026-09-14, against `main` at `f86ebfb`.
 **Status:** APPROVED 2026-09-15 with both dependency questions answered — fonts are self-hosted, and `lucide-preact`
-is the icon dependency (owner decision, hard rule 1 satisfied). **Steps 1 to 8 implemented 2026-09-15**; Step 9 remains. What each step actually landed, and what it owes, is in the record at the end of this file.
+is the icon dependency (owner decision, hard rule 1 satisfied). **All nine steps implemented 2026-09-15.** What is still owed is the owner's own walkthrough; see the record. What each step actually landed, and what it owes, is in the record at the end of this file.
 **Shape:** nine steps, reordered 2026-09-15 so the two API steps come first. Steps 1 and 2 are API and carry tests; Steps 3 to 9 are web and carry a hand
 walkthrough, because `apps/web` is typecheck and lint only (`AGENTS.md` → Testing). One commit per step, `pnpm check`
 green before the next begins. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
@@ -174,6 +174,19 @@ deleted; `lib/copy.ts`, `lib/day.ts` (new, local day boundaries).
 
 **Done when:** `pnpm check` green, `git diff --check` clean, and the record below filled in.
 
+## What the acceptance criteria say now
+
+Spec §5, and where each stands:
+
+| | Criterion | |
+|---|---|---|
+| 1 | No Zod in `dist`, one theme in the CSS | checked, every build |
+| 2 | Every route deep-links and reloads under `wrangler pages dev` | checked, fifteen paths |
+| 3–6 | The read model and the range query | 332 tests |
+| 7–9 | Queue, Done, undo, Skip only on failed, the decline confirmation | built; the owner's walkthrough is what confirms them |
+| 10 | The floor: 12 px, 4.5:1, 44 px, state never in colour alone | scanned; the 44 px rule gained its scope |
+| 11 | `pnpm check` green, and the owner's click-through | half: the gate is green, the click-through is owed |
+
 ## Risks
 
 - **Preflight makes the middle of this plan ugly.** From the moment Step 3 lands until Step 9, the not-yet-rebuilt
@@ -207,9 +220,15 @@ turned out to be wrong about the world, the correction is here rather than rewri
 
 | 8 | `1afde9e` | **8.3 was already right.** The plan said the built screen offered Skip on a pending row; both the channel screen and the attention list already gated it on `status === "failed"` — a *wireframe* was what got it wrong, and §4.8's rule is what kept it out of the rebuild. The decline confirmation moved from `window.confirm` to a native `<dialog>` naming what followers lose; an unavailable Retry carries its reason on the row; a screen that could not refresh names how old its numbers are. `Owner.tsx` / `OwnerChannel.tsx` became `Curate.tsx` / `CurateChannel.tsx`, and with this every class name in the app resolves in the built CSS — the unstyled middle is over. |
 
-**Owed:** the hand walkthroughs of Steps 3 to 5 — open → Done → next, and the row check — which need a dev catalog
-with summaries in it. The local Durable Objects were wiped on 2026-09-15 for the `episodeId` rename, so they wait on
-the next ingestion.
+| 9 | — | The floor was walked with a scanner rather than by eye: every type size, every colour pairing, and every interactive element. Three findings — a 10 px count in a calendar cell, ten standalone links and one search input under 44 px, and the inline retries, which became one `Retry` control. Nothing failed contrast. **The 44 px rule needed a scope**, so `docs/design.md` §7 now says what it applies to: every button, form control and standalone link, but not a link inside a sentence or the title of a row or heading, which are text sized by the type scale. The documents took the phase's four new routes, the rewritten §7 Screens, the Web UI rules for icons, avatars, reading themes, per-browser settings and day boundaries, and a dated supersession line on the two older specs. |
+
+**Owed: the owner's click-through** (spec §5, criterion 11) — open → Done → next, the row check, the undo in History,
+the three-step add as owner and as reader, and approve / decline-with-confirm / pause / start / retry / skip in
+Curate. It needs a dev catalog with summaries in it, and the local Durable Objects were wiped on 2026-09-15 for the
+`episodeId` rename, so it waits on the next ingestion. Everything checkable without one has been checked: `pnpm check`
+green at every step, `pnpm build` clean with no Zod and one theme in `dist`, every route deep-linking and reloading
+under `wrangler pages dev`, every `class=` token in the app resolving in the built CSS, `lib/day.ts` verified against
+the two days a year that are not 24 hours long, and the API exercised under `wrangler dev` on throwaway state.
 
 **Why both gaps got through review.** A spec is reviewed against the PRD, and in both cases the PRD is where the
 mistake already was: it listed a route nothing had registered, and it described a single-episode read in prose that

@@ -81,7 +81,10 @@ function SourceScreen() {
       <Page>
         <p class="text-ui text-consequence">
           Couldn't load this channel: {actionErrorCopy(channel.error)}.{" "}
-          <a class="text-primary" href="/sources">
+          <a
+            class="inline-flex min-h-11 items-center text-primary"
+            href="/sources"
+          >
             Back to Sources
           </a>
         </p>
@@ -242,7 +245,10 @@ function Header({
             idPrefix="source-"
             act={act}
           />
-          <a class="text-primary" href={`/curate/${channel.channelId}`}>
+          <a
+            class="inline-flex min-h-11 items-center text-primary"
+            href={`/curate/${channel.channelId}`}
+          >
             Open in Curate
           </a>
         </div>

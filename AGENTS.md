@@ -469,8 +469,8 @@ contract". In code:
 **Design questions are answered by `docs/design.md`, not here.** Tokens, the type scale, spacing, icons, avatars,
 layout patterns, empty/loading/error/stale states, target sizes, the scale playbook and the accessibility floor all
 live in that file; consult it before writing a screen and follow it rather than inventing a local rule. What each
-screen is for and what it must show is `docs/PRD.md` §7 "Screens"; the current phase's reasoning, wireframes and
-acceptance criteria are `docs/specs/design-phase.md`. In code:
+screen is for and what it must show is `docs/PRD.md` §7 "Screens"; the reasoning and wireframes behind the built
+design are `docs/specs/design-phase.md`. In code:
 
 - Approved dependencies: `preact`, `preact-iso`, `vite`, `@preact/preset-vite`, `tailwindcss`, `@tailwindcss/vite`,
   `daisyui`, `lucide-preact` (icons, approved 2026-09-15). Anything else requires approval. The two type families are
@@ -484,8 +484,29 @@ acceptance criteria are `docs/specs/design-phase.md`. In code:
   closing and focus containment. The `tabs` component is unused, because section navigation is anchors, not
   client-side tab state (PRD §7), and that rule stands. And `lib/copy.ts` remains the one home for every
   user-facing phrase: daisyUI supplies form, our code supplies words.
+- **Icons are Lucide, through `lucide-preact`, imported by name at the point of use and handed to
+  `components/Icon.tsx`**, which is the one place size, stroke and colour are set; its size type has three members,
+  so a fourth cannot appear. Never draw a glyph and never use an emoji: take another from Lucide by name
+  (`docs/design.md` §2.4).
+- **A channel's mark is `components/Avatar.tsx`**: a monogram on one of six tints hashed from the id
+  (`docs/design.md` §2.5). Nothing stores channel artwork and no source may be fetched, so there is no image to
+  load and no layout to shift. The same component carries the reader's own monogram, keyed on their email.
+- **The reading surface is the one exception to the single theme.** Light, sepia and dark apply through a
+  `data-reading-theme` attribute and its own token block in `styles.css`; they are not daisyUI themes, not a
+  product-wide dark mode, and they never touch the `digest` theme, so the one-custom-theme rule stands
+  (`docs/design.md` §2.7).
+- **The per-browser settings — reading type, size, theme, and whether counts are shown — live in
+  `lib/settings.ts`** and never reach the API: how a page looks is not something the product needs to know.
+  `system_rules` is the exception and is server state, because it changes what a chat answers.
+- **Day boundaries are the browser's**, worked out once in `lib/day.ts`: the API takes instants and never a
+  timezone (`docs/PRD.md` §4.4). Build a day's end from the next local midnight, never `from + 24 h`, which is an
+  hour out on the two days a year the clocks move.
 - Because daisyUI is CSS only, component behaviour is ours to get right, and the web has no tests (see Testing), so
-  every interactive component is verified by hand under `pnpm dev` before its commit.
+  every interactive component is verified by hand under `pnpm dev` before its commit. A cheap check that does not
+  need a runner: after `pnpm build`, every `class=` token in `apps/web/src` should resolve to a rule in the built
+  CSS — a typo'd utility is silently nothing, and that scan is what caught `input-bordered`, which daisyUI 5
+  dropped. Pure modules under `lib/` can be exercised directly with
+  `node --experimental-strip-types <scratch>.mts`.
 - `zod` reaches the web only through `packages/shared`, and only as types: import from shared with `import type`, and
   keep Zod out of the web bundle (`grep -ril zod apps/web/dist` after `pnpm build` must find nothing).
 - `src/api.ts` is the only place `fetch` is called; it sets `X-User-Email` from the identity `session.tsx` binds into it

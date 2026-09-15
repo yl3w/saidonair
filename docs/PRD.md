@@ -16,9 +16,9 @@ guide — principles, tokens, patterns, the scale playbook and the accessibility
 and behaves the way this document governs what it does. Where a spec and this
 document disagree, this document governs and the spec is due for revision.
 **Implementation status:** This document defines the target requirements and logical schema, not completed
-features. Items marked M4 are not yet built (§10); M3 shipped 2026-09-13. The Design phase between M3 and M4 (§10)
-has its architecture approved and nothing built, so the screens described in §7 are the ones built during M2 and M3,
-not the designed ones; three approved changes already contradict them and are marked where they apply (§9).
+features. Items marked M4 are not yet built (§10); M3 shipped 2026-09-13. The Design phase between M3 and M4 (§10) shipped
+2026-09-15, so §7's screens and route table are the built ones; `docs/design.md` is canonical for how they look and
+behave. Next is M4.
 
 ## 1. Summary
 
@@ -423,7 +423,7 @@ episode's row, phrased from its latest attempt.
   grouped by the **day** they became available, newest day first, within eligible followed channels — a summary marked
   done leaves it. **History is the library**: every summary the reader has been eligible for, over the same days,
   navigated by a calendar, and the one place a receipt can be undone. Neither has a time window and **every day is
-  kept** (decided 2026-09-14, §9; the built route still defaults to 24 hours and clamps at seven days). One receipt
+  kept** (decided 2026-09-14, §9; built 2026-09-15). One receipt
   serves both views; no second piece of per-user state exists or is needed. Day boundaries are the reader's local ones, so
   the route takes a range and never a timezone, and a day's address carries its year: `/history/2026-09-12`. Reads,
   refollows, re-approval, enrichment and replacement summaries never reset availability, so **a summary's day is
@@ -436,7 +436,8 @@ episode's row, phrased from its latest attempt.
   follower of an approved channel — explicitly marks a summary done, from its own screen or from its queue row. No
   read records one: not returning it in a list, not opening it, not arriving by deep link, not paging back through
   history. Every read route is a pure read, and one explicit write records the receipt. Absence of a receipt means
-  unread. **Changed 2026-09-14 (§9); the built digest route still marks on return, and the Design phase changes it.**
+  unread. **Changed 2026-09-14 (§9) and built 2026-09-15:** no read route records anything, and
+  `POST /channels/:id/episodes/:episodeId/read` is the one write that does.
 - Existing summaries start unread on first follow. Preserve read receipts through unfollow, refollow, decline, and
   re-approval. Unread counts span all currently eligible summaries, while NEW markers apply only to the items a
   response returned; no shared summary row contains `read_at`.
@@ -627,75 +628,79 @@ rendering, and the web is the only gate: the API enforces no authorization (§9)
 sees something readers do not, that is the web's rendering; the API returns the same representation to every identity. The user-facing phrases for channel statuses, skip reasons, and
 wait reasons live in one place in the web app.
 
-- **Account `/`:** "Who is this for?" email input and a list of previously used emails from local storage for
-  one-click selection. If an email is already selected the page goes straight to `/home`; "Switch account" remains
-  visible on every other screen. The remembered account is the default for the next page load, not the source of
-  truth for requests: a tab sends exactly the account it displays, and tabs do not synchronise, so two tabs may act as
-  two people (decided 2026-09-08).
-- **Home `/home`:** one page for everyone, with section jump links. The header shows the email, the word `owner` when
-  applicable, and "Switch account"; the nav shows **Home** and, for owners, **Owner (n)** where `n` is the attention
-  count. Owners see an attention card first ("2 channels waiting for review · 1 episode failed · 1 channel approved
-  but never started", from `GET /catalog`) linking to `/owner#attention`; users never see it and it is hidden when the
-  count is zero. Then:
-  1. **Today's digest** — **superseded 2026-09-14 (§9): the queue is grouped by day with no window, and filtered by
-     channel rather than by time.** Eligible followed channels only; summaries first available in the last 24 hours, newest
-     availability first (the basis since M3.5), as a flat list with the channel as
-     byline: shared summary, takeaways with `youtu.be/<id>?t=<startSec>` links where a timestamp exists, tags, and
-     related titles filtered to eligible channels. Items with no read receipt at fetch time are marked NEW, and
-     returning them records the receipt. "Show last 7 days" widens the window; "Refresh" re-fetches the lists
-     and then the digest, since polling stops at approval and the first summaries land minutes later. Load follows and
-     channels before the digest so unread counts and NEW markers agree. Empty states (owner decision 2026-09-10): with no active follows, "Follow a channel to start your digest." with the catalog and its
-     follow controls rendered inline; with follows but none approved yet, explain that no summaries are available yet
-     and point to the channel rows; otherwise "No new summaries in the last 24 hours." or "No new summaries in the
-     last 7 days."
-  2. **Channels** — two subsections and one input. **Followed**: approved rows show summarised count, unread count,
-     and last ingestion and link to the channel; requested rows read "Awaiting owner approval"; paused rows add
-     "paused"; declined rows read "Declined" or "Withdrawn" with the owner's note and date and a **Request again**
-     button that confirms once. Unfollow on every row, and a followed channel that is declined stays listed but drops
-     out of the digest. **Catalog**: approved channels the reader does not follow with summarised counts and Follow;
-     requested channels with "awaiting approval · N following" and Follow. Below both, one **Add a channel** input
-     for a `UC…` id or `/channel/UC…` URL with a line saying where to copy it: a new id creates and follows (for the owner role the web follows the add with an approve, since the API has no
-     owner shortcut), an id
-     already in the catalog follows, and a declined id shows "Declined on <date>: '<note>'" with Request again.
-     Poll about every 15 seconds only while a followed channel is still awaiting the owner's decision.
-  3. **Chats** — **superseded 2026-09-14 (§9): chats are their own destination, `/chats` and `/chats/:id`, not a
-     section of Home**, which no longer exists in that form. List, create, and select independent
-     conversations; preserve each chat's messages and source links. Chat controls are never disabled for lack of
-     follows; the fixed follow-required response of §4.5 applies instead.
-- **Channel `/channel/:id`:** any status. Requested shows the header, "Awaiting owner approval", and Follow or
-  Unfollow, with no episodes. Approved shows shared summaries newest first for followers, with per-user read status,
-  and pending, skipped, and failed episodes by title with their phrase, a pending one phrased from its latest attempt
-  with a `blocked` attempt reading as the same wait as the matching in-flight provider reason; viewing marks returned
-  summaries read for this user. Declined shows the owner's note, the date, and the follower count, Unfollow for a follower (Follow is refused
-  with 409), and Request again, with episode titles and no summaries when it had been approved. Follow control for
-  non-followers. No per-channel chat input; conversations live on Home. Back link to Home.
-- **Owner `/owner`:** owner only in the web; users are sent back to `/home` with a note. The API itself accepts every
-  call from any identity.
-  One page with sections **Queue**, **Catalog**, and **Needs attention** and jump links `#requests`, `#catalog`,
-  `#attention`.
-  - **Queue:** requested channels oldest first with title, id linked to its YouTube page, active followers by email,
-    "nobody is waiting" when there are none, "previously declined on <date>: '<note>'" when re-requested, and Approve
-    (title, import count, note) and Decline (note) forms; reviewed history collapsed to reviewer, time, and note.
-  - **Needs attention:** publication recoveries that exhausted 48 hours, grouped by channel with
-    `INGESTION_TIMEOUT`, the last reason, attempts, Retry, and Skip; episode actions do not depend on channel-run or
-    channel status. Then approved channels with no ingestion run at all, each row carrying Start (`POST
-    /channels/:id/runs`); a run's absence of episodes says the tick found nothing or could not read the feed. "Never started" means approved and no run, with no age window. Every other
-    problem reaches the owner as a `failed` episode or on the health strip.
-  - **Catalog:** the health strip from `GET /catalog` (channels by status, paused and declined counts, episodes by
-    status, last successful ingestion, and the transcript credits and key status), then an all-channels table
-    with status, paused, available over tracked episodes with skipped and failed counts, follower count, last
-    ingestion, latest discovery run result, and the actions the status allows: Approve or Decline (confirming once
-    with the follower count for an approved channel), Pause or Resume, and Start on every approved channel,
-    paused or not, so a system-paused channel whose first fetch failed can be checked by hand. Follower counts are
-    real; the emails behind them appear only in the queue.
-- **Owner channel detail `/owner/channels/:id`:** status, pause, approval and review fields, import count, follower
-  count; episodes with content status, open window's intent with next attempt and deadline, the count of launched
-  attempts beside the latest outcome and attempt (a blocked latest attempt explains a count of zero), summary format,
-  Retry on every row, and Skip on failed ones. Retry is disabled while that
-  episode's attempt has been running under an hour and enabled after that, the route reconciling a dead instance
-  inline (§4.2 rule 17). Initial and scheduled feed runs show feed status and discovered count, and each episode names the run that
-  discovered it, so a run's episodes are a client-side join; followers by email.
-  Never shows any user's read or chat activity.
+The screens below are the ones the Design phase built (`docs/specs/design-phase.md`, 2026-09-15); how they look
+and behave in detail is `docs/design.md`, which this section does not repeat. There are four reader destinations
+and one more for the owner. **There is no role gate**: one navigation for everyone, and the owner simply has
+somewhere extra to go.
+
+- **Sign in `/`:** "Who is this for?" — an email and the ones this browser has used before. There is no password
+  because there is nothing to authenticate. An account already selected goes straight to `/queue`. The remembered
+  account is the default for the next page load, not the source of truth for requests: a tab sends exactly the
+  account it displays, and tabs do not synchronise, so two tabs may act as two people (decided 2026-09-08).
+- **Queue `/queue`:** what still needs the reader, and nothing else. Summaries with no read receipt, grouped by the
+  local day they became readable, newest day first; each row carries the channel's mark, the channel and time, the
+  title, the executive summary as the excerpt — never a takeaway — and a meta line of takeaway count, runtime,
+  reading time, and the publication date when it differs from the day it arrived. A check on the row marks it done
+  without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
+  sticky across sessions; a density switch trades the excerpt, never the title; a rail lists the days still holding
+  something. It ends by saying what is waiting — "That is everything waiting — 312 summaries sit in History" —
+  rather than fading out. Empty: "You are through everything", pointing at History; with no follows, pointing at
+  Sources.
+- **Reading `/read/:episodeId`:** one 680 px column, and the only screen a reader is glad to be in. Channel, title,
+  a meta line, the executive summary as a lede set off by a rule, the takeaways as the body with their timestamps
+  hanging in the left margin as `youtu.be/<episodeId>?t=<startSec>` links, tags, then related titles filtered to
+  eligible channels. Chrome is a back arrow, `Aa` (closed until pressed: type, size, theme), `Watch` exactly once,
+  and **Done**, with a scroll-progress rule at the top. **Nothing on this screen writes anything until Done**,
+  which records the receipt and goes to the next unread, or back to the queue when there is none. A deep link works
+  on a cold load through `GET /episodes/:episodeId`.
+- **History `/history` and `/history/2026-09-12`:** the library — everything the reader is currently eligible for,
+  by the day it became readable, and **the only place a read receipt can be undone**. A day is an address and
+  carries its year. Rows say "read" or "unread" in words and offer the write that matters: Undo on a read row, the
+  queue's check on an unread one. Navigation is a five-week calendar of dated cells: the day number first and the
+  count second, four treatments (selected, today, holds something, empty), arrow-key traversal a day and a week at
+  a time, and a full accessible name on every cell — "12 September 2026, 3 summaries, 3 unread", never "12". On a
+  phone the calendar is a bottom sheet whose primary button names where it will go. Counts come from `compact`
+  digest reads over the window.
+- **Sources `/sources` and `/sources/:id`:** where channels come from. Following, Catalog and Declined as sections
+  with counts, addressed `?show=`, with a search field, a sort order (most unread, recently active, name, longest
+  followed) and paging at 25. A follow of a declined channel files under Declined. **Adding a channel is three
+  steps**: paste an id; read its feeds through `GET /channels/feed`, which reports the title, how many of its
+  newest fifteen uploads are long-form — the number that decides whether it will ever produce episodes — and when
+  the newest landed; then decide. The owner's title, import count and note are in the third step, which is the
+  one-step approval; a reader's add is the request. One source shows the channel, the reader's relationship to it,
+  and its episodes newest **published** with the ones lacking a summary carrying their phrase, paged by year, with
+  the owner's controls beside the channel they govern.
+- **Account `/account`:** which email is reading and the only Switch account in the product; the reading column's
+  type, size and theme, kept in that browser; `system_rules` through `GET`/`PUT /preferences`, labelled as reaching
+  chat answers alone; and a toggle that turns every count off. For the owner below the desktop breakpoint, one line
+  saying how many things wait in Curate and that it needs a wider screen.
+- **Chats `/chats` and `/chats/:id`:** designed in the Design phase and built in M4. Independent conversations, each
+  preserving its messages and source links. Chat controls are never disabled for lack of follows; the fixed
+  follow-required response of §4.5 applies instead.
+- **Curate `/curate` and `/curate/:id`:** the owner's one extra destination, **desktop only** — approving,
+  declining, retrying and the catalog table are dense, consequential and rare, so they are not designed twice.
+  Below the breakpoint the nav item is absent and the screen says where to go instead. Users who reach it are sent
+  to `/queue` with a note; the API itself accepts every call from any identity. Three sections as anchors:
+  - **Needs you**, which never paginates: channels waiting for a decision, oldest first, with who is waiting on
+    each and the Approve (title, import count, note) and Decline (note) forms; publications that exhausted their 48
+    hours, grouped by channel with `INGESTION_TIMEOUT`, the last reason and the attempt count, carrying Retry and
+    Skip; and approved channels with no discovery run at all, each carrying Start. "Never started" means approved
+    and no run, with no age window. Episode actions never depend on channel status.
+  - **Catalog**: the health strip from `GET /catalog` — channel counts, which double as the table's status
+    filters, then episodes by status, transcript credits and key status, and the last successful ingestion — then
+    every channel in a table with a sorted column and 25 rows at a time: state, available over tracked episodes
+    with skipped and failed counts, last summary, followers, latest run, and the actions its status allows.
+    Follower counts are real; the emails behind them appear only beside a channel waiting for review.
+  - **Reviewed**: every decision already made, newest first, with the reviewer, the time and the note.
+- **Channel review `/curate/:id`:** the management header, discovery runs, every episode with its content status,
+  the open window's intent with next attempt and deadline, launched attempts beside the latest outcome, summary
+  format, and the actions — **Retry on every row, Skip on failed rows only**. Retry carries its reason on the row
+  while it is unavailable, naming who started the attempt that is holding it and when it frees up; after an hour
+  the route reconciles a dead instance inline (§4.2 rule 17). Never shows any user's read or chat activity.
+- **Three rules the screens share.** Declining an approved channel confirms in a native `<dialog>` naming the
+  follower count and what those readers lose; nothing else confirms, because nothing else is felt by anyone but the
+  person doing it. An action in flight says so, and an unavailable one carries its reason on the row rather than
+  being a dead grey control. A screen showing numbers it could not refresh says so and names how old they are.
 - Owner management is limited to what supports approve, decline, pause, resume, and per-episode retry and skip; there
   is no general admin dashboard.
 
@@ -732,11 +737,16 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | `GET /channels` | anyone | Requested and approved channels, each with `status`, `paused`, `following`, `followerCount`, episode counts, and derived `lastIngestedAt`; every caller receives a `management` block whose `latestRun` reports the feed result and number of episodes discovered; `?scope=all` (any caller) adds declined ones |
 | `POST /channels` `{ channelId, title?, initialImportCount? }` | anyone | Creates a `requested` channel and follows the caller (201), whoever calls; there is no owner shortcut (2026-09-12), the web's owner add follows with an approve. An existing `requested` or `approved` id is followed and returned (200); a `declined` id is 409 `ChannelDeclinedResponse` with the owner's note. A handle or an id with no feed is 400. `title` and `initialImportCount` are honoured from any caller; the UI offers them to the owner only |
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; the owner also gets `management` |
+| `GET /channels/feed?channelId=` | anyone | What YouTube's two public feeds say about an id right now — title, how many of its newest fifteen uploads are long-form, when the newest landed — and the catalog's channel when it already holds the id. Creates and stores nothing: the middle of the three-step add (§7 Screens). Takes a `UC…` id or a `/channel/UC…` URL; a handle or an id with no feed is 400 |
 | `POST /channels/:id/request` | anyone | `declined → requested`, keeping the review fields; follows the caller |
 | `POST /channels/:id/approve` `{ title?, initialImportCount?, explanation? }` | anyone; UI: owner | `requested → approved` with the one initial import, or `declined → approved` without one; recomputes pause from the follower count |
 | `POST /channels/:id/decline` `{ explanation? }` | anyone; UI: owner | `requested → declined`, or `approved → declined` with the pause cleared; stops new discovery, not existing episode recovery |
 | `POST /channels/:id/pause` / `POST /channels/:id/resume` | anyone; UI: owner | Owner pause; resume clears either kind of pause. Approved channels only |
-| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; every caller gets `status`, a top-level `skipReason`, on a pending episode a top-level `waitReason` derived from its latest attempt (§4.2 rule 11), the available summary and related items, and the `processing` block with the active intent and window, next attempt, latest attempt, and diagnostic outcome; an eligible caller (active follower of an approved channel) also gets read state, and the summaries returned to them are marked read (§4.4) |
+| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; every caller gets `status`, a top-level `skipReason`, on a pending episode a top-level `waitReason` derived from its latest attempt (§4.2 rule 11), the available summary and related items, and the `processing` block with the active intent and window, next attempt, latest attempt, and diagnostic outcome; an eligible caller (active follower of an approved channel) also gets `read`. **A pure read: it records nothing** (§4.4, changed 2026-09-15) |
+| `GET /channels/:id/episodes/:episodeId` | anyone | The same episode alone, for a caller that already knows the channel and wants a mismatch to be a 404 |
+| `GET /episodes/:episodeId` | anyone | The same episode by its own id, which is a primary key across the catalog. What `/read/:episodeId` calls on a cold load, since that URL names the episode and not its channel |
+| `POST /channels/:id/episodes/:episodeId/read` | anyone (own) | Records the caller's read receipt — **the one write that marks a summary read** (§4.4). Idempotent; an existing receipt keeps its time. Only an eligible caller has receipts; anyone else records nothing and gets 404, and an episode with no summary is 409 |
+| `DELETE /channels/:id/episodes/:episodeId/read` | anyone (own) | Removes it, so the summary returns to the queue. Idempotent. The web offers this from History, where the row is |
 | `POST /channels/:id/episodes/:episodeId/retry` | anyone; UI: owner | Any episode state in any channel status; opens a fresh 48-hour window when pre-flight permits and returns the new attempt, never a channel run. An available episode keeps its summary and active vector generation until replacement succeeds; a blocked Retry records a `blocked` attempt and leaves the episode unchanged; 409 while an attempt is running |
 | `POST /channels/:id/episodes/:episodeId/skip` | anyone; UI: owner | `failed → skipped OWNER`, regardless of channel status |
 | `GET /channels/:id/runs` | anyone; UI: owner | Initial and scheduled RSS discovery runs newest first with feed status and discovered count (each owner episode carries `discoveredByRunId`; there is no per-run episode list); all processing history lives on episode attempts |
@@ -744,11 +754,11 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | `GET /channels/:id/followers` | anyone; UI: owner | Emails and follow times of the channel's active followers |
 | `GET /follows` | anyone (own) | Own active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
 | `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for a declined one) / retain an unfollow tombstone on a channel in any status; the Registry's follower record is the follow |
-| `GET /digest?since=<iso>` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt` (since M3.5); default last 24h, clamped to 7 days; marks returned items read and reports `wasUnread` per item. **Changing (§9):** gains an end bound and a cursor, loses the clamp, and stops recording receipts |
+| `GET /digest` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt`, newest first. `from` (inclusive) and `to` (exclusive) bound the range and **there is no default window and no clamp — every day is kept** (§4.4); `unread=true` is the queue and omitting it is History; `channelId` repeats; `cursor` and `limit` page it (default 50, max 200); `compact=true` answers rows of `{ episodeId, channelId, summaryAvailableAt, read }` rather than episodes, which is how a calendar costs one small read. A pure read: it records nothing. The body is discriminated on `compact` and carries `nextCursor`. Day grouping is the client's, from its own local boundaries: the route takes instants and never a timezone |
 | `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats |
 | `GET /chats/:id/messages?limit=50` | anyone (own) | Selected chat history with citation snapshots |
 | `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources using current eligible follows |
-| `GET /preferences` / `PUT /preferences` | anyone (own) | Chat preference rules |
+| `GET /preferences` / `PUT /preferences` | anyone (own) | Chat preference rules — `systemRules`, trimmed, at most 4000 characters, empty to clear. Listed here since the 2026-09-12 restart but only registered on 2026-09-15 |
 
 Routes that deliberately do not exist: `/channel-requests/*` (requests are channels), `DELETE /channels/:id` and
 `POST /channels/:id/restore` (channels are never deleted), `POST /channels/:id/retry` (retry is per episode), chat

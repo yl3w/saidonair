@@ -4,6 +4,7 @@ import { api } from "../api";
 import { ChannelFilter, type FilterChannel } from "../components/ChannelFilter";
 import { DensitySwitch } from "../components/DensitySwitch";
 import { Page } from "../components/Page";
+import { Retry } from "../components/Retry";
 import {
   type Density,
   SummaryRow,
@@ -128,9 +129,7 @@ function QueueScreen() {
       {page.status === "error" && (
         <p class="mt-6 text-ui text-consequence">
           Couldn't load your queue: {actionErrorCopy(page.error)}.{" "}
-          <button type="button" class="link text-primary" onClick={reload}>
-            Retry
-          </button>
+          <Retry onClick={reload} />
         </p>
       )}
 
@@ -144,7 +143,7 @@ function QueueScreen() {
           </p>
           <p class="mt-4">
             <a
-              class="text-ui text-primary"
+              class="inline-flex min-h-11 items-center text-ui text-primary"
               href={nothingFollowed ? "/sources" : "/history"}
             >
               {nothingFollowed ? "Find a channel" : "Browse History"}
@@ -157,7 +156,12 @@ function QueueScreen() {
         days.map((day) => (
           <section key={day.key} class="mt-8" id={`day-${day.key}`}>
             <h2 class="font-serif text-section font-semibold text-ink">
-              <a href={`/history/${day.key}`}>{dayLabel(day.key)}</a>
+              <a
+                class="inline-flex min-h-11 items-center"
+                href={`/history/${day.key}`}
+              >
+                {dayLabel(day.key)}
+              </a>
             </h2>
             <div class="mt-2 border-t border-rule">
               {day.rows.map((episode) => (
@@ -183,7 +187,10 @@ function QueueScreen() {
               </a>
             </p>
           ) : (
-            <a class="text-ui text-primary" href="/history">
+            <a
+              class="inline-flex min-h-11 items-center text-ui text-primary"
+              href="/history"
+            >
               More is waiting — browse it by day in History
             </a>
           )}

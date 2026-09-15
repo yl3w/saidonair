@@ -8,6 +8,7 @@ import { useCallback, useContext, useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { clearSelectedEmail, selectEmail, selectedEmail } from "./account";
 import { ApiError, api, bindIdentity } from "./api";
+import { Retry } from "./components/Retry";
 
 export type SessionState =
   | { status: "none" }
@@ -129,9 +130,7 @@ export function Guard({
       <main class="mx-auto w-full max-w-list px-5 pt-8 md:px-8">
         <p class="text-ui text-consequence">
           Couldn't load your account: {state.error.message}.{" "}
-          <button type="button" class="link text-primary" onClick={retry}>
-            Retry
-          </button>
+          <Retry onClick={retry} />
         </p>
       </main>
     );
