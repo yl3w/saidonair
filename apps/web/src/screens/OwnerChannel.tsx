@@ -6,7 +6,7 @@ import {
   type ChannelAct,
   ChannelStatusActions,
 } from "../components/ChannelStatusActions";
-import { Nav } from "../components/Nav";
+import { Page } from "../components/Page";
 import { Time } from "../components/Time";
 import {
   actionErrorCopy,
@@ -80,10 +80,9 @@ function OwnerChannelScreen() {
   };
 
   return (
-    <main class="wide">
-      <Nav />
+    <Page measure="wide">
       <p>
-        <a href="/owner">← Owner</a>
+        <a href="/curate">← Curate</a>
       </p>
       <Section load={channel} label="the channel" reload={reloadChannel}>
         {({ channel: c }) => (
@@ -149,7 +148,7 @@ function OwnerChannelScreen() {
           )
         }
       </Section>
-    </main>
+    </Page>
   );
 }
 

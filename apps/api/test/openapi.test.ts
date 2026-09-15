@@ -51,6 +51,8 @@ const OPERATIONS = [
   "put /follows/{channelId}",
   "delete /follows/{channelId}",
   "get /digest",
+  "get /preferences",
+  "put /preferences",
 ].sort();
 const METHODS = new Set(["GET", "POST", "PUT", "DELETE", "PATCH"]);
 
@@ -183,6 +185,7 @@ describe("GET /openapi.json", () => {
       "IngestionRun",
       "Follow",
       "Follower",
+      "Preferences",
       "DigestRow",
       "DigestEpisodesResponse",
       "DigestRowsResponse",

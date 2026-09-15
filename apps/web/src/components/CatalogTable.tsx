@@ -111,7 +111,7 @@ function AllChannelsTable({
               return (
                 <tr key={c.channelId}>
                   <td class="wrap">
-                    <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
+                    <a href={`/curate/${c.channelId}`}>{c.title}</a>
                   </td>
                   <td>{channelStateCopy(c)}</td>
                   <td>

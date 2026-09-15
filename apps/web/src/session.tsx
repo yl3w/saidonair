@@ -101,7 +101,8 @@ export function useReadySession(): { email: string; role: UserRole } {
 
 /**
  * Renders its children only with a ready session (and, with `ownerOnly`, an owner). No account
- * goes back to `/`; a non-owner on an owner page goes Home with a note. Errors offer a retry.
+ * goes back to `/`; a reader who is not the owner, on Curate, goes to the queue with a note. The
+ * web is the only gate there is: the API enforces no authorization (docs/PRD.md §2, §9).
  */
 export function Guard({
   children,
@@ -116,7 +117,7 @@ export function Guard({
   useEffect(() => {
     if (state.status === "none") route("/", true);
     if (ownerOnly && state.status === "ready" && state.role !== "owner") {
-      route("/home?note=owner-only", true);
+      route("/queue?note=owner-only", true);
     }
   }, [state, ownerOnly, route]);
 
@@ -125,10 +126,10 @@ export function Guard({
   }
   if (state.status === "error") {
     return (
-      <main>
-        <p class="error">
+      <main class="mx-auto w-full max-w-list px-5 pt-8 md:px-8">
+        <p class="text-ui text-consequence">
           Couldn't load your account: {state.error.message}.{" "}
-          <button type="button" onClick={retry}>
+          <button type="button" class="link text-primary" onClick={retry}>
             Retry
           </button>
         </p>
@@ -136,8 +137,8 @@ export function Guard({
     );
   }
   return (
-    <main>
-      <p>Loading…</p>
+    <main class="mx-auto w-full max-w-list px-5 pt-8 md:px-8">
+      <div class="skeleton h-8 w-48" />
     </main>
   );
 }

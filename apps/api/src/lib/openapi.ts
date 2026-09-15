@@ -114,6 +114,10 @@ const documentation: GenerateSpecOptions["documentation"] = {
       description:
         "The caller's digest of new summaries from eligible follows.",
     },
+    {
+      name: "preferences",
+      description: "The caller's own rules for chat answers.",
+    },
   ],
   components: {
     securitySchemes: {

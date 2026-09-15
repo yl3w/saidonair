@@ -56,7 +56,7 @@ function ReviewedRow({ channel: c }: { channel: Channel }) {
   return (
     <div class="row">
       <div class="grow">
-        <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
+        <a href={`/curate/${c.channelId}`}>{c.title}</a>
         <div class="meta">
           {decisionCopy(c)} <Time at={c.reviewedAt} />
           {c.management?.reviewedByEmail &&

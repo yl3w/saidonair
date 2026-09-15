@@ -4,7 +4,7 @@ import { api } from "../api";
 import { AddChannel } from "../components/AddChannel";
 import { type CatalogFilter, CatalogHealth } from "../components/CatalogHealth";
 import { CatalogTable } from "../components/CatalogTable";
-import { Nav } from "../components/Nav";
+import { Page } from "../components/Page";
 import { RequestQueue } from "../components/RequestQueue";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
@@ -48,8 +48,7 @@ function OwnerScreen() {
   }, [url, channels.status]);
 
   return (
-    <main class="wide">
-      <Nav />
+    <Page measure="wide">
       <nav class="sections" aria-label="Sections">
         <a href="#requests">Queue</a>
         <a href="#catalog">Catalog</a>
@@ -108,6 +107,6 @@ function OwnerScreen() {
         )}
         <AddChannel onChanged={reloadAll} />
       </section>
-    </main>
+    </Page>
   );
 }

@@ -12,27 +12,29 @@ export type AvatarSize = keyof typeof SIZES;
 const TINTS = 6;
 
 /**
- * A channel's mark: one or two letters from its title on a tint chosen by hashing the channel id
- * (docs/design.md §2.5). Nothing in this product stores channel artwork and there is no permitted
- * source to fetch it from, so a grey disc would be a promise the data cannot keep. No network
- * request, no layout shift, and one channel is the same colour on every screen and for every reader.
+ * A mark for a thing with a name: one or two letters from `name` on a tint chosen by hashing `id`
+ * (docs/design.md §2.5). Usually a channel — id and title — and in the corner of the top bar the
+ * reader themselves, keyed on their email. Nothing in this product stores channel artwork and there
+ * is no permitted source to fetch it from, so a grey disc would be a promise the data cannot keep.
+ * No network request, no layout shift, and one channel is the same colour on every screen and for
+ * every reader.
  *
- * The letters are a visual aid, never the only name: a channel's title is always beside them, so the
- * mark is hidden from assistive technology unless a caller passes `label` for a standalone one.
+ * The letters are a visual aid, never the only name: the title is always beside them, so the mark is
+ * hidden from assistive technology unless a caller passes `label` for a standalone one.
  */
 export function Avatar({
-  channelId,
-  title,
+  id,
+  name,
   size = 28,
   label,
 }: {
-  channelId: string;
-  title: string;
+  id: string;
+  name: string;
   size?: AvatarSize;
   label?: string;
 }) {
   const { box, text } = SIZES[size];
-  const tint = tintOf(channelId);
+  const tint = tintOf(id);
   const aria =
     label === undefined
       ? ({ "aria-hidden": "true" } as const)
@@ -50,7 +52,7 @@ export function Avatar({
       }}
       {...aria}
     >
-      {monogram(title)}
+      {monogram(name)}
     </span>
   );
 }
@@ -60,8 +62,8 @@ export function Avatar({
  * York Times Podcasts" is NY. Letters and digits only, so punctuation and emoji in a channel name
  * never become the mark; a title with neither gives "?".
  */
-export function monogram(title: string): string {
-  const words = title
+export function monogram(name: string): string {
+  const words = name
     .split(/[^\p{Letter}\p{Number}]+/u)
     .filter((word) => word.length > 0);
   const initials = words
@@ -72,14 +74,14 @@ export function monogram(title: string): string {
 }
 
 /**
- * The channel id into one of the six tints, by FNV-1a. Any stable hash would do; what matters is
- * that it depends on nothing but the id, so the mark never changes and never differs between two
- * readers looking at the same channel.
+ * The id into one of the six tints, by FNV-1a. Any stable hash would do; what matters is that it
+ * depends on nothing but the id, so the mark never changes and never differs between two readers
+ * looking at the same channel.
  */
-export function tintOf(channelId: string): number {
+export function tintOf(id: string): number {
   let hash = 0x811c9dc5;
-  for (let index = 0; index < channelId.length; index++) {
-    hash ^= channelId.charCodeAt(index);
+  for (let index = 0; index < id.length; index++) {
+    hash ^= id.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return (hash % TINTS) + 1;

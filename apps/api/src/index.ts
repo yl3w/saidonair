@@ -16,6 +16,7 @@ import { digestRoutes } from "./routes/digest";
 import { docsPage } from "./routes/docs";
 import { followRoutes } from "./routes/follows";
 import { meRoutes } from "./routes/me";
+import { preferenceRoutes } from "./routes/preferences";
 
 // Durable Object and Workflow classes must be exported from the Worker entry.
 export { RegistryDO } from "./do/registry";
@@ -64,6 +65,7 @@ app.route("/catalog", catalogRoutes);
 app.route("/channels", channelRoutes);
 app.route("/follows", followRoutes);
 app.route("/digest", digestRoutes);
+app.route("/preferences", preferenceRoutes);
 
 /**
  * The Worker: HTTP through Hono, and the cron triggers of `env.production` (`wrangler.jsonc`)

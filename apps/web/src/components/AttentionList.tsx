@@ -56,7 +56,7 @@ export function AttentionList({
       {neverStarted.map((c) => (
         <div class="row" key={c.channelId}>
           <div class="grow">
-            <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
+            <a href={`/curate/${c.channelId}`}>{c.title}</a>
             <div class="meta">
               approved <Time at={c.approvedAt} />, never started
             </div>
@@ -105,7 +105,7 @@ function FailedEpisodes({
   return (
     <div>
       <p>
-        <a href={`/owner/channels/${c.channelId}`}>{c.title}</a>
+        <a href={`/curate/${c.channelId}`}>{c.title}</a>
       </p>
       {load.status === "loading" && <p class="muted">Loading…</p>}
       {load.status === "error" && (

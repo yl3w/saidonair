@@ -10,6 +10,7 @@ import type {
   CreateChannelBody,
   DeclineChannelBody,
   DigestEpisodesResponse,
+  DigestRowsResponse,
   EpisodeResponse,
   EpisodeRetryResponse,
   EpisodesResponse,
@@ -19,6 +20,8 @@ import type {
   IngestionRunResponse,
   IngestionRunsResponse,
   MeResponse,
+  PreferencesResponse,
+  UpdatePreferencesBody,
 } from "@media-digest/shared";
 
 const BASE_URL = (
@@ -149,6 +152,24 @@ export const api = {
       "GET",
       `/channels/${enc(channelId)}/episodes${limit === undefined ? "" : `?limit=${limit}`}`,
     ),
+  /** One episode with its summary, related titles and read state: the reading view's deep link. */
+  getEpisode: (channelId: string, videoId: string) =>
+    request<EpisodeResponse>(
+      "GET",
+      `/channels/${enc(channelId)}/episodes/${enc(videoId)}`,
+    ),
+  /** Done. The one write that marks a summary read (docs/PRD.md §4.4); nothing else records one. */
+  markRead: (channelId: string, videoId: string) =>
+    request<EpisodeResponse>(
+      "POST",
+      `/channels/${enc(channelId)}/episodes/${enc(videoId)}/read`,
+    ),
+  /** Undo, offered from History where the row is visible. */
+  clearRead: (channelId: string, videoId: string) =>
+    request<EpisodeResponse>(
+      "DELETE",
+      `/channels/${enc(channelId)}/episodes/${enc(videoId)}/read`,
+    ),
   /** The episode and its new attempt: `running` when work started, `blocked` when pre-flight refused it. */
   retryEpisode: (channelId: string, videoId: string) =>
     request<EpisodeRetryResponse>(
@@ -175,12 +196,48 @@ export const api = {
   unfollow: (channelId: string) =>
     request<FollowResponse>("DELETE", `/follows/${enc(channelId)}`),
 
-  // digest
-  getDigest: (fromMs: number) =>
-    request<DigestEpisodesResponse>(
+  // digest — the one route behind Queue, History and the calendar. The range is the reader's own
+  // local days, worked out here: the API takes instants and never a timezone (docs/PRD.md §4.4).
+  getDigest: (range: DigestRange = {}) =>
+    request<DigestEpisodesResponse>("GET", `/digest${digestQuery(range)}`),
+  /** The same range as rows — four fields each — which is how five weeks of calendar cost one read. */
+  getDigestRows: (range: DigestRange = {}) =>
+    request<DigestRowsResponse>(
       "GET",
-      `/digest?from=${enc(new Date(fromMs).toISOString())}`,
+      `/digest${digestQuery({ ...range, compact: true })}`,
     ),
+
+  // preferences
+  getPreferences: () => request<PreferencesResponse>("GET", "/preferences"),
+  putPreferences: (body: UpdatePreferencesBody) =>
+    request<PreferencesResponse>("PUT", "/preferences", body),
 };
+
+/** `from` is inclusive and `to` exclusive, so consecutive local days never claim the same summary. */
+export type DigestRange = {
+  fromMs?: number;
+  toMs?: number;
+  unread?: boolean;
+  channelIds?: readonly string[];
+  cursor?: string;
+  limit?: number;
+  compact?: boolean;
+};
+
+function digestQuery(range: DigestRange): string {
+  const query = new URLSearchParams();
+  if (range.fromMs !== undefined)
+    query.set("from", new Date(range.fromMs).toISOString());
+  if (range.toMs !== undefined)
+    query.set("to", new Date(range.toMs).toISOString());
+  if (range.unread === true) query.set("unread", "true");
+  for (const channelId of range.channelIds ?? [])
+    query.append("channelId", channelId);
+  if (range.cursor !== undefined) query.set("cursor", range.cursor);
+  if (range.limit !== undefined) query.set("limit", String(range.limit));
+  if (range.compact === true) query.set("compact", "true");
+  const rendered = query.toString();
+  return rendered.length === 0 ? "" : `?${rendered}`;
+}
 
 export type Api = typeof api;
