@@ -283,6 +283,7 @@ What changes as the catalog grows. Design the second column before you ship the 
 | Filter by channel | — | one control opening a searchable list, sorted by what is unread |
 | Sections | stacked with headings | tabs with counts |
 | A long list | scroll | search, a sort order, 25 at a time |
+| The queue | scroll | fifty at a time behind a Show more, to the end of the range |
 | Days | a list of days | a five-week calendar, whose height does not grow |
 | A channel's history | scroll | paging by year |
 | Rows | full, with an excerpt | a density switch that drops the excerpt, never the title |
@@ -291,6 +292,12 @@ What changes as the catalog grows. Design the second column before you ship the 
 
 The rule underneath: **a control whose size grows with the data is not a control.** That is why the calendar replaced
 a list of days, and why a chip row per channel became a menu.
+
+And its twin, which the queue learned the hard way: **a list that stops short is not the list it claims to be.** A
+screen answering "what still needs me" may not answer it for the first fifty and then send the reader somewhere that
+answers a different question. Paging is what a long list owes; handing the reader to another screen is not paging.
+A corollary for anything filtered after it is fetched, as the queue's receipts are: **an empty page is not an empty
+list** — say "you are through everything" only when the range is exhausted, never when one page came back short.
 
 ---
 

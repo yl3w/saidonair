@@ -643,9 +643,12 @@ somewhere extra to go.
   reading time, and the publication date when it differs from the day it arrived. A check on the row marks it done
   without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
   sticky across sessions; a density switch trades the excerpt, never the title; a rail lists the days still holding
-  something. It ends by saying what is waiting — "That is everything waiting — 312 summaries sit in History" —
-  rather than fading out. Empty: "You are through everything", pointing at History; with no follows, pointing at
-  Sources.
+  something. **It holds everything waiting, however much that is**: pages of fifty with a Show more, to the end of
+  the range, never a hand-off to History at row fifty (corrected 2026-09-15, §9). It ends by saying what is
+  waiting — "That is everything waiting — 312 summaries sit in History" — rather than fading out. Empty: "You are
+  through everything", pointing at History; with no follows, pointing at Sources — and only once the range is
+  exhausted, because `unread` is filtered outside the Registry, so a page can come back empty and still carry a
+  cursor.
 - **Reading `/read/:episodeId`:** one 680 px column, and the only screen a reader is glad to be in. Channel, title,
   a meta line, the executive summary as a lede set off by a rule, the takeaways as the body with their timestamps
   hanging in the left margin as `youtu.be/<episodeId>?t=<startSec>` links, tags, then related titles filtered to
@@ -1067,6 +1070,21 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
+- **The queue pages to the end of the range — corrected 2026-09-15.** Not a new decision: §7 has always said the
+  queue holds what still needs the reader and ends by saying what is waiting. The built screen stopped at fifty and
+  offered "More is waiting — browse it by day in History" instead, which breaks the one promise the queue makes.
+  History is the library: it mixes what has been dealt with into what has not, has no unread filter of its own, and
+  is navigated by date rather than by what is outstanding, so a reader sent there at row fifty-one cannot tell
+  which rows still need them. The queue now pages by cursor like every other long list in the product
+  (`docs/design.md` §5), fifty at a time behind a Show more, and the designed ending is reachable for the first
+  time. Two bugs fell out of the same read. **An empty page is not the end of the range**: receipts live in the
+  User DO, so the route filters `unread` after it selects, and a page that spends its ten passes on rows the reader
+  has already dealt with comes back empty *with* a cursor — the built screen would have answered "You are through
+  everything" over a queue that was not empty. And **a page can empty under the reader**, by their marking every
+  row on it done, which is the normal way to use the screen. The queue therefore keeps asking until it has rows or
+  the cursor is null, and claims the reader is through only on the second. Cost: a reader with hundreds waiting
+  presses Show more rather than scrolling forever; an explicit control was chosen over loading on scroll because it
+  is reachable from a keyboard and because History already uses exactly this one.
 - **Nothing unfinished in primary navigation — decided 2026-09-15.** Chats had equal billing with Queue and
   Sources in both the top bar and the phone's tab bar, and led to a placeholder whose body named a milestone —
   "Built in M4" — which is our word, not a reader's. Account meanwhile offered **Chat rules**, a field that saved to

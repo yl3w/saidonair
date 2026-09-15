@@ -162,6 +162,14 @@ each row that marks it done without opening it. It ends with what is waiting, no
 waiting — 312 summaries sit in History.* **History** shows everything eligible by day, navigated by a five-week
 calendar of dated cells, and is the only place a receipt can be undone.
 
+**Corrected 2026-09-15** (PRD §9): this section named the `cursor` the queue needed and then never said the queue
+used it, and the built screen did not — it showed the first fifty and offered History for the rest, which is the
+library and answers a different question. The queue now pages fifty at a time behind a Show more, to the end of the
+range. Two silent failures went with it, both of them the queue calling itself empty when it was not: a page can
+come back **empty and still carry a cursor**, because `unread` is filtered outside the Registry, and a page can
+**empty under the reader** as they mark its rows done. The queue keeps asking until it has rows or the cursor is
+null, and only then says the reader is through.
+
 ### 4.5 The reading view
 
 One 680 px column. Channel, title, published date, duration, `Watch` in the bar exactly once. The executive summary

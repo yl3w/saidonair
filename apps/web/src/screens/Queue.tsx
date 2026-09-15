@@ -1,5 +1,5 @@
 import type { Episode } from "@media-digest/shared";
-import { useCallback, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../api";
 import { ChannelFilter, type FilterChannel } from "../components/ChannelFilter";
 import { DensitySwitch } from "../components/DensitySwitch";
@@ -37,41 +37,20 @@ export function Queue() {
  * What still needs the reader, and nothing else (docs/design.md principle 3): only summaries with no
  * receipt, grouped by the day they became readable, newest day first. A row can be marked done here
  * without opening it — that is the one write this screen makes — and it leaves the moment it is.
+ *
+ * **The queue holds everything waiting, however much that is.** It pages to the end of the range
+ * rather than handing a reader past fifty rows to History, which is the library and mixes what has
+ * been dealt with into what has not (owner decision 2026-09-15, docs/PRD.md §9).
  */
 function QueueScreen() {
   const [density, setDensity] = useState<Density>("full");
   const [channelIds, setChannelIds] = useState<ReadonlySet<string>>(new Set());
-  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
   const showCounts = readSettings().showCounts;
 
   const [follows] = useLoad(() => api.listFollows(), []);
-  const filter = [...channelIds];
-  const [page, reload] = useLoad(
-    () => api.getDigest({ unread: true, channelIds: filter, limit: PAGE }),
-    [filter.join(",")],
-    { retainDataOnReload: true },
-  );
-  // Rows already marked done stay out of the list without a refetch: the queue is the one screen
-  // where a row leaving is the point, and a full reload would move everything under the cursor.
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const queue = useQueueRows([...channelIds].join(","));
 
-  const markDone = useCallback(async (episode: Episode) => {
-    setBusy((current) => new Set(current).add(episode.episodeId));
-    setError(null);
-    try {
-      await api.markRead(episode.channelId, episode.episodeId);
-      setDismissed((current) => new Set(current).add(episode.episodeId));
-    } catch (caught) {
-      setError(actionErrorCopy(caught));
-    } finally {
-      setBusy((current) => {
-        const next = new Set(current);
-        next.delete(episode.episodeId);
-        return next;
-      });
-    }
-  }, []);
+  useReturnAnchor(queue.status === "ready");
 
   const channels: FilterChannel[] =
     follows.status === "ready"
@@ -93,17 +72,17 @@ function QueueScreen() {
           )
       : null;
 
-  const rows =
-    page.status === "ready"
-      ? page.data.episodes.filter((row) => !dismissed.has(row.episodeId))
-      : [];
-  const days = groupByDay(rows, (row) => row.summaryAvailableAt ?? 0);
+  const days = groupByDay(queue.rows, (row) => row.summaryAvailableAt ?? 0);
   const nothingFollowed =
     follows.status === "ready" && follows.data.follows.length === 0;
-
-  // Coming back from a summary: the row that was opened has been read and so has left the queue,
-  // which is the point of the queue — so the return lands on the day it sat under.
-  useReturnAnchor(page.status === "ready");
+  // Through everything only when the range is exhausted too: a loaded page can empty while the
+  // range still holds unread summaries, and claiming otherwise is the failure this screen cannot
+  // afford.
+  const through =
+    queue.status === "ready" &&
+    queue.rows.length === 0 &&
+    !queue.more &&
+    !queue.loadingMore;
 
   return (
     <Page rail={<DayRail days={days.map((day) => day.key)} />}>
@@ -121,9 +100,11 @@ function QueueScreen() {
         <DensitySwitch value={density} onChange={setDensity} />
       </header>
 
-      {error !== null && <p class="mt-3 text-ui text-consequence">{error}</p>}
+      {queue.status === "ready" && queue.error !== null && (
+        <p class="mt-3 text-ui text-consequence">{queue.error}</p>
+      )}
 
-      {page.status === "loading" && (
+      {queue.status === "loading" && (
         <div class="mt-6">
           {[0, 1, 2].map((n) => (
             <SummaryRowSkeleton key={n} density={density} />
@@ -131,14 +112,14 @@ function QueueScreen() {
         </div>
       )}
 
-      {page.status === "error" && (
+      {queue.status === "error" && (
         <p class="mt-6 text-ui text-consequence">
-          Couldn't load your queue: {actionErrorCopy(page.error)}.{" "}
-          <Retry onClick={reload} />
+          Couldn't load your queue: {queue.error}.{" "}
+          <Retry onClick={queue.reload} />
         </p>
       )}
 
-      {page.status === "ready" && rows.length === 0 && (
+      {through && (
         <section class="mt-10">
           <h2 class="font-reading text-section font-semibold text-ink">
             {nothingFollowed ? "Nothing followed yet" : QUEUE_EMPTY_TITLE}
@@ -157,59 +138,185 @@ function QueueScreen() {
         </section>
       )}
 
-      {page.status === "ready" &&
-        days.map((day) => (
-          <section key={day.key} class="mt-8" id={`day-${day.key}`}>
-            <h2 class="font-reading text-section font-semibold text-ink">
-              <a
-                class="inline-flex min-h-11 items-center"
-                href={`/history/${day.key}`}
-              >
-                {dayLabel(day.key)}
-              </a>
-            </h2>
-            <div class="mt-2 border-t border-rule">
-              {day.rows.map((episode) => (
-                <SummaryRow
-                  key={episode.episodeId}
-                  episode={episode}
-                  density={density}
-                  busy={busy.has(episode.episodeId)}
-                  onOpen={() =>
-                    rememberOrigin({
-                      kind: "queue",
-                      episodeId: episode.episodeId,
-                      dayKey: day.key,
-                    })
-                  }
-                  onDone={markDone}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+      {days.map((day) => (
+        <section key={day.key} class="mt-8" id={`day-${day.key}`}>
+          <h2 class="font-reading text-section font-semibold text-ink">
+            <a
+              class="inline-flex min-h-11 items-center"
+              href={`/history/${day.key}`}
+            >
+              {dayLabel(day.key)}
+            </a>
+          </h2>
+          <div class="mt-2 border-t border-rule">
+            {day.rows.map((episode) => (
+              <SummaryRow
+                key={episode.episodeId}
+                episode={episode}
+                density={density}
+                busy={queue.busy.has(episode.episodeId)}
+                onOpen={() =>
+                  rememberOrigin({
+                    kind: "queue",
+                    episodeId: episode.episodeId,
+                    dayKey: day.key,
+                  })
+                }
+                onDone={queue.markDone}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
 
-      {page.status === "ready" && rows.length > 0 && (
+      {queue.status === "ready" && (queue.more || queue.rows.length > 0) && (
         <footer class="mt-8">
-          {page.data.nextCursor === null ? (
+          {queue.more ? (
+            <button
+              type="button"
+              class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
+              disabled={queue.loadingMore}
+              onClick={queue.loadMore}
+            >
+              {queue.loadingMore ? "Loading…" : "Show more"}
+            </button>
+          ) : (
             <p class="font-reading text-body text-ink-2">
               {endOfQueueCopy(inHistory)}{" "}
               <a class="text-primary" href="/history">
                 History
               </a>
             </p>
-          ) : (
-            <a
-              class="inline-flex min-h-11 items-center text-ui text-primary"
-              href="/history"
-            >
-              More is waiting — browse it by day in History
-            </a>
           )}
         </footer>
       )}
     </Page>
   );
+}
+
+type QueueRows = {
+  status: "loading" | "ready" | "error";
+  rows: Episode[];
+  more: boolean;
+  loadingMore: boolean;
+  busy: ReadonlySet<string>;
+  error: string | null;
+  reload: () => void;
+  loadMore: () => void;
+  markDone: (episode: Episode) => void;
+};
+
+/**
+ * The unread rows, paged to the end of the range. Pages accumulate; a row marked done leaves the
+ * list without a refetch, because the queue is the one screen where a row leaving is the point and
+ * a reload would move everything under the cursor.
+ *
+ * Receipts live in the User DO, so the route filters `unread` after it selects, which means **a page
+ * can come back empty and still carry a cursor** — ten passes over rows the reader has already dealt
+ * with. So an empty page is never the end; only a null cursor is, and the effect below keeps asking
+ * until one of the two is true.
+ *
+ * @param key the channel filter, joined — one string, so a new array each render is not a new query.
+ */
+function useQueueRows(key: string): QueueRows {
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const [rows, setRows] = useState<Episode[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus("loading");
+    setRows([]);
+    setCursor(null);
+    setError(null);
+    api
+      .getDigest({
+        unread: true,
+        channelIds: key === "" ? [] : key.split(","),
+        limit: PAGE,
+      })
+      .then(
+        (page) => {
+          if (cancelled) return;
+          setRows(page.episodes);
+          setCursor(page.nextCursor);
+          setStatus("ready");
+        },
+        (caught: unknown) => {
+          if (cancelled) return;
+          setError(actionErrorCopy(caught));
+          setStatus("error");
+        },
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [key, attempt]);
+
+  const loadMore = useCallback(async () => {
+    if (cursor === null) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const page = await api.getDigest({
+        unread: true,
+        channelIds: key === "" ? [] : key.split(","),
+        limit: PAGE,
+        cursor,
+      });
+      setRows((current) => [...current, ...page.episodes]);
+      setCursor(page.nextCursor);
+    } catch (caught) {
+      setError(actionErrorCopy(caught));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [cursor, key]);
+
+  // Nothing loaded but more to come: either the first page was all receipts, or the reader has just
+  // finished every row on screen. Keep going rather than show an empty queue over a full range.
+  useEffect(() => {
+    if (status !== "ready" || loadingMore) return;
+    if (rows.length > 0 || cursor === null || error !== null) return;
+    void loadMore();
+  }, [status, rows.length, cursor, loadingMore, error, loadMore]);
+
+  const markDone = useCallback(async (episode: Episode) => {
+    setBusy((current) => new Set(current).add(episode.episodeId));
+    setError(null);
+    try {
+      await api.markRead(episode.channelId, episode.episodeId);
+      setRows((current) =>
+        current.filter((row) => row.episodeId !== episode.episodeId),
+      );
+    } catch (caught) {
+      setError(actionErrorCopy(caught));
+    } finally {
+      setBusy((current) => {
+        const next = new Set(current);
+        next.delete(episode.episodeId);
+        return next;
+      });
+    }
+  }, []);
+
+  return {
+    status,
+    rows,
+    more: cursor !== null,
+    loadingMore,
+    busy,
+    error,
+    reload: () => setAttempt((n) => n + 1),
+    loadMore: () => void loadMore(),
+    markDone: (episode) => void markDone(episode),
+  };
 }
 
 /** The days still holding something, as anchors. Navigation about the list, never content. */
