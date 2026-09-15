@@ -5,6 +5,7 @@ import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
 import { Choice } from "../components/Choice";
 import { Icon } from "../components/Icon";
+import { MetaLine } from "../components/MetaLine";
 import { Retry } from "../components/Retry";
 import { Sheet } from "../components/Sheet";
 import {
@@ -244,16 +245,13 @@ function ReadingScreen() {
                 summary is a triage fact and lives where they triage, on the History row that says
                 "Read" and carries the Undo (owner decision 2026-09-15, docs/PRD.md §9). Assembled
                 rather than written out, so the separator belongs to the line. */}
-            <p class="mt-3 flex flex-wrap gap-x-2 text-meta text-ink-3">
-              {[
+            <MetaLine
+              class="mt-3"
+              items={[
                 longDate(episode.publishedAt),
                 runtimeCopy(episode.processing.durationSec),
-              ]
-                .filter((item): item is string => item !== null)
-                .map((item, index) => (
-                  <span key={item}>{index === 0 ? item : `· ${item}`}</span>
-                ))}
-            </p>
+              ].filter((item): item is string => item !== null)}
+            />
 
             {summary === null ? (
               <p class="mt-6 border-t border-rule pt-6 text-body text-ink-2">

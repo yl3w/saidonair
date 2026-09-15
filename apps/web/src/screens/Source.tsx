@@ -10,6 +10,7 @@ import {
 } from "../components/ChannelStatusActions";
 import { FollowButton } from "../components/FollowButton";
 import { Icon } from "../components/Icon";
+import { MetaLine } from "../components/MetaLine";
 import { Page } from "../components/Page";
 import {
   fullDate,
@@ -269,6 +270,10 @@ function Header({
     exception,
     episodeCountCopy(channel.episodes),
     summaryCountCopy(channel.episodes),
+    // A fact about the channel, so it sits with the facts. It was beside the controls to make a
+    // withdrawal's consequence visible before it was chosen — and withdrawal moved to Curate, so
+    // that reason left with it (owner decision 2026-09-15).
+    followerCountCopy(channel.followerCount),
     channel.lastIngestedAt === null
       ? null
       : `last summary ${relativeTime(channel.lastIngestedAt)}`,
@@ -282,11 +287,7 @@ function Header({
           <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
             {channel.title}
           </h1>
-          <p class="mt-0.5 flex flex-wrap gap-x-2 text-meta text-ink-3">
-            {meta.map((item, index) => (
-              <span key={item}>{index === 0 ? item : `· ${item}`}</span>
-            ))}
-          </p>
+          <MetaLine class="mt-1.5" items={meta} />
         </div>
       </div>
 
@@ -294,11 +295,10 @@ function Header({
         <p class="mt-3 font-reading text-excerpt text-ink-2">{review}</p>
       )}
 
-      {/* One line of controls, in one order, for whoever is reading. The owner's are amber and come
-          first because they are about the channel; the follower count and the follow are everyone's
-          and come last because they are about the reader. No separate strip and no label: a page
-          that offers a reader's act and an owner's act tells them apart by colour and by the border
-          on the reader's own, not by a heading over half of them. */}
+      {/* One line, and controls only. The owner's are amber and come first because they are about
+          the channel; the follow is everyone's and comes last because it is about the reader. No
+          separate strip and no label: a page that offers a reader's act and an owner's act tells
+          them apart by colour and by the border on the reader's own, not by a heading over half. */}
       <div class="mt-3 flex flex-wrap items-center gap-3 border-t border-rule pt-3">
         {isOwner && (
           <>
@@ -319,12 +319,6 @@ function Header({
             </a>
           </>
         )}
-
-        {/* Who a catalog decision reaches, in front of everyone rather than only in the dialog it
-            opens: a consequence should be visible before it is chosen (docs/design.md §4). */}
-        <span class="text-meta text-ink-3">
-          {followerCountCopy(channel.followerCount)}
-        </span>
 
         {channel.status !== "declined" && (
           <FollowButton

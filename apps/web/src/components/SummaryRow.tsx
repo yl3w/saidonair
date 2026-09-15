@@ -5,6 +5,7 @@ import { dayKeyOf } from "../lib/day";
 import { rowAnchorId } from "../lib/reading-origin";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
+import { MetaLine } from "./MetaLine";
 
 export type Density = "full" | "compact";
 
@@ -62,22 +63,14 @@ export function SummaryRow({
   const publishedElsewhere =
     arrivedAt !== null && dayKeyOf(episode.publishedAt) !== dayKeyOf(arrivedAt);
 
-  // Built rather than written out, so the separator belongs to the line and not to whichever item
-  // happens to be second once the ones that do not apply have dropped out.
-  const meta: { key: string; text: string }[] = [];
-  if (state && episode.read !== undefined) {
-    meta.push({ key: "state", text: readStateCopy(episode.read) });
-  }
-  if (takeaways > 0) {
-    meta.push({ key: "takeaways", text: `${takeaways} takeaways` });
-  }
-  if (runtime !== null) meta.push({ key: "runtime", text: runtime });
+  const meta: string[] = [];
+  if (state && episode.read !== undefined)
+    meta.push(readStateCopy(episode.read));
+  if (takeaways > 0) meta.push(`${takeaways} takeaways`);
+  if (runtime !== null) meta.push(runtime);
   // Only where the date is not already the lead; there it would say the same thing twice.
   if (publishedElsewhere && lead === "channel") {
-    meta.push({
-      key: "published",
-      text: `published ${shortDate(episode.publishedAt)}`,
-    });
+    meta.push(`published ${shortDate(episode.publishedAt)}`);
   }
 
   return (
@@ -126,13 +119,7 @@ export function SummaryRow({
           </p>
         )}
 
-        <p class="mt-1 flex flex-wrap gap-x-2 text-meta text-ink-3">
-          {meta.map((item, index) => (
-            <span key={item.key}>
-              {index === 0 ? item.text : `· ${item.text}`}
-            </span>
-          ))}
-        </p>
+        <MetaLine class="mt-1" items={meta} />
       </div>
 
       {onDone !== undefined && (

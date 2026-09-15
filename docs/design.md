@@ -257,6 +257,17 @@ work read as unfinished too (owner decision 2026-09-15, PRD §9). Content is
 centred. A right rail carries navigation *about* the list — days still waiting, the calendar, a sort order — never
 content.
 
+**A line of facts.** Counts, dates, durations and states, separated by a middle dot — under a title, under a
+channel's name, beside a row. **The separator belongs to the line, not to an item**: give the dot its own element
+inside the row's gap, so the space either side of it matches and any item can drop out from anywhere without
+leaving a stray mark at the front. The dots are hidden from assistive technology. One component, `MetaLine`, so
+the three places that draw one cannot drift (2026-09-15).
+
+**Facts and controls do not share a line.** A number beside a button is read as a control and pressed; a control
+among facts is missed. The one exception the product had — a follower count beside the owner's actions, so a
+withdrawal's consequence was visible before it was chosen — ended when withdrawal moved to Curate, and the count
+went back among the facts where it belongs.
+
 **A summary row.** Monogram, then: channel and when it became readable, in uppercase meta; the title in serif; up to
 three lines of the executive summary as the excerpt; a meta line of takeaway count, episode length, and the
 publication date when it differs from the day it arrived, led by "Read" or "Unread" **in a mixed list**. A check at
