@@ -171,7 +171,7 @@ function SourceScreen() {
         {episodes.status === "loading" && (
           <div class="mt-3">
             {[0, 1].map((n) => (
-              <SummaryRowSkeleton key={n} lead="published" />
+              <SummaryRowSkeleton key={n} />
             ))}
           </div>
         )}
@@ -191,7 +191,7 @@ function SourceScreen() {
               <SummaryRow
                 key={episode.episodeId}
                 episode={episode}
-                lead="published"
+                list="channel"
                 onOpen={() =>
                   rememberOrigin({
                     kind: "source",

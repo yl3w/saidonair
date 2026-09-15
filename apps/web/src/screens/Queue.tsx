@@ -153,6 +153,7 @@ function QueueScreen() {
               <SummaryRow
                 key={episode.episodeId}
                 episode={episode}
+                list="mixed"
                 density={density}
                 busy={queue.busy.has(episode.episodeId)}
                 state={false}

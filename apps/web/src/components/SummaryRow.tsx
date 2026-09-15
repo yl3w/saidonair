@@ -3,17 +3,23 @@ import { Check } from "lucide-preact";
 import { readStateCopy, runtimeCopy } from "../lib/copy";
 import { dayKeyOf } from "../lib/day";
 import { rowAnchorId } from "../lib/reading-origin";
-import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { MetaLine } from "./MetaLine";
 
 export type Density = "full" | "compact";
 
 /**
- * One summary as a list shows it (docs/design.md §3): the channel's mark, the channel and when the
- * summary became readable, the title, up to three lines of the executive summary — always the
- * executive summary, never a takeaway — and a meta line. A check at the right marks it done without
- * opening it.
+ * One summary as a list shows it (docs/design.md §3): the title, up to three lines of the executive
+ * summary — always the executive summary, never a takeaway — and a meta line. A check at the right
+ * marks it done without opening it.
+ *
+ * **The title leads.** A monogram and an uppercase channel name used to come first, which put
+ * furniture where the content belongs and pushed the title and its excerpt 46 px right — measure
+ * lost from the one thing worth reading, and worst on a phone. The mark is gone from a list
+ * entirely (owner decision 2026-09-15): it was a second, weaker copy of a fact the row already
+ * states, and triaging by channel is the channel filter's job, not a scan of thirty discs. It
+ * survives where it identifies rather than repeats — a Sources row, a channel's header, the
+ * reader's own monogram.
  *
  * Compact trades the excerpt, never the title.
  *
@@ -27,17 +33,18 @@ export type Density = "full" | "compact";
  * (owner decision 2026-09-15, docs/PRD.md §9). It is never printed for a caller the API gave no
  * receipt state to: not following an approved channel is not the same as not having read something.
  *
- * `lead` says what identifies a row in this list. A queue or a day of History mixes channels, so a
- * row is identified by its source: the mark, the name, and when it arrived. A channel's own history
- * does not — the mark and the name would repeat down the page — so there a row is identified by the
- * date it was published, which is also the order the list is in (owner decision 2026-09-15).
+ * `list` says what this row sits in, and the row derives what it must name from that. A **mixed**
+ * list — the queue, a day of History — has to say which channel, so the channel closes the row on
+ * its own line: not in the meta line, where it would wrap on a phone before it finished. A
+ * **channel**'s own history does not, and is ordered by publication, so the date opens the row
+ * instead. Either way the title is second to nothing.
  */
 export function SummaryRow({
   episode,
   density = "full",
   busy = false,
   state = true,
-  lead = "channel",
+  list,
   onOpen,
   onDone,
   onUndo,
@@ -46,7 +53,7 @@ export function SummaryRow({
   density?: Density;
   busy?: boolean;
   state?: boolean;
-  lead?: "channel" | "published";
+  list: "mixed" | "channel";
   onOpen?: (episode: Episode) => void;
   onDone?: (episode: Episode) => void;
   onUndo?: (episode: Episode) => void;
@@ -68,8 +75,8 @@ export function SummaryRow({
     meta.push(readStateCopy(episode.read));
   if (takeaways > 0) meta.push(`${takeaways} takeaways`);
   if (runtime !== null) meta.push(runtime);
-  // Only where the date is not already the lead; there it would say the same thing twice.
-  if (publishedElsewhere && lead === "channel") {
+  // Only where the date does not already open the row; there it would say the same thing twice.
+  if (publishedElsewhere && list === "mixed") {
     meta.push(`published ${shortDate(episode.publishedAt)}`);
   }
 
@@ -78,28 +85,17 @@ export function SummaryRow({
       id={rowAnchorId(episode.episodeId)}
       class={`flex gap-3 border-b border-rule ${density === "full" ? "py-[18px]" : "py-[9px]"}`}
     >
-      {lead === "channel" && (
-        <Avatar
-          id={episode.channelId}
-          name={episode.channelTitle}
-          size={density === "full" ? 34 : 20}
-        />
-      )}
-
       <div class="min-w-0 flex-1">
-        <p class="text-label uppercase text-ink-3">
-          {lead === "channel" ? (
-            <>
-              {episode.channelTitle}
-              {arrivedAt !== null && ` · ${timeOfDay(arrivedAt)}`}
-            </>
-          ) : (
-            fullDate(episode.publishedAt)
-          )}
-        </p>
+        {list === "channel" && (
+          <p class="text-label uppercase text-ink-3">
+            {fullDate(episode.publishedAt)}
+          </p>
+        )}
 
         <h3
-          class={`mt-0.5 font-reading font-semibold text-ink ${
+          class={`font-reading font-semibold text-ink ${
+            list === "channel" ? "mt-0.5" : ""
+          } ${
             density === "full"
               ? "text-row-sm md:text-row"
               : "truncate text-row-compact"
@@ -120,6 +116,15 @@ export function SummaryRow({
         )}
 
         <MetaLine class="mt-1" items={meta} />
+
+        {/* The channel closes the row, in the label the date opens a channel's own history with.
+            Plain text, not a link: a destination on its own line owes a 44 px target, which a 12 px
+            label cannot give without becoming a band (docs/design.md §7). */}
+        {list === "mixed" && (
+          <p class="mt-1 text-label uppercase text-ink-3">
+            {episode.channelTitle}
+          </p>
+        )}
       </div>
 
       {onDone !== undefined && (
@@ -151,18 +156,13 @@ export function SummaryRow({
 /** Rows of the real row's shape, so a loading queue does not jump when it arrives. */
 export function SummaryRowSkeleton({
   density = "full",
-  lead = "channel",
 }: {
   density?: Density;
-  lead?: "channel" | "published";
 }) {
   return (
     <div
       class={`flex gap-3 border-b border-rule ${density === "full" ? "py-[18px]" : "py-[9px]"}`}
     >
-      {lead === "channel" && (
-        <div class="skeleton size-[34px] shrink-0 rounded-full" />
-      )}
       <div class="min-w-0 flex-1">
         <div class="skeleton h-3 w-32" />
         <div class="skeleton mt-2 h-5 w-3/4" />
@@ -171,13 +171,6 @@ export function SummaryRowSkeleton({
       </div>
     </div>
   );
-}
-
-function timeOfDay(at: number): string {
-  return new Date(at).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function shortDate(at: number): string {

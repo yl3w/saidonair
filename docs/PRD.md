@@ -638,9 +638,10 @@ somewhere extra to go.
   account is the default for the next page load, not the source of truth for requests: a tab sends exactly the
   account it displays, and tabs do not synchronise, so two tabs may act as two people (decided 2026-09-08).
 - **Queue `/queue`:** what still needs the reader, and nothing else. Summaries with no read receipt, grouped by the
-  local day they became readable, newest day first; each row carries the channel's mark, the channel and time, the
-  title, the executive summary as the excerpt — never a takeaway — and a meta line of takeaway count, runtime, and
-  the publication date when it differs from the day it arrived. There is no reading-time estimate, and no row says
+  local day they became readable, newest day first; each row **leads with the title**, then the executive summary as
+  the excerpt — never a takeaway — a meta line of takeaway count, runtime, and the publication date when it differs
+  from the day it arrived, and the channel closing the row on its own line (§9, 2026-09-15). There is no mark, no
+  arrival time, no reading-time estimate, and no row says
   "unread": every row here is, so the word would be a constant rather than the distinction it draws in a mixed list
   (§9, 2026-09-15). A check on the row marks it done without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
   sticky across sessions; a density switch trades the excerpt, never the title; a rail lists the days still holding
@@ -1179,7 +1180,18 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
-- **The reading column names its sections — decided 2026-09-15.** The executive summary ran straight into the
+- **A summary row leads with its title — decided 2026-09-15.** A row in the queue opened with a monogram and an
+  uppercase channel name, so the eye met furniture and reached the content second, and the mark pushed the title
+  and its excerpt 46 px right — measure taken from the one thing worth reading, worst where there is least of it.
+  Both are gone from a list. **The mark was a second, weaker copy of a fact the row already states**, and triaging
+  by channel is what the channel filter is for, not a scan of thirty tinted discs; the monogram survives where it
+  identifies rather than repeats — a Sources row, a channel's header, the reader's own in the nav (§2.5 of
+  `docs/design.md` stands). **The arrival time goes with it**: the day is the heading above the group, so the
+  minute said nothing, and it was what made a batch of rows look stamped out. The channel still has to be named,
+  because the queue and History mix channels — so it **closes the row on its own line**, in the same uppercase
+  label a channel's own history opens a row with. Not in the meta line, where it was tried on paper and would wrap
+  before it finished on a phone: sixty characters at 12.5 px does not fit 390 px beside three other facts. `list`
+  replaces `lead` on the row, naming what the row sits in — `mixed` or `channel` — and the row derives the rest. The executive summary ran straight into the
   timestamped list with nothing between them but 32 px, so the reader had to work out for themselves that the kind
   of content had changed; and the topic tags sat at the foot of the article as a bare row of words that never said
   what they were. Related already had the treatment — a 1 px rule and a 12 px uppercase label — so this was one

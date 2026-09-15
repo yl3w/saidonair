@@ -268,10 +268,18 @@ among facts is missed. The one exception the product had — a follower count be
 withdrawal's consequence was visible before it was chosen — ended when withdrawal moved to Curate, and the count
 went back among the facts where it belongs.
 
-**A summary row.** Monogram, then: channel and when it became readable, in uppercase meta; the title in serif; up to
-three lines of the executive summary as the excerpt; a meta line of takeaway count, episode length, and the
-publication date when it differs from the day it arrived, led by "Read" or "Unread" **in a mixed list**. A check at
-the right marks it done without opening it. The excerpt is always the executive summary, never a takeaway.
+**A summary row.** The title in serif, first and above everything; up to three lines of the executive summary as the
+excerpt; a meta line of takeaway count, episode length, and the publication date when it differs from the day it
+arrived, led by "Read" or "Unread" **in a mixed list**; and, in a mixed list, the channel closing the row on its own
+line in the uppercase label. A check at the right marks it done without opening it. The excerpt is always the
+executive summary, never a takeaway.
+
+**No mark in a list, and the title leads** (2026-09-15, PRD §9). A monogram opening a row put furniture where the
+content belongs and pushed the title 46 px right, and it was a second, weaker copy of a name the row already
+carries; the mark belongs where it *identifies* — a Sources row, a channel's header, the reader's own — not where
+it repeats. What a row must still name goes in the uppercase label: the channel, closing a mixed list's row; the
+publication date, opening a channel's own. **Not in the meta line** — a channel title there is sixty characters at
+12.5 px and wraps on a phone before it finishes.
 
 **A row is identified by what its list does not already say.** The queue and a day of History mix channels, so the
 mark, the name and the arrival time identify a row there. A channel's own page does not, and one monogram repeated

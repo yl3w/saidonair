@@ -165,6 +165,7 @@ function HistoryScreen() {
               <SummaryRow
                 key={episode.episodeId}
                 episode={episode}
+                list="mixed"
                 busy={rows.busy.has(episode.episodeId)}
                 onOpen={() =>
                   rememberOrigin({
