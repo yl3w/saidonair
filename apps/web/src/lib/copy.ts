@@ -172,6 +172,18 @@ export const BACK_COPY = "Back";
 /** The way through from a channel to the screen where its decisions are made. */
 export const CURATE_LINK_COPY = "Open in Curate";
 
+/**
+ * The way out to the thing itself, named by **what it is in this product** rather than by the verb
+ * the destination uses (owner decision 2026-09-15, docs/PRD.md §9). "Watch" was YouTube's word for
+ * a screen whose whole argument is that the reader does not have to; "On YouTube" named the
+ * destination where the product has a noun for the thing. Both links do the same job from the same
+ * place in the same bar, so they are named the same way. Where they go is the external-link glyph's
+ * job, and the tooltip's.
+ */
+export const EXTERNAL_EPISODE_COPY = "Episode";
+export const EXTERNAL_CHANNEL_COPY = "Channel";
+export const EXTERNAL_HINT_COPY = "Opens on YouTube";
+
 export const CHANNEL_ID_HELP =
   "On the channel's page open About, then Share channel, then Copy channel ID.";
 
@@ -210,8 +222,10 @@ export const CHANNEL_ACTION_COPY = {
  * assistive technology and a resting pointer are told, and a list of twenty-five must not answer
  * "Follow" twenty-five times.
  */
+export const FOLLOW_COPY = { follow: "Follow", unfollow: "Unfollow" } as const;
+
 export function followActionCopy(following: boolean, title: string): string {
-  return `${following ? "Unfollow" : "Follow"} ${title}`;
+  return `${following ? FOLLOW_COPY.unfollow : FOLLOW_COPY.follow} ${title}`;
 }
 
 /** How many readers a catalog decision reaches, beside the controls rather than only in the dialog. */

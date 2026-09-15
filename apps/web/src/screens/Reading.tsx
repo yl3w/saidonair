@@ -11,6 +11,8 @@ import { Sheet } from "../components/Sheet";
 import {
   actionErrorCopy,
   backToCopy,
+  EXTERNAL_EPISODE_COPY,
+  EXTERNAL_HINT_COPY,
   FONT_LABELS,
   momentCopy,
   READING_PANEL_CLOSE,
@@ -191,8 +193,9 @@ function ReadingScreen() {
             <a
               class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
               href={`https://youtu.be/${episode.episodeId}`}
+              title={EXTERNAL_HINT_COPY}
             >
-              Watch
+              {EXTERNAL_EPISODE_COPY}
               <Icon of={ExternalLink} size={16} />
             </a>
           )}

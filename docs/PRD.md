@@ -655,7 +655,8 @@ somewhere extra to go.
   hanging in the left margin as `youtu.be/<episodeId>?t=<startSec>` links, tags, then related titles filtered to
   eligible channels. The lede is the opening and carries no heading; **Takeaways, Topics and Related are each named
   above their own rule** (2026-09-15, §9). Chrome is a back arrow, `Aa` (closed until pressed: type, size, theme — a popover on a
-  desktop, a bottom sheet on a phone, corrected 2026-09-15), `Watch` exactly once,
+  desktop, a bottom sheet on a phone, corrected 2026-09-15), **`Episode`** exactly once — the way out to the video,
+  named for what it is here rather than for what YouTube would call doing it (§9, 2026-09-15) —
   and **Done**, with a scroll-progress rule at the top. **The arrow names the list the summary was opened from** —
   the queue, a day in History, or a source — and returns the reader to it at the row they left; a related title
   moves within the column and leaves that unchanged, and with no origin, as on a cold deep link, it is the queue.
@@ -690,8 +691,8 @@ somewhere extra to go.
   whole history (§9, 2026-09-15). Its header carries the mark, the title, and a meta line of how much the channel
   has published and how much of that can be read — "23 episodes · 5 summaries · last summary 3h ago" — with the
   channel's state printed **only when it is not approved and running**. The screen carries **its own bar** rather
-  than the nav — a way back on the left, the `Watch`-shaped way out to YouTube on the right — as the reading column
-  does, because it is a page about one object (§9, 2026-09-15).
+  than the nav — a way back on the left, and on the right the way out to the channel itself, labelled **`Channel`**
+  as the reading column's is labelled `Episode` — because it is a page about one object (§9, 2026-09-15).
 - **Account `/account`:** which email is reading and the only Switch account in the product; the reader's type, size
   and theme, which apply to **every page** (§9, 2026-09-15) and are kept in that browser; and a toggle that turns
   every count off. For the owner below the desktop breakpoint, one line saying how many things wait in Curate and
@@ -1118,6 +1119,13 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   split closes it without a new guard, because what remains beside the object is exactly what the 2026-09-14
   entry's own reasoning never called dense, consequential or rare. A channel that is not approved therefore offers
   no controls beside itself at all — only the count, and the way through to Curate.
+- **The way out is named for what the thing is here — decided 2026-09-15.** A summary's bar said `Watch` and a
+  channel's said `On YouTube`: one named the verb the destination uses, the other named the destination. They do the
+  same job from the same place in the same bar, so they are now named the same way, by the product's own noun —
+  **`Episode`** and **`Channel`**. `Watch` was the odder of the two: it is YouTube's word, on the one screen whose
+  entire argument is that the reader does not have to watch. Where the link goes is the external-link glyph's job,
+  and the tooltip says "Opens on YouTube" for anyone who wants it spelled out. This applies to labelled controls
+  only; a channel id or an episode title that happens to be a link is an identifier, and keeps being itself.
 - **A page about one object carries its own bar — decided 2026-09-15.** The reading column had one from the start;
   a channel's page now has the same. No wordmark and no destinations: a **way back** on the left, and on the right
   the one act that belongs to the whole channel rather than to any row, the way out to YouTube, in the shape
@@ -1142,11 +1150,15 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the noun it was missing; it had read "last 3h ago", which never said last what. And **the link to YouTube leaves
   the meta line for the bar**, in the shape the reading column uses for `Watch`: a way out to the source is an
   action, not a fact about the channel, and a line of facts should not have a control buried in it.
-- **Follow is a glyph too — decided 2026-09-15.** `plus` to follow, `minus` to unfollow, on a source's row and on
-  its own page, through one `FollowButton` the two screens had been spelling out separately. It passes the three
-  conditions comfortably: trivially reversible, since the glyph beside it is the reversal; conventional wherever
-  anything is subscribed to; and the thing a reader does most on that screen. It also reads faster down a list than
-  the words did, two shapes differing at a glance where "Follow" and "Unfollow" differ by a prefix. **Not** the
+- **Follow is a glyph and its word — decided 2026-09-15.** `+ Follow` and `− Unfollow`, on a source's row and on
+  its own page, through one `FollowButton` the two screens had been spelling out separately. The glyph leads, so the
+  scannability that made it worth doing survives — two shapes differ at a glance down a list of twenty-five where
+  "Follow" and "Unfollow" differ by a prefix — and the word removes the guessing. It went out glyph-only for half a
+  day and came back with its word: **a dash in a box reads as a dash** before it reads as "unfollow", and the answer
+  to an unreadable label is the word, not a different glyph. `user-round-plus`/`user-round-minus` was weighed and
+  refused for that reason: it is the *invite* glyph, an admin adding a person, and beside a follower count it reads
+  as "remove a follower", a capability that sounds plausible and does not exist. Wrongly specific is worse than
+  vague. **Not** the
   commoner `plus`/`check` pair: `check` already means "mark this summary done" on every queue and History row, and
   one glyph with two meanings on screens a reader crosses in a session is worse than a long word. Not the `user-*`
   family either, which means *add a person* — on screens that also count followers, `user-plus` would read as "add

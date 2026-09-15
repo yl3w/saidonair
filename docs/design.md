@@ -295,6 +295,11 @@ list of them: **say what cannot be inferred.** A channel's page prints its state
 row, because there the word tells one row from the next. And **a way out is an action, not a fact**: a link to the
 source belongs in the bar, in the shape the reading column uses for `Watch`, never buried among the facts.
 
+**A way out is named for what the thing is**, in this product's nouns — `Episode`, `Channel` — never for the verb
+the destination would use or for the destination itself (2026-09-15, PRD §9). Where it goes is the external-link
+glyph's job and the tooltip's. Identifiers that happen to be links — a channel id, an episode title — are not
+controls and keep being themselves.
+
 **The reading column.** Channel, title, a meta line opening with "Read" or "Unread", the lede set off by a rule, then
 the takeaways as the body with their timestamps hanging in the left margin as links into the video. Tags, then
 related titles. Chrome is a back arrow, `Aa`, `Watch` once, and `Done`.

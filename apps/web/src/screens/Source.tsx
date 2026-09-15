@@ -23,6 +23,8 @@ import {
   BACK_COPY,
   CURATE_LINK_COPY,
   channelExceptionCopy,
+  EXTERNAL_CHANNEL_COPY,
+  EXTERNAL_HINT_COPY,
   episodeCountCopy,
   episodePhrase,
   followerCountCopy,
@@ -238,8 +240,9 @@ function SourceBar({ channel }: { channel: Channel | null }) {
           <a
             class="ml-auto flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
             href={channel.canonicalUrl}
+            title={EXTERNAL_HINT_COPY}
           >
-            On YouTube
+            {EXTERNAL_CHANNEL_COPY}
             <Icon of={ExternalLink} size={16} />
           </a>
         )}
