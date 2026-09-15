@@ -399,6 +399,13 @@ from, and offers `Done` only where there is no receipt yet (§3, §4; PRD §9).
 
 **Open, and yours to close if you get there first:**
 
+- **Whether the row's check should say "Done" in words** (raised 2026-09-15, deferred). It is the only write this
+  product makes from a list, and it renders as a bare tick in a box: the owner asked what it was for, which is the
+  finding. Three things point the same way — the reading view calls the identical action **Done**, History's read
+  rows carry a text **Undo** in the very same column, so one list runs two idioms for two halves of one toggle, and
+  principle 7 says words are design. Against it: thirty text buttons are louder in a long list than thirty ticks,
+  and `check` is in the icon set on purpose. The accessible name is already right — *Mark "…" done* — so this is
+  about what a sighted reader is shown, not about the floor.
 - Whether losing a read summary from History when its channel is unfollowed surprises people enough to change the
   rule. Today History renders current eligible follows; the receipt survives and returns on a refollow.
 - Chat titles: nothing sets `chats.title`, so a chat is named by its first question. Either a rename route or drop
