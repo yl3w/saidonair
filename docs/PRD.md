@@ -638,9 +638,9 @@ somewhere extra to go.
   account is the default for the next page load, not the source of truth for requests: a tab sends exactly the
   account it displays, and tabs do not synchronise, so two tabs may act as two people (decided 2026-09-08).
 - **Queue `/queue`:** what still needs the reader, and nothing else. Summaries with no read receipt, grouped by the
-  local day they became readable, newest day first; each row **leads with the title**, then the executive summary as
-  the excerpt — never a takeaway — a meta line of takeaway count, runtime, and the publication date when it differs
-  from the day it arrived, and the channel closing the row on its own line (§9, 2026-09-15). There is no mark, no
+  local day they became readable, newest day first; each row **opens with the episode's publication date**, then the
+  title, the executive summary as the excerpt — never a takeaway — a meta line of takeaway count and runtime, and
+  the channel closing the row on its own line (§9, 2026-09-15). There is no mark, no
   arrival time, no reading-time estimate, and no row says
   "unread": every row here is, so the word would be a constant rather than the distinction it draws in a mixed list
   (§9, 2026-09-15). A check on the row marks it done without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
@@ -1180,6 +1180,18 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **A row opens with the episode's own date — decided 2026-09-15.** The queue groups by the day a summary landed in
+  front of the reader, and the row said "published Aug 4" at its foot, so a heading reading **Today** sat over an
+  August episode. Both facts were true and the pairing was jarring. The fix is not to restructure the pile around
+  publication — grouping by it would need a second ordering and cursor on `GET /digest` and an index that does not
+  exist, and would scatter an initial import across five single-row days — but to put the episode's date on the
+  episode. Every summary row now opens with it, in the uppercase label a channel's own history already used, so the
+  queue's row and a channel's row are one shape; the publication item leaves the meta line, since a row must never
+  state its date twice. **When a summary landed remains the structure** and when the episode was published remains
+  the content: the first is a fact about the pipeline and belongs to the heading, the second is a fact about the
+  episode and belongs to the row. They agree on most days — a cron every six hours means an episode published today
+  is summarised today — and diverge exactly where a reader notices, after an initial import carrying months of back
+  catalogue into one afternoon.
 - **A summary row leads with its title — decided 2026-09-15.** A row in the queue opened with a monogram and an
   uppercase channel name, so the eye met furniture and reached the content second, and the mark pushed the title
   and its excerpt 46 px right — measure taken from the one thing worth reading, worst where there is least of it.
