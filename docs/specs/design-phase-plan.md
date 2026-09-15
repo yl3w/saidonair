@@ -3,7 +3,7 @@
 **Implements:** `docs/specs/design-phase.md` under `AGENTS.md`; PRD §7, §4.4, §9, §10.
 **Written:** 2026-09-14, against `main` at `f86ebfb`.
 **Status:** APPROVED 2026-09-15 with both dependency questions answered — fonts are self-hosted, and `lucide-preact`
-is the icon dependency (owner decision, hard rule 1 satisfied). **Steps 1 to 5 implemented 2026-09-15**; Steps 6 to 9
+is the icon dependency (owner decision, hard rule 1 satisfied). **Steps 1 to 6 implemented 2026-09-15**; Steps 7 to 9
 remain. What each step actually landed, and what it owes, is in the record at the end of this file.
 **Shape:** nine steps, reordered 2026-09-15 so the two API steps come first. Steps 1 and 2 are API and carry tests; Steps 3 to 9 are web and carry a hand
 walkthrough, because `apps/web` is typecheck and lint only (`AGENTS.md` → Testing). One commit per step, `pnpm check`
@@ -200,6 +200,7 @@ turned out to be wrong about the world, the correction is here rather than rewri
 | 3 | `5a337dd` | As planned. Two decisions written into `docs/design.md`: the six avatar tints (§2.5) and the daisyUI slot mapping, including that there is no green (§2.6). |
 | 4 | `ea5fff7` | **4.3 was wrong: there were no "existing preferences routes".** PRD §7 has listed `GET`/`PUT /preferences` since the restart, and the shared schemas, the User DO methods and their migration were all written — but no handler was ever registered, so Account's one server-backed field had nothing to call. Both routes were added here with tests. |
 | 5 | `6c60b03` | **§4.5's deep link could not work as specified.** `GET /channels/:channelId/episodes/:episodeId` needs a channel id that `/read/:episodeId` does not carry, so a cold load had nothing to call; `GET /episodes/:episodeId` was added. |
+| 6 | `56bfd69` | **The calendar steps five weeks, not a month** — a month view is four, five or six rows and `docs/design.md` §5 asks for a height that does not grow; the heading names the months covered. Also closed a Step 5 shortfall now that `Sheet` existed: the channel filter is a bottom sheet on a phone (§3), which moves when the choice lands — a popover applies each tap, a sheet applies on its footer button. `lib/day.ts` was checked in node against the two days a year that are not 24 hours long. |
 
 **Owed:** the hand walkthroughs of Steps 3 to 5 — open → Done → next, and the row check — which need a dev catalog
 with summaries in it. The local Durable Objects were wiped on 2026-09-15 for the `episodeId` rename, so they wait on
