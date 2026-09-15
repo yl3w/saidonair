@@ -7,6 +7,7 @@ import type {
   ChannelFeed,
   ChannelStatus,
   Episode,
+  EpisodeCounts,
   EpisodeIngestionAttempt,
   EpisodeSkipReason,
   EpisodeStatus,
@@ -32,6 +33,35 @@ export function channelStateCopy(channel: Channel): string {
   if (channel.status === "approved" && channel.paused)
     return "Approved · paused";
   return CHANNEL_STATUS_COPY[channel.status];
+}
+
+/**
+ * A channel's state **where it is worth saying**, for a page that is already about this one channel:
+ * silence means approved and running, which is the case a reader is looking at almost every time and
+ * which the page's own existence already implies (owner decision 2026-09-15, docs/PRD.md §9). The
+ * exceptions still speak, because those are what a reader cannot infer — awaiting approval, paused,
+ * declined, withdrawn.
+ *
+ * A *list* of channels is a different matter and keeps `channelStateCopy`: there the word tells one
+ * row from the next.
+ */
+export function channelExceptionCopy(channel: Channel): string | null {
+  if (channel.status === "declined")
+    return channel.approvedAt === null ? "Declined" : "Withdrawn";
+  if (channel.status === "requested") return CHANNEL_STATUS_COPY.requested;
+  return channel.paused ? "Paused" : null;
+}
+
+/** What a channel holds: everything discovered, and how much of it can actually be read. */
+export function episodeCountCopy(counts: EpisodeCounts): string {
+  const total =
+    counts.available + counts.pending + counts.failed + counts.skipped;
+  return `${total} ${total === 1 ? "episode" : "episodes"}`;
+}
+
+export function summaryCountCopy(counts: EpisodeCounts): string {
+  const n = counts.available;
+  return `${n} ${n === 1 ? "summary" : "summaries"}`;
 }
 
 /** The decision word for review history: "Approved", "Declined", or "Withdrawn" (declined after approval). */

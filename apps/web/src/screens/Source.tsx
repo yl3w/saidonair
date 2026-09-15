@@ -1,4 +1,5 @@
 import type { Channel, Episode } from "@media-digest/shared";
+import { ExternalLink } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { useRoute } from "preact-iso";
 import { api } from "../api";
@@ -8,6 +9,7 @@ import {
   ChannelStatusActions,
 } from "../components/ChannelStatusActions";
 import { FollowButton } from "../components/FollowButton";
+import { Icon } from "../components/Icon";
 import { Page } from "../components/Page";
 import {
   fullDate,
@@ -16,10 +18,12 @@ import {
 } from "../components/SummaryRow";
 import {
   actionErrorCopy,
-  channelStateCopy,
+  channelExceptionCopy,
+  episodeCountCopy,
   episodePhrase,
   followerCountCopy,
   reviewCopy,
+  summaryCountCopy,
 } from "../lib/copy";
 import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { relativeTime } from "../lib/time";
@@ -218,6 +222,19 @@ function Header({
   onFollow: () => void;
 }) {
   const review = reviewCopy(channel);
+  // Silence means approved and running — the page's own existence says that — so only the states a
+  // reader cannot infer are printed. Assembled, so the separator belongs to the line and the first
+  // item dropping out leaves no stray dot.
+  const exception = channelExceptionCopy(channel);
+  const meta = [
+    exception,
+    episodeCountCopy(channel.episodes),
+    summaryCountCopy(channel.episodes),
+    channel.lastIngestedAt === null
+      ? null
+      : `last summary ${relativeTime(channel.lastIngestedAt)}`,
+  ].filter((item): item is string => item !== null);
+
   return (
     <header>
       <div class="flex flex-wrap items-center gap-3">
@@ -227,19 +244,22 @@ function Header({
             {channel.title}
           </h1>
           <p class="mt-0.5 flex flex-wrap gap-x-2 text-meta text-ink-3">
-            <span>{channelStateCopy(channel)}</span>
-            <span>· {channel.episodes.available} summaries</span>
-            {channel.lastIngestedAt !== null && (
-              <span>· last {relativeTime(channel.lastIngestedAt)}</span>
-            )}
-            <span>
-              ·{" "}
-              <a class="text-primary" href={channel.canonicalUrl}>
-                On YouTube
-              </a>
-            </span>
+            {meta.map((item, index) => (
+              <span key={item}>{index === 0 ? item : `· ${item}`}</span>
+            ))}
           </p>
         </div>
+
+        {/* The way to the source itself, in the bar rather than buried in the meta line — the shape
+            the reading column uses for `Watch` (docs/design.md §3). */}
+        <a
+          class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
+          href={channel.canonicalUrl}
+        >
+          On YouTube
+          <Icon of={ExternalLink} size={16} />
+        </a>
+
         {channel.status !== "declined" && (
           <FollowButton
             title={channel.title}

@@ -682,7 +682,10 @@ somewhere extra to go.
   and its episodes newest **published** with the ones lacking a summary carrying their phrase, paged by year, with
   the owner's controls beside the channel they govern. Every row on that page is the same channel, so **a row is
   led by its publication date and carries no mark and no channel name** — summarised or not, one shape for the
-  whole history (§9, 2026-09-15).
+  whole history (§9, 2026-09-15). Its header carries the mark, the title, and a meta line of how much the channel
+  has published and how much of that can be read — "23 episodes · 5 summaries · last summary 3h ago" — with the
+  channel's state printed **only when it is not approved and running**; the way out to YouTube is a `Watch`-shaped
+  link in the bar, not an item in that line (§9, 2026-09-15).
 - **Account `/account`:** which email is reading and the only Switch account in the product; the reader's type, size
   and theme, which apply to **every page** (§9, 2026-09-15) and are kept in that browser; and a toggle that turns
   every count off. For the owner below the desktop breakpoint, one line saying how many things wait in Curate and
@@ -1090,6 +1093,18 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the attention list, which has room, spells "Check feed" out. Last, the **follower count now sits beside the
   controls** on a channel page rather than appearing for the first time in the confirmation dialog: a consequence
   should be visible before it is chosen, not explained after.
+- **A channel's header says what cannot be inferred — decided 2026-09-15.** It led with "Approved", which every
+  channel a reader can reach is, so the word was a constant with a label, the same fault as the reading-time
+  estimate. **Silence now means approved and running**, and only the states a reader cannot infer speak: "Awaiting
+  owner approval", "Paused", "Declined", "Withdrawn". A *list* of channels keeps the word on every row, because
+  there it tells one row from the next — `channelStateCopy` for lists, `channelExceptionCopy` for the page about
+  one channel. In its place the line gains what a reader actually wants to know about a channel before following
+  it: **how much it has published and how much of that can be read** — "23 episodes · 5 summaries" — the gap
+  between the two being the honest measure of a channel that will not summarise well. The four status counts add up
+  to every tracked episode (§5.3), so the total needs no new field. "Last summary 3h ago" keeps its place and gains
+  the noun it was missing; it had read "last 3h ago", which never said last what. And **the link to YouTube leaves
+  the meta line for the bar**, in the shape the reading column uses for `Watch`: a way out to the source is an
+  action, not a fact about the channel, and a line of facts should not have a control buried in it.
 - **Follow is a glyph too — decided 2026-09-15.** `plus` to follow, `minus` to unfollow, on a source's row and on
   its own page, through one `FollowButton` the two screens had been spelling out separately. It passes the three
   conditions comfortably: trivially reversible, since the glyph beside it is the reversal; conventional wherever

@@ -259,7 +259,11 @@ in colour or a dimmed row. Nor is the word printed for a caller the API gave no 
 channel is not the same as not having read something.
 
 The general rule, and the one to apply to the next thing somebody wants on a row: **a value that cannot vary is not
-information, and a guess among facts devalues the facts.**
+information, and a guess among facts devalues the facts.** Its corollary, for a page about one thing rather than a
+list of them: **say what cannot be inferred.** A channel's page prints its state only when that state is not
+"approved and running", because the page's own existence says the rest; a list of channels still prints it on every
+row, because there the word tells one row from the next. And **a way out is an action, not a fact**: a link to the
+source belongs in the bar, in the shape the reading column uses for `Watch`, never buried among the facts.
 
 **The reading column.** Channel, title, a meta line opening with "Read" or "Unread", the lede set off by a rule, then
 the takeaways as the body with their timestamps hanging in the left margin as links into the video. Tags, then
