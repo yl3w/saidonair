@@ -90,3 +90,93 @@ export function groupByDay<T>(
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
+
+/**
+ * The calendar is five weeks and stays five weeks (docs/design.md §5): a control whose size grows
+ * with the data is not a control, and a month view is four, five or six rows depending on the month.
+ */
+export const WEEKS_SHOWN = 5;
+/** Weeks start on Monday, so the weekend sits together at the end where a reader looks for it. */
+const WEEK_STARTS_ON = 1;
+
+/**
+ * The five weeks ending with the week that holds `anchor`, and the instants they span. History runs
+ * backwards, so the anchor's week is the last row rather than the middle one.
+ */
+export function weekWindow(
+  anchor: DayKey,
+  weeks: number = WEEKS_SHOWN,
+): { days: DayKey[]; fromMs: number; toMs: number } {
+  const anchorDate = new Date(dayBounds(anchor).fromMs);
+  const backToMonday = (anchorDate.getDay() - WEEK_STARTS_ON + 7) % 7;
+  const start = new Date(anchorDate);
+  start.setDate(start.getDate() - backToMonday - (weeks - 1) * 7);
+
+  const days: DayKey[] = [];
+  for (let index = 0; index < weeks * 7; index++) {
+    const day = new Date(start);
+    day.setDate(day.getDate() + index);
+    days.push(dayKeyOf(day.getTime()));
+  }
+  const first = days[0] as DayKey;
+  const last = days[days.length - 1] as DayKey;
+  return {
+    days,
+    fromMs: dayBounds(first).fromMs,
+    toMs: dayBounds(last).toMs,
+  };
+}
+
+/** The same anchor moved whole windows, which is what the stepper does. */
+export function shiftAnchor(anchor: DayKey, windows: number): DayKey {
+  const date = new Date(dayBounds(anchor).fromMs);
+  date.setDate(date.getDate() + windows * WEEKS_SHOWN * 7);
+  return dayKeyOf(date.getTime());
+}
+
+/** What a window of days is called: one month, or the two it straddles. */
+export function windowLabel(days: readonly DayKey[]): string {
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (first === undefined || last === undefined) return "";
+  const from = new Date(dayBounds(first).fromMs);
+  const to = new Date(dayBounds(last).fromMs);
+  const month = (date: Date, withYear: boolean) =>
+    date.toLocaleDateString(undefined, {
+      month: "long",
+      ...(withYear ? { year: "numeric" } : {}),
+    });
+  if (
+    from.getMonth() === to.getMonth() &&
+    from.getFullYear() === to.getFullYear()
+  ) {
+    return month(to, true);
+  }
+  return `${month(from, from.getFullYear() !== to.getFullYear())} – ${month(to, true)}`;
+}
+
+/** The weekday headings of one week, in the reader's own language, starting Monday. */
+export function weekdayLabels(): { short: string; long: string }[] {
+  return Array.from({ length: 7 }, (_, index) => {
+    // 2026-01-05 was a Monday; any Monday would do.
+    const day = new Date(2026, 0, 5 + ((index + WEEK_STARTS_ON - 1 + 7) % 7));
+    return {
+      short: day.toLocaleDateString(undefined, { weekday: "narrow" }),
+      long: day.toLocaleDateString(undefined, { weekday: "long" }),
+    };
+  });
+}
+
+/** The full name a calendar cell owes assistive technology (docs/design.md §7). */
+export function fullDate(key: DayKey): string {
+  return new Date(dayBounds(key).fromMs).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** The day number a cell shows. A cell is a date first; the count is the second thing on it. */
+export function dayNumber(key: DayKey): number {
+  return new Date(dayBounds(key).fromMs).getDate();
+}

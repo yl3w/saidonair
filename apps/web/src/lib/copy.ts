@@ -218,3 +218,13 @@ export const QUEUE_EMPTY_NOTE =
   "Nothing is waiting. What you have already read is in History, by the day it arrived.";
 export const QUEUE_NO_FOLLOWS_NOTE =
   "Follow a channel and its summaries will land here as they are written.";
+
+export const HISTORY_EMPTY_NOTE =
+  "Nothing has arrived yet for the channels you follow. What does will be here, by the day it arrived.";
+export const HISTORY_DAY_EMPTY_NOTE = "Nothing arrived on this day.";
+export const HISTORY_NOT_A_DAY_NOTE =
+  "That is not a date this product recognises. A day looks like 2026-09-12.";
+
+/** What a day's contents depend on — worth saying once, where a reader can be surprised by it. */
+export const HISTORY_SCOPE_NOTE =
+  "A day shows the channels you follow now, so following or unfollowing one changes what a past day holds. Your receipts are kept either way.";
