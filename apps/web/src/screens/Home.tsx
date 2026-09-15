@@ -35,7 +35,7 @@ function HomeScreen() {
   const listsReady = follows.status === "ready" && channels.status === "ready";
   const [showingWeek, setShowingWeek] = useState(false);
   const [digest, reloadDigest] = useLoad(
-    () => api.getDigest(showingWeek ? Date.now() - 7 * DAY_MS : undefined),
+    () => api.getDigest(Date.now() - (showingWeek ? 7 : 1) * DAY_MS),
     [showingWeek],
     { enabled: listsReady },
   );

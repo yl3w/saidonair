@@ -13,7 +13,12 @@ import { chunk, MAX_BOUND_PARAMS, placeholders } from "../../lib/sql";
 import type { FeedEntry } from "../../lib/youtube/rss";
 import { hasRunning, latestByVideo } from "./attempts";
 import { requireChannel } from "./channels";
-import type { EpisodeRecord, ListEpisodesOptions } from "./types";
+import type {
+  DigestRowRecord,
+  DigestSelection,
+  EpisodeRecord,
+  ListEpisodesOptions,
+} from "./types";
 
 type EpisodeRow = {
   video_id: string;
@@ -429,34 +434,108 @@ export function lastProcessedAt(sql: SqlStorage): number | null {
     .one().at;
 }
 
+/** Five bindings can join the channel list (`from`, `to`, two for the cursor, `limit`). */
+const DIGEST_CHANNEL_BATCH = MAX_BOUND_PARAMS - 5;
+const DIGEST_ORDER = "ORDER BY e.processed_at DESC, e.video_id LIMIT ?";
+const DIGEST_JOIN = `FROM episodes e
+  LEFT JOIN episode_summaries s ON s.video_id = e.video_id`;
+
 /**
- * The digest: available episodes with a stored summary whose first availability (`processed_at`,
- * the API's `summaryAvailableAt`) is at or after `sinceMs`, in the given channels, newest
- * availability first with `video_id` as the only tiebreak (docs/PRD.md §4.4). Publication time is
- * metadata here, never the basis. Related titles are resolved within the same channels.
+ * The digest's selection as SQL: an available episode with a stored summary, in this batch of
+ * channels, inside the range, strictly after the cursor position in availability order.
+ */
+function digestClause(
+  selection: DigestSelection,
+  batch: readonly string[],
+): { where: string; params: (string | number)[] } {
+  const conditions = [
+    "e.status = 'available'",
+    "s.video_id IS NOT NULL",
+    "e.processed_at IS NOT NULL",
+    `e.channel_id IN (${placeholders(batch.length)})`,
+  ];
+  const params: (string | number)[] = [...batch];
+  if (selection.fromMs !== null) {
+    conditions.push("e.processed_at >= ?");
+    params.push(selection.fromMs);
+  }
+  if (selection.toMs !== null) {
+    // Exclusive, so a reader's consecutive local days never claim the same summary twice.
+    conditions.push("e.processed_at < ?");
+    params.push(selection.toMs);
+  }
+  if (selection.after !== null) {
+    conditions.push(
+      "(e.processed_at < ? OR (e.processed_at = ? AND e.video_id > ?))",
+    );
+    params.push(
+      selection.after.summaryAvailableAt,
+      selection.after.summaryAvailableAt,
+      selection.after.videoId,
+    );
+  }
+  return { where: conditions.join(" AND "), params };
+}
+
+/**
+ * One digest page: available episodes with a stored summary, selected and ordered by first
+ * availability (`processed_at`, the API's `summaryAvailableAt`) newest first with `video_id` as the
+ * only tiebreak (docs/PRD.md §4.4). Publication time is metadata here, never the basis. Each batch
+ * of channels is ordered and limited in SQL, then merged, so a wide follow list still reads one
+ * page. Related titles are resolved within the same channels.
  */
 export function listDigest(
   sql: SqlStorage,
   channelIds: readonly string[],
-  sinceMs: number,
+  selection: DigestSelection,
 ): EpisodeRecord[] {
   const rows: EpisodeRow[] = [];
-  // One binding is spent on `since`, so batches stay one under the cap.
-  for (const batch of chunk(channelIds, MAX_BOUND_PARAMS - 1)) {
+  for (const batch of chunk(channelIds, DIGEST_CHANNEL_BATCH)) {
+    const { where, params } = digestClause(selection, batch);
     rows.push(
       ...sql
         .exec<EpisodeRow>(
-          `${EPISODE_SELECT}
-           WHERE e.status = 'available' AND s.video_id IS NOT NULL AND e.processed_at >= ?
-             AND e.channel_id IN (${placeholders(batch.length)})`,
-          sinceMs,
-          ...batch,
+          `${EPISODE_SELECT} WHERE ${where} ${DIGEST_ORDER}`,
+          ...params,
+          selection.limit,
         )
         .toArray(),
     );
   }
   rows.sort(byAvailability);
-  return complete(sql, rows, channelIds);
+  return complete(sql, rows.slice(0, selection.limit), channelIds);
+}
+
+/**
+ * The same page as rows: no summary, no related titles, no attempt. The calendar reads five weeks
+ * this way, which is the widest read in the product (docs/specs/design-phase-plan.md, Risks).
+ */
+export function listDigestRows(
+  sql: SqlStorage,
+  channelIds: readonly string[],
+  selection: DigestSelection,
+): DigestRowRecord[] {
+  const rows: { video_id: string; channel_id: string; processed_at: number }[] =
+    [];
+  for (const batch of chunk(channelIds, DIGEST_CHANNEL_BATCH)) {
+    const { where, params } = digestClause(selection, batch);
+    rows.push(
+      ...sql
+        .exec<{ video_id: string; channel_id: string; processed_at: number }>(
+          `SELECT e.video_id, e.channel_id, e.processed_at ${DIGEST_JOIN}
+           WHERE ${where} ${DIGEST_ORDER}`,
+          ...params,
+          selection.limit,
+        )
+        .toArray(),
+    );
+  }
+  rows.sort(byAvailability);
+  return rows.slice(0, selection.limit).map((row) => ({
+    videoId: row.video_id,
+    channelId: row.channel_id,
+    summaryAvailableAt: row.processed_at,
+  }));
 }
 
 /** Every episode of one channel in every status, newest first, with its summary when available. */
@@ -640,8 +719,14 @@ function requireLimit(value: number | undefined): number {
   return value;
 }
 
-/** Newest first availability first; `video_id` breaks ties so the order is stable (docs/PRD.md §4.4). */
-function byAvailability(a: EpisodeRow, b: EpisodeRow): number {
+/**
+ * Newest first availability first; `video_id` breaks ties so the order is stable (docs/PRD.md §4.4).
+ * The cursor encodes exactly this pair, so merging batches here matches what SQL ordered.
+ */
+function byAvailability(
+  a: { processed_at: number | null; video_id: string },
+  b: { processed_at: number | null; video_id: string },
+): number {
   return (
     (b.processed_at ?? 0) - (a.processed_at ?? 0) ||
     a.video_id.localeCompare(b.video_id)

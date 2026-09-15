@@ -1,8 +1,7 @@
-import type { Channel, DigestResponse } from "@media-digest/shared";
+import type { Channel, DigestEpisodesResponse } from "@media-digest/shared";
 import type { Load } from "../lib/use-load";
 import { CatalogList } from "./ChannelList";
 import { EpisodeItem } from "./EpisodeItem";
-import { Time } from "./Time";
 
 /**
  * Today's digest (spec §6.3; PRD §7). Three empty states: no active follows shows the catalog
@@ -23,7 +22,7 @@ export function Digest({
   onRefresh,
   onRetry,
 }: {
-  load: Load<DigestResponse>;
+  load: Load<DigestEpisodesResponse>;
   hasFollows: boolean;
   hasApprovedFollow: boolean;
   available: Channel[];
@@ -61,7 +60,6 @@ export function Digest({
       {hasFollows && load.status === "ready" && (
         <>
           <p class="muted">
-            since <Time at={load.data.since} /> ·{" "}
             <button type="button" onClick={onToggleWeek}>
               {showingWeek ? "Show last 24 hours" : "Show last 7 days"}
             </button>{" "}

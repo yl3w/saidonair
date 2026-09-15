@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { DigestSelection } from "../src/do/registry/types";
 import {
   ALICE,
   CHANNEL_A,
@@ -24,6 +25,11 @@ async function twoChannels() {
   return stub;
 }
 
+/** The whole range, one page: what a caller passes when it wants no bounds at all. */
+function page(over: Partial<DigestSelection> = {}): DigestSelection {
+  return { fromMs: null, toMs: null, after: null, limit: 50, ...over };
+}
+
 describe("registry episodes", () => {
   it("lists the digest newest first, in the window, with summaries, for the given channels only", async () => {
     const stub = await twoChannels();
@@ -47,7 +53,7 @@ describe("registry episodes", () => {
       status: "pending",
     });
 
-    const digest = await stub.listDigest([CHANNEL_A], 1_000);
+    const digest = await stub.listDigest([CHANNEL_A], page({ fromMs: 1_000 }));
 
     expect(digest.map((e) => e.videoId)).toEqual([VIDEO_A, VIDEO_B]);
     expect(digest[0]).toMatchObject({
@@ -70,16 +76,37 @@ describe("registry episodes", () => {
       rawText: "raw",
     });
 
-    const both = await stub.listDigest([CHANNEL_A, CHANNEL_B], 1_000);
+    const both = await stub.listDigest(
+      [CHANNEL_A, CHANNEL_B],
+      page({ fromMs: 1_000 }),
+    );
     expect(both.map((e) => e.videoId)).toEqual([VIDEO_A, VIDEO_C, VIDEO_B]);
     expect(both[0]?.related.map((r) => r.videoId)).toEqual([VIDEO_B, VIDEO_C]);
 
-    expect(await stub.listDigest([], 0)).toEqual([]);
-    await expectDomainError(stub.listDigest([CHANNEL_A], -1), "INVALID_INPUT");
-    await expectDomainError(stub.listDigest(["nope"], 0), "INVALID_INPUT");
+    expect(await stub.listDigest([], page())).toEqual([]);
+    await expectDomainError(
+      stub.listDigest([CHANNEL_A], page({ fromMs: -1 })),
+      "INVALID_INPUT",
+    );
+    await expectDomainError(
+      stub.listDigest([CHANNEL_A], page({ limit: 0 })),
+      "INVALID_INPUT",
+    );
+    await expectDomainError(
+      stub.listDigest([CHANNEL_A], page({ limit: 201 })),
+      "INVALID_INPUT",
+    );
+    await expectDomainError(
+      stub.listDigest(
+        [CHANNEL_A],
+        page({ after: { summaryAvailableAt: 1, videoId: "nope" } }),
+      ),
+      "INVALID_INPUT",
+    );
+    await expectDomainError(stub.listDigest(["nope"], page()), "INVALID_INPUT");
   });
 
-  it("orders the digest by first availability, not publication, and applies `since` to it", async () => {
+  it("orders the digest by first availability, not publication, and bounds the range on it", async () => {
     const stub = await twoChannels();
     // Published a month ago, summarised just now: today's digest. Published today, summarised earlier: behind it.
     await seedEpisode(VIDEO_A, CHANNEL_A, {
@@ -97,15 +124,78 @@ describe("registry episodes", () => {
       processedAt: 4_000,
     });
     await seedSummary(VIDEO_C);
+    const ids = async (over: Partial<DigestSelection> = {}) =>
+      (await stub.listDigest([CHANNEL_A], page(over))).map((e) => e.videoId);
+
+    expect(await ids()).toEqual([VIDEO_A, VIDEO_B, VIDEO_C]);
+    expect(await ids({ fromMs: 4_500 })).toEqual([VIDEO_A]);
+    // `from` is inclusive and `to` exclusive, so a reader's consecutive local days never overlap.
+    expect(await ids({ fromMs: 4_000, toMs: 5_000 })).toEqual([
+      VIDEO_B,
+      VIDEO_C,
+    ]);
+    expect(await ids({ fromMs: 5_000 })).toEqual([VIDEO_A]);
+    expect(await ids({ toMs: 4_000 })).toEqual([]);
     expect(
-      (await stub.listDigest([CHANNEL_A], 0)).map((e) => e.videoId),
-    ).toEqual([VIDEO_A, VIDEO_B, VIDEO_C]);
-    expect(
-      (await stub.listDigest([CHANNEL_A], 4_500)).map((e) => e.videoId),
-    ).toEqual([VIDEO_A]);
-    expect((await stub.listDigest([CHANNEL_A], 0))[0]?.summaryAvailableAt).toBe(
-      5_000,
+      (await stub.listDigest([CHANNEL_A], page()))[0]?.summaryAvailableAt,
+    ).toBe(5_000);
+  });
+
+  it("pages the digest by cursor position, and answers the same page as compact rows", async () => {
+    const stub = await twoChannels();
+    // Five summaries sharing two availability times, so the video-id tiebreak carries the order.
+    const ids = [
+      "aa000000001",
+      "aa000000002",
+      "bb000000003",
+      "bb000000004",
+      "cc000000005",
+    ];
+    for (const [index, videoId] of ids.entries()) {
+      await seedEpisode(videoId, index < 3 ? CHANNEL_A : CHANNEL_B, {
+        publishedAt: 100 + index,
+        processedAt: index < 2 ? 9_000 : index < 4 ? 8_000 : 7_000,
+      });
+      await seedSummary(videoId);
+    }
+    const both = [CHANNEL_A, CHANNEL_B];
+    const ordered = [
+      "aa000000001",
+      "aa000000002",
+      "bb000000003",
+      "bb000000004",
+      "cc000000005",
+    ];
+
+    expect((await stub.listDigest(both, page())).map((e) => e.videoId)).toEqual(
+      ordered,
     );
+
+    // Two pages of two and one of one, walked by position: no overlap, no gap.
+    const walked: string[] = [];
+    let after = null as DigestSelection["after"];
+    for (let read = 0; read < 3; read++) {
+      const rows = await stub.listDigestRows(both, page({ after, limit: 2 }));
+      walked.push(...rows.map((row) => row.videoId));
+      const last = rows.at(-1);
+      after = last
+        ? { summaryAvailableAt: last.summaryAvailableAt, videoId: last.videoId }
+        : null;
+    }
+    expect(walked).toEqual(ordered);
+    expect(await stub.listDigestRows(both, page({ after, limit: 2 }))).toEqual(
+      [],
+    );
+
+    // The compact row carries the day and the channel, and nothing else the calendar cannot use.
+    const rows = await stub.listDigestRows(both, page({ limit: 1 }));
+    expect(rows).toEqual([
+      {
+        videoId: "aa000000001",
+        channelId: CHANNEL_A,
+        summaryAvailableAt: 9_000,
+      },
+    ]);
   });
 
   it("counts by status and lists available ids across more than one parameter batch", async () => {

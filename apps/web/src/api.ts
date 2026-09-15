@@ -9,7 +9,7 @@ import type {
   ChannelsResponse,
   CreateChannelBody,
   DeclineChannelBody,
-  DigestResponse,
+  DigestEpisodesResponse,
   EpisodeResponse,
   EpisodeRetryResponse,
   EpisodesResponse,
@@ -176,12 +176,10 @@ export const api = {
     request<FollowResponse>("DELETE", `/follows/${enc(channelId)}`),
 
   // digest
-  getDigest: (sinceMs?: number) =>
-    request<DigestResponse>(
+  getDigest: (fromMs: number) =>
+    request<DigestEpisodesResponse>(
       "GET",
-      sinceMs === undefined
-        ? "/digest"
-        : `/digest?since=${enc(new Date(sinceMs).toISOString())}`,
+      `/digest?from=${enc(new Date(fromMs).toISOString())}`,
     ),
 };
 

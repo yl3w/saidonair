@@ -183,6 +183,9 @@ describe("GET /openapi.json", () => {
       "IngestionRun",
       "Follow",
       "Follower",
+      "DigestRow",
+      "DigestEpisodesResponse",
+      "DigestRowsResponse",
       "Catalog",
       "TranscriptProviderHealth",
     ]) {

@@ -99,6 +99,28 @@ export type ListEpisodesOptions = {
   relatedScope: readonly string[];
 };
 
+/** Where a digest page resumes: the last row's availability and video id (docs/PRD.md §4.4 order). */
+export type DigestPosition = { summaryAvailableAt: number; videoId: string };
+
+/**
+ * What one digest page selects: a half-open range of first availability, a position to resume
+ * after, and a page size. Every bound is optional except the size, because the reader's own local
+ * days are the only window there is (docs/PRD.md §4.4).
+ */
+export type DigestSelection = {
+  fromMs: number | null;
+  toMs: number | null;
+  after: DigestPosition | null;
+  limit: number;
+};
+
+/** A compact digest row: what the calendar counts, without the summary body. */
+export type DigestRowRecord = {
+  videoId: string;
+  channelId: string;
+  summaryAvailableAt: number;
+};
+
 /** A completed discovery run: the shared shape itself. */
 export type IngestionRunRecord = IngestionRun;
 

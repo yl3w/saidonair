@@ -18,6 +18,16 @@ const UnixMs = z.number().int().describe("Unix time, milliseconds");
 const Count = z.number().int().nonnegative();
 /** A non-empty id; the format is the Registry's check (400 when malformed). */
 const Id = z.string().min(1);
+/**
+ * The position of the last row in a page, opaque and issued by the API. Pass it back as `cursor`
+ * for the next page; null means there is none. Never compose one.
+ */
+const NextCursor = z
+  .string()
+  .nullable()
+  .describe(
+    "Pass back as `cursor` for the next page; null when the range is exhausted. Opaque.",
+  );
 
 /**
  * Optional free text (`title`, `explanation`, a chat's `title`). Omit the field to mean "not
@@ -666,18 +676,71 @@ export const EpisodeRetryResponseSchema = z
   });
 export type EpisodeRetryResponse = z.infer<typeof EpisodeRetryResponseSchema>;
 
-/** `GET /digest?since=<iso>` — available episodes from eligible follows, newest first; returned summaries are marked read. */
-export const DigestResponseSchema = z
+/**
+ * One row of a compact digest: what the calendar needs to count a day and the channel filter needs
+ * to attribute it, and nothing else. `summaryAvailableAt` is the day the summary belongs to, which
+ * never moves (docs/PRD.md §4.4).
+ */
+export const DigestRowSchema = z
   .object({
-    since: UnixMs.describe(
-      "The window start actually used, after the default and the 7-day clamp.",
+    videoId: Id,
+    channelId: Id,
+    summaryAvailableAt: UnixMs.describe(
+      "When the summary first became available; the day it belongs to, permanently.",
     ),
-    episodes: z.array(EpisodeSchema),
+    read: z.boolean().describe("Whether the caller has a read receipt for it."),
   })
+  .meta({
+    id: "DigestRow",
+    description:
+      "One row of a compact digest: enough to count a day and attribute it to a channel, without the summary body.",
+  });
+export type DigestRow = z.infer<typeof DigestRowSchema>;
+
+/** `GET /digest` — a page of full episodes, newest availability first. */
+export const DigestEpisodesResponseSchema = z
+  .object({
+    compact: z.literal(false),
+    episodes: z.array(EpisodeSchema),
+    nextCursor: NextCursor,
+  })
+  .meta({
+    id: "DigestEpisodesResponse",
+    description:
+      "`GET /digest` — a page of episodes with their summaries, newest availability first.",
+  });
+export type DigestEpisodesResponse = z.infer<
+  typeof DigestEpisodesResponseSchema
+>;
+
+/** `GET /digest?compact=true` — the same page as rows, for the calendar. */
+export const DigestRowsResponseSchema = z
+  .object({
+    compact: z.literal(true),
+    rows: z.array(DigestRowSchema),
+    nextCursor: NextCursor,
+  })
+  .meta({
+    id: "DigestRowsResponse",
+    description:
+      "`GET /digest?compact=true` — the same page as rows, so five weeks of calendar cost one small response.",
+  });
+export type DigestRowsResponse = z.infer<typeof DigestRowsResponseSchema>;
+
+/**
+ * `GET /digest` — the one route behind Queue, History and the calendar: eligible summaries in a
+ * range, newest availability first, paged by cursor. `compact` says which body came back; it is
+ * echoed so a client can narrow the union without remembering what it asked for.
+ */
+export const DigestResponseSchema = z
+  .discriminatedUnion("compact", [
+    DigestEpisodesResponseSchema,
+    DigestRowsResponseSchema,
+  ])
   .meta({
     id: "DigestResponse",
     description:
-      "`GET /digest?since=<iso>` — available episodes from eligible follows, newest first; returned summaries are marked read.",
+      "`GET /digest` — eligible summaries in a range, newest availability first; `compact` selects between full episodes and rows.",
   });
 export type DigestResponse = z.infer<typeof DigestResponseSchema>;
 
@@ -956,20 +1019,60 @@ export const LimitQuerySchema = z.object({
 });
 export type LimitQuery = z.infer<typeof LimitQuerySchema>;
 
-/** `?since=` — anything `Date.parse` accepts; default 24 hours ago, clamped to 7 days. */
-export const SinceQuerySchema = z.object({
-  since: z
+/** An ISO 8601 instant, as every bound the digest takes. The API never takes a timezone. */
+const isoInstant = (description: string) =>
+  z
     .string()
     .refine(
       (value) => !Number.isNaN(Date.parse(value)),
       "must be an ISO 8601 timestamp",
     )
+    .describe(description)
+    .optional();
+
+/**
+ * `GET /digest` — the range query behind Queue, History and the calendar (docs/PRD.md §4.4). There
+ * is no default window and no clamp: the client works out its own local day boundaries and asks for
+ * the range it wants. `channelId` repeats.
+ */
+export const DigestQuerySchema = z.object({
+  from: isoInstant(
+    "Start of the range, inclusive. Omitted means no lower bound.",
+  ),
+  to: isoInstant("End of the range, exclusive. Omitted means no upper bound."),
+  unread: z
+    .stringbool()
     .describe(
-      "ISO 8601 timestamp. Default: 24 hours ago. Clamped to 7 days ago.",
+      "`true` for the queue: only summaries the caller has no read receipt for. Omitted means both, which is History.",
+    )
+    .optional(),
+  channelId: z
+    .union([Id, z.array(Id)])
+    .transform((value) => (Array.isArray(value) ? value : [value]))
+    .describe(
+      "Repeatable. Narrows the range to these channels; ids the caller is not eligible for simply match nothing.",
+    )
+    .optional(),
+  cursor: z
+    .string()
+    .min(1)
+    .describe("A `nextCursor` from an earlier page. Opaque; never composed.")
+    .optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(200)
+    .describe("Rows per page. Default 50, maximum 200.")
+    .optional(),
+  compact: z
+    .stringbool()
+    .describe(
+      "`true` answers rows rather than episodes: no summary bodies and no related items.",
     )
     .optional(),
 });
-export type SinceQuery = z.infer<typeof SinceQuerySchema>;
+export type DigestQuery = z.infer<typeof DigestQuerySchema>;
 
 /** `/channels/:id` and its sub-resources. Format is checked by the Registry (400 when malformed). */
 export const ChannelParamsSchema = z.object({

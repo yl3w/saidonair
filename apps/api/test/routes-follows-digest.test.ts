@@ -216,24 +216,31 @@ describe("follow routes", () => {
 });
 
 describe("digest route", () => {
-  it("returns eligible summaries in the window, newest first, recording nothing", async () => {
+  it("returns eligible summaries newest availability first, with no window, recording nothing", async () => {
     const now = Date.now();
     await seedCatalog(now);
     await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
     await call(ALICE, "PUT", `/follows/${CHANNEL_B}`);
     await call(BOB, "PUT", `/follows/${CHANNEL_A}`);
 
+    // No `from`, no `to`: every day is kept, so the ten-day-old summary is in the answer. The
+    // 24-hour default and the seven-day clamp are gone (docs/PRD.md §4.4, decided 2026-09-14).
     const first = await call(ALICE, "GET", "/digest");
     expectShape(DigestResponseSchema, first.json);
     expect(first.status).toBe(200);
-    expect(first.json.since).toBeGreaterThan(now - DAY - 5_000);
+    expect(first.json).toMatchObject({ compact: false, nextCursor: null });
     const episodes = first.json.episodes as Json[];
-    expect(episodes.map((e) => e.videoId)).toEqual([VIDEO_A, VIDEO_D]);
+    expect(episodes.map((e) => e.videoId)).toEqual([
+      VIDEO_A,
+      VIDEO_D,
+      VIDEO_B,
+      VIDEO_OLD,
+    ]);
     expect(episodes[0]).toMatchObject({
       channelTitle: "A",
       summary: { format: "structured" },
       read: false,
-      // VIDEO_D is eligible for Alice (she follows B); VIDEO_B is outside the window but still related.
+      // VIDEO_D is eligible for Alice (she follows B); both related titles are in her scope.
       related: [
         { videoId: VIDEO_D, title: `Episode ${VIDEO_D}` },
         { videoId: VIDEO_B, title: `Episode ${VIDEO_B}` },
@@ -247,6 +254,8 @@ describe("digest route", () => {
     expect((second.json.episodes as Json[]).map((e) => e.read)).toEqual([
       false,
       false,
+      false,
+      false,
     ]);
     expect(await userDO(ALICE).readVideoIds([VIDEO_A, VIDEO_D])).toEqual([]);
     await call(
@@ -258,12 +267,14 @@ describe("digest route", () => {
       ((await call(ALICE, "GET", "/digest")).json.episodes as Json[]).map(
         (e) => e.read,
       ),
-    ).toEqual([true, false]);
+    ).toEqual([true, false, false, false]);
 
     // Bob's receipts are his own, and he does not follow B.
     const bob = await call(BOB, "GET", "/digest");
     expect((bob.json.episodes as Json[]).map((e) => e.videoId)).toEqual([
       VIDEO_A,
+      VIDEO_B,
+      VIDEO_OLD,
     ]);
     expect((bob.json.episodes as Json[])[0]).toMatchObject({
       read: false,
@@ -272,44 +283,173 @@ describe("digest route", () => {
 
     // A paused channel is still eligible: its existing summaries stay readable (spec §3.2).
     await registry().pauseChannel(CHANNEL_A);
-    const paused = await call(BOB, "GET", "/digest");
-    expect((paused.json.episodes as Json[]).map((e) => e.videoId)).toEqual([
-      VIDEO_A,
-    ]);
-    expect((paused.json.episodes as Json[])[0]).toMatchObject({
-      summary: { format: "structured" },
-    });
+    expect(
+      ((await call(BOB, "GET", "/digest")).json.episodes as Json[])[0],
+    ).toMatchObject({ videoId: VIDEO_A, summary: { format: "structured" } });
   });
 
-  it("widens with ?since up to seven days, rejects garbage, and excludes declined channels", async () => {
+  it("bounds the range, filters unread and by channel, pages by cursor, and answers compact rows", async () => {
     const now = Date.now();
     const stub = await seedCatalog(now);
     await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
+    await call(ALICE, "PUT", `/follows/${CHANNEL_B}`);
+    const ids = async (query: string) =>
+      (
+        (await call(ALICE, "GET", `/digest${query}`)).json.episodes as Json[]
+      ).map((e) => e.videoId);
+    const iso = (at: number) => encodeURIComponent(new Date(at).toISOString());
 
-    const fourDays = new Date(now - 4 * DAY).toISOString();
-    const widened = await call(ALICE, "GET", `/digest?since=${fourDays}`);
-    expect((widened.json.episodes as Json[]).map((e) => e.videoId)).toEqual([
+    // `from` is inclusive and `to` exclusive: one day of History is one half-open range.
+    expect(await ids(`?from=${iso(now - 4 * DAY)}`)).toEqual([
       VIDEO_A,
+      VIDEO_D,
       VIDEO_B,
     ]);
-
-    // Thirty days back is clamped to seven: the ten-day-old episode never appears.
-    const month = new Date(now - 30 * DAY).toISOString();
-    const clamped = await call(ALICE, "GET", `/digest?since=${month}`);
-    expect((clamped.json.episodes as Json[]).map((e) => e.videoId)).toEqual([
-      VIDEO_A,
+    expect(
+      await ids(`?from=${iso(now - 4 * DAY)}&to=${iso(now - 2 * HOUR)}`),
+    ).toEqual([VIDEO_B]);
+    expect(await ids(`?to=${iso(now - 2 * HOUR)}`)).toEqual([
       VIDEO_B,
+      VIDEO_OLD,
     ]);
-    expect(clamped.json.since).toBeGreaterThanOrEqual(now - 7 * DAY - 5_000);
 
-    expect((await call(ALICE, "GET", "/digest?since=yesterday")).status).toBe(
-      400,
+    // The queue is the same range with a receipt filter; History is the range without one.
+    await call(
+      ALICE,
+      "POST",
+      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+    );
+    expect(await ids("?unread=true")).toEqual([VIDEO_D, VIDEO_B, VIDEO_OLD]);
+    expect(await ids("?unread=false")).toHaveLength(4);
+    await call(
+      ALICE,
+      "DELETE",
+      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+    );
+    expect(await ids("?unread=true")).toHaveLength(4);
+
+    // Nothing waiting is an empty page that ends, not a cursor the client chases.
+    for (const [channelId, videoId] of [
+      [CHANNEL_A, VIDEO_A],
+      [CHANNEL_A, VIDEO_B],
+      [CHANNEL_A, VIDEO_OLD],
+      [CHANNEL_B, VIDEO_D],
+    ] as const) {
+      await call(
+        ALICE,
+        "POST",
+        `/channels/${channelId}/episodes/${videoId}/read`,
+      );
+    }
+    expect((await call(ALICE, "GET", "/digest?unread=true")).json).toEqual({
+      compact: false,
+      episodes: [],
+      nextCursor: null,
+    });
+    for (const [channelId, videoId] of [
+      [CHANNEL_A, VIDEO_A],
+      [CHANNEL_A, VIDEO_B],
+      [CHANNEL_A, VIDEO_OLD],
+      [CHANNEL_B, VIDEO_D],
+    ] as const) {
+      await call(
+        ALICE,
+        "DELETE",
+        `/channels/${channelId}/episodes/${videoId}/read`,
+      );
+    }
+
+    // `channelId` repeats, and an id the caller is not eligible for simply matches nothing.
+    expect(await ids(`?channelId=${CHANNEL_B}`)).toEqual([VIDEO_D]);
+    expect(
+      await ids(`?channelId=${CHANNEL_A}&channelId=${CHANNEL_B}`),
+    ).toHaveLength(4);
+    expect(await ids(`?channelId=${CHANNEL_D}`)).toEqual([]);
+
+    // A cursor walks the range without overlap or gap, and the last page says there is no more.
+    const walked: unknown[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const query: string = `?limit=2${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`;
+      const response = await call(ALICE, "GET", `/digest${query}`);
+      walked.push(...(response.json.episodes as Json[]).map((e) => e.videoId));
+      cursor = response.json.nextCursor as string | null;
+      pages++;
+    } while (cursor !== null && pages < 5);
+    expect(pages).toBe(2);
+    expect(walked).toEqual([VIDEO_A, VIDEO_D, VIDEO_B, VIDEO_OLD]);
+
+    // `compact` answers the same page as rows: the day, the channel, the receipt, nothing else.
+    const compact = await call(ALICE, "GET", "/digest?compact=true&limit=1");
+    expectShape(DigestResponseSchema, compact.json);
+    expect(compact.json).toMatchObject({ compact: true });
+    expect(compact.json).not.toHaveProperty("episodes");
+    expect(compact.json.rows).toEqual([
+      {
+        videoId: VIDEO_A,
+        channelId: CHANNEL_A,
+        summaryAvailableAt: expect.any(Number),
+        read: false,
+      },
+    ]);
+    expect(compact.json.nextCursor).toEqual(expect.any(String));
+
+    // Input the route cannot page or bound is refused rather than silently widened.
+    for (const query of [
+      "?from=yesterday",
+      "?to=whenever",
+      `?from=${iso(now)}&to=${iso(now - DAY)}`,
+      `?from=${iso(now)}&to=${iso(now)}`,
+      "?limit=0",
+      "?limit=201",
+      "?limit=x",
+      "?cursor=not-a-position",
+      "?unread=maybe",
+    ]) {
+      expect((await call(ALICE, "GET", `/digest${query}`)).status, query).toBe(
+        400,
+      );
+    }
+
+    // A declined channel leaves every past day, and a caller with nothing eligible gets an
+    // empty page of the shape they asked for.
+    await stub.declineChannel(OWNER, CHANNEL_A);
+    expect(await ids("")).toEqual([VIDEO_D]);
+    expect((await call(BOB, "GET", "/digest")).json).toEqual({
+      compact: false,
+      episodes: [],
+      nextCursor: null,
+    });
+    expect((await call(BOB, "GET", "/digest?compact=true")).json).toEqual({
+      compact: true,
+      rows: [],
+      nextCursor: null,
+    });
+  });
+
+  it("keeps a receipt through unfollow, so a refollowed day reads as it did", async () => {
+    const now = Date.now();
+    await seedCatalog(now);
+    await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
+    await call(
+      ALICE,
+      "POST",
+      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
     );
 
-    await stub.declineChannel(OWNER, CHANNEL_A);
+    // Unfollowing removes the channel's rows from every past day (docs/PRD.md §4.4)...
+    await call(ALICE, "DELETE", `/follows/${CHANNEL_A}`);
     expect((await call(ALICE, "GET", "/digest")).json.episodes).toEqual([]);
-    expect((await call(BOB, "GET", "/digest")).json).toMatchObject({
-      episodes: [],
-    });
+
+    // ...and refollowing restores them along with the receipts they had.
+    await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
+    const restored = (await call(ALICE, "GET", "/digest")).json
+      .episodes as Json[];
+    expect(restored.map((e) => [e.videoId, e.read])).toEqual([
+      [VIDEO_A, true],
+      [VIDEO_B, false],
+      [VIDEO_OLD, false],
+    ]);
   });
 });

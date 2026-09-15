@@ -79,10 +79,17 @@ describe("the 400 contract", () => {
     );
   });
 
-  it("a since that is not a timestamp", async () => {
+  it("a digest bound that is not a timestamp", async () => {
     expectInvalidInput(
-      await send("GET", "/digest?since=yesterday", { email: ALICE }),
-      "since",
+      await send("GET", "/digest?from=yesterday", { email: ALICE }),
+      "from",
+    );
+  });
+
+  it("a digest cursor the route did not issue", async () => {
+    expectInvalidInput(
+      await send("GET", "/digest?cursor=not-a-position", { email: ALICE }),
+      "cursor",
     );
   });
 

@@ -32,6 +32,8 @@ import type {
   CatalogSummary,
   ChannelManagementRecord,
   CreateChannelInput,
+  DigestRowRecord,
+  DigestSelection,
   DiscoveryResult,
   EpisodeRecord,
   EpisodeSummaryInput,
@@ -238,12 +240,31 @@ export class RegistryDO extends DurableObject<Env> {
     return episodes.countByChannel(this.#sql, requireChannelIds(channelIds));
   }
 
-  /** Available episodes with summaries since `sinceMs` in the given channels, newest first. */
-  listDigest(channelIds: string[], sinceMs: number): EpisodeRecord[] {
+  /**
+   * One digest page: available summaries in the given channels within the range, newest
+   * availability first, resuming after the cursor position. Unread is not filtered here — receipts
+   * live in the User DO, so the route composes them (docs/PRD.md §4.4).
+   */
+  listDigest(
+    channelIds: string[],
+    selection: DigestSelection,
+  ): EpisodeRecord[] {
     return episodes.listDigest(
       this.#sql,
       requireChannelIds(channelIds),
-      requireTimestamp(sinceMs, "sinceMs"),
+      requireSelection(selection),
+    );
+  }
+
+  /** The same page as compact rows: no summary body, no related titles, no attempt. */
+  listDigestRows(
+    channelIds: string[],
+    selection: DigestSelection,
+  ): DigestRowRecord[] {
+    return episodes.listDigestRows(
+      this.#sql,
+      requireChannelIds(channelIds),
+      requireSelection(selection),
     );
   }
 
@@ -540,4 +561,26 @@ function requireTimestamp(value: number, name: string): number {
     throw new DomainError("INVALID_INPUT", `${name} must be a timestamp`);
   }
   return value;
+}
+
+/** The digest's bounds, validated at the RPC boundary like every other caller-supplied value. */
+function requireSelection(selection: DigestSelection): DigestSelection {
+  const { fromMs, toMs, after, limit } = selection;
+  if (fromMs !== null) requireTimestamp(fromMs, "fromMs");
+  if (toMs !== null) requireTimestamp(toMs, "toMs");
+  if (after !== null) {
+    requireTimestamp(after.summaryAvailableAt, "cursor");
+    requireVideoId(after.videoId);
+  }
+  if (
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > episodes.MAX_EPISODE_LIMIT
+  ) {
+    throw new DomainError(
+      "INVALID_INPUT",
+      `limit must be an integer between 1 and ${episodes.MAX_EPISODE_LIMIT}`,
+    );
+  }
+  return selection;
 }
