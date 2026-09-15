@@ -5,7 +5,7 @@ import { type Act, AttentionList, needsYou } from "../components/AttentionList";
 import { type CatalogFilter, CatalogHealth } from "../components/CatalogHealth";
 import { CatalogTable } from "../components/CatalogTable";
 import { Page } from "../components/Page";
-import { ReviewedList, ReviewQueue } from "../components/RequestQueue";
+import { ReviewQueue } from "../components/RequestQueue";
 import { Retry } from "../components/Retry";
 import { actionErrorCopy, NEEDS_YOU_CLEAR_COPY, staleCopy } from "../lib/copy";
 import { useDocumentTitle } from "../lib/title";
@@ -183,8 +183,6 @@ function CurateScreen() {
               act={act}
             />
           </section>
-
-          <ReviewedList channels={rows} />
         </>
       )}
     </Page>

@@ -208,7 +208,8 @@ how many things wait in Curate and that they need a larger screen.
 ### 4.8 Curate, desktop only
 
 Needs you, Catalog, Reviewed — unchanged in content from M3.7, restyled and given what a long table needs: status
-filters, a sorted column, 25 rows at a time. Needs you never paginates. Three things the built screens lack:
+filters, a sorted column, 25 rows at a time. (**Reviewed withdrawn 2026-09-15**, PRD §9: carrying it over unchanged
+was the reason nobody asked what a third listing of one catalog was for. Its facts are on the channel's own page.) Needs you never paginates. Three things the built screens lack:
 
 - **Declining an approved channel confirms**, naming the follower count and what those readers lose (§7 already
   requires the confirmation; the screen never showed it).

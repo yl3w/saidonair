@@ -730,7 +730,8 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
     already in the row's own columns; and a channel whose feed has never been read says **never started** under
     Latest run rather than showing a dash.
     Follower counts are real; the emails behind them appear only beside a channel waiting for review.
-  - **Reviewed**: every decision already made, newest first, with the reviewer, the time and the note.
+    There is no third section listing decisions already made: when a channel was decided, by whom and with what
+    note is on the channel's own review page (§9, 2026-09-15).
 - **Channel review `/curate/:id`:** the management header — identity, then the channel's facts in a labelled grid
   rather than one chained sentence — discovery runs, and every episode in **four columns: which episode, when it
   was published, what state it is in, and the actions** (§9, 2026-09-15). State carries what explains it: the wait,
@@ -1197,6 +1198,21 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **Curate shows the catalog twice, not three times — decided 2026-09-15.** A **Reviewed** section listed every
+  channel already decided, newest first, with the reviewer, the time and the note — a third rendering of one
+  catalog, under Needs you (the outstanding handful) and the table (every channel). With one channel in the
+  catalog the screen named it twice, once in the table and once below it, which is what made the question
+  obvious. Every fact the section owned is **already on the channel's own review page**, in the same words under
+  the same label — `Reviewed · 2h ago by …`, note included — and the section's rows linked to exactly that page,
+  so it was a preview of somewhere one click away. Half of each row was a constant besides: one person decides
+  here, so "by …" is the same address on every row forever, the fault the queue row's "Unread" was. It had also
+  never been re-asked — `docs/specs/design-phase.md` §4.8 carried the three sections over from M3.7 "unchanged in
+  content", restyled only — and it was already half-abandoned, rendering an `id="reviewed"` anchor that nothing
+  on the page targeted. What goes with it is **decision order**: the table sorts by title, state, episodes, last
+  summary, followers and latest run, so "what did I rule on most recently" now has no answer on this screen.
+  Judged not worth a section at this catalog's size, against naming every decided channel twice. Nothing else is
+  lost: the Declined filter answers what has been turned away, and a declined channel's note is on its Sources
+  row through `reviewCopy`. `ReviewedList` and `decisionCopy`, which had no other caller, are deleted.
 - **A screen is named where the frame does not name it — decided 2026-09-15.** Queue, Sources and Curate each
   printed their own name in a 27 px heading directly beneath a bar already carrying that word, marked current in
   weight, in a rule and in `aria-current`; below 768 px the same words sit in the phone's tab bar. **Neither bar

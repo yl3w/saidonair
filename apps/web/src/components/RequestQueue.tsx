@@ -1,7 +1,7 @@
 import type { Channel } from "@media-digest/shared";
 import { useState } from "preact/hooks";
 import { api } from "../api";
-import { actionErrorCopy, decisionCopy, reviewCopy } from "../lib/copy";
+import { actionErrorCopy, reviewCopy } from "../lib/copy";
 import { relativeTime } from "../lib/time";
 import { useLoad } from "../lib/use-load";
 import { Action } from "./ChannelStatusActions";
@@ -37,46 +37,6 @@ export function ReviewQueue({
           />
         ))}
       </div>
-    </section>
-  );
-}
-
-/** Every decision already made, newest first. A re-requested channel is in Waiting, not here. */
-export function ReviewedList({ channels }: { channels: Channel[] }) {
-  const reviewed = channels
-    .filter((c) => c.status !== "requested" && c.reviewedAt !== null)
-    .sort((a, b) => (b.reviewedAt ?? 0) - (a.reviewedAt ?? 0));
-  return (
-    <section id="reviewed" class="mt-10">
-      <h2 class="flex items-baseline gap-2 font-reading text-section font-semibold text-ink">
-        Reviewed
-        <span class="text-meta font-normal text-ink-3">{reviewed.length}</span>
-      </h2>
-      {reviewed.length === 0 ? (
-        <p class="mt-2 font-reading text-excerpt text-ink-2">
-          No decisions yet.
-        </p>
-      ) : (
-        <div class="mt-2 border-t border-rule">
-          {reviewed.map((c) => (
-            <div key={c.channelId} class="border-b border-rule py-3">
-              <a
-                class="text-ui font-semibold text-ink"
-                href={`/curate/${c.channelId}`}
-              >
-                {c.title}
-              </a>
-              <p class="text-meta text-ink-3">
-                {decisionCopy(c)}{" "}
-                {c.reviewedAt === null ? "" : relativeTime(c.reviewedAt)}
-                {c.management?.reviewedByEmail &&
-                  ` by ${c.management.reviewedByEmail}`}
-                {c.reviewNote && ` · “${c.reviewNote}”`}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
     </section>
   );
 }
