@@ -1,6 +1,6 @@
 import type { Episode } from "@media-digest/shared";
 import { Check } from "lucide-preact";
-import { readingMinutes, readStateCopy, runtimeCopy } from "../lib/copy";
+import { readStateCopy, runtimeCopy } from "../lib/copy";
 import { dayKeyOf } from "../lib/day";
 import { rowAnchorId } from "../lib/reading-origin";
 import { Avatar } from "./Avatar";
@@ -89,7 +89,6 @@ export function SummaryRow({
           <span>{readStateCopy(episode.read === true)}</span>
           {takeaways > 0 && <span>· {takeaways} takeaways</span>}
           {runtime !== null && <span>· {runtime}</span>}
-          <span>· {readingMinutes(summary)} min read</span>
           {publishedElsewhere && (
             <span>· published {shortDate(episode.publishedAt)}</span>
           )}

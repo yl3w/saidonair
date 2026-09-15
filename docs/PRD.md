@@ -639,8 +639,9 @@ somewhere extra to go.
   account it displays, and tabs do not synchronise, so two tabs may act as two people (decided 2026-09-08).
 - **Queue `/queue`:** what still needs the reader, and nothing else. Summaries with no read receipt, grouped by the
   local day they became readable, newest day first; each row carries the channel's mark, the channel and time, the
-  title, the executive summary as the excerpt — never a takeaway — and a meta line of takeaway count, runtime,
-  reading time, and the publication date when it differs from the day it arrived. A check on the row marks it done
+  title, the executive summary as the excerpt — never a takeaway — and a meta line of read state, takeaway count,
+  runtime, and the publication date when it differs from the day it arrived; there is no reading-time estimate
+  (§9, 2026-09-15). A check on the row marks it done
   without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
   sticky across sessions; a density switch trades the excerpt, never the title; a rail lists the days still holding
   something. **It holds everything waiting, however much that is**: pages of fifty with a Show more, to the end of
@@ -1070,6 +1071,22 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
+- **The reading-time estimate is removed — decided 2026-09-15.** Every summary in the dev catalog read "1 min",
+  including one carrying an executive summary and twelve takeaways: `Math.round(words / 220)` on 221 to 311 words,
+  all of which round down to one. The first fix considered was arithmetic — a ceiling, and a slower words-per-minute
+  for a list of discrete claims with timestamps rather than flowing prose — and it was the wrong instinct. §4.4's
+  takeaway budget, about one per eight minutes between 5 and 20, bounds a summary at roughly 220 to 540 words, so
+  the estimate could only ever say one, two or three minutes and in practice said two on nearly every row. That is a
+  constant with a unit, not a number a reader decides on, and no choice of divisor widens the band; the tell was
+  that defending the divisor needed a citation while the output never moved. It was also the one guess on a line of
+  measured facts, which is why being visibly wrong cost more than the item was worth: a wrong number among true ones
+  makes the true ones look negotiable. **The takeaway count answers how much is in there**, varies three times as
+  widely, and is counted. The runtime it was paired with — "1 h 39 m · 2 min read", the product's own case in one
+  line — stays; the reader is already on a page of summaries and does not need the pitch on every row forever. Not
+  kept anywhere: `docs/specs/design-phase.md` §4.5 never asked for it on the reading view, where it had arrived
+  during the build. Open, if a `raw_fallback` summary ever appears in front of a reader: those keep raw model text,
+  have no takeaways, and can run long, so the row loses its only size signal — the answer there is to say
+  "unformatted summary" in words, not to infer it from a minute count.
 - **The queue pages to the end of the range — corrected 2026-09-15.** Not a new decision: §7 has always said the
   queue holds what still needs the reader and ends by saying what is waiting. The built screen stopped at fifty and
   offered "More is waiting — browse it by day in History" instead, which breaks the one promise the queue makes.

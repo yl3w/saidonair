@@ -10,7 +10,6 @@ import {
   actionErrorCopy,
   backToCopy,
   momentCopy,
-  readingMinutes,
   readStateCopy,
   runtimeCopy,
 } from "../lib/copy";
@@ -207,7 +206,6 @@ function ReadingScreen() {
               {runtimeCopy(episode.processing.durationSec) !== null && (
                 <span>· {runtimeCopy(episode.processing.durationSec)}</span>
               )}
-              <span>· {readingMinutes(summary)} min read</span>
             </p>
 
             {summary === null ? (

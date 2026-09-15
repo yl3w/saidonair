@@ -10,7 +10,6 @@ import type {
   EpisodeIngestionAttempt,
   EpisodeSkipReason,
   EpisodeStatus,
-  EpisodeSummary,
   EpisodeWaitReason,
   IngestionRun,
   ProcessingIntent,
@@ -156,19 +155,10 @@ export function curateWaitingCopy(waiting: number | null): string {
   return `${waiting} ${waiting === 1 ? "thing needs" : "things need"} you in Curate, which needs a wider screen than this one.`;
 }
 
-/** The reading time of a summary, from its own length: the number a reader decides on. */
-export function readingMinutes(summary: EpisodeSummary | null): number {
-  if (summary === null) return 1;
-  const words =
-    summary.format === "raw_fallback"
-      ? summary.rawText.split(/\s+/).length
-      : summary.executiveSummary.split(/\s+/).length +
-        summary.takeaways.reduce(
-          (total, takeaway) => total + takeaway.text.split(/\s+/).length,
-          0,
-        );
-  return Math.max(1, Math.round(words / 220));
-}
+// There is no reading-time estimate. The takeaway budget (docs/PRD.md §4.4) bounds a summary at
+// about 220 to 540 words, so the number could only ever say one, two or three minutes, and said two
+// on nearly every row — a constant with a unit, and the one guess on a line of measured facts
+// (owner decision 2026-09-15, docs/PRD.md §9). The takeaway count answers how much is in here.
 
 /** `1 h 42 m` / `18 m`: an episode's runtime, as the transcript provider reported it. */
 export function runtimeCopy(durationSec: number | null): string | null {

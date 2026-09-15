@@ -223,9 +223,15 @@ centred. A right rail carries navigation *about* the list — days still waiting
 content.
 
 **A summary row.** Monogram, then: channel and when it became readable, in uppercase meta; the title in serif; up to
-three lines of the executive summary as the excerpt; a meta line of takeaway count, episode length, read time, and
+three lines of the executive summary as the excerpt; a meta line of read state, takeaway count, episode length, and
 the publication date when it differs from the day it arrived. A check at the right marks it done without opening it.
 The excerpt is always the executive summary, never a takeaway.
+
+**Every item on that line is a measured fact.** There is no reading-time estimate: the takeaway budget bounds a
+summary tightly enough that the number could only ever say one, two or three minutes, and said two on nearly every
+row (PRD §9, 2026-09-15). The takeaway count answers how much is in there, and it is counted rather than guessed.
+The general rule, and the one to apply to the next number somebody wants on a row: **a value that cannot vary is not
+information, and a guess among facts devalues the facts.**
 
 **The reading column.** Channel, title, a meta line opening with "Read" or "Unread", the lede set off by a rule, then
 the takeaways as the body with their timestamps hanging in the left margin as links into the video. Tags, then
