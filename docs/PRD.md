@@ -653,7 +653,8 @@ somewhere extra to go.
 - **Reading `/read/:episodeId`:** one 680 px column, and the only screen a reader is glad to be in. Channel, title,
   a meta line, the executive summary as a lede set off by a rule, the takeaways as the body with their timestamps
   hanging in the left margin as `youtu.be/<episodeId>?t=<startSec>` links, tags, then related titles filtered to
-  eligible channels. Chrome is a back arrow, `Aa` (closed until pressed: type, size, theme), `Watch` exactly once,
+  eligible channels. Chrome is a back arrow, `Aa` (closed until pressed: type, size, theme — a popover on a
+  desktop, a bottom sheet on a phone, corrected 2026-09-15), `Watch` exactly once,
   and **Done**, with a scroll-progress rule at the top. **The arrow names the list the summary was opened from** —
   the queue, a day in History, or a source — and returns the reader to it at the row they left; a related title
   moves within the column and leaves that unchanged, and with no origin, as on a cold deep link, it is the queue.
@@ -1071,6 +1072,19 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
+- **The `Aa` panel is a sheet on a phone — corrected 2026-09-15.** Not a new rule: `docs/design.md` §3 has said
+  since the Design phase that anything which is a popover on a desktop is a bottom sheet on a phone, and the channel
+  picker and the date picker both are. The reading column's `Aa` was missed, and shipped as a fixed 288 px box hung
+  under the bar — three quarters of a 390 px screen, covering the article whose type it was changing, so a reader
+  could not see the effect of their own tap. It is a `Sheet` below the breakpoint now. Two defects came out with it.
+  **Nothing closed the popover but the button that opened it** — no Escape, no press outside, on a desktop either —
+  which is the trap the channel filter had already been fixed for; it now closes on both. And the sheet's footer
+  would have said "Cancel", which is right for a draft the footer commits and a lie for controls that apply as they
+  are tapped: `Sheet` takes the word from its caller, and this one says **"Back to reading"**. Not "Done" — that is
+  the receipt, on the same bar, inches away, and irreversible from this screen. One shape is in the document at a
+  time, because `Choice` groups its radios by name and two copies would be one group with the visible half showing
+  nothing selected. The type, size and theme labels moved to `lib/copy.ts` in the same edit, the two screens that
+  offer them having each spelled them out.
 - **The read state is printed where it varies — decided 2026-09-15.** The same test as the entry below, applied to
   the word beside it. A mixed list owes "read" or "unread" in words, and that is the accessibility floor talking:
   the difference between the two kinds of row may never live in colour or a dimmed row alone. The queue is not a

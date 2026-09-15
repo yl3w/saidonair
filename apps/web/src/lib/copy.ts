@@ -16,6 +16,7 @@ import type {
 } from "@media-digest/shared";
 import { ApiError } from "../api";
 import type { ReadingOrigin } from "./reading-origin";
+import type { ReadingFont, ReadingSize, ReadingTheme } from "./settings";
 import { absoluteTime, HOUR, MINUTE } from "./time";
 
 export const CHANNEL_STATUS_COPY: Record<ChannelStatus, string> = {
@@ -159,6 +160,37 @@ export function curateWaitingCopy(waiting: number | null): string {
 // about 220 to 540 words, so the number could only ever say one, two or three minutes, and said two
 // on nearly every row — a constant with a unit, and the one guess on a line of measured facts
 // (owner decision 2026-09-15, docs/PRD.md §9). The takeaway count answers how much is in here.
+
+/**
+ * How the reader's type, size and theme are labelled, wherever they are offered — the reading
+ * column's `Aa` and Account both. One set of words, so the same control cannot be named two ways.
+ */
+export const FONT_LABELS: Record<ReadingFont, string> = {
+  serif: "Serif",
+  sans: "Sans",
+};
+
+export const SIZE_LABELS: Record<ReadingSize, string> = {
+  small: "Small",
+  medium: "Medium",
+  large: "Large",
+};
+
+export const THEME_LABELS: Record<ReadingTheme, string> = {
+  light: "Light",
+  sepia: "Sepia",
+  dark: "Dark",
+};
+
+export const READING_PANEL_TITLE = "Type, size and theme";
+
+/**
+ * The phone sheet's closing button. Not "Done", which on this screen is the receipt and takes the
+ * reader out of the article — two buttons an inch apart, one of them irreversible from here. Not
+ * "Cancel" either: the choices have already applied, so there is nothing to abandon, only somewhere
+ * to go back to.
+ */
+export const READING_PANEL_CLOSE = "Back to reading";
 
 /** `1 h 42 m` / `18 m`: an episode's runtime, as the transcript provider reported it. */
 export function runtimeCopy(durationSec: number | null): string | null {

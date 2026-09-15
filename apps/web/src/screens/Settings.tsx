@@ -6,7 +6,12 @@ import { Avatar } from "../components/Avatar";
 import { attentionCount } from "../components/CatalogHealth";
 import { Choice } from "../components/Choice";
 import { Page } from "../components/Page";
-import { curateWaitingCopy } from "../lib/copy";
+import {
+  curateWaitingCopy,
+  FONT_LABELS,
+  SIZE_LABELS,
+  THEME_LABELS,
+} from "../lib/copy";
 import {
   READING_FONTS,
   READING_SIZES,
@@ -36,12 +41,6 @@ export function Settings() {
     </Guard>
   );
 }
-
-const SIZE_LABELS: Record<ReaderSettings["readingSize"], string> = {
-  small: "Small",
-  medium: "Medium",
-  large: "Large",
-};
 
 function SettingsScreen() {
   const { email, role } = useReadySession();
@@ -95,7 +94,7 @@ function SettingsScreen() {
             value={settings.readingFont}
             options={READING_FONTS.map((font) => ({
               value: font,
-              label: font === "serif" ? "Serif" : "Sans",
+              label: FONT_LABELS[font],
             }))}
             onChange={(readingFont) => change({ readingFont })}
           />
@@ -113,7 +112,7 @@ function SettingsScreen() {
             value={settings.readingTheme}
             options={READING_THEMES.map((theme) => ({
               value: theme,
-              label: theme[0]?.toUpperCase() + theme.slice(1),
+              label: THEME_LABELS[theme],
             }))}
             onChange={(readingTheme) => change({ readingTheme })}
           />

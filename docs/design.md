@@ -253,8 +253,20 @@ its header, status filters above, 25 rows at a time. Actions are text, not butto
 the weight to be found and to be hit.
 
 **Sheets** (phone). Anything that would be a popover on a desktop is a bottom sheet on a phone: the channel picker,
-the date picker. A handle, a title, a search field where the list is long, and a two-button footer where the primary
-action names what it will do — "Show these two", "Go to 12 September".
+the date picker, the reading column's `Aa`. A handle, a title, a search field where the list is long, and a footer
+whose primary action names what it will do — "Show these two", "Go to 12 September".
+
+**The footer's other button depends on when the content lands.** A sheet holding a draft the footer commits says
+"Cancel", because there is something to abandon. A sheet whose controls apply as they are tapped — `Aa`, where the
+page behind is the preview — has no primary action at all, and its one button says where it goes: "Back to reading".
+Never "OK", and never "Done" on the reading view, where Done is the receipt and sits inches away.
+
+**One shape at a time.** A popover and its sheet are the same control in two forms, so only the one in use belongs
+in the document. Rendering both leaves duplicate ids, duplicate labels, and — where the control is built from
+radios — one group split across two copies, of which the visible half shows nothing selected.
+
+A popover that can only be closed by the button that opened it is a trap, on a touch screen most of all. Every one
+closes on Escape and on a press outside it; a sheet is a native `<dialog>` and has both already (§2.6).
 
 **Empty, loading, error, stale.** Four states, all of them designed, none of them a spinner alone:
 an empty queue says *You are through everything* and points at History; loading uses skeleton rows of the real row's

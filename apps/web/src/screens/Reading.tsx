@@ -1,17 +1,23 @@
 import type { Episode } from "@media-digest/shared";
 import { ArrowLeft, ExternalLink } from "lucide-preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
 import { Choice } from "../components/Choice";
 import { Icon } from "../components/Icon";
 import { Retry } from "../components/Retry";
+import { Sheet } from "../components/Sheet";
 import {
   actionErrorCopy,
   backToCopy,
+  FONT_LABELS,
   momentCopy,
+  READING_PANEL_CLOSE,
+  READING_PANEL_TITLE,
   readStateCopy,
   runtimeCopy,
+  SIZE_LABELS,
+  THEME_LABELS,
 } from "../lib/copy";
 import { readOrigin } from "../lib/reading-origin";
 import {
@@ -23,6 +29,7 @@ import {
   writeSettings,
 } from "../lib/settings";
 import { useLoad } from "../lib/use-load";
+import { useMediaQuery, WIDE } from "../lib/use-media-query";
 import { Guard } from "../session";
 
 export function Reading() {
@@ -51,6 +58,26 @@ function ReadingScreen() {
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const progress = useScrollProgress();
+  const wide = useMediaQuery(WIDE);
+  const panel = useRef<HTMLDivElement>(null);
+
+  // A tap anywhere else, or Escape, closes the desktop popover: one that only closes by its own
+  // button is a trap (docs/design.md §3). The phone's sheet is a native `<dialog>` and has both.
+  useEffect(() => {
+    if (!panelOpen || !wide) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!panel.current?.contains(event.target as Node)) setPanelOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setPanelOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [panelOpen, wide]);
 
   // Read once, on the way in: a related title moves within this column without changing where the
   // reader came from, so the way back stays the list they actually opened a summary from.
@@ -65,6 +92,43 @@ function ReadingScreen() {
   function change(patch: Partial<ReaderSettings>) {
     setSettings(writeSettings(patch));
   }
+
+  /**
+   * Type, size and theme, identical in both shapes. They apply as they are tapped rather than on a
+   * footer button, because the page behind is the preview — which is also why the sheet's closing
+   * button says where it goes rather than "Cancel", there being nothing to cancel.
+   */
+  const controls = (
+    <div class="flex flex-col gap-3">
+      <Choice
+        legend="Type"
+        value={settings.readingFont}
+        options={READING_FONTS.map((font) => ({
+          value: font,
+          label: FONT_LABELS[font],
+        }))}
+        onChange={(readingFont) => change({ readingFont })}
+      />
+      <Choice
+        legend="Size"
+        value={settings.readingSize}
+        options={READING_SIZES.map((size) => ({
+          value: size,
+          label: SIZE_LABELS[size],
+        }))}
+        onChange={(readingSize) => change({ readingSize })}
+      />
+      <Choice
+        legend="Theme"
+        value={settings.readingTheme}
+        options={READING_THEMES.map((theme) => ({
+          value: theme,
+          label: THEME_LABELS[theme],
+        }))}
+        onChange={(readingTheme) => change({ readingTheme })}
+      />
+    </div>
+  );
 
   /**
    * Done: the receipt, then back to the list, at the row (owner decision 2026-09-15, PRD §9,
@@ -103,44 +167,19 @@ function ReadingScreen() {
             <Icon of={ArrowLeft} size={20} label={back.label} />
           </a>
 
-          <div class="relative ml-auto">
+          <div class="relative ml-auto" ref={panel}>
             <button
               type="button"
               class="min-h-11 px-3 font-reading text-ui text-ink-2"
               aria-expanded={panelOpen}
+              aria-haspopup="true"
               onClick={() => setPanelOpen(!panelOpen)}
             >
               Aa
             </button>
-            {panelOpen && (
+            {panelOpen && wide && (
               <div class="absolute right-0 z-10 mt-1 flex w-72 flex-col gap-3 rounded border border-edge bg-panel p-3 shadow-lg">
-                <Choice
-                  legend="Type"
-                  value={settings.readingFont}
-                  options={READING_FONTS.map((font) => ({
-                    value: font,
-                    label: font === "serif" ? "Serif" : "Sans",
-                  }))}
-                  onChange={(readingFont) => change({ readingFont })}
-                />
-                <Choice
-                  legend="Size"
-                  value={settings.readingSize}
-                  options={READING_SIZES.map((size) => ({
-                    value: size,
-                    label: size[0]?.toUpperCase() + size.slice(1),
-                  }))}
-                  onChange={(readingSize) => change({ readingSize })}
-                />
-                <Choice
-                  legend="Theme"
-                  value={settings.readingTheme}
-                  options={READING_THEMES.map((theme) => ({
-                    value: theme,
-                    label: theme[0]?.toUpperCase() + theme.slice(1),
-                  }))}
-                  onChange={(readingTheme) => change({ readingTheme })}
-                />
+                {controls}
               </div>
             )}
           </div>
@@ -275,6 +314,21 @@ function ReadingScreen() {
           </article>
         )}
       </main>
+
+      {/* On a phone the popover is a bottom sheet (docs/design.md §3): a 288 px box under the bar
+          covers three quarters of the screen, and covers the article whose type it is changing.
+          One shape is in the document at a time — `Choice` groups its radios by `name`, so two
+          copies would be one group and the visible half would render with nothing selected. */}
+      {!wide && (
+        <Sheet
+          open={panelOpen}
+          title={READING_PANEL_TITLE}
+          dismiss={READING_PANEL_CLOSE}
+          onClose={() => setPanelOpen(false)}
+        >
+          {controls}
+        </Sheet>
+      )}
     </div>
   );
 }
