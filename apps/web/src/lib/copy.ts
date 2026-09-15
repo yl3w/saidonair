@@ -98,6 +98,18 @@ export const WAIT_REASON_COPY: Record<EpisodeWaitReason, string> = {
   PROVIDER_LIMIT: "waiting for transcript credits",
 };
 
+/**
+ * A summary that fell back to raw text: the model's JSON never parsed, so a reader is looking at
+ * whatever it said rather than an executive summary and takeaways. The one summary fact that
+ * changes what a reader sees and what the owner might do about it, so it is promoted out of the
+ * diagnostics and onto the episode's state (owner decision 2026-09-15, docs/PRD.md §9).
+ */
+export const RAW_SUMMARY_COPY = "unformatted";
+
+/** What Retry does to an episode that is already fine: nothing, unless it does it better. */
+export const RETRY_AVAILABLE_HINT =
+  "Replace this summary. The current one stays readable until a replacement succeeds, and it costs one transcript credit.";
+
 /** The owner's phrase for an attempt's outcome. Exhaustive: a new code is a compile error here first. */
 export const OUTCOME_CODE_COPY: Record<AttemptOutcomeCode, string> = {
   CAPTIONS: "no captions yet",

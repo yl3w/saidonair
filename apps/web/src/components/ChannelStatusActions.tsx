@@ -159,7 +159,12 @@ export function Action({
 }: {
   id?: string;
   busy: boolean;
-  tone?: "safe" | "consequence";
+  /**
+   * `safe` is the accent, which means "you can act on this"; `consequence` is the red somebody else
+   * feels. **`quiet`** is for an action that is available and not being suggested — Retry on an
+   * episode that is already summarised — so that the blue keeps meaning something.
+   */
+  tone?: "safe" | "quiet" | "consequence";
   title?: string;
   onClick: () => void;
   children: ComponentChildren;
@@ -171,7 +176,11 @@ export function Action({
       title={title}
       disabled={busy}
       class={`min-h-11 rounded px-2 text-ui font-semibold ${
-        tone === "consequence" ? "text-consequence" : "text-primary"
+        tone === "consequence"
+          ? "text-consequence"
+          : tone === "quiet"
+            ? "text-ink-2"
+            : "text-primary"
       }`}
       onClick={onClick}
     >

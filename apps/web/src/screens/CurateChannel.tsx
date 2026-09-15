@@ -1,5 +1,6 @@
 import type { Channel, Episode } from "@media-digest/shared";
-import type { JSX } from "preact";
+import { ChevronDown, ChevronRight } from "lucide-preact";
+import { type ComponentChildren, Fragment, type JSX } from "preact";
 import { useState } from "preact/hooks";
 import { useRoute } from "preact-iso";
 import { api } from "../api";
@@ -8,6 +9,7 @@ import {
   type ChannelAct,
   ChannelStatusActions,
 } from "../components/ChannelStatusActions";
+import { Icon } from "../components/Icon";
 import { Page } from "../components/Page";
 import { Retry } from "../components/Retry";
 import { Time } from "../components/Time";
@@ -19,6 +21,8 @@ import {
   failureDetailCopy,
   intentCopy,
   OUTCOME_CODE_COPY,
+  RAW_SUMMARY_COPY,
+  RETRY_AVAILABLE_HINT,
   retryWaitCopy,
   runningForCopy,
   runResultCopy,
@@ -192,40 +196,41 @@ function Header({
       <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
         {c.title}
       </h1>
+      {/* Identity, then the facts in a labelled grid. They were one sentence of up to nine clauses
+          chained with "·" at 12.5 px, which is density from small type rather than from structure
+          (docs/design.md principle 6, owner decision 2026-09-15). */}
       <p class="mt-1 text-meta text-ink-3">
         <a class="text-primary" href={c.canonicalUrl}>
           {c.channelId}
         </a>{" "}
-        · {channelStateCopy(c)}
-        {" · approved since "}
-        <Time at={c.approvedAt} fallback="never" />
+        · {channelStateCopy(c)} · {followerLabel(c.followerCount)}
+      </p>
+      <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-cell lg:grid-cols-[auto_1fr_auto_1fr]">
+        <Fact label="Approved">
+          <Time at={c.approvedAt} fallback="never" />
+        </Fact>
+        <Fact label="Feed read">
+          <Time at={m?.lastCheckedAt ?? null} fallback="never" />
+        </Fact>
+        <Fact label="Latest run">
+          {m?.latestRun
+            ? `${m.latestRun.kind} · ${runResultCopy(m.latestRun)}`
+            : "none"}
+        </Fact>
+        <Fact label="Import count">{m?.initialImportCount ?? "—"}</Fact>
         {c.reviewedAt !== null && (
-          <>
-            {" · reviewed "}
+          <Fact label="Reviewed">
             <Time at={c.reviewedAt} />
             {m?.reviewedByEmail && ` by ${m.reviewedByEmail}`}
             {c.reviewNote && ` “${c.reviewNote}”`}
-          </>
+          </Fact>
         )}
         {c.paused && (
-          <>
-            {" · paused since "}
+          <Fact label="Paused">
             <Time at={m?.pausedAt ?? null} />
-          </>
+          </Fact>
         )}
-        {m && (
-          <>
-            {` · import count ${m.initialImportCount} · `}
-            {followerLabel(c.followerCount)}
-            {" · feed read "}
-            <Time at={m.lastCheckedAt} fallback="never" />
-            {" · latest run "}
-            {m.latestRun
-              ? `${m.latestRun.kind} · ${runResultCopy(m.latestRun)}`
-              : "none"}
-          </>
-        )}
-      </p>
+      </dl>
       <div class="mt-3 flex flex-wrap items-center gap-3 border-t border-rule pt-3">
         <span class="text-label uppercase text-owner">Owner</span>
         <ChannelStatusActions
@@ -242,9 +247,16 @@ function Header({
 }
 
 /**
- * Every episode of the channel (PRD §7): content status, the open window's intent with next attempt
- * and deadline, launched attempts beside the latest attempt's phrase, summary format, and the
- * actions. Channel status never disables an episode action.
+ * Every episode of the channel. **Four columns answer the question this screen exists for** — which
+ * episode, when it was published, what state it is in, and what the owner can do — and everything
+ * else opens on the row that needs it (owner decision 2026-09-15, PRD §7 and §9).
+ *
+ * Nine columns were on by default, and five of them were diagnosis: the window is `—` on every
+ * healthy row, attempts and chunks matter only when something is wrong, "available since" answers
+ * nothing anyone asks here, and the summary format said `structured` on every working row — a
+ * constant with a heading. Its opposite is not: `raw_fallback` means the model's JSON never parsed
+ * and a reader is looking at raw text, so that one is promoted into the state, where it can be
+ * acted on.
  */
 function EpisodesTable({
   episodes: list,
@@ -255,65 +267,127 @@ function EpisodesTable({
   busy: boolean;
   act: ChannelAct;
 }) {
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (episodeId: string) =>
+    setOpen((current) => {
+      const next = new Set(current);
+      if (!next.delete(episodeId)) next.add(episodeId);
+      return next;
+    });
+
   return (
     <div class="mt-2 overflow-x-auto">
       <table class="w-full border-collapse text-cell">
         <thead>
           <tr class="border-b border-edge text-left">
-            <th class="py-2 pr-4 font-semibold text-ink-3">Title</th>
+            <th class="py-2 pr-2">
+              <span class="sr-only">Diagnostics</span>
+            </th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Episode</th>
             <th class="py-2 pr-4 font-semibold text-ink-3">Published</th>
-            <th class="py-2 pr-4 font-semibold text-ink-3">Status</th>
-            <th class="py-2 pr-4 font-semibold text-ink-3">Window</th>
-            <th class="py-2 pr-4 font-semibold text-ink-3">Attempts</th>
-            <th class="py-2 pr-4 font-semibold text-ink-3">Chunks</th>
-            <th class="py-2 pr-4 font-semibold text-ink-3">Summary</th>
-            <th class="py-2 pr-4 font-semibold text-ink-3">Available since</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">State</th>
             <th class="py-2 pr-4 font-semibold text-ink-3">Actions</th>
           </tr>
         </thead>
         <tbody>
           {list.map((e) => {
-            const p = e.processing;
+            const shown = open.has(e.episodeId);
+            const panel = `diagnostics-${e.episodeId}`;
             return (
-              <tr key={e.episodeId} class="border-b border-rule align-top">
-                <td class="py-2 pr-4">
-                  <a href={`https://youtu.be/${e.episodeId}`}>{e.title}</a>
-                </td>
-                <td class="py-2 pr-4 text-ink-2">
-                  <Time at={e.publishedAt} />
-                </td>
-                <td class="py-2 pr-4 text-ink-2">{statusCopy(e)}</td>
-                <td class="py-2 pr-4 text-ink-2">
-                  {p.intent === null ? (
-                    "—"
-                  ) : (
-                    <>
-                      {intentCopy(p.intent)}
-                      {" · next attempt "}
-                      <Time at={p.nextAttemptAt} />
-                      {" · deadline "}
-                      <Time at={p.windowDeadlineAt} />
-                    </>
-                  )}
-                </td>
-                <td class="py-2 pr-4 text-ink-2">
-                  {attemptCountCopy(p.attemptCount)}
-                  {p.latestAttempt && ` · ${latestAttemptCopy(e)}`}
-                </td>
-                <td class="py-2 pr-4 text-ink-2">{p.chunkCount ?? "—"}</td>
-                <td class="py-2 pr-4 text-ink-2">{e.summary?.format ?? "—"}</td>
-                <td class="py-2 pr-4 text-ink-2">
-                  <Time at={e.summaryAvailableAt} />
-                </td>
-                <td class="py-2 pr-4 text-ink-2">
-                  <EpisodeActions episode={e} busy={busy} act={act} />
-                </td>
-              </tr>
+              <Fragment key={e.episodeId}>
+                <tr class="border-b border-rule align-top">
+                  <td class="py-2 pr-2">
+                    <button
+                      type="button"
+                      class="flex size-11 items-center justify-center text-ink-3"
+                      aria-expanded={shown}
+                      aria-controls={panel}
+                      aria-label={`Diagnostics for "${e.title}"`}
+                      onClick={() => toggle(e.episodeId)}
+                    >
+                      <Icon of={shown ? ChevronDown : ChevronRight} size={16} />
+                    </button>
+                  </td>
+                  <td class="py-2 pr-4">
+                    <a href={`https://youtu.be/${e.episodeId}`}>{e.title}</a>
+                  </td>
+                  <td class="py-2 pr-4 text-ink-2">
+                    <Time at={e.publishedAt} />
+                  </td>
+                  <td class="py-2 pr-4 text-ink-2">{statusCopy(e)}</td>
+                  <td class="py-2 pr-4 text-ink-2">
+                    <EpisodeActions episode={e} busy={busy} act={act} />
+                  </td>
+                </tr>
+                {shown && (
+                  <tr id={panel} class="border-b border-rule">
+                    <td />
+                    <td colSpan={4} class="pb-3 pr-4">
+                      <Diagnostics episode={e} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** What the row does not show until it is asked: the window, the attempts, and the vector counts. */
+function Diagnostics({ episode: e }: { episode: Episode }) {
+  const p = e.processing;
+  return (
+    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+      <Fact label="Window">
+        {p.intent === null ? (
+          "none open"
+        ) : (
+          <>
+            {intentCopy(p.intent)}
+            {" · next attempt "}
+            <Time at={p.nextAttemptAt} />
+            {" · deadline "}
+            <Time at={p.windowDeadlineAt} />
+          </>
+        )}
+      </Fact>
+      <Fact label="Attempts">
+        {attemptCountCopy(p.attemptCount)}
+        {p.latestAttempt && ` · ${latestAttemptCopy(e)}`}
+      </Fact>
+      <Fact label="Chunks">{p.chunkCount ?? "none"}</Fact>
+      <Fact label="Summary">
+        {e.summary === null ? (
+          "none"
+        ) : (
+          <>
+            {e.summary.format}
+            {" · available since "}
+            <Time at={e.summaryAvailableAt} />
+          </>
+        )}
+      </Fact>
+      <Fact label="Episode id">{e.episodeId}</Fact>
+    </dl>
+  );
+}
+
+/** One labelled fact, in a two-column grid: the label in the 12 px label, the value in a cell. */
+function Fact({
+  label,
+  children,
+}: {
+  label: string;
+  children: ComponentChildren;
+}) {
+  return (
+    <>
+      <dt class="py-0.5 text-label uppercase text-ink-3">{label}</dt>
+      <dd class="py-0.5 text-ink-2">{children}</dd>
+    </>
   );
 }
 
@@ -333,11 +407,18 @@ function EpisodeActions({
   act: ChannelAct;
 }) {
   const wait = retryWaitCopy(e.processing.latestAttempt);
+  // Blue says "you can act on this" (docs/design.md §2.1), and on an episode that is already
+  // summarised there is nothing to act on: Retry there replaces a working summary, costs a
+  // transcript credit, and may return something no better. It stays on every row as §7 requires —
+  // findable, and saying what it would do — but it stops asking to be pressed.
+  const routine = e.status !== "available";
   return (
     <div class="flex flex-wrap items-center gap-1">
       <Action
         id={`detail-retry-${e.episodeId}`}
         busy={busy || wait !== null}
+        tone={routine ? "safe" : "quiet"}
+        title={routine ? undefined : RETRY_AVAILABLE_HINT}
         onClick={() => act(() => api.retryEpisode(e.channelId, e.episodeId))}
       >
         Retry
@@ -359,7 +440,11 @@ function EpisodeActions({
   );
 }
 
-/** The content status with what explains it: the wait, the skip reason, or the timeout's last reason. */
+/**
+ * The content status with what explains it: the wait, the skip reason, the timeout's last reason —
+ * or, on an otherwise healthy episode, that its summary is raw text. `raw_fallback` is the one
+ * summary fact worth a column's worth of attention, because it is what a reader is looking at.
+ */
 function statusCopy(e: Episode): string {
   const base = EPISODE_STATUS_COPY[e.status];
   if (e.status === "pending" && e.waitReason)
@@ -371,6 +456,9 @@ function statusCopy(e: Episode): string {
     return p.failureDetail
       ? `${base} · ${p.failureCode} · ${failureDetailCopy(p.failureDetail)}`
       : `${base} · ${p.failureCode}`;
+  }
+  if (e.summary?.format === "raw_fallback") {
+    return `${base} · ${RAW_SUMMARY_COPY}`;
   }
   return base;
 }

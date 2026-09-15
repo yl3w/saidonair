@@ -334,6 +334,16 @@ out alone (owner decision 2026-09-15, PRD §9, which withdrew `Done`'s advance t
 its header, status filters above, 25 rows at a time. Actions are text, not buttons, but they carry the padding and
 the weight to be found and to be hit.
 
+**A column earns its place by serving a decision** (2026-09-15, PRD §9). Everything else — counts the system keeps
+for itself, the state of an attempt, an internal format name — goes in a **diagnostics row the reader opens on the
+one row that needs it**. A column that reads `—` on every healthy row, or the same word on every working one, is a
+heading over nothing. The exception is the value that *is* the exception: promote it into the state, where it will
+be acted on, and leave its opposite in the diagnostics.
+
+**An action that is available and not advised is quiet, not absent.** `--ink-2` rather than the accent, with a
+tooltip saying what it would do. Hiding it would cost the owner a capability; leaving it blue would spend the
+meaning of blue, which is "you can act on this".
+
 **Sheets** (phone). Anything that would be a popover on a desktop is a bottom sheet on a phone: the channel picker,
 the date picker, the reading column's `Aa`. A handle, a title, a search field where the list is long, and a footer
 whose primary action names what it will do — "Show these two", "Go to 12 September".

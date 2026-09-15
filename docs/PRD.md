@@ -722,9 +722,16 @@ somewhere extra to go.
     with skipped and failed counts, last summary, followers, latest run, and the actions its status allows.
     Follower counts are real; the emails behind them appear only beside a channel waiting for review.
   - **Reviewed**: every decision already made, newest first, with the reviewer, the time and the note.
-- **Channel review `/curate/:id`:** the management header, discovery runs, every episode with its content status,
-  the open window's intent with next attempt and deadline, launched attempts beside the latest outcome, summary
-  format, and the actions — **Retry on every row, Skip on failed rows only**. Retry carries its reason on the row
+- **Channel review `/curate/:id`:** the management header — identity, then the channel's facts in a labelled grid
+  rather than one chained sentence — discovery runs, and every episode in **four columns: which episode, when it
+  was published, what state it is in, and the actions** (§9, 2026-09-15). State carries what explains it: the wait,
+  the skip reason, the failure code and its detail, and `unformatted` when a summary fell back to raw text, which
+  is the one summary fact a reader feels. The open window's intent with next attempt and deadline, launched
+  attempts beside the latest outcome, the chunk count, the summary format and first availability are all still
+  here, in a **diagnostics row each episode opens on request** — nothing is removed, and nothing diagnostic is on
+  by default. **Retry on every row, Skip on failed rows only**; Retry is quiet rather than accent on an episode
+  that is already summarised, where it would replace a working summary and spend a transcript credit, so the accent
+  keeps meaning "you can act on this". Retry carries its reason on the row
   while it is unavailable, naming who started the attempt that is holding it and when it frees up; after an hour
   the route reconciles a dead instance inline (§4.2 rule 17). Never shows any user's read or chat activity.
 - **Three rules the screens share.** Declining an approved channel confirms in a native `<dialog>` naming the
@@ -1180,6 +1187,21 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **Curate's channel review shows what a decision needs, and opens the rest — decided 2026-09-15.** Nine columns
+  were on by default and five were diagnosis: the window reads `—` on every healthy row, attempts and chunks matter
+  only when something is wrong, "available since" answers nothing anyone asks there, and the summary format said
+  `structured` on every working row — a constant with a heading, the same fault as the reading-time estimate and
+  the queue's "Unread". Its opposite is not a constant: `raw_fallback` means the model's JSON never parsed and a
+  reader is looking at raw text, so that one is promoted into the episode's state as **unformatted**, where it can
+  be acted on. The four that remain are the ones a decision needs — which episode, when it was published, what
+  state it is in, what can be done — and the rest opens per row on a disclosure. **Nothing is removed**: the window,
+  the attempts, the chunk count, the format and first availability are all in that row, with the episode id beside
+  them, which is what correlates a row with a log line. The header's one sentence of up to nine clauses chained
+  with `·` at 12.5 px becomes an identity line over a labelled grid — density from structure rather than from small
+  type (`docs/design.md` principle 6). And **Retry stops asking to be pressed on a healthy episode**: it stays on
+  every row, findable and saying what it would do, but in `--ink-2` rather than the accent, because there it
+  replaces a working summary and spends a transcript credit for no promised gain, and the accent means "you can
+  act on this".
 - **A row opens with the episode's own date — decided 2026-09-15.** The queue groups by the day a summary landed in
   front of the reader, and the row said "published Aug 4" at its foot, so a heading reading **Today** sat over an
   August episode. Both facts were true and the pairing was jarring. The fix is not to restructure the pile around
