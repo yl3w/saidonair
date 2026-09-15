@@ -162,6 +162,16 @@ export function curateWaitingCopy(waiting: number | null): string {
 // (owner decision 2026-09-15, docs/PRD.md §9). The takeaway count answers how much is in here.
 
 /**
+ * The reading column's sections, each named above its own rule. The lede is the opening and carries
+ * no heading; everything after it does, because a reader should not have to infer that three
+ * flowing sentences have become a timestamped list, or that a row of words is a set of topics
+ * (owner decision 2026-09-15, docs/PRD.md §9). "Takeaways" is the word the queue row already used.
+ */
+export const TAKEAWAYS_HEADING = "Takeaways";
+export const TOPICS_HEADING = "Topics";
+export const RELATED_HEADING = "Related";
+
+/**
  * How the reader's type, size and theme are labelled, wherever they are offered — the reading
  * column's `Aa` and Account both. One set of words, so the same control cannot be named two ways.
  */

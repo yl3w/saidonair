@@ -242,6 +242,12 @@ information, and a guess among facts devalues the facts.**
 the takeaways as the body with their timestamps hanging in the left margin as links into the video. Tags, then
 related titles. Chrome is a back arrow, `Aa`, `Watch` once, and `Done`.
 
+**The lede is the opening and carries no heading; every section after it is named**, above its own 1 px rule, in the
+12 px uppercase label — Takeaways, Topics, Related (2026-09-15, PRD §9). Three flowing sentences running into a
+timestamped list is a change of kind, and a reader should not have to infer it; a bare row of words at the foot of
+an article is not self-evidently a set of topics either. The heading carries no count: the row that led here already
+gave one, the list is in front of the reader, and counts can be switched off.
+
 The arrow **names the list the summary was opened from** — the queue, a day in History, a source — and returns the
 reader to it at the row they left; with no origin, as on a pasted link, it is the queue. `Done` writes the receipt
 and goes to the same place, and appears only on a summary that still has none: a read one says so in its meta line,

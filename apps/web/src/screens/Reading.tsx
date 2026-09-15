@@ -14,10 +14,13 @@ import {
   momentCopy,
   READING_PANEL_CLOSE,
   READING_PANEL_TITLE,
+  RELATED_HEADING,
   readStateCopy,
   runtimeCopy,
   SIZE_LABELS,
+  TAKEAWAYS_HEADING,
   THEME_LABELS,
+  TOPICS_HEADING,
 } from "../lib/copy";
 import { readOrigin } from "../lib/reading-origin";
 import {
@@ -261,42 +264,59 @@ function ReadingScreen() {
                   {summary.executiveSummary}
                 </p>
 
-                <ol class="mt-8">
-                  {summary.takeaways.map((takeaway) => (
-                    <li
-                      key={takeaway.text}
-                      class="mt-5 md:grid md:grid-cols-[4rem_1fr] md:gap-4"
-                    >
-                      <span class="block text-meta text-ink-3 md:pt-1 md:text-right">
-                        {takeaway.startSec === null ? (
-                          "—"
-                        ) : (
-                          <a
-                            class="inline-flex min-h-11 items-center text-primary md:justify-end"
-                            href={`https://youtu.be/${episode.episodeId}?t=${Math.floor(takeaway.startSec)}`}
-                          >
-                            {momentCopy(takeaway.startSec)}
-                          </a>
-                        )}
-                      </span>
-                      <span class="block text-body text-ink">
-                        {takeaway.text}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
+                {/* Named, like Related below: the lede is the opening and needs no heading, but
+                    three flowing sentences running into a timestamped list is a change of kind, and
+                    "takeaways" is the word the queue row already used to promise them. */}
+                {summary.takeaways.length > 0 && (
+                  <section class="mt-8 border-t border-rule pt-5">
+                    <h2 class="text-label uppercase text-ink-3">
+                      {TAKEAWAYS_HEADING}
+                    </h2>
+                    <ol class="mt-2">
+                      {summary.takeaways.map((takeaway) => (
+                        <li
+                          key={takeaway.text}
+                          class="mt-5 md:grid md:grid-cols-[4rem_1fr] md:gap-4"
+                        >
+                          <span class="block text-meta text-ink-3 md:pt-1 md:text-right">
+                            {takeaway.startSec === null ? (
+                              "—"
+                            ) : (
+                              <a
+                                class="inline-flex min-h-11 items-center text-primary md:justify-end"
+                                href={`https://youtu.be/${episode.episodeId}?t=${Math.floor(takeaway.startSec)}`}
+                              >
+                                {momentCopy(takeaway.startSec)}
+                              </a>
+                            )}
+                          </span>
+                          <span class="block text-body text-ink">
+                            {takeaway.text}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                )}
 
                 {summary.topicTags.length > 0 && (
-                  <p class="mt-8 text-meta text-ink-3">
-                    {summary.topicTags.join(" · ")}
-                  </p>
+                  <section class="mt-8 border-t border-rule pt-5">
+                    <h2 class="text-label uppercase text-ink-3">
+                      {TOPICS_HEADING}
+                    </h2>
+                    <p class="mt-2 text-meta text-ink-3">
+                      {summary.topicTags.join(" · ")}
+                    </p>
+                  </section>
                 )}
               </>
             )}
 
             {episode.related.length > 0 && (
-              <section class="mt-10 border-t border-rule pt-5">
-                <h2 class="text-label uppercase text-ink-3">Related</h2>
+              <section class="mt-8 border-t border-rule pt-5">
+                <h2 class="text-label uppercase text-ink-3">
+                  {RELATED_HEADING}
+                </h2>
                 <ul class="mt-2">
                   {episode.related.map((related) => (
                     <li key={related.episodeId} class="mt-1">

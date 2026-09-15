@@ -653,7 +653,8 @@ somewhere extra to go.
 - **Reading `/read/:episodeId`:** one 680 px column, and the only screen a reader is glad to be in. Channel, title,
   a meta line, the executive summary as a lede set off by a rule, the takeaways as the body with their timestamps
   hanging in the left margin as `youtu.be/<episodeId>?t=<startSec>` links, tags, then related titles filtered to
-  eligible channels. Chrome is a back arrow, `Aa` (closed until pressed: type, size, theme — a popover on a
+  eligible channels. The lede is the opening and carries no heading; **Takeaways, Topics and Related are each named
+  above their own rule** (2026-09-15, §9). Chrome is a back arrow, `Aa` (closed until pressed: type, size, theme — a popover on a
   desktop, a bottom sheet on a phone, corrected 2026-09-15), `Watch` exactly once,
   and **Done**, with a scroll-progress rule at the top. **The arrow names the list the summary was opened from** —
   the queue, a day in History, or a source — and returns the reader to it at the row they left; a related title
@@ -1072,6 +1073,18 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
+- **The reading column names its sections — decided 2026-09-15.** The executive summary ran straight into the
+  timestamped list with nothing between them but 32 px, so the reader had to work out for themselves that the kind
+  of content had changed; and the topic tags sat at the foot of the article as a bare row of words that never said
+  what they were. Related already had the treatment — a 1 px rule and a 12 px uppercase label — so this was one
+  section styled and two left bare rather than a missing idea. All three are named now. The lede keeps no heading,
+  being the opening: a magazine does not label its body, and the point of a heading here is the *transition*, from
+  three flowing sentences into a list of discrete claims each hanging off a timestamp. "Takeaways" is also the word
+  the queue row already used to promise them, so naming the section closes a loop the page had left open. No count
+  in the heading — the row gave one, the list is in front of the reader, and counts can be switched off, which would
+  leave a heading that changes shape with a setting. Weighed against principle 1, that the reading view carries no
+  chrome it can live without: three words and three hairlines buy a page a reader can scan, and the alternative
+  considered — a rule with no heading — leaves them knowing something changed without saying what.
 - **The `Aa` panel is a sheet on a phone — corrected 2026-09-15.** Not a new rule: `docs/design.md` §3 has said
   since the Design phase that anything which is a popover on a desktop is a bottom sheet on a phone, and the channel
   picker and the date picker both are. The reading column's `Aa` was missed, and shipped as a fixed 288 px box hung
