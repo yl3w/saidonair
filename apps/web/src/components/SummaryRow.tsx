@@ -25,12 +25,18 @@ export type Density = "full" | "compact";
  * holds unread summaries only, where the word is a constant rather than information
  * (owner decision 2026-09-15, docs/PRD.md §9). It is never printed for a caller the API gave no
  * receipt state to: not following an approved channel is not the same as not having read something.
+ *
+ * `lead` says what identifies a row in this list. A queue or a day of History mixes channels, so a
+ * row is identified by its source: the mark, the name, and when it arrived. A channel's own history
+ * does not — the mark and the name would repeat down the page — so there a row is identified by the
+ * date it was published, which is also the order the list is in (owner decision 2026-09-15).
  */
 export function SummaryRow({
   episode,
   density = "full",
   busy = false,
   state = true,
+  lead = "channel",
   onOpen,
   onDone,
   onUndo,
@@ -39,6 +45,7 @@ export function SummaryRow({
   density?: Density;
   busy?: boolean;
   state?: boolean;
+  lead?: "channel" | "published";
   onOpen?: (episode: Episode) => void;
   onDone?: (episode: Episode) => void;
   onUndo?: (episode: Episode) => void;
@@ -65,7 +72,8 @@ export function SummaryRow({
     meta.push({ key: "takeaways", text: `${takeaways} takeaways` });
   }
   if (runtime !== null) meta.push({ key: "runtime", text: runtime });
-  if (publishedElsewhere) {
+  // Only where the date is not already the lead; there it would say the same thing twice.
+  if (publishedElsewhere && lead === "channel") {
     meta.push({
       key: "published",
       text: `published ${shortDate(episode.publishedAt)}`,
@@ -77,16 +85,24 @@ export function SummaryRow({
       id={rowAnchorId(episode.episodeId)}
       class={`flex gap-3 border-b border-rule ${density === "full" ? "py-[18px]" : "py-[9px]"}`}
     >
-      <Avatar
-        id={episode.channelId}
-        name={episode.channelTitle}
-        size={density === "full" ? 34 : 20}
-      />
+      {lead === "channel" && (
+        <Avatar
+          id={episode.channelId}
+          name={episode.channelTitle}
+          size={density === "full" ? 34 : 20}
+        />
+      )}
 
       <div class="min-w-0 flex-1">
         <p class="text-label uppercase text-ink-3">
-          {episode.channelTitle}
-          {arrivedAt !== null && ` · ${timeOfDay(arrivedAt)}`}
+          {lead === "channel" ? (
+            <>
+              {episode.channelTitle}
+              {arrivedAt !== null && ` · ${timeOfDay(arrivedAt)}`}
+            </>
+          ) : (
+            fullDate(episode.publishedAt)
+          )}
         </p>
 
         <h3
@@ -148,14 +164,18 @@ export function SummaryRow({
 /** Rows of the real row's shape, so a loading queue does not jump when it arrives. */
 export function SummaryRowSkeleton({
   density = "full",
+  lead = "channel",
 }: {
   density?: Density;
+  lead?: "channel" | "published";
 }) {
   return (
     <div
       class={`flex gap-3 border-b border-rule ${density === "full" ? "py-[18px]" : "py-[9px]"}`}
     >
-      <div class="skeleton size-[34px] shrink-0 rounded-full" />
+      {lead === "channel" && (
+        <div class="skeleton size-[34px] shrink-0 rounded-full" />
+      )}
       <div class="min-w-0 flex-1">
         <div class="skeleton h-3 w-32" />
         <div class="skeleton mt-2 h-5 w-3/4" />
@@ -177,5 +197,14 @@ function shortDate(at: number): string {
   return new Date(at).toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
+  });
+}
+
+/** With its year: a channel's history runs over years, and the year selector may not be showing. */
+export function fullDate(at: number): string {
+  return new Date(at).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
   });
 }

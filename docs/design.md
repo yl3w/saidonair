@@ -227,6 +227,12 @@ three lines of the executive summary as the excerpt; a meta line of takeaway cou
 publication date when it differs from the day it arrived, led by "Read" or "Unread" **in a mixed list**. A check at
 the right marks it done without opening it. The excerpt is always the executive summary, never a takeaway.
 
+**A row is identified by what its list does not already say.** The queue and a day of History mix channels, so the
+mark, the name and the arrival time identify a row there. A channel's own page does not, and one monogram repeated
+down thirty rows says nothing thirty times — so there the row drops both and leads with its **publication date**,
+which is also the order that page is in. The same rule settles the arrival time: when a summary reached *you* is a
+queue fact and has no place in a channel's history (2026-09-15, PRD §9).
+
 **Every item on that line is a measured fact, and every one of them can vary.** Two consequences, both settled on
 2026-09-15 (PRD §9). There is no reading-time estimate: the takeaway budget bounds a summary tightly enough that the
 number could only ever say one, two or three minutes, and said two on nearly every row. And the read state is

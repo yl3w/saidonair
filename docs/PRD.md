@@ -680,7 +680,9 @@ somewhere extra to go.
   the newest landed; then decide. The owner's title, import count and note are in the third step, which is the
   one-step approval; a reader's add is the request. One source shows the channel, the reader's relationship to it,
   and its episodes newest **published** with the ones lacking a summary carrying their phrase, paged by year, with
-  the owner's controls beside the channel they govern.
+  the owner's controls beside the channel they govern. Every row on that page is the same channel, so **a row is
+  led by its publication date and carries no mark and no channel name** — summarised or not, one shape for the
+  whole history (§9, 2026-09-15).
 - **Account `/account`:** which email is reading and the only Switch account in the product; the reader's type, size
   and theme, which apply to **every page** (§9, 2026-09-15) and are kept in that browser; and a toggle that turns
   every count off. For the owner below the desktop breakpoint, one line saying how many things wait in Curate and
@@ -1074,6 +1076,18 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
+- **A row is identified by what the list does not already say — decided 2026-09-15.** In a queue or a day of
+  History, which mix channels, that is the source: the mark, the name, and the time it arrived. On a channel's own
+  page it is not, and repeating one monogram and one name down thirty rows says nothing thirty times. Those rows
+  are led by the **publication date** instead, which also repairs a mismatch: the page is ordered by publication
+  date, but the date appeared last in the meta line and only when it differed from the day the summary arrived — so
+  it was hidden precisely when a channel is healthy and an episode is summarised the day it is published. One of
+  the five episodes in the dev catalog already showed it. The arrival time goes from that page with the channel
+  name: when a summary reached *you* is a queue fact, and a channel's history is about the channel. The rows with
+  no summary take the same shape — the date leading, the title, then the phrase where the excerpt would be — so a
+  history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
+  a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
+  drops its avatar circle there too, a skeleton being the real row's shape or nothing.
 - **The reading column names its sections — decided 2026-09-15.** The executive summary ran straight into the
   timestamped list with nothing between them but 32 px, so the reader had to work out for themselves that the kind
   of content had changed; and the topic tags sat at the foot of the article as a bare row of words that never said

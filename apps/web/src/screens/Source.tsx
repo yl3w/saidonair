@@ -8,7 +8,11 @@ import {
   ChannelStatusActions,
 } from "../components/ChannelStatusActions";
 import { Page } from "../components/Page";
-import { SummaryRow, SummaryRowSkeleton } from "../components/SummaryRow";
+import {
+  fullDate,
+  SummaryRow,
+  SummaryRowSkeleton,
+} from "../components/SummaryRow";
 import {
   actionErrorCopy,
   channelStateCopy,
@@ -155,7 +159,7 @@ function SourceScreen() {
         {episodes.status === "loading" && (
           <div class="mt-3">
             {[0, 1].map((n) => (
-              <SummaryRowSkeleton key={n} />
+              <SummaryRowSkeleton key={n} lead="published" />
             ))}
           </div>
         )}
@@ -175,6 +179,7 @@ function SourceScreen() {
               <SummaryRow
                 key={episode.episodeId}
                 episode={episode}
+                lead="published"
                 onOpen={() =>
                   rememberOrigin({
                     kind: "source",
@@ -272,24 +277,25 @@ function Header({
   );
 }
 
-/** An episode with no summary still belongs in the history, with the reason it has none. */
+/**
+ * An episode with no summary still belongs in the history, with the reason it has none. It is the
+ * same row as a summarised one — the published date leading, then the title — so a channel's
+ * history reads as one list rather than two interleaved shapes. What differs is what a row can
+ * offer: no excerpt, no meta, a title in `--ink-2` and a link to the video rather than to a summary
+ * that does not exist, and the phrase where the executive summary would be.
+ */
 function WaitingRow({ episode }: { episode: Episode }) {
   return (
     <article class="flex gap-3 border-b border-rule py-[18px]">
       <div class="min-w-0 flex-1">
-        <h3 class="font-reading text-row-compact font-semibold text-ink-2">
+        <p class="text-label uppercase text-ink-3">
+          {fullDate(episode.publishedAt)}
+        </p>
+        <h3 class="mt-0.5 font-reading text-row-sm font-semibold text-ink-2 md:text-row">
           <a href={`https://youtu.be/${episode.episodeId}`}>{episode.title}</a>
         </h3>
-        <p class="mt-1 flex flex-wrap gap-x-2 text-meta text-ink-3">
-          <span>{episodePhrase(episode) ?? "Not summarised yet"}</span>
-          <span>
-            · published{" "}
-            {new Date(episode.publishedAt).toLocaleDateString(undefined, {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
-          </span>
+        <p class="mt-1 font-reading text-excerpt text-ink-2">
+          {episodePhrase(episode) ?? "Not summarised yet"}
         </p>
       </div>
     </article>
