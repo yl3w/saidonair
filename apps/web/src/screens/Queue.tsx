@@ -12,6 +12,7 @@ import {
 } from "../components/SummaryRow";
 import {
   actionErrorCopy,
+  browseHistoryCopy,
   endOfQueueCopy,
   QUEUE_EMPTY_NOTE,
   QUEUE_EMPTY_TITLE,
@@ -184,9 +185,12 @@ function QueueScreen() {
             </button>
           ) : (
             <p class="font-reading text-body text-ink-2">
-              {endOfQueueCopy(inHistory)}{" "}
-              <a class="text-primary" href="/history">
-                History
+              {endOfQueueCopy(showCounts ? queue.rows.length : null)}{" "}
+              <a
+                class="inline-flex min-h-11 items-center text-primary"
+                href="/history"
+              >
+                {browseHistoryCopy(inHistory, queue.rows.length)}
               </a>
             </p>
           )}

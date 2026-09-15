@@ -350,13 +350,29 @@ export function momentCopy(seconds: number): string {
 
 /**
  * The end of the queue, which says what is waiting rather than fading out (docs/specs/design-phase.md
- * §4.4). The History count is switched off with every other count.
+ * §4.4). **It counts what is here**, not what is elsewhere: the line used to end "— 5 summaries sit
+ * in History", where 5 was every summary the reader is eligible for, the four above it included.
+ * Read quickly that is five *more*, somewhere else, which is the opposite of true (owner decision
+ * 2026-09-15, docs/PRD.md §9). Counts are switched off with every other count.
  */
-export function endOfQueueCopy(inHistory: number | null): string {
-  if (inHistory === null || inHistory === 0) {
-    return "That is everything waiting.";
-  }
-  return `That is everything waiting — ${inHistory} ${inHistory === 1 ? "summary sits" : "summaries sit"} in History.`;
+export function endOfQueueCopy(waiting: number | null): string {
+  if (waiting === null) return "That is everything waiting.";
+  return waiting === 1
+    ? "That is the one summary waiting."
+    : `That is all ${waiting} unread summaries.`;
+}
+
+/**
+ * The way on from the end of the queue. History holds these *and* everything already read, so its
+ * number is named only when it is actually larger — otherwise the two lists are the same set and a
+ * second number would invite the same misreading in reverse.
+ */
+export function browseHistoryCopy(
+  inHistory: number | null,
+  waiting: number,
+): string {
+  if (inHistory === null || inHistory <= waiting) return "Browse History";
+  return `Browse all ${inHistory} in History`;
 }
 
 export const QUEUE_EMPTY_TITLE = "You are through everything";

@@ -647,7 +647,9 @@ somewhere extra to go.
   sticky across sessions; a density switch trades the excerpt, never the title; a rail lists the days still holding
   something. **It holds everything waiting, however much that is**: pages of fifty with a Show more, to the end of
   the range, never a hand-off to History at row fifty (corrected 2026-09-15, §9). It ends by saying what is
-  waiting — "That is everything waiting — 312 summaries sit in History" — rather than fading out. Empty: "You are
+  waiting — "That is all 312 unread summaries", over a link reading "Browse all 4,000 in History" — rather than
+  fading out; **the count in the line is what is here**, and History's is named only when it is larger (§9,
+  2026-09-15). Empty: "You are
   through everything", pointing at History; with no follows, pointing at Sources — and only once the range is
   exhausted, because `unread` is filtered outside the Registry, so a page can come back empty and still carry a
   cursor.
@@ -1191,6 +1193,14 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **The queue's ending counts what is here — corrected 2026-09-15.** It read "That is everything waiting — 5
+  summaries sit in History", where 5 was every summary the reader is eligible for, the four above it included. Read
+  at speed that is five *more*, somewhere else, which is the opposite of what it meant. The line now states what is
+  in front of the reader — "That is all 4 unread summaries" — and the way on names History's number only when it is
+  actually larger: "Browse all 5 in History", or plain "Browse History" when the two lists are the same set, since
+  a second identical number invites the same misreading in reverse. Two faults in the same three lines went with
+  it: the sentence ended "…in History." immediately above a link that also read "History", and that link carried no
+  44 px target though it is a standalone destination (`docs/design.md` §7).
 - **The inventory marks what the worklist holds — decided 2026-09-15.** Curate shows the same catalog twice: Needs
   you is the handful outstanding, the table is every channel. A row in the table gave no sign it was also in the
   worklist, so an owner scrolling the inventory could not tell what was urgent without scrolling back up. Each row

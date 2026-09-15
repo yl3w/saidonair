@@ -159,7 +159,9 @@ day and refollowing restores them along with their receipts (PRD §4.4).
 
 **Queue** shows only rows with no receipt, grouped by day, with a channel filter, a density switch and a check on
 each row that marks it done without opening it. It ends with what is waiting, not a fade: *That is everything
-waiting — 312 summaries sit in History.* **History** shows everything eligible by day, navigated by a five-week
+waiting — 312 summaries sit in History.* (**Amended 2026-09-15**, PRD §9: that number counted the rows above it
+too, so the line now counts what is here — *That is all 312 unread summaries* — and History's total is named on
+the link, only when it is larger.) **History** shows everything eligible by day, navigated by a five-week
 calendar of dated cells, and is the only place a receipt can be undone.
 
 **Corrected 2026-09-15** (PRD §9): this section named the `cursor` the queue needed and then never said the queue
