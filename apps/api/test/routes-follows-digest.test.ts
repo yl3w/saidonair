@@ -13,6 +13,9 @@ import {
   CHANNEL_B,
   CHANNEL_C,
   CHANNEL_D,
+  EPISODE_A,
+  EPISODE_B,
+  EPISODE_C,
   expectShape,
   OWNER,
   registry,
@@ -20,9 +23,6 @@ import {
   seedEpisode,
   seedSummary,
   userDO,
-  VIDEO_A,
-  VIDEO_B,
-  VIDEO_C,
 } from "./helpers";
 
 type Json = Record<string, unknown>;
@@ -41,12 +41,12 @@ async function call(
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
-const VIDEO_D = "ddddddddddd";
-const VIDEO_OLD = "olderolderx";
+const EPISODE_D = "ddddddddddd";
+const EPISODE_OLD = "olderolderx";
 
 /**
- * A: approved, VIDEO_A (1h ago), VIDEO_B (3d ago), VIDEO_OLD (10d ago) available with summaries,
- * VIDEO_C failed. B: approved, VIDEO_D (2h ago). C: requested. D: declined (was approved).
+ * A: approved, EPISODE_A (1h ago), EPISODE_B (3d ago), EPISODE_OLD (10d ago) available with summaries,
+ * EPISODE_C failed. B: approved, EPISODE_D (2h ago). C: requested. D: declined (was approved).
  */
 async function seedCatalog(now: number) {
   const stub = registry();
@@ -60,18 +60,18 @@ async function seedCatalog(now: number) {
   await stub.createChannel({ channelId: CHANNEL_C, title: "C" });
   await stub.declineChannel(OWNER, CHANNEL_D);
 
-  await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: now - HOUR });
-  await seedSummary(VIDEO_A, { relatedVideoIds: [VIDEO_D, VIDEO_B] });
-  await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: now - 3 * DAY });
-  await seedSummary(VIDEO_B);
-  await seedEpisode(VIDEO_OLD, CHANNEL_A, { publishedAt: now - 10 * DAY });
-  await seedSummary(VIDEO_OLD);
-  await seedEpisode(VIDEO_C, CHANNEL_A, {
+  await seedEpisode(EPISODE_A, CHANNEL_A, { publishedAt: now - HOUR });
+  await seedSummary(EPISODE_A, { relatedEpisodeIds: [EPISODE_D, EPISODE_B] });
+  await seedEpisode(EPISODE_B, CHANNEL_A, { publishedAt: now - 3 * DAY });
+  await seedSummary(EPISODE_B);
+  await seedEpisode(EPISODE_OLD, CHANNEL_A, { publishedAt: now - 10 * DAY });
+  await seedSummary(EPISODE_OLD);
+  await seedEpisode(EPISODE_C, CHANNEL_A, {
     publishedAt: now - 2 * HOUR,
     status: "failed",
   });
-  await seedEpisode(VIDEO_D, CHANNEL_B, { publishedAt: now - 2 * HOUR });
-  await seedSummary(VIDEO_D);
+  await seedEpisode(EPISODE_D, CHANNEL_B, { publishedAt: now - 2 * HOUR });
+  await seedSummary(EPISODE_D);
   return stub;
 }
 
@@ -150,11 +150,11 @@ describe("follow routes", () => {
       ((await call(ALICE, "GET", "/follows")).json.follows as Json[])[0]
         ?.unreadCount,
     ).toBe(3);
-    for (const videoId of [VIDEO_A, VIDEO_B, VIDEO_OLD]) {
+    for (const episodeId of [EPISODE_A, EPISODE_B, EPISODE_OLD]) {
       await call(
         ALICE,
         "POST",
-        `/channels/${CHANNEL_A}/episodes/${videoId}/read`,
+        `/channels/${CHANNEL_A}/episodes/${episodeId}/read`,
       );
     }
     expect(
@@ -230,20 +230,20 @@ describe("digest route", () => {
     expect(first.status).toBe(200);
     expect(first.json).toMatchObject({ compact: false, nextCursor: null });
     const episodes = first.json.episodes as Json[];
-    expect(episodes.map((e) => e.videoId)).toEqual([
-      VIDEO_A,
-      VIDEO_D,
-      VIDEO_B,
-      VIDEO_OLD,
+    expect(episodes.map((e) => e.episodeId)).toEqual([
+      EPISODE_A,
+      EPISODE_D,
+      EPISODE_B,
+      EPISODE_OLD,
     ]);
     expect(episodes[0]).toMatchObject({
       channelTitle: "A",
       summary: { format: "structured" },
       read: false,
-      // VIDEO_D is eligible for Alice (she follows B); both related titles are in her scope.
+      // EPISODE_D is eligible for Alice (she follows B); both related titles are in her scope.
       related: [
-        { videoId: VIDEO_D, title: `Episode ${VIDEO_D}` },
-        { videoId: VIDEO_B, title: `Episode ${VIDEO_B}` },
+        { episodeId: EPISODE_D, title: `Episode ${EPISODE_D}` },
+        { episodeId: EPISODE_B, title: `Episode ${EPISODE_B}` },
       ],
     });
     expect(episodes[0]).toHaveProperty("processing");
@@ -257,11 +257,13 @@ describe("digest route", () => {
       false,
       false,
     ]);
-    expect(await userDO(ALICE).readVideoIds([VIDEO_A, VIDEO_D])).toEqual([]);
+    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A, EPISODE_D])).toEqual(
+      [],
+    );
     await call(
       ALICE,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/read`,
     );
     expect(
       ((await call(ALICE, "GET", "/digest")).json.episodes as Json[]).map(
@@ -271,21 +273,24 @@ describe("digest route", () => {
 
     // Bob's receipts are his own, and he does not follow B.
     const bob = await call(BOB, "GET", "/digest");
-    expect((bob.json.episodes as Json[]).map((e) => e.videoId)).toEqual([
-      VIDEO_A,
-      VIDEO_B,
-      VIDEO_OLD,
+    expect((bob.json.episodes as Json[]).map((e) => e.episodeId)).toEqual([
+      EPISODE_A,
+      EPISODE_B,
+      EPISODE_OLD,
     ]);
     expect((bob.json.episodes as Json[])[0]).toMatchObject({
       read: false,
-      related: [{ videoId: VIDEO_B }],
+      related: [{ episodeId: EPISODE_B }],
     });
 
     // A paused channel is still eligible: its existing summaries stay readable (spec §3.2).
     await registry().pauseChannel(CHANNEL_A);
     expect(
       ((await call(BOB, "GET", "/digest")).json.episodes as Json[])[0],
-    ).toMatchObject({ videoId: VIDEO_A, summary: { format: "structured" } });
+    ).toMatchObject({
+      episodeId: EPISODE_A,
+      summary: { format: "structured" },
+    });
   });
 
   it("bounds the range, filters unread and by channel, pages by cursor, and answers compact rows", async () => {
@@ -296,49 +301,53 @@ describe("digest route", () => {
     const ids = async (query: string) =>
       (
         (await call(ALICE, "GET", `/digest${query}`)).json.episodes as Json[]
-      ).map((e) => e.videoId);
+      ).map((e) => e.episodeId);
     const iso = (at: number) => encodeURIComponent(new Date(at).toISOString());
 
     // `from` is inclusive and `to` exclusive: one day of History is one half-open range.
     expect(await ids(`?from=${iso(now - 4 * DAY)}`)).toEqual([
-      VIDEO_A,
-      VIDEO_D,
-      VIDEO_B,
+      EPISODE_A,
+      EPISODE_D,
+      EPISODE_B,
     ]);
     expect(
       await ids(`?from=${iso(now - 4 * DAY)}&to=${iso(now - 2 * HOUR)}`),
-    ).toEqual([VIDEO_B]);
+    ).toEqual([EPISODE_B]);
     expect(await ids(`?to=${iso(now - 2 * HOUR)}`)).toEqual([
-      VIDEO_B,
-      VIDEO_OLD,
+      EPISODE_B,
+      EPISODE_OLD,
     ]);
 
     // The queue is the same range with a receipt filter; History is the range without one.
     await call(
       ALICE,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/read`,
     );
-    expect(await ids("?unread=true")).toEqual([VIDEO_D, VIDEO_B, VIDEO_OLD]);
+    expect(await ids("?unread=true")).toEqual([
+      EPISODE_D,
+      EPISODE_B,
+      EPISODE_OLD,
+    ]);
     expect(await ids("?unread=false")).toHaveLength(4);
     await call(
       ALICE,
       "DELETE",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/read`,
     );
     expect(await ids("?unread=true")).toHaveLength(4);
 
     // Nothing waiting is an empty page that ends, not a cursor the client chases.
-    for (const [channelId, videoId] of [
-      [CHANNEL_A, VIDEO_A],
-      [CHANNEL_A, VIDEO_B],
-      [CHANNEL_A, VIDEO_OLD],
-      [CHANNEL_B, VIDEO_D],
+    for (const [channelId, episodeId] of [
+      [CHANNEL_A, EPISODE_A],
+      [CHANNEL_A, EPISODE_B],
+      [CHANNEL_A, EPISODE_OLD],
+      [CHANNEL_B, EPISODE_D],
     ] as const) {
       await call(
         ALICE,
         "POST",
-        `/channels/${channelId}/episodes/${videoId}/read`,
+        `/channels/${channelId}/episodes/${episodeId}/read`,
       );
     }
     expect((await call(ALICE, "GET", "/digest?unread=true")).json).toEqual({
@@ -346,21 +355,21 @@ describe("digest route", () => {
       episodes: [],
       nextCursor: null,
     });
-    for (const [channelId, videoId] of [
-      [CHANNEL_A, VIDEO_A],
-      [CHANNEL_A, VIDEO_B],
-      [CHANNEL_A, VIDEO_OLD],
-      [CHANNEL_B, VIDEO_D],
+    for (const [channelId, episodeId] of [
+      [CHANNEL_A, EPISODE_A],
+      [CHANNEL_A, EPISODE_B],
+      [CHANNEL_A, EPISODE_OLD],
+      [CHANNEL_B, EPISODE_D],
     ] as const) {
       await call(
         ALICE,
         "DELETE",
-        `/channels/${channelId}/episodes/${videoId}/read`,
+        `/channels/${channelId}/episodes/${episodeId}/read`,
       );
     }
 
     // `channelId` repeats, and an id the caller is not eligible for simply matches nothing.
-    expect(await ids(`?channelId=${CHANNEL_B}`)).toEqual([VIDEO_D]);
+    expect(await ids(`?channelId=${CHANNEL_B}`)).toEqual([EPISODE_D]);
     expect(
       await ids(`?channelId=${CHANNEL_A}&channelId=${CHANNEL_B}`),
     ).toHaveLength(4);
@@ -373,12 +382,14 @@ describe("digest route", () => {
     do {
       const query: string = `?limit=2${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`;
       const response = await call(ALICE, "GET", `/digest${query}`);
-      walked.push(...(response.json.episodes as Json[]).map((e) => e.videoId));
+      walked.push(
+        ...(response.json.episodes as Json[]).map((e) => e.episodeId),
+      );
       cursor = response.json.nextCursor as string | null;
       pages++;
     } while (cursor !== null && pages < 5);
     expect(pages).toBe(2);
-    expect(walked).toEqual([VIDEO_A, VIDEO_D, VIDEO_B, VIDEO_OLD]);
+    expect(walked).toEqual([EPISODE_A, EPISODE_D, EPISODE_B, EPISODE_OLD]);
 
     // `compact` answers the same page as rows: the day, the channel, the receipt, nothing else.
     const compact = await call(ALICE, "GET", "/digest?compact=true&limit=1");
@@ -387,7 +398,7 @@ describe("digest route", () => {
     expect(compact.json).not.toHaveProperty("episodes");
     expect(compact.json.rows).toEqual([
       {
-        videoId: VIDEO_A,
+        episodeId: EPISODE_A,
         channelId: CHANNEL_A,
         summaryAvailableAt: expect.any(Number),
         read: false,
@@ -415,7 +426,7 @@ describe("digest route", () => {
     // A declined channel leaves every past day, and a caller with nothing eligible gets an
     // empty page of the shape they asked for.
     await stub.declineChannel(OWNER, CHANNEL_A);
-    expect(await ids("")).toEqual([VIDEO_D]);
+    expect(await ids("")).toEqual([EPISODE_D]);
     expect((await call(BOB, "GET", "/digest")).json).toEqual({
       compact: false,
       episodes: [],
@@ -435,7 +446,7 @@ describe("digest route", () => {
     await call(
       ALICE,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/read`,
     );
 
     // Unfollowing removes the channel's rows from every past day (docs/PRD.md §4.4)...
@@ -446,10 +457,10 @@ describe("digest route", () => {
     await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
     const restored = (await call(ALICE, "GET", "/digest")).json
       .episodes as Json[];
-    expect(restored.map((e) => [e.videoId, e.read])).toEqual([
-      [VIDEO_A, true],
-      [VIDEO_B, false],
-      [VIDEO_OLD, false],
+    expect(restored.map((e) => [e.episodeId, e.read])).toEqual([
+      [EPISODE_A, true],
+      [EPISODE_B, false],
+      [EPISODE_OLD, false],
     ]);
   });
 });

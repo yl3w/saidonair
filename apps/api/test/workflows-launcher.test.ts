@@ -10,7 +10,7 @@ import {
 
 const params = (attemptId: string, k = 0): IngestParams => ({
   attemptId,
-  videoId: "aaaaaaaaaaa",
+  episodeId: "aaaaaaaaaaa",
   channelId: "UCAAAAAAAAAAAAAAAAAAAAAA",
   startDelaySec: k * 3,
 });
@@ -51,7 +51,7 @@ describe("the launcher fake", () => {
       /configured to fail/,
     );
     await expect(
-      launcher.create({ ...params("a3"), videoId: "bbbbbbbbbbb" }),
+      launcher.create({ ...params("a3"), episodeId: "bbbbbbbbbbb" }),
     ).rejects.toThrow(/configured to fail/);
     expect(createdInstances()).toHaveLength(2);
     resetWorkflowFake();

@@ -135,7 +135,7 @@ export const CLEANUP_STEP: WorkflowStepConfig = {
 export const TRANSCRIPT_RESULT_LIMIT_BYTES = 700_000;
 /** Under this many known seconds a video is a short (docs/PRD.md §4.2 rule 12). */
 export const SHORT_UNDER_SEC = 180;
-/** Related candidates asked of the index before deduping to at most five videos (spec §2). */
+/** Related candidates asked of the index before deduping to at most five episodes (spec §2). */
 export const RELATED_TOP_K = 50;
 
 // --- classification (parent §3.5), pure ---------------------------------------------------------
@@ -229,7 +229,7 @@ export async function ingestAttempt(
   env: Env,
   params: IngestParams,
 ): Promise<IngestResult> {
-  const { attemptId, videoId } = params;
+  const { attemptId, episodeId } = params;
   const registry = getRegistry(env);
 
   if (params.startDelaySec > 0)
@@ -239,7 +239,7 @@ export async function ingestAttempt(
     registry.describeAttempt(attemptId),
   );
   if (!context.current || context.generationId === null) {
-    console.log({ event: "ingest.stale", attemptId, videoId });
+    console.log({ event: "ingest.stale", attemptId, episodeId });
     return { attemptId, ended: "stale" };
   }
   const generationId = context.generationId;
@@ -247,7 +247,7 @@ export async function ingestAttempt(
   let stage: Stage = "transcript";
   try {
     const transcript = await step.do("transcript", TRANSCRIPT_STEP, () =>
-      fetchTranscript(env, videoId),
+      fetchTranscript(env, episodeId),
     );
     const classification = classify(transcript);
     if (classification.kind === "finish") {
@@ -265,7 +265,13 @@ export async function ingestAttempt(
       Math.ceil(chunks[chunks.length - 1]?.endSec ?? 0);
 
     if (context.abandonedGeneration) {
-      await discard(step, env, "discard", videoId, context.abandonedGeneration);
+      await discard(
+        step,
+        env,
+        "discard",
+        episodeId,
+        context.abandonedGeneration,
+      );
     }
 
     await step.do("stage", REGISTRY_STEP, () =>
@@ -282,12 +288,12 @@ export async function ingestAttempt(
     );
 
     stage = "verify";
-    await verify(step, env, videoId, generationId, chunks.length);
+    await verify(step, env, episodeId, generationId, chunks.length);
 
     stage = "summarize";
     const summary = await summarize(step, env, chunks, durationSec);
 
-    const related = await relatedCandidates(step, env, videoId, centroid);
+    const related = await relatedCandidates(step, env, episodeId, centroid);
 
     stage = "publish";
     const published: PublicationResult = await step.do(
@@ -299,7 +305,7 @@ export async function ingestAttempt(
     console.log({
       event: "ingest.published",
       attemptId,
-      videoId,
+      episodeId,
       chunkCount: chunks.length,
       replaced: published.previousGeneration !== null,
     });
@@ -308,7 +314,7 @@ export async function ingestAttempt(
         step,
         env,
         "cleanup",
-        videoId,
+        episodeId,
         published.previousGeneration,
       );
     }
@@ -324,7 +330,7 @@ export async function ingestAttempt(
       console.log({
         event: "ingest.stale",
         attemptId,
-        videoId,
+        episodeId,
         stage,
         detail: messageOf(error),
       });
@@ -335,7 +341,7 @@ export async function ingestAttempt(
     console.log({
       event: "ingest.step_failed",
       attemptId,
-      videoId,
+      episodeId,
       stage,
       code: outcome.code,
     });
@@ -367,10 +373,10 @@ async function finish(
  */
 async function fetchTranscript(
   env: Env,
-  videoId: string,
+  episodeId: string,
 ): Promise<TranscriptStepResult> {
   try {
-    const result = await transcriptSource(env).fetch(videoId);
+    const result = await transcriptSource(env).fetch(episodeId);
     if (
       result.segments &&
       JSON.stringify(result.segments).length > TRANSCRIPT_RESULT_LIMIT_BYTES
@@ -414,7 +420,11 @@ async function embedAndStage(
           await vectorStore(env).upsert(
             SHARED_NAMESPACE,
             batch.map((chunk, i) => ({
-              id: vectorId(context.episode.videoId, generationId, chunk.index),
+              id: vectorId(
+                context.episode.episodeId,
+                generationId,
+                chunk.index,
+              ),
               values: vectors[i] ?? [],
               metadata: metadataFor(context, generationId, chunk),
             })),
@@ -442,7 +452,7 @@ function metadataFor(
   chunk: TranscriptChunk,
 ): ChunkMetadata {
   return {
-    videoId: context.episode.videoId,
+    episodeId: context.episode.episodeId,
     channelId: context.episode.channelId,
     generationId,
     channelTitle: context.episode.channelTitle,
@@ -461,11 +471,11 @@ function metadataFor(
 async function verify(
   step: StepLike,
   env: Env,
-  videoId: string,
+  episodeId: string,
   generationId: string,
   chunkCount: number,
 ): Promise<void> {
-  const ids = generationIds(videoId, generationId, chunkCount);
+  const ids = generationIds(episodeId, generationId, chunkCount);
   for (let check = 0; ; check++) {
     const { missing } = await step.do(
       `verify:${check}`,
@@ -601,7 +611,7 @@ async function synthesise(
 async function relatedCandidates(
   step: StepLike,
   env: Env,
-  videoId: string,
+  episodeId: string,
   centroid: readonly number[],
 ): Promise<string[]> {
   try {
@@ -609,10 +619,10 @@ async function relatedCandidates(
       const matches = await vectorStore(env).query(SHARED_NAMESPACE, centroid, {
         topK: RELATED_TOP_K,
       });
-      const seen = new Set<string>([videoId]);
+      const seen = new Set<string>([episodeId]);
       const candidates: string[] = [];
       for (const match of matches) {
-        const id = match.metadata.videoId;
+        const id = match.metadata.episodeId;
         if (seen.has(id)) continue;
         seen.add(id);
         candidates.push(id);
@@ -623,7 +633,7 @@ async function relatedCandidates(
   } catch (error) {
     console.log({
       event: "ingest.related_failed",
-      videoId,
+      episodeId,
       detail: messageOf(error),
     });
     return [];
@@ -635,21 +645,25 @@ async function discard(
   step: StepLike,
   env: Env,
   name: "discard" | "cleanup",
-  videoId: string,
+  episodeId: string,
   generation: StagedGeneration,
 ): Promise<void> {
   try {
     await step.do(name, CLEANUP_STEP, async () => {
       await vectorStore(env).deleteByIds(
         SHARED_NAMESPACE,
-        generationIds(videoId, generation.generationId, generation.chunkCount),
+        generationIds(
+          episodeId,
+          generation.generationId,
+          generation.chunkCount,
+        ),
       );
       return { deleted: generation.chunkCount };
     });
   } catch (error) {
     console.log({
       event: `ingest.${name}_failed`,
-      videoId,
+      episodeId,
       generationId: generation.generationId,
       detail: messageOf(error),
     });

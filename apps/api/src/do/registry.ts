@@ -11,7 +11,7 @@ import { DomainError } from "../lib/errors";
 import {
   requireChannelId,
   requireChannelIds,
-  requireVideoId,
+  requireEpisodeId,
 } from "../lib/youtube/ids";
 import type { ChannelFeed } from "../lib/youtube/rss";
 import { applyMigrations } from "./migrations";
@@ -226,11 +226,11 @@ export class RegistryDO extends DurableObject<Env> {
 
   // --- episodes -------------------------------------------------------------
 
-  /** Available video ids for the given channels; routes derive counts and unread state. */
-  listAvailableVideoIds(
+  /** Available episode ids for the given channels; routes derive counts and unread state. */
+  listAvailableEpisodeIds(
     channelIds: string[],
-  ): { channelId: string; videoId: string }[] {
-    return episodes.listAvailableVideoIds(
+  ): { channelId: string; episodeId: string }[] {
+    return episodes.listAvailableEpisodeIds(
       this.#sql,
       requireChannelIds(channelIds),
     );
@@ -290,21 +290,21 @@ export class RegistryDO extends DurableObject<Env> {
    */
   getEpisode(
     channelId: string,
-    videoId: string,
+    episodeId: string,
     relatedScope?: string[],
   ): EpisodeRecord | null {
     return episodes.getEpisode(
       this.#sql,
       requireChannelId(channelId),
-      requireVideoId(videoId),
+      requireEpisodeId(episodeId),
       relatedScope === undefined ? [] : requireChannelIds(relatedScope),
     );
   }
 
   /** Back to `pending` with attempts reset; the route starts a one-episode run. */
-  retryEpisode(channelId: string, videoId: string): EpisodeRecord {
+  retryEpisode(channelId: string, episodeId: string): EpisodeRecord {
     const id = requireChannelId(channelId);
-    const video = requireVideoId(videoId);
+    const video = requireEpisodeId(episodeId);
     return this.#transaction(() =>
       episodes.retryEpisode(this.#sql, id, video, Date.now()),
     );
@@ -314,11 +314,11 @@ export class RegistryDO extends DurableObject<Env> {
   skipEpisode(
     actorEmail: string,
     channelId: string,
-    videoId: string,
+    episodeId: string,
   ): EpisodeRecord {
     const email = users.requireEmail(actorEmail);
     const id = requireChannelId(channelId);
-    const video = requireVideoId(videoId);
+    const video = requireEpisodeId(episodeId);
     return this.#transaction(() => {
       const now = Date.now();
       users.ensureUser(this.#sql, email, now);
@@ -356,11 +356,11 @@ export class RegistryDO extends DurableObject<Env> {
    * Retry passes the requester; the automatic triggers pass nothing. Channel state is never read.
    */
   beginAttempt(
-    videoId: string,
+    episodeId: string,
     trigger: AttemptTrigger,
     requestedByEmail?: string,
   ): AttemptStart {
-    const video = requireVideoId(videoId);
+    const video = requireEpisodeId(episodeId);
     const requester =
       requestedByEmail === undefined
         ? null
@@ -421,12 +421,12 @@ export class RegistryDO extends DurableObject<Env> {
 
   /** A start that pre-flight refused: one finished `blocked` row, no launch, no count. */
   recordBlockedAttempt(
-    videoId: string,
+    episodeId: string,
     trigger: AttemptTrigger,
     reason: BlockReason,
     requestedByEmail?: string,
   ): AttemptResult {
-    const video = requireVideoId(videoId);
+    const video = requireEpisodeId(episodeId);
     const requester =
       requestedByEmail === undefined
         ? null
@@ -570,7 +570,7 @@ function requireSelection(selection: DigestSelection): DigestSelection {
   if (toMs !== null) requireTimestamp(toMs, "toMs");
   if (after !== null) {
     requireTimestamp(after.summaryAvailableAt, "cursor");
-    requireVideoId(after.videoId);
+    requireEpisodeId(after.episodeId);
   }
   if (
     !Number.isInteger(limit) ||

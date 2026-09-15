@@ -483,7 +483,7 @@ export const TakeawaySchema = z
       .nonnegative()
       .nullable()
       .describe(
-        "The moment the takeaway comes from, for a `https://youtu.be/<videoId>?t=<startSec>` link; null when the model gave no usable marker.",
+        "The moment the takeaway comes from, for a `https://youtu.be/<episodeId>?t=<startSec>` link; null when the model gave no usable marker.",
       ),
   })
   .meta({
@@ -513,7 +513,7 @@ export const EpisodeSummarySchema = z
 export type EpisodeSummary = z.infer<typeof EpisodeSummarySchema>;
 
 export const RelatedEpisodeSchema = z
-  .object({ videoId: Id, title: z.string() })
+  .object({ episodeId: Id, title: z.string() })
   .meta({
     id: "RelatedEpisode",
     description:
@@ -525,7 +525,7 @@ export type RelatedEpisode = z.infer<typeof RelatedEpisodeSchema>;
 export const EpisodeIngestionAttemptSchema = z
   .object({
     attemptId: Id,
-    videoId: Id,
+    episodeId: Id,
     trigger: AttemptTriggerSchema,
     requestedByEmail: z
       .string()
@@ -609,7 +609,7 @@ export type EpisodeProcessing = z.infer<typeof EpisodeProcessingSchema>;
  */
 export const EpisodeSchema = z
   .object({
-    videoId: Id,
+    episodeId: Id,
     channelId: Id,
     channelTitle: z.string(),
     title: z.string(),
@@ -631,7 +631,7 @@ export const EpisodeSchema = z
     read: z
       .boolean()
       .describe(
-        "For an eligible caller (active follower of an approved channel) with a returned summary: whether they have a read receipt for it. Absent for everyone else. No read route writes one; `POST /channels/{id}/episodes/{videoId}/read` does.",
+        "For an eligible caller (active follower of an approved channel) with a returned summary: whether they have a read receipt for it. Absent for everyone else. No read route writes one; `POST /channels/{id}/episodes/{episodeId}/read` does.",
       )
       .optional(),
     processing: EpisodeProcessingSchema,
@@ -657,11 +657,11 @@ export type EpisodesResponse = z.infer<typeof EpisodesResponseSchema>;
 export const EpisodeResponseSchema = z.object({ episode: EpisodeSchema }).meta({
   id: "EpisodeResponse",
   description:
-    "`GET /channels/:id/episodes/:videoId`, `POST` and `DELETE /channels/:id/episodes/:videoId/read`, `POST /channels/:id/episodes/:videoId/skip`",
+    "`GET /channels/:id/episodes/:episodeId`, `POST` and `DELETE /channels/:id/episodes/:episodeId/read`, `POST /channels/:id/episodes/:episodeId/skip`",
 });
 export type EpisodeResponse = z.infer<typeof EpisodeResponseSchema>;
 
-/** `POST /channels/:id/episodes/:videoId/retry` (M3) — the episode and the attempt just started, or blocked. */
+/** `POST /channels/:id/episodes/:episodeId/retry` (M3) — the episode and the attempt just started, or blocked. */
 export const EpisodeRetryResponseSchema = z
   .object({
     episode: EpisodeSchema,
@@ -672,7 +672,7 @@ export const EpisodeRetryResponseSchema = z
   .meta({
     id: "EpisodeRetryResponse",
     description:
-      "`POST /channels/:id/episodes/:videoId/retry` — the episode and the attempt just started, or blocked.",
+      "`POST /channels/:id/episodes/:episodeId/retry` — the episode and the attempt just started, or blocked.",
   });
 export type EpisodeRetryResponse = z.infer<typeof EpisodeRetryResponseSchema>;
 
@@ -683,7 +683,7 @@ export type EpisodeRetryResponse = z.infer<typeof EpisodeRetryResponseSchema>;
  */
 export const DigestRowSchema = z
   .object({
-    videoId: Id,
+    episodeId: Id,
     channelId: Id,
     summaryAvailableAt: UnixMs.describe(
       "When the summary first became available; the day it belongs to, permanently.",
@@ -877,14 +877,14 @@ export type Chat = z.infer<typeof ChatSchema>;
 export const ChatSourceSchema = z
   .object({
     position: Count,
-    videoId: Id,
+    episodeId: Id,
     channelId: Id,
-    videoTitle: z.string(),
+    episodeTitle: z.string(),
     channelTitle: z.string(),
     startSec: z
       .number()
       .nonnegative()
-      .describe("Link: `https://youtu.be/<videoId>?t=<startSec>`."),
+      .describe("Link: `https://youtu.be/<episodeId>?t=<startSec>`."),
   })
   .meta({
     id: "ChatSource",
@@ -1080,10 +1080,12 @@ export const ChannelParamsSchema = z.object({
 });
 export type ChannelParams = z.infer<typeof ChannelParamsSchema>;
 
-/** `/channels/:id/episodes/:videoId/retry|skip`. */
+/** `/channels/:id/episodes/:episodeId/retry|skip`. */
 export const EpisodeParamsSchema = z.object({
   id: Id.describe("Canonical `UC…` channel id."),
-  videoId: Id.describe("YouTube video id."),
+  episodeId: Id.describe(
+    "The episode id: the YouTube video id it was discovered as.",
+  ),
 });
 export type EpisodeParams = z.infer<typeof EpisodeParamsSchema>;
 

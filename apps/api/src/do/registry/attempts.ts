@@ -18,7 +18,7 @@ import { chunk, placeholders } from "../../lib/sql";
 
 export type AttemptRow = {
   attempt_id: string;
-  video_id: string;
+  episode_id: string;
   trigger: string;
   intent: string;
   generation_id: string | null;
@@ -32,48 +32,48 @@ export type AttemptRow = {
   finished_at: number | null;
 };
 
-const ATTEMPT_COLUMNS = `attempt_id, video_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
+const ATTEMPT_COLUMNS = `attempt_id, episode_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
   requested_by_email, status, outcome_code, failure_detail, started_at, finished_at`;
 
 /** The latest attempt per episode (newest created_at, then attempt_id). Episodes with none are absent. */
-export function latestByVideo(
+export function latestByEpisode(
   sql: SqlStorage,
-  videoIds: readonly string[],
+  episodeIds: readonly string[],
 ): Record<string, EpisodeIngestionAttempt> {
   const latest: Record<string, EpisodeIngestionAttempt> = {};
-  for (const batch of chunk(videoIds)) {
+  for (const batch of chunk(episodeIds)) {
     for (const row of sql.exec<AttemptRow>(
       `SELECT ${ATTEMPT_COLUMNS} FROM (
          SELECT ${ATTEMPT_COLUMNS},
-           ROW_NUMBER() OVER (PARTITION BY video_id ORDER BY created_at DESC, attempt_id DESC) AS rn
+           ROW_NUMBER() OVER (PARTITION BY episode_id ORDER BY created_at DESC, attempt_id DESC) AS rn
          FROM episode_ingestion_attempts
-         WHERE video_id IN (${placeholders(batch.length)})
+         WHERE episode_id IN (${placeholders(batch.length)})
        ) WHERE rn = 1`,
       ...batch,
     )) {
-      latest[row.video_id] = toAttempt(row);
+      latest[row.episode_id] = toAttempt(row);
     }
   }
   return latest;
 }
 
 /** Whether the episode has an attempt still running; Retry is refused while one does. */
-export function hasRunning(sql: SqlStorage, videoId: string): boolean {
-  return runningFor(sql, videoId) !== null;
+export function hasRunning(sql: SqlStorage, episodeId: string): boolean {
+  return runningFor(sql, episodeId) !== null;
 }
 
 /** The episode's running attempt, if any (there is at most one: `beginAttempt` refuses a second). */
 export function runningFor(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
 ): AttemptRow | null {
   return (
     sql
       .exec<AttemptRow>(
         `SELECT ${ATTEMPT_COLUMNS} FROM episode_ingestion_attempts
-         WHERE video_id = ? AND status = 'running'
+         WHERE episode_id = ? AND status = 'running'
          ORDER BY created_at DESC, attempt_id DESC LIMIT 1`,
-        videoId,
+        episodeId,
       )
       .toArray()[0] ?? null
   );
@@ -111,15 +111,15 @@ export function getAttempt(
 /** The episode's newest attempt that minted a generation (a `blocked` row never does). */
 export function latestWithGeneration(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
 ): AttemptRow | null {
   return (
     sql
       .exec<AttemptRow>(
         `SELECT ${ATTEMPT_COLUMNS} FROM episode_ingestion_attempts
-         WHERE video_id = ? AND generation_id IS NOT NULL
+         WHERE episode_id = ? AND generation_id IS NOT NULL
          ORDER BY created_at DESC, attempt_id DESC LIMIT 1`,
-        videoId,
+        episodeId,
       )
       .toArray()[0] ?? null
   );
@@ -128,16 +128,16 @@ export function latestWithGeneration(
 /** The episode's newest attempt that minted a generation other than the one named: what a running attempt may find abandoned. */
 export function previousWithGeneration(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   excludingAttemptId: string,
 ): AttemptRow | null {
   return (
     sql
       .exec<AttemptRow>(
         `SELECT ${ATTEMPT_COLUMNS} FROM episode_ingestion_attempts
-         WHERE video_id = ? AND generation_id IS NOT NULL AND attempt_id <> ?
+         WHERE episode_id = ? AND generation_id IS NOT NULL AND attempt_id <> ?
          ORDER BY created_at DESC, attempt_id DESC LIMIT 1`,
-        videoId,
+        episodeId,
         excludingAttemptId,
       )
       .toArray()[0] ?? null
@@ -146,7 +146,7 @@ export function previousWithGeneration(
 
 export type RunningInsert = {
   attemptId: string;
-  videoId: string;
+  episodeId: string;
   trigger: AttemptTrigger;
   intent: ProcessingIntent;
   generationId: string;
@@ -161,11 +161,11 @@ export function insertRunning(
 ): AttemptRow {
   sql.exec(
     `INSERT INTO episode_ingestion_attempts
-       (attempt_id, video_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
+       (attempt_id, episode_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
         requested_by_email, status, outcome_code, failure_detail, started_at, finished_at, created_at)
      VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 'running', NULL, NULL, ?, NULL, ?)`,
     input.attemptId,
-    input.videoId,
+    input.episodeId,
     input.trigger,
     input.intent,
     input.generationId,
@@ -179,7 +179,7 @@ export function insertRunning(
 
 export type BlockedInsert = {
   attemptId: string;
-  videoId: string;
+  episodeId: string;
   trigger: AttemptTrigger;
   intent: ProcessingIntent;
   reason: "PROVIDER_AUTH" | "PROVIDER_LIMIT";
@@ -194,11 +194,11 @@ export function insertBlocked(
 ): AttemptRow {
   sql.exec(
     `INSERT INTO episode_ingestion_attempts
-       (attempt_id, video_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
+       (attempt_id, episode_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
         requested_by_email, status, outcome_code, failure_detail, started_at, finished_at, created_at)
      VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, 'blocked', ?, NULL, ?, ?, ?)`,
     input.attemptId,
-    input.videoId,
+    input.episodeId,
     input.trigger,
     input.intent,
     input.requestedByEmail,
@@ -255,7 +255,7 @@ function requireRow(sql: SqlStorage, attemptId: string): AttemptRow {
 export function toAttempt(row: AttemptRow): EpisodeIngestionAttempt {
   return {
     attemptId: row.attempt_id,
-    videoId: row.video_id,
+    episodeId: row.episode_id,
     trigger: toTrigger(row.trigger),
     requestedByEmail: row.requested_by_email,
     intent: toIntent(row.intent),

@@ -85,7 +85,7 @@ export function preflight(
 }
 
 export type AttemptStartResult = {
-  videoId: string;
+  episodeId: string;
   /** `started` launched an instance; `blocked` recorded a blocked row; `running` found one in flight; `lost` could not launch. */
   kind: "started" | "blocked" | "running" | "lost";
   attempt: EpisodeIngestionAttempt;
@@ -115,11 +115,11 @@ export async function startEpisodeAttempts(
   const results: AttemptStartResult[] = [];
   let launched = 0;
   for (const episode of episodes) {
-    const { videoId, channelId } = episode;
+    const { episodeId, channelId } = episode;
     try {
       if (block) {
         const { attempt } = await registry.recordBlockedAttempt(
-          videoId,
+          episodeId,
           trigger,
           block,
           options.requestedByEmail,
@@ -127,15 +127,15 @@ export async function startEpisodeAttempts(
         console.log({
           event: "ingestion.attempt_blocked",
           channelId,
-          videoId,
+          episodeId,
           trigger,
           reason: block,
         });
-        results.push({ videoId, kind: "blocked", attempt });
+        results.push({ episodeId, kind: "blocked", attempt });
         continue;
       }
       const start = await registry.beginAttempt(
-        videoId,
+        episodeId,
         trigger,
         options.requestedByEmail,
       );
@@ -143,15 +143,15 @@ export async function startEpisodeAttempts(
         console.log({
           event: "ingestion.attempt_running",
           channelId,
-          videoId,
+          episodeId,
           attemptId: start.attempt.attemptId,
         });
-        results.push({ videoId, kind: "running", attempt: start.attempt });
+        results.push({ episodeId, kind: "running", attempt: start.attempt });
         continue;
       }
       const params: IngestParams = {
         attemptId: start.attempt.attemptId,
-        videoId,
+        episodeId,
         channelId,
         startDelaySec: startDelaySec(launched),
       };
@@ -166,27 +166,27 @@ export async function startEpisodeAttempts(
         console.log({
           event: "ingestion.attempt_lost",
           channelId,
-          videoId,
+          episodeId,
           attemptId: params.attemptId,
         });
-        results.push({ videoId, kind: "lost", attempt: lost.attempt });
+        results.push({ episodeId, kind: "lost", attempt: lost.attempt });
         continue;
       }
       launched += 1;
       console.log({
         event: "ingestion.attempt_started",
         channelId,
-        videoId,
+        episodeId,
         trigger,
         attemptId: params.attemptId,
         startDelaySec: params.startDelaySec,
       });
-      results.push({ videoId, kind: "started", attempt: start.attempt });
+      results.push({ episodeId, kind: "started", attempt: start.attempt });
     } catch (error) {
       console.log({
         event: "ingestion.start_failed",
         channelId,
-        videoId,
+        episodeId,
         trigger,
         error: messageOf(error),
       });
@@ -281,7 +281,7 @@ export async function reconcileRunningAttempts(
       console.log({
         event: "recovery.reconcile_failed",
         attemptId: attempt.attemptId,
-        videoId: attempt.videoId,
+        episodeId: attempt.episodeId,
         error: messageOf(error),
       });
     }

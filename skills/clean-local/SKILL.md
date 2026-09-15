@@ -32,7 +32,7 @@ refuse to run while this repo's `wrangler dev` / workerd is alive, and refuse to
 - **Staging and production, in any form.** There is no `--env` flag, the index name is a constant in
   `clean-vectors.mjs` rather than an argument, and an argument naming a deployed tier is refused outright.
   `apps/api/test/wrangler-config.test.ts` fails if a deployed index name ever appears in the script.
-- **The Vectorize index itself, and its `channelId` / `videoId` metadata indexes.** Vectors are deleted by
+- **The Vectorize index itself, and its `channelId` / `episodeId` metadata indexes.** Vectors are deleted by
   enumerated id; `wrangler vectorize delete` is never called. Deleting the index would drop the metadata indexes
   with it, and AGENTS.md requires those to exist *before* the first upsert — vectors written afterwards would be
   silently unfilterable.

@@ -20,15 +20,15 @@ const OTHER = "bbbbbbbbbbb";
 const GEN = "11111111-1111-1111-1111-111111111111";
 
 function metadata(
-  videoId: string,
+  episodeId: string,
   channelId = "UCAAAAAAAAAAAAAAAAAAAAAA",
 ): ChunkMetadata {
   return {
-    videoId,
+    episodeId,
     channelId,
     generationId: GEN,
     channelTitle: "Channel",
-    title: `Episode ${videoId}`,
+    title: `Episode ${episodeId}`,
     startSec: 0,
     endSec: 60,
     text: "some transcript text",
@@ -42,15 +42,15 @@ function axis(i: number, dims = 8): number[] {
 }
 
 function records(
-  videoId: string,
+  episodeId: string,
   count: number,
   channelId?: string,
 ): VectorRecord[] {
-  return generationIds(videoId, GEN, count).map((id, index) => ({
+  return generationIds(episodeId, GEN, count).map((id, index) => ({
     id,
     values: axis(index % 8),
     metadata: {
-      ...metadata(videoId, channelId),
+      ...metadata(episodeId, channelId),
       startSec: index * 60,
       endSec: index * 60 + 60,
     },
@@ -64,7 +64,7 @@ describe("vector ids", () => {
     const id = vectorId(VIDEO, GEN, 7);
     expect(id).toBe(`${VIDEO}:${GEN}:7`);
     expect(parseVectorId(id)).toEqual({
-      videoId: VIDEO,
+      episodeId: VIDEO,
       generationId: GEN,
       index: 7,
     });
@@ -113,7 +113,7 @@ describe("the vector store", () => {
     expect(filtered[0]).toMatchObject({
       id: `${OTHER}:${GEN}:0`,
       score: 1,
-      metadata: { videoId: OTHER },
+      metadata: { episodeId: OTHER },
     });
 
     await store.deleteByIds(SHARED_NAMESPACE, ids);

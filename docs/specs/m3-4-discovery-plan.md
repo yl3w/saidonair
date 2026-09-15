@@ -37,7 +37,7 @@ Spec §4, all eight criteria.
 `apps/api/test/openapi.test.ts`.
 
 - 2.1 `ingestion.ts`: `startDiscovery` and the logging `startEpisodeAttempts` per spec §3; delete
-  `requestIngestion`. **Plan decision:** the log line carries `{ event, channelId, videoId, trigger }` and nothing
+  `requestIngestion`. **Plan decision:** the log line carries `{ event, channelId, episodeId, trigger }` and nothing
   else.
 - 2.2 Approve handler: await `startDiscovery` inside try/catch when `importStarts`. Retry handler: drop the
   `requestIngestion` call (M3.5 gives it the starter).

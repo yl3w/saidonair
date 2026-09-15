@@ -115,7 +115,7 @@ describe("discovery on approval", () => {
     );
     expectShape(EpisodesResponseSchema, episodes.json);
     const rows = episodes.json.episodes as Json[];
-    expect(rows.map((e) => e.videoId)).toEqual(NEWEST_FIVE);
+    expect(rows.map((e) => e.episodeId)).toEqual(NEWEST_FIVE);
     for (const row of rows) {
       expect(row).toMatchObject({
         status: "pending",
@@ -130,9 +130,9 @@ describe("discovery on approval", () => {
       });
     }
     // Every new episode started its first attempt at once, three seconds apart (PRD §4.2 rules 5 and 8).
-    expect(createdInstances().map((p) => [p.videoId, p.startDelaySec])).toEqual(
-      NEWEST_FIVE.map((videoId, k) => [videoId, k * 3]),
-    );
+    expect(
+      createdInstances().map((p) => [p.episodeId, p.startDelaySec]),
+    ).toEqual(NEWEST_FIVE.map((episodeId, k) => [episodeId, k * 3]));
     const runs = await call(ALICE, "GET", `/channels/${CHANNEL_F}/runs`);
     expectShape(IngestionRunsResponseSchema, runs.json);
     expect(runs.json.runs).toHaveLength(1);
@@ -296,7 +296,7 @@ describe("startDiscovery", () => {
       discoveredCount: 1,
       episodeLimit: null,
     });
-    expect(later.created.map((e) => e.videoId)).toEqual(["newupload01"]);
+    expect(later.created.map((e) => e.episodeId)).toEqual(["newupload01"]);
     expect(
       await stub.listEpisodes(CHANNEL_F, { relatedScope: [] }),
     ).toHaveLength(6);

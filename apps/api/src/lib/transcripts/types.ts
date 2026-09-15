@@ -18,7 +18,7 @@ export type TranscriptResult = {
 };
 
 export type TranscriptSource = {
-  fetch(videoId: string): Promise<TranscriptResult>;
+  fetch(episodeId: string): Promise<TranscriptResult>;
 };
 
 export const TRANSCRIPT_FAILURES = [

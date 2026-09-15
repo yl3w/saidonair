@@ -82,7 +82,7 @@ and the `ChannelFollow` and `ListFollowsOptions` types are deleted. Read receipt
 | `POST /channels`, `POST /channels/:id/request` | create or reopen → `user.follow` → `registry.recordFollow` → view | create or reopen → `registry.recordFollow` → view |
 | `GET /channels`, `GET /channels/:id`, the channel actions | `following` from `user.activeChannelIds()` | `following` from `registry.activeChannelIds(email)` |
 | `GET /channels/:id/episodes`, `GET /digest` | `eligibleChannels(registry, user)` (two RPCs) | `registry.listEligibleChannels(email)` (one) |
-| Unread counts | `registry.listAvailableVideoIds` minus `user.readVideoIds` | Unchanged: receipts stay in the User DO |
+| Unread counts | `registry.listAvailableEpisodeIds` minus `user.readEpisodeIds` | Unchanged: receipts stay in the User DO |
 
 Every route keeps its documented status codes and bodies, so the OpenAPI document does not change.
 

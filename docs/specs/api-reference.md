@@ -108,8 +108,8 @@ test lists exactly the registered routes at any time. No row has a 403: the API 
 | `POST /channels/{id}/pause`, `…/resume` | channels | 200 `ChannelResponse` | 400 404 409 | M2 |
 | `GET /channels/{id}/followers` | channels | 200 `FollowersResponse` | 400 404 | M2 |
 | `GET /channels/{id}/episodes` `?limit=` | episodes | 200 `EpisodesResponse` | 400 404 | M2 |
-| `POST /channels/{id}/episodes/{videoId}/retry` | episodes | 200 `EpisodeRetryResponse` | 400 404 409 (running attempt) | M3.5, `EpisodeRetryResponse` registered 2026-09-13 |
-| `POST /channels/{id}/episodes/{videoId}/skip` | episodes | 200 `EpisodeResponse` | 400 404 409 (not failed) | M2 |
+| `POST /channels/{id}/episodes/{episodeId}/retry` | episodes | 200 `EpisodeRetryResponse` | 400 404 409 (running attempt) | M3.5, `EpisodeRetryResponse` registered 2026-09-13 |
+| `POST /channels/{id}/episodes/{episodeId}/skip` | episodes | 200 `EpisodeResponse` | 400 404 409 (not failed) | M2 |
 | `GET /channels/{id}/runs` | runs | 200 `IngestionRunsResponse` | 400 404 | M2; was `ingestion-runs` until 2026-09-12 |
 | `POST /channels/{id}/runs` | runs | 200 `IngestionRunResponse` | 400 404 409 (not approved) 502 | M3.4, registered 2026-09-13 |
 | `GET /follows` | follows | 200 `FollowsResponse` | 400 | M2 |
@@ -242,9 +242,9 @@ type Takeaway = { text: string; startSec: number | null };           // null whe
 type EpisodeSummary =
   | { format: "structured"; executiveSummary: string; takeaways: Takeaway[]; topicTags: string[] }
   | { format: "raw_fallback"; rawText: string };
-type RelatedEpisode = { videoId: string; title: string };            // already filtered to the caller's eligible channels
+type RelatedEpisode = { episodeId: string; title: string };            // already filtered to the caller's eligible channels
 type EpisodeIngestionAttempt = {                                     // one Workflow instance, or one blocked start
-  attemptId: string; videoId: string;
+  attemptId: string; episodeId: string;
   trigger: AttemptTrigger; requestedByEmail: string | null;         // set exactly for owner_retry
   intent: ProcessingIntent;
   status: AttemptStatus; outcomeCode: AttemptOutcomeCode | null; failureDetail: string | null;   // code null while running and on available
@@ -264,7 +264,7 @@ type EpisodeProcessing = {                                           // every ca
   createdAt: number; updatedAt: number;
 };
 type Episode = {
-  videoId: string; channelId: string; channelTitle: string; title: string;
+  episodeId: string; channelId: string; channelTitle: string; title: string;
   publishedAt: number;
   status: EpisodeStatus;
   skipReason: EpisodeSkipReason | null;                              // every caller
@@ -344,8 +344,8 @@ it should confirm these rather than redesign them.
 ```ts
 type Chat = { chatId: string; title: string | null; createdAt: number; updatedAt: number };
 type ChatSource = {                                // a citation snapshot; catalog changes never rewrite it
-  position: number; videoId: string; channelId: string;
-  videoTitle: string; channelTitle: string; startSec: number;   // link: https://youtu.be/<videoId>?t=<startSec>
+  position: number; episodeId: string; channelId: string;
+  episodeTitle: string; channelTitle: string; startSec: number;   // link: https://youtu.be/<episodeId>?t=<startSec>
 };
 type ChatMessage = {
   messageId: string; chatId: string; sequenceNumber: number;
@@ -377,7 +377,7 @@ type ScopeQuery   = { scope?: "all" };                     // owner only; anythi
 type LimitQuery   = { limit?: number };                    // coerced positive integer; default and ceiling belong to the callee
 type SinceQuery   = { since?: string };                    // anything Date.parse accepts, documented as date-time
 type ChannelParams = { id: string };
-type EpisodeParams = { id: string; videoId: string };
+type EpisodeParams = { id: string; episodeId: string };
 type FollowParams  = { channelId: string };
 type ChatParams    = { id: string };
 ```

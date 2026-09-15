@@ -77,7 +77,7 @@ Two properties this buys, both worth keeping deliberately:
 
 - **`wrangler vectorize delete` is never called.** AGENTS.md hard rule 4 already forbids it and that ban survives
   this change untouched — the skill needs no carve-out for it.
-- **The `channelId` and `videoId` metadata indexes survive.** AGENTS.md requires them to exist *before the first
+- **The `channelId` and `episodeId` metadata indexes survive.** AGENTS.md requires them to exist *before the first
   upsert*; a delete-and-recreate would drop them silently and every later vector would be unfilterable, with no
   error to notice. The script prints `list-metadata-index` afterwards as proof.
 

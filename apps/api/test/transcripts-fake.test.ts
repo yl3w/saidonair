@@ -6,24 +6,24 @@ import {
   transcriptFailure,
 } from "../src/lib/transcripts/types";
 import {
+  EPISODE_ENGLISH,
+  EPISODE_LIMIT_FAILS,
+  EPISODE_LIVE,
   FAKE_TRANSCRIPTS,
-  VIDEO_ENGLISH,
-  VIDEO_LIMIT_FAILS,
-  VIDEO_LIVE,
 } from "./fixtures/transcripts";
 
 const FAKE = { TRANSCRIPTS_FAKE: JSON.stringify(FAKE_TRANSCRIPTS) };
 
 describe("the transcript fake", () => {
-  it("serves canned results by video id", async () => {
+  it("serves canned results by episode id", async () => {
     const source = transcriptSource(FAKE);
-    const english = await source.fetch(VIDEO_ENGLISH);
+    const english = await source.fetch(EPISODE_ENGLISH);
     expect(english.captionStatus).toBe("english");
     expect(english.segments?.length).toBe(120);
     // Live content is never discovered, so the fake's live video is a canned UNPLAYABLE failure.
     let live: unknown;
     try {
-      await source.fetch(VIDEO_LIVE);
+      await source.fetch(EPISODE_LIVE);
     } catch (error) {
       live = error;
     }
@@ -33,7 +33,7 @@ describe("the transcript fake", () => {
   it("throws the canned failure with its reason", async () => {
     let caught: unknown;
     try {
-      await transcriptSource(FAKE).fetch(VIDEO_LIMIT_FAILS);
+      await transcriptSource(FAKE).fetch(EPISODE_LIMIT_FAILS);
     } catch (error) {
       caught = error;
     }
@@ -62,7 +62,7 @@ describe("the transcript fake", () => {
       remainingCredits: 1000,
       status: "ok",
     });
-    const noStatus = { TRANSCRIPTS_FAKE: JSON.stringify({ videos: {} }) };
+    const noStatus = { TRANSCRIPTS_FAKE: JSON.stringify({ episodes: {} }) };
     expect(fakeProviderHealth(noStatus)).toEqual({
       remainingCredits: null,
       status: "unreachable",
@@ -74,7 +74,7 @@ describe("the transcript fake", () => {
     expect(() =>
       transcriptSource({
         TRANSCRIPTS_FAKE: JSON.stringify({
-          videos: { a: { failure: "NOPE" } },
+          episodes: { a: { failure: "NOPE" } },
         }),
       }),
     ).toThrow(/unknown failure NOPE/);

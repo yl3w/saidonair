@@ -78,7 +78,7 @@ export type EpisodeProcessingRecord = EpisodeProcessing;
  * detail with the latest attempt.
  */
 export type EpisodeRecord = {
-  videoId: string;
+  episodeId: string;
   channelId: string;
   channelTitle: string;
   title: string;
@@ -99,8 +99,8 @@ export type ListEpisodesOptions = {
   relatedScope: readonly string[];
 };
 
-/** Where a digest page resumes: the last row's availability and video id (docs/PRD.md §4.4 order). */
-export type DigestPosition = { summaryAvailableAt: number; videoId: string };
+/** Where a digest page resumes: the last row's availability and episode id (docs/PRD.md §4.4 order). */
+export type DigestPosition = { summaryAvailableAt: number; episodeId: string };
 
 /**
  * What one digest page selects: a half-open range of first availability, a position to resume
@@ -116,7 +116,7 @@ export type DigestSelection = {
 
 /** A compact digest row: what the calendar counts, without the summary body. */
 export type DigestRowRecord = {
-  videoId: string;
+  episodeId: string;
   channelId: string;
   summaryAvailableAt: number;
 };
@@ -233,7 +233,7 @@ export type AttemptContext = {
   attempt: EpisodeIngestionAttempt;
   generationId: string | null;
   episode: {
-    videoId: string;
+    episodeId: string;
     channelId: string;
     channelTitle: string;
     title: string;

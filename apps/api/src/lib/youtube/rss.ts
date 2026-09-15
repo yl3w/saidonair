@@ -14,8 +14,13 @@
 // - workerd has no DOMParser, so this is a small tag scanner over <entry> blocks. It only
 //   reads element text, never attributes beyond the alternate link's href.
 import { DomainError } from "../errors";
-import { requireChannelId, requireVideoId } from "./ids";
+import { requireChannelId, requireEpisodeId } from "./ids";
 
+/**
+ * One entry of YouTube's feed, in YouTube's own vocabulary: `videoId` is the element the feed
+ * carries. Discovery is the boundary where a video of theirs becomes an episode of ours
+ * (`do/registry/episodes.ts` → `insertDiscovered`).
+ */
 export type FeedEntry = {
   videoId: string;
   title: string;
@@ -252,7 +257,7 @@ function parseEntry(block: string): FeedEntry | null {
   if (Number.isNaN(publishedAt)) return null;
   try {
     return {
-      videoId: requireVideoId(videoId),
+      videoId: requireEpisodeId(videoId),
       title: textOf(block, "title") ?? "(untitled)",
       publishedAt,
     };

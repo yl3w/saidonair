@@ -8,10 +8,10 @@ import { chunk, placeholders } from "../../lib/sql";
 import type { ChannelFeed, FeedEntry } from "../../lib/youtube/rss";
 import { markChecked, requireChannel } from "./channels";
 import {
-  existingVideoIds,
+  existingEpisodeIds,
   hasAnyEpisode,
   insertDiscovered,
-  listByVideoIds,
+  listByEpisodeIds,
 } from "./episodes";
 import type { CatalogChannel, DiscoveryResult } from "./types";
 
@@ -116,7 +116,7 @@ export function recordDiscovery(
   markChecked(sql, channel.channelId, now);
   return {
     run: requireRun(sql, runId),
-    created: listByVideoIds(
+    created: listByEpisodeIds(
       sql,
       selected.map((entry) => entry.videoId),
     ),
@@ -146,7 +146,7 @@ function selectEntries(
       seen.add(entry.videoId);
       return true;
     });
-  const existing = existingVideoIds(
+  const existing = existingEpisodeIds(
     sql,
     ordered.map((entry) => entry.videoId),
   );

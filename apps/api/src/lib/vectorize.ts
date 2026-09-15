@@ -4,16 +4,16 @@
  * emails are never namespaces (AGENTS.md hard rule 3). Vectorize's id-based calls take no namespace,
  * so the scope is enforced here: `getByIds` answers only ids stored in the namespace, and
  * `deleteByIds` deletes only ids it has confirmed there. Ids carry the vector generation,
- * `${videoId}:${generationId}:${chunkIndex}`, so retrieval can check a match against the episode's
+ * `${episodeId}:${generationId}:${chunkIndex}`, so retrieval can check a match against the episode's
  * active generation (M4) and an attempt can delete a whole generation by count.
  */
 
 export const SHARED_NAMESPACE = "shared-catalog";
 export type Namespace = typeof SHARED_NAMESPACE;
 
-/** Every PRD §6 field; `channelId` and `videoId` are the filter fields, `generationId` is diagnostic. */
+/** Every PRD §6 field; `channelId` and `episodeId` are the filter fields, `generationId` is diagnostic. */
 export type ChunkMetadata = {
-  videoId: string;
+  episodeId: string;
   channelId: string;
   generationId: string;
   channelTitle: string;
@@ -60,35 +60,35 @@ export const GET_BY_IDS_BATCH = 20;
 export const DELETE_BATCH = 1000;
 export const QUERY_TOP_K_MAX = 50;
 
-const VIDEO_ID = "[A-Za-z0-9_-]{11}";
-const VECTOR_ID = new RegExp(`^(${VIDEO_ID}):([^:]+):(\\d+)$`);
+const EPISODE_ID = "[A-Za-z0-9_-]{11}";
+const VECTOR_ID = new RegExp(`^(${EPISODE_ID}):([^:]+):(\\d+)$`);
 
 export function vectorId(
-  videoId: string,
+  episodeId: string,
   generationId: string,
   index: number,
 ): string {
-  return `${videoId}:${generationId}:${index}`;
+  return `${episodeId}:${generationId}:${index}`;
 }
 
 /** The ids of one whole generation, `0..count-1`. */
 export function generationIds(
-  videoId: string,
+  episodeId: string,
   generationId: string,
   count: number,
 ): string[] {
   return Array.from({ length: count }, (_, index) =>
-    vectorId(videoId, generationId, index),
+    vectorId(episodeId, generationId, index),
   );
 }
 
 export function parseVectorId(
   id: string,
-): { videoId: string; generationId: string; index: number } | null {
+): { episodeId: string; generationId: string; index: number } | null {
   const match = VECTOR_ID.exec(id);
   if (!match) return null;
   return {
-    videoId: match[1] ?? "",
+    episodeId: match[1] ?? "",
     generationId: match[2] ?? "",
     index: Number(match[3]),
   };
@@ -168,7 +168,7 @@ function requireNamespace(ns: string): void {
 /** An id of our shape whose metadata names the same video: nothing else is ever written. */
 function requireOwnedRecord(record: VectorRecord): void {
   const parsed = parseVectorId(record.id);
-  if (!parsed || parsed.videoId !== record.metadata.videoId) {
+  if (!parsed || parsed.episodeId !== record.metadata.episodeId) {
     throw new Error(
       `vectorize: id ${record.id} does not belong to its metadata`,
     );
@@ -193,7 +193,7 @@ function requireChunkMetadata(id: string, value: unknown): ChunkMetadata {
     typeof m?.[key] === "number" && Number.isFinite(m[key])
       ? (m[key] as number)
       : null;
-  const videoId = str("videoId");
+  const episodeId = str("episodeId");
   const channelId = str("channelId");
   const generationId = str("generationId");
   const channelTitle = str("channelTitle");
@@ -203,7 +203,7 @@ function requireChunkMetadata(id: string, value: unknown): ChunkMetadata {
   const endSec = num("endSec");
   const publishedAt = num("publishedAt");
   if (
-    videoId === null ||
+    episodeId === null ||
     channelId === null ||
     generationId === null ||
     channelTitle === null ||
@@ -216,7 +216,7 @@ function requireChunkMetadata(id: string, value: unknown): ChunkMetadata {
     throw new Error(`vectorize: vector ${id} has malformed metadata`);
   }
   return {
-    videoId,
+    episodeId,
     channelId,
     generationId,
     channelTitle,

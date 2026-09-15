@@ -32,9 +32,9 @@ read-receipt module it delegates to), `packages/shared/src/index.ts`, `apps/api/
 
 - 1.1 Remove receipt recording from `GET /digest` and `GET /channels/:id/episodes`. Rename `wasUnread` to `read` and
   invert it in the shared schema; both routes return it for an eligible caller and omit it for anyone else.
-- 1.2 Add `POST /channels/:channelId/episodes/:videoId/read` and `DELETE` of the same path. Eligibility is the
+- 1.2 Add `POST /channels/:channelId/episodes/:episodeId/read` and `DELETE` of the same path. Eligibility is the
   existing check; an ineligible caller gets 404 and writes nothing.
-- 1.3 Add `GET /channels/:channelId/episodes/:videoId` — one episode with summary, related and read state.
+- 1.3 Add `GET /channels/:channelId/episodes/:episodeId` — one episode with summary, related and read state.
 - 1.4 Tests: a summary stays unread after a digest fetch and after an episodes fetch; POST records; DELETE removes;
   an ineligible caller changes nothing; the single-episode route answers the shared shape; `openapi.test.ts` sees
   three new operations and one renamed field.
@@ -48,9 +48,9 @@ read-receipt module it delegates to), `packages/shared/src/index.ts`, `apps/api/
 
 - 2.1 Replace `since` with `from`, `to`, `unread`, `channelId` (repeatable), `cursor`, `limit`, `compact`. Delete
   `MAX_WINDOW_MS` and the default window. Order stays `summaryAvailableAt` descending.
-- 2.2 The cursor is the last row's `(summaryAvailableAt, videoId)` — **plan decision:** opaque base64 of that pair,
+- 2.2 The cursor is the last row's `(summaryAvailableAt, episodeId)` — **plan decision:** opaque base64 of that pair,
   so the client never composes one and a change of key is not a breaking change.
-- 2.3 `compact` omits summary bodies and related items, leaving `{ videoId, channelId, summaryAvailableAt, read }`.
+- 2.3 `compact` omits summary bodies and related items, leaving `{ episodeId, channelId, summaryAvailableAt, read }`.
 - 2.4 Tests: unread filters to rows with no receipt; a range returns exactly its days; a cursor pages without
   overlap or gap; `compact` omits bodies; an unfollowed channel's rows leave every past day and a refollow restores
   them with their receipts.

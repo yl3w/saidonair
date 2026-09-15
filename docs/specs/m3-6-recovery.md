@@ -22,7 +22,7 @@ lost instance is closed after an hour, and an episode blocked for its whole wind
 | Question | Decision | Why |
 |---|---|---|
 | A lost attempt follows the universal rule | Reconciliation finishes `failed WORKFLOW_LOST` through `finishAttempt`, so the episode is due six hours later, capped at its deadline, like every other unfinished result. | One rule (PRD rule 13); Owner Retry is the immediate path (M3.5). PRD rule 15's "due within its existing window" is read as "still owed inside the window", not "due at once". The owner may reverse this to "due now". |
-| The selection reads | `listDueEpisodes(now)`: `intent IS NOT NULL AND next_attempt_at <= now` and no `running` attempt, ordered `next_attempt_at, video_id`, on `episodes(next_attempt_at)`. `listRunningAttempts(startedBefore)` on `episode_ingestion_attempts(status, started_at)`. | The two indexes PRD §5.3 reserves for exactly this. |
+| The selection reads | `listDueEpisodes(now)`: `intent IS NOT NULL AND next_attempt_at <= now` and no `running` attempt, ordered `next_attempt_at, episode_id`, on `episodes(next_attempt_at)`. `listRunningAttempts(startedBefore)` on `episode_ingestion_attempts(status, started_at)`. | The two indexes PRD §5.3 reserves for exactly this. |
 | Tick size | No cap on due episodes per tick; the stagger spaces them three seconds apart. A `TODO(owner)` marks where a cap would go. | Tens of channels; a cap is a product decision. |
 | Recovery is deaf to channel state | The tick reads no channel column and never asks whether a discovery run exists. | Parent §2 "Channel independence". |
 

@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   CHANNEL_A,
   CHANNEL_B,
+  EPISODE_A,
   expectDomainError,
   registry,
   seedApprovedChannel,
   seedEpisode,
   seedRun,
-  VIDEO_A,
 } from "./helpers";
 
 describe("registry discovery runs", () => {
@@ -58,7 +58,7 @@ describe("registry discovery runs", () => {
     // A run carries no episode outcomes; an episode names the run that discovered it instead.
     expect(runs[0]).not.toHaveProperty("episodes");
     expect(runs[0]).not.toHaveProperty("status");
-    await seedEpisode(VIDEO_A, CHANNEL_A, { runId: first });
+    await seedEpisode(EPISODE_A, CHANNEL_A, { runId: first });
     const [episode] = await stub.listEpisodes(CHANNEL_A, { relatedScope: [] });
     expect(episode?.processing.discoveredByRunId).toBe(first);
 

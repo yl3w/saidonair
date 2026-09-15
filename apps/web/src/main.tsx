@@ -37,7 +37,7 @@ export function App() {
         <Router>
           <Route path="/" component={Account} />
           <Route path="/queue" component={Queue} />
-          <Route path="/read/:videoId" component={Reading} />
+          <Route path="/read/:episodeId" component={Reading} />
           <Route path="/history" component={History} />
           <Route path="/history/:day" component={History} />
           <Route path="/sources" component={Sources} />

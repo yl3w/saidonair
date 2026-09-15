@@ -51,14 +51,14 @@ const TRANSCRIPT_STEP_CODES: ReadonlySet<string> = new Set([
  */
 export function beginAttempt(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   trigger: AttemptTrigger,
   requestedByEmail: string | null,
   now: number,
 ): AttemptStart {
-  const episode = episodes.requireState(sql, videoId);
+  const episode = episodes.requireState(sql, episodeId);
   const requester = requireRequester(trigger, requestedByEmail);
-  const running = attempts.runningFor(sql, videoId);
+  const running = attempts.runningFor(sql, episodeId);
   if (running) return { kind: "running", attempt: attempts.toAttempt(running) };
   if (episode.intent === null) {
     throw new DomainError(
@@ -70,14 +70,14 @@ export function beginAttempt(
   const generationId = crypto.randomUUID();
   const row = attempts.insertRunning(sql, {
     attemptId: crypto.randomUUID(),
-    videoId,
+    episodeId,
     trigger,
     intent: episode.intent,
     generationId,
     requestedByEmail: requester,
     now,
   });
-  episodes.openStaged(sql, videoId, generationId, now);
+  episodes.openStaged(sql, episodeId, generationId, now);
   return {
     kind: "started",
     attempt: attempts.toAttempt(row),
@@ -97,7 +97,7 @@ export function markStaged(
   requireCount(chunkCount, "chunkCount");
   attempts.setStagedChunkCount(sql, attempt.attempt_id, chunkCount);
   // The one point in the pipeline that has both the chunk count and the provider's runtime.
-  episodes.markTranscriptChecked(sql, episode.videoId, durationSec, now);
+  episodes.markTranscriptChecked(sql, episode.episodeId, durationSec, now);
   return attempts.toAttempt(requireAttempt(sql, attemptId));
 }
 
@@ -123,20 +123,20 @@ export function finishAttempt(
     now,
   );
   if (TRANSCRIPT_STEP_CODES.has(checked.code)) {
-    episodes.markTranscriptChecked(sql, episode.videoId, null, now);
+    episodes.markTranscriptChecked(sql, episode.episodeId, null, now);
   }
   if (checked.status === "skipped") {
     if (episode.intent === "publish") {
-      episodes.markSkipped(sql, episode.videoId, checked.code, now);
+      episodes.markSkipped(sql, episode.episodeId, checked.code, now);
     } else {
-      episodes.closeWindow(sql, episode.videoId, now);
+      episodes.closeWindow(sql, episode.episodeId, now);
     }
   } else {
     settleUnfinished(sql, episode, checked.code, now);
   }
   return {
     attempt: attempts.toAttempt(row),
-    episode: requireRecord(sql, episode.videoId),
+    episode: requireRecord(sql, episode.episodeId),
   };
 }
 
@@ -147,13 +147,13 @@ export function finishAttempt(
  */
 export function recordBlockedAttempt(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   trigger: AttemptTrigger,
   reason: BlockReason,
   requestedByEmail: string | null,
   now: number,
 ): AttemptResult {
-  const episode = episodes.requireState(sql, videoId);
+  const episode = episodes.requireState(sql, episodeId);
   const requester = requireRequester(trigger, requestedByEmail);
   if (!BLOCK_REASONS.has(reason)) {
     throw new DomainError(
@@ -161,7 +161,7 @@ export function recordBlockedAttempt(
       "reason must be PROVIDER_AUTH or PROVIDER_LIMIT",
     );
   }
-  if (attempts.runningFor(sql, videoId)) {
+  if (attempts.runningFor(sql, episodeId)) {
     throw new DomainError(
       "INVALID_STATE",
       "an attempt is running for this episode",
@@ -176,7 +176,7 @@ export function recordBlockedAttempt(
   }
   const row = attempts.insertBlocked(sql, {
     attemptId: crypto.randomUUID(),
-    videoId,
+    episodeId,
     trigger,
     intent:
       episode.intent ??
@@ -188,7 +188,7 @@ export function recordBlockedAttempt(
   if (automatic) settleUnfinished(sql, episode, reason, now);
   return {
     attempt: attempts.toAttempt(row),
-    episode: requireRecord(sql, videoId),
+    episode: requireRecord(sql, episodeId),
   };
 }
 
@@ -210,7 +210,7 @@ export function completeAttempt(
   if (!Array.isArray(relatedCandidates)) {
     throw new DomainError(
       "INVALID_INPUT",
-      "relatedCandidates must be an array of video ids",
+      "relatedCandidates must be an array of episode ids",
     );
   }
   const previous: StagedGeneration | null = episode.activeVectorGeneration
@@ -221,11 +221,11 @@ export function completeAttempt(
     : null;
   const related = relatedFromCandidates(
     sql,
-    episode.videoId,
+    episode.episodeId,
     relatedCandidates,
   );
-  upsertSummary(sql, episode.videoId, summary, related, now);
-  episodes.publish(sql, episode.videoId, chunkCount, now);
+  upsertSummary(sql, episode.episodeId, summary, related, now);
+  episodes.publish(sql, episode.episodeId, chunkCount, now);
   const row = attempts.finish(
     sql,
     attempt.attempt_id,
@@ -236,7 +236,7 @@ export function completeAttempt(
   );
   return {
     attempt: attempts.toAttempt(row),
-    episode: requireRecord(sql, episode.videoId),
+    episode: requireRecord(sql, episode.episodeId),
     previousGeneration: previous,
   };
 }
@@ -250,15 +250,15 @@ export function describeAttempt(
   attemptId: string,
 ): AttemptContext {
   const attempt = requireAttempt(sql, attemptId);
-  const state = episodes.requireState(sql, attempt.video_id);
-  const record = requireRecord(sql, attempt.video_id);
+  const state = episodes.requireState(sql, attempt.episode_id);
+  const record = requireRecord(sql, attempt.episode_id);
   const current =
     attempt.status === "running" &&
     attempt.generation_id !== null &&
     state.stagedVectorGeneration === attempt.generation_id;
   const previous = attempts.previousWithGeneration(
     sql,
-    attempt.video_id,
+    attempt.episode_id,
     attempt.attempt_id,
   );
   const abandoned =
@@ -277,7 +277,7 @@ export function describeAttempt(
     attempt: attempts.toAttempt(attempt),
     generationId: attempt.generation_id,
     episode: {
-      videoId: record.videoId,
+      episodeId: record.episodeId,
       channelId: record.channelId,
       channelTitle: record.channelTitle,
       title: record.title,
@@ -309,15 +309,15 @@ export function settleUnfinished(
   }
   if (now >= episode.windowDeadlineAt) {
     if (episode.intent === "publish") {
-      episodes.markTimedOut(sql, episode.videoId, code, now);
+      episodes.markTimedOut(sql, episode.episodeId, code, now);
     } else {
-      episodes.closeWindow(sql, episode.videoId, now);
+      episodes.closeWindow(sql, episode.episodeId, now);
     }
     return;
   }
   episodes.scheduleNextAttempt(
     sql,
-    episode.videoId,
+    episode.episodeId,
     Math.min(now + episodes.RETRY_INTERVAL_MS, episode.windowDeadlineAt),
     now,
   );
@@ -360,7 +360,7 @@ function requireCurrent(
       `attempt is not running (status: ${attempt.status})`,
     );
   }
-  const episode = episodes.requireState(sql, attempt.video_id);
+  const episode = episodes.requireState(sql, attempt.episode_id);
   if (
     attempt.generation_id === null ||
     episode.stagedVectorGeneration !== attempt.generation_id
@@ -391,7 +391,7 @@ function abandonedGeneration(
   sql: SqlStorage,
   episode: episodes.EpisodeState,
 ): StagedGeneration | null {
-  const previous = attempts.latestWithGeneration(sql, episode.videoId);
+  const previous = attempts.latestWithGeneration(sql, episode.episodeId);
   if (
     !previous ||
     previous.generation_id === null ||
@@ -477,9 +477,9 @@ function requireCount(value: unknown, name: string): number {
   return value;
 }
 
-function requireRecord(sql: SqlStorage, videoId: string): EpisodeRecord {
-  const record = episodes.listByVideoIds(sql, [videoId])[0];
+function requireRecord(sql: SqlStorage, episodeId: string): EpisodeRecord {
+  const record = episodes.listByEpisodeIds(sql, [episodeId])[0];
   if (!record)
-    throw new Error(`episode ${videoId} vanished inside its own transaction`);
+    throw new Error(`episode ${episodeId} vanished inside its own transaction`);
   return record;
 }

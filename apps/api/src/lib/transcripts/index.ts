@@ -10,7 +10,7 @@ import {
 
 /**
  * `transcriptSource(env)`: the test-only `TRANSCRIPTS_FAKE` binding wins (canned results or a failure
- * reason per video id, and the provider's health, the `YOUTUBE_FEEDS_FAKE` pattern); otherwise the
+ * reason per episode id, and the provider's health, the `YOUTUBE_FEEDS_FAKE` pattern); otherwise the
  * DownSub adapter. Tests never reach the network: the pinned pool has no `fetchMock`, so a binding is
  * the one seam that works end to end (AGENTS.md → Testing).
  */
@@ -24,7 +24,7 @@ type FakeEntry = TranscriptResult | { failure: TranscriptFailure };
 
 type FakeTranscripts = {
   status?: TranscriptProviderHealth;
-  videos: Record<string, FakeEntry>;
+  episodes: Record<string, FakeEntry>;
 };
 
 export function transcriptSource(env: TranscriptEnv): TranscriptSource {
@@ -49,13 +49,13 @@ export function fakeProviderHealth(
 
 function fakeSource(fake: FakeTranscripts): TranscriptSource {
   return {
-    async fetch(videoId) {
-      const entry = fake.videos[videoId];
+    async fetch(episodeId) {
+      const entry = fake.episodes[episodeId];
       if (entry === undefined) {
         // Like the feed fake's 500: a test that forgot to register a video fails loudly.
         throw new TranscriptError(
           "PROVIDER_HTTP",
-          `unregistered fake video ${videoId}`,
+          `unregistered fake episode ${episodeId}`,
         );
       }
       if ("failure" in entry) {
@@ -72,17 +72,17 @@ let parsed: { raw: string; fake: FakeTranscripts } | null = null;
 function parseFake(raw: string): FakeTranscripts {
   if (parsed && parsed.raw === raw) return parsed.fake;
   const value = JSON.parse(raw) as unknown;
-  if (typeof value !== "object" || value === null || !("videos" in value)) {
-    throw new Error("TRANSCRIPTS_FAKE must be an object with `videos`");
+  if (typeof value !== "object" || value === null || !("episodes" in value)) {
+    throw new Error("TRANSCRIPTS_FAKE must be an object with `episodes`");
   }
   const fake = value as FakeTranscripts;
-  for (const [videoId, entry] of Object.entries(fake.videos)) {
+  for (const [episodeId, entry] of Object.entries(fake.episodes)) {
     if (
       "failure" in entry &&
       !TRANSCRIPT_FAILURES.includes(entry.failure as TranscriptFailure)
     ) {
       throw new Error(
-        `TRANSCRIPTS_FAKE: unknown failure ${String(entry.failure)} for ${videoId}`,
+        `TRANSCRIPTS_FAKE: unknown failure ${String(entry.failure)} for ${episodeId}`,
       );
     }
   }

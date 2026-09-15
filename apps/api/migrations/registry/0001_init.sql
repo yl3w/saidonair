@@ -93,7 +93,7 @@ CREATE INDEX ingestion_runs_channel_id_created_at ON ingestion_runs (channel_id,
 -- a failure. Reasons live on attempts: the row carries no waiting or technical code while the window is open,
 -- and failure_code is written once, at the timeout, as INGESTION_TIMEOUT with the latest attempt's reason as detail.
 CREATE TABLE episodes (
-  video_id TEXT PRIMARY KEY,
+  episode_id TEXT PRIMARY KEY,
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
   -- Immutable: the run that created this row, so a run's episodes are a join, not a table.
   discovered_by_run_id TEXT NOT NULL REFERENCES ingestion_runs (run_id),
@@ -156,13 +156,13 @@ CREATE INDEX episodes_channel_id_processed_at ON episodes (channel_id, processed
 
 -- One shared summary per episode. takeaways_json is an array of { text, startSec } objects (docs/PRD.md §4.4).
 CREATE TABLE episode_summaries (
-  video_id TEXT PRIMARY KEY REFERENCES episodes (video_id),
+  episode_id TEXT PRIMARY KEY REFERENCES episodes (episode_id),
   format TEXT NOT NULL CHECK (format IN ('structured', 'raw_fallback')),
   executive_summary TEXT,
   takeaways_json TEXT,
   topic_tags_json TEXT,
   raw_text TEXT,
-  related_video_ids_json TEXT NOT NULL,
+  related_episode_ids_json TEXT NOT NULL,
   model TEXT NOT NULL,
   prompt_version TEXT NOT NULL,
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
@@ -179,7 +179,7 @@ CREATE TABLE episode_summaries (
 -- its CHECK below lists the same fifteen values (added 2026-09-13, M3.7, once every outcome had run).
 CREATE TABLE episode_ingestion_attempts (
   attempt_id TEXT PRIMARY KEY,
-  video_id TEXT NOT NULL REFERENCES episodes (video_id),
+  episode_id TEXT NOT NULL REFERENCES episodes (episode_id),
   trigger TEXT NOT NULL CHECK (trigger IN ('channel_ingestion', 'scheduled_recovery', 'owner_retry')),
   intent TEXT NOT NULL CHECK (intent IN ('publish', 'replace')),
   generation_id TEXT,
@@ -206,6 +206,6 @@ CREATE TABLE episode_ingestion_attempts (
   CHECK ((trigger = 'owner_retry') = (requested_by_email IS NOT NULL))
 );
 
-CREATE INDEX episode_ingestion_attempts_video_id_created_at ON episode_ingestion_attempts (video_id, created_at);
+CREATE INDEX episode_ingestion_attempts_episode_id_created_at ON episode_ingestion_attempts (episode_id, created_at);
 -- Reconciliation: running attempts older than an hour.
 CREATE INDEX episode_ingestion_attempts_status_started_at ON episode_ingestion_attempts (status, started_at);

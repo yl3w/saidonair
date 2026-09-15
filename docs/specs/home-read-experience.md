@@ -147,7 +147,7 @@ Hidden entirely when the sum is zero; the nav still shows **Owner**. Fed by `GET
   digest, follows, episodes, and later chat share). Only `available` episodes carry summaries. Newest first,
   flat list, channel title as the byline. No grouping by channel; a day's digest is short. Since M3.5 (2026-09-13) the
   window and ordering basis is first availability (`summaryAvailableAt`, PRD §7); before that, publication time.
-- Each item shows: **video title** linked to `https://youtu.be/<videoId>`, channel title linked to
+- Each item shows: **video title** linked to `https://youtu.be/<episodeId>`, channel title linked to
   `/channel/:id`, relative published time, executive summary, takeaways as bullets, topic tags as plain
   text. Raw-fallback summaries show the stored text with the note "unformatted summary".
 - **Related** shows titles of related episodes only when they belong to the reader's eligible channels,
@@ -401,8 +401,8 @@ the count only. Never any user's read or chat activity.
 |---|---|---|---|
 | Header, nav | `ensureUser` via middleware | — | `GET /me`, exists. |
 | Owner card, health strip | `getCatalogSummary(actor)` | — | Owner-checked in the DO; returns the `Catalog` aggregate with its `attention` block. |
-| Digest | `listDigest(channelIds, since)` | `activeChannelIds`, `readVideoIds`, `markRead` | Route intersects active follows with approved channels, fetches summaries of `available` episodes, computes `wasUnread`, then marks read. |
-| Followed | `listChannelsByIds(ids)`, `listAvailableVideoIds(ids)` | `listFollows`, `readVideoIds` | Any status; unread per approved channel = available ids minus read ids. |
+| Digest | `listDigest(channelIds, since)` | `activeChannelIds`, `readEpisodeIds`, `markRead` | Route intersects active follows with approved channels, fetches summaries of `available` episodes, computes `wasUnread`, then marks read. |
+| Followed | `listChannelsByIds(ids)`, `listAvailableEpisodeIds(ids)` | `listFollows`, `readEpisodeIds` | Any status; unread per approved channel = available ids minus read ids. |
 | Catalog | `listChannels()` (requested and approved) | `listFollows` | Follow state merged in the route. |
 | Queue, All channels, attention | `listChannels(actor, { scope: "all" })` | — | Channel plus its `management` block: pause fields, episode counts, latest run, `neverStarted`. |
 | Channel detail | `getChannel` + `listEpisodes`, `listRuns`, `listFollowers` | — | Sub-resource reads; the owner's `processing` fields ride on the same episode rows. |
@@ -416,7 +416,7 @@ One store module per concern under `do/registry/`, all present on `main`:
   `listChannels` with the `scope` rule, `listChannelsByIds` in any status, `getChannel`.
 - `followers.ts`: `recordFollow`, `recordUnfollow`, `listFollowers`, `countFollowers`; the automatic system
   pause at zero followers and its lift on the next follow.
-- `episodes.ts`: `listByChannel`, `listDigest`, `countByChannel`, `listAvailableVideoIds`, `getEpisode`,
+- `episodes.ts`: `listByChannel`, `listDigest`, `countByChannel`, `listAvailableEpisodeIds`, `getEpisode`,
   `retryEpisode`, `skipEpisode`. Digest items join `episodes`, `episode_summaries`, and `channels.title`; related
   ids are resolved to titles inside the method and filtered to the passed channel ids, so the route never sees
   titles from ineligible channels.
@@ -424,7 +424,7 @@ One store module per concern under `do/registry/`, all present on `main`:
 - `attempts.ts` and `processing.ts` (M3): unified first-processing, scheduled-recovery, and Owner-Retry attempt history.
 - `catalog.ts`: `summarize()`, the `Catalog` aggregate.
 - Facade methods on `RegistryDO`: reader-safe `listChannels`, `listChannelsByIds`, `getChannel`,
-  `listAvailableVideoIds`, `listDigest`, `listEpisodes`; owner-checked `getCatalogSummary`, `listRuns`,
+  `listAvailableEpisodeIds`, `listDigest`, `listEpisodes`; owner-checked `getCatalogSummary`, `listRuns`,
   `listFollowers`, and every transition. Internal names follow the entity vocabulary of §10.
 
 All `IN (...)` lists go through `lib/sql.ts` chunking. M3 added discovery writes, episode window state, and the
@@ -536,8 +536,8 @@ routes in step.
 | `POST /channels/:id/decline { explanation? }` | owner | `requested → declined`, or `approved → declined` with the pause cleared; stops new discovery but existing episode recovery continues | revised 2026-09-12 |
 | `POST /channels/:id/pause`, `POST /channels/:id/resume` | owner | Owner pause; resume clears any pause. `approved` only | 2026-09-10 |
 | `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first. Followers and the owner receive available summaries; the owner also receives the open window and the latest attempt | revised 2026-09-12 |
-| `POST /channels/:id/episodes/:videoId/retry` | owner | Any episode/channel state; resets the 48-hour window when work starts and returns an attempt; blocked leaves the window unchanged; no discovery or channel write | revised 2026-09-12 |
-| `POST /channels/:id/episodes/:videoId/skip` | owner | Any channel state; `failed → skipped OWNER`; no discovery precondition | revised 2026-09-12 |
+| `POST /channels/:id/episodes/:episodeId/retry` | owner | Any episode/channel state; resets the 48-hour window when work starts and returns an attempt; blocked leaves the window unchanged; no discovery or channel write | revised 2026-09-12 |
+| `POST /channels/:id/episodes/:episodeId/skip` | owner | Any channel state; `failed → skipped OWNER`; no discovery precondition | revised 2026-09-12 |
 | `GET /channels/:id/runs` | owner | Completed initial/scheduled RSS discovery checks with feed status and discovered count | revised 2026-09-12; renamed from `ingestion-runs` the same day |
 | `GET /channels/:id/followers` | owner | Active followers' emails and follow times, oldest first | 2026-09-10, replaces `/requests` |
 | `GET /follows` | anyone (own) | Active follows in any channel status, each embedding its `channel` and carrying `unreadCount`; most recent ingestion first | 2026-09-07, reshaped 2026-09-10 |
@@ -591,7 +591,7 @@ export type IngestionRunSummary = {   // the newest run, as the catalog row show
 
 export type EpisodeIngestionAttempt = {
   attemptId: string;
-  videoId: string;
+  episodeId: string;
   trigger: "channel_ingestion" | "scheduled_recovery" | "owner_retry";
   requestedByEmail: string | null;
   intent: "publication" | "replacement";
@@ -606,7 +606,7 @@ export type EpisodeIngestionAttempt = {
 };
 
 export type Episode = {
-  videoId: string;
+  episodeId: string;
   channelId: string;
   channelTitle: string;
   title: string;
@@ -614,7 +614,7 @@ export type Episode = {
   status: "pending" | "available" | "failed" | "skipped";
   skipReason: EpisodeSkipReason | null;   // SHORT, NON_ENGLISH, UNPLAYABLE, OWNER
   summary: EpisodeSummary | null;  // content for followers and the owner
-  related: { videoId: string; title: string }[]; // already filtered to the caller's eligible channels
+  related: { episodeId: string; title: string }[]; // already filtered to the caller's eligible channels
   wasUnread?: boolean;             // set when a summary was returned to a reader
   processing?: EpisodeProcessing;  // owner only: intent/window deadline/next attempt/reason and latest attempt
 };

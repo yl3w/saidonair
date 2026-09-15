@@ -5,6 +5,10 @@ import {
   CHANNEL_A,
   CHANNEL_B,
   channelIds,
+  EPISODE_A,
+  EPISODE_B,
+  EPISODE_C,
+  episodeIds,
   expectDomainError,
   OWNER,
   registry,
@@ -12,10 +16,6 @@ import {
   seedAttempt,
   seedEpisode,
   seedSummary,
-  VIDEO_A,
-  VIDEO_B,
-  VIDEO_C,
-  videoIds,
 } from "./helpers";
 
 async function twoChannels() {
@@ -33,18 +33,18 @@ function page(over: Partial<DigestSelection> = {}): DigestSelection {
 describe("registry episodes", () => {
   it("lists the digest newest first, in the window, with summaries, for the given channels only", async () => {
     const stub = await twoChannels();
-    await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: 3_000 });
-    await seedSummary(VIDEO_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, { publishedAt: 3_000 });
+    await seedSummary(EPISODE_A, {
       takeaways: [
         { text: "one", startSec: 5 },
         { text: "two", startSec: null },
       ],
-      relatedVideoIds: [VIDEO_B, VIDEO_C, VIDEO_A],
+      relatedEpisodeIds: [EPISODE_B, EPISODE_C, EPISODE_A],
     });
-    await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: 2_000 });
-    await seedSummary(VIDEO_B, { format: "raw_fallback", rawText: "raw" });
-    await seedEpisode(VIDEO_C, CHANNEL_B, { publishedAt: 2_500 });
-    await seedSummary(VIDEO_C);
+    await seedEpisode(EPISODE_B, CHANNEL_A, { publishedAt: 2_000 });
+    await seedSummary(EPISODE_B, { format: "raw_fallback", rawText: "raw" });
+    await seedEpisode(EPISODE_C, CHANNEL_B, { publishedAt: 2_500 });
+    await seedSummary(EPISODE_C);
     await seedEpisode("old00000000", CHANNEL_A, { publishedAt: 500 });
     await seedSummary("old00000000");
     await seedEpisode("nosummary00", CHANNEL_A, { publishedAt: 4_000 });
@@ -55,7 +55,7 @@ describe("registry episodes", () => {
 
     const digest = await stub.listDigest([CHANNEL_A], page({ fromMs: 1_000 }));
 
-    expect(digest.map((e) => e.videoId)).toEqual([VIDEO_A, VIDEO_B]);
+    expect(digest.map((e) => e.episodeId)).toEqual([EPISODE_A, EPISODE_B]);
     expect(digest[0]).toMatchObject({
       channelTitle: "A",
       status: "available",
@@ -68,8 +68,8 @@ describe("registry episodes", () => {
         ],
         topicTags: ["tag"],
       },
-      // VIDEO_C belongs to channel B, outside the scope; the episode never relates to itself.
-      related: [{ videoId: VIDEO_B, title: `Episode ${VIDEO_B}` }],
+      // EPISODE_C belongs to channel B, outside the scope; the episode never relates to itself.
+      related: [{ episodeId: EPISODE_B, title: `Episode ${EPISODE_B}` }],
     });
     expect(digest[1]?.summary).toEqual({
       format: "raw_fallback",
@@ -80,8 +80,15 @@ describe("registry episodes", () => {
       [CHANNEL_A, CHANNEL_B],
       page({ fromMs: 1_000 }),
     );
-    expect(both.map((e) => e.videoId)).toEqual([VIDEO_A, VIDEO_C, VIDEO_B]);
-    expect(both[0]?.related.map((r) => r.videoId)).toEqual([VIDEO_B, VIDEO_C]);
+    expect(both.map((e) => e.episodeId)).toEqual([
+      EPISODE_A,
+      EPISODE_C,
+      EPISODE_B,
+    ]);
+    expect(both[0]?.related.map((r) => r.episodeId)).toEqual([
+      EPISODE_B,
+      EPISODE_C,
+    ]);
 
     expect(await stub.listDigest([], page())).toEqual([]);
     await expectDomainError(
@@ -99,7 +106,7 @@ describe("registry episodes", () => {
     await expectDomainError(
       stub.listDigest(
         [CHANNEL_A],
-        page({ after: { summaryAvailableAt: 1, videoId: "nope" } }),
+        page({ after: { summaryAvailableAt: 1, episodeId: "nope" } }),
       ),
       "INVALID_INPUT",
     );
@@ -109,32 +116,32 @@ describe("registry episodes", () => {
   it("orders the digest by first availability, not publication, and bounds the range on it", async () => {
     const stub = await twoChannels();
     // Published a month ago, summarised just now: today's digest. Published today, summarised earlier: behind it.
-    await seedEpisode(VIDEO_A, CHANNEL_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, {
       publishedAt: 1_000,
       processedAt: 5_000,
     });
-    await seedSummary(VIDEO_A);
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    await seedSummary(EPISODE_A);
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       publishedAt: 9_000,
       processedAt: 4_000,
     });
-    await seedSummary(VIDEO_B);
-    await seedEpisode(VIDEO_C, CHANNEL_A, {
+    await seedSummary(EPISODE_B);
+    await seedEpisode(EPISODE_C, CHANNEL_A, {
       publishedAt: 9_500,
       processedAt: 4_000,
     });
-    await seedSummary(VIDEO_C);
+    await seedSummary(EPISODE_C);
     const ids = async (over: Partial<DigestSelection> = {}) =>
-      (await stub.listDigest([CHANNEL_A], page(over))).map((e) => e.videoId);
+      (await stub.listDigest([CHANNEL_A], page(over))).map((e) => e.episodeId);
 
-    expect(await ids()).toEqual([VIDEO_A, VIDEO_B, VIDEO_C]);
-    expect(await ids({ fromMs: 4_500 })).toEqual([VIDEO_A]);
+    expect(await ids()).toEqual([EPISODE_A, EPISODE_B, EPISODE_C]);
+    expect(await ids({ fromMs: 4_500 })).toEqual([EPISODE_A]);
     // `from` is inclusive and `to` exclusive, so a reader's consecutive local days never overlap.
     expect(await ids({ fromMs: 4_000, toMs: 5_000 })).toEqual([
-      VIDEO_B,
-      VIDEO_C,
+      EPISODE_B,
+      EPISODE_C,
     ]);
-    expect(await ids({ fromMs: 5_000 })).toEqual([VIDEO_A]);
+    expect(await ids({ fromMs: 5_000 })).toEqual([EPISODE_A]);
     expect(await ids({ toMs: 4_000 })).toEqual([]);
     expect(
       (await stub.listDigest([CHANNEL_A], page()))[0]?.summaryAvailableAt,
@@ -151,12 +158,12 @@ describe("registry episodes", () => {
       "bb000000004",
       "cc000000005",
     ];
-    for (const [index, videoId] of ids.entries()) {
-      await seedEpisode(videoId, index < 3 ? CHANNEL_A : CHANNEL_B, {
+    for (const [index, episodeId] of ids.entries()) {
+      await seedEpisode(episodeId, index < 3 ? CHANNEL_A : CHANNEL_B, {
         publishedAt: 100 + index,
         processedAt: index < 2 ? 9_000 : index < 4 ? 8_000 : 7_000,
       });
-      await seedSummary(videoId);
+      await seedSummary(episodeId);
     }
     const both = [CHANNEL_A, CHANNEL_B];
     const ordered = [
@@ -167,19 +174,22 @@ describe("registry episodes", () => {
       "cc000000005",
     ];
 
-    expect((await stub.listDigest(both, page())).map((e) => e.videoId)).toEqual(
-      ordered,
-    );
+    expect(
+      (await stub.listDigest(both, page())).map((e) => e.episodeId),
+    ).toEqual(ordered);
 
     // Two pages of two and one of one, walked by position: no overlap, no gap.
     const walked: string[] = [];
     let after = null as DigestSelection["after"];
     for (let read = 0; read < 3; read++) {
       const rows = await stub.listDigestRows(both, page({ after, limit: 2 }));
-      walked.push(...rows.map((row) => row.videoId));
+      walked.push(...rows.map((row) => row.episodeId));
       const last = rows.at(-1);
       after = last
-        ? { summaryAvailableAt: last.summaryAvailableAt, videoId: last.videoId }
+        ? {
+            summaryAvailableAt: last.summaryAvailableAt,
+            episodeId: last.episodeId,
+          }
         : null;
     }
     expect(walked).toEqual(ordered);
@@ -191,7 +201,7 @@ describe("registry episodes", () => {
     const rows = await stub.listDigestRows(both, page({ limit: 1 }));
     expect(rows).toEqual([
       {
-        videoId: "aa000000001",
+        episodeId: "aa000000001",
         channelId: CHANNEL_A,
         summaryAvailableAt: 9_000,
       },
@@ -200,19 +210,19 @@ describe("registry episodes", () => {
 
   it("counts by status and lists available ids across more than one parameter batch", async () => {
     const stub = await twoChannels();
-    const ids = videoIds(120);
-    for (const [i, videoId] of ids.entries()) {
-      await seedEpisode(videoId, CHANNEL_A, {
+    const ids = episodeIds(120);
+    for (const [i, episodeId] of ids.entries()) {
+      await seedEpisode(episodeId, CHANNEL_A, {
         publishedAt: i,
         status: i < 110 ? "available" : "failed",
       });
     }
-    await seedEpisode(VIDEO_A, CHANNEL_B, { status: "failed" });
-    await seedEpisode(VIDEO_B, CHANNEL_B, { status: "pending" });
+    await seedEpisode(EPISODE_A, CHANNEL_B, { status: "failed" });
+    await seedEpisode(EPISODE_B, CHANNEL_B, { status: "pending" });
 
     // 1,000 channel ids, most of them absent: the IN lists are chunked under the 100-binding cap.
     const many = [...channelIds(998), CHANNEL_A, CHANNEL_B];
-    const available = await stub.listAvailableVideoIds(many);
+    const available = await stub.listAvailableEpisodeIds(many);
     expect(available).toHaveLength(110);
     expect(new Set(available.map((p) => p.channelId))).toEqual(
       new Set([CHANNEL_A]),
@@ -238,19 +248,19 @@ describe("registry episodes", () => {
 
   it("lists one channel's episodes in every status with processing detail and a limit", async () => {
     const stub = await twoChannels();
-    await seedEpisode(VIDEO_A, CHANNEL_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, {
       publishedAt: 3_000,
       chunkCount: 7,
     });
-    await seedSummary(VIDEO_A, { relatedVideoIds: [VIDEO_C] });
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    await seedSummary(EPISODE_A, { relatedEpisodeIds: [EPISODE_C] });
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       publishedAt: 2_000,
       status: "failed",
       failureDetail: "CAPTIONS",
       attemptCount: 3,
     });
-    await seedEpisode(VIDEO_C, CHANNEL_B, { publishedAt: 1_000 });
-    await seedSummary(VIDEO_C);
+    await seedEpisode(EPISODE_C, CHANNEL_B, { publishedAt: 1_000 });
+    await seedSummary(EPISODE_C);
     await seedEpisode("skipowner01", CHANNEL_A, {
       publishedAt: 500,
       status: "skipped",
@@ -260,14 +270,14 @@ describe("registry episodes", () => {
     const all = await stub.listEpisodes(CHANNEL_A, {
       relatedScope: [CHANNEL_B],
     });
-    expect(all.map((e) => e.videoId)).toEqual([
-      VIDEO_A,
-      VIDEO_B,
+    expect(all.map((e) => e.episodeId)).toEqual([
+      EPISODE_A,
+      EPISODE_B,
       "skipowner01",
     ]);
     expect(all[0]).toMatchObject({
       summary: { format: "structured" },
-      related: [{ videoId: VIDEO_C }],
+      related: [{ episodeId: EPISODE_C }],
       processing: { chunkCount: 7, attemptCount: 1 },
     });
     // A timed-out publication: the one failure code, with the latest attempt's reason as detail.
@@ -299,7 +309,7 @@ describe("registry episodes", () => {
       limit: 1,
       relatedScope: [],
     });
-    expect(one.map((e) => e.videoId)).toEqual([VIDEO_A]);
+    expect(one.map((e) => e.episodeId)).toEqual([EPISODE_A]);
 
     await expectDomainError(
       stub.listEpisodes(CHANNEL_A, { limit: 0, relatedScope: [] }),
@@ -317,25 +327,25 @@ describe("registry episodes", () => {
   it("retry reopens a failed or skipped episode; skip closes a failed one and records whoever skipped; both refuse an active run", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(VIDEO_A, CHANNEL_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, {
       status: "failed",
       attemptCount: 3,
       failureDetail: "PROVIDER_HTTP",
     });
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       status: "skipped",
       skipReason: "SHORT",
     });
-    await seedEpisode(VIDEO_C, CHANNEL_A, { status: "available" });
-    await seedSummary(VIDEO_C);
+    await seedEpisode(EPISODE_C, CHANNEL_A, { status: "available" });
+    await seedSummary(EPISODE_C);
 
     // No role is checked: whoever skips is recorded (PRD §9).
-    const skipped = await stub.skipEpisode(ALICE, CHANNEL_A, VIDEO_A);
+    const skipped = await stub.skipEpisode(ALICE, CHANNEL_A, EPISODE_A);
     expect(skipped.status).toBe("skipped");
     expect(skipped.skipReason).toBe("OWNER");
     expect(skipped.processing).toMatchObject({ skippedByEmail: ALICE });
     // Retry opens a fresh 48-hour `publish` window; nothing launches until M3.
-    const retried = await stub.retryEpisode(CHANNEL_A, VIDEO_A);
+    const retried = await stub.retryEpisode(CHANNEL_A, EPISODE_A);
     expect(retried.status).toBe("pending");
     expect(retried.skipReason).toBeNull();
     expect(retried.processing).toMatchObject({
@@ -353,31 +363,34 @@ describe("registry episodes", () => {
       (retried.processing.windowDeadlineAt ?? 0) -
         (retried.processing.windowStartedAt ?? 0),
     ).toBe(48 * 60 * 60 * 1000);
-    expect((await stub.retryEpisode(CHANNEL_A, VIDEO_B)).status).toBe(
+    expect((await stub.retryEpisode(CHANNEL_A, EPISODE_B)).status).toBe(
       "pending",
     );
     // A retry touches one episode: the siblings keep their status and their summaries (spec §3.3).
     const siblings = await stub.listEpisodes(CHANNEL_A, { relatedScope: [] });
-    expect(siblings.find((e) => e.videoId === VIDEO_C)).toMatchObject({
+    expect(siblings.find((e) => e.episodeId === EPISODE_C)).toMatchObject({
       status: "available",
       summary: {
         format: "structured",
-        executiveSummary: `Summary of ${VIDEO_C}`,
+        executiveSummary: `Summary of ${EPISODE_C}`,
       },
     });
     await expectDomainError(
-      stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_C),
+      stub.skipEpisode(OWNER, CHANNEL_A, EPISODE_C),
       "INVALID_STATE",
     );
     // Retry of an available episode opens a `replace` window and leaves its content in place.
-    const replacing = await stub.retryEpisode(CHANNEL_A, VIDEO_C);
+    const replacing = await stub.retryEpisode(CHANNEL_A, EPISODE_C);
     expect(replacing).toMatchObject({
       status: "available",
       summary: { format: "structured" },
       summaryAvailableAt: 1,
       processing: { intent: "replace", attemptCount: 0 },
     });
-    await expectDomainError(stub.retryEpisode(CHANNEL_B, VIDEO_A), "NOT_FOUND");
+    await expectDomainError(
+      stub.retryEpisode(CHANNEL_B, EPISODE_A),
+      "NOT_FOUND",
+    );
 
     // A running attempt is the one thing that refuses Retry; channel status never does, and Skip
     // works in any channel status too (PRD §4.2 rules 16–18).

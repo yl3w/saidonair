@@ -122,9 +122,9 @@ function FailedEpisodes({
       )}
       {load.status === "ready" &&
         load.data.map((e) => (
-          <div class="row" key={e.videoId}>
+          <div class="row" key={e.episodeId}>
             <div class="grow">
-              <a href={`https://youtu.be/${e.videoId}`}>{e.title}</a>
+              <a href={`https://youtu.be/${e.episodeId}`}>{e.title}</a>
               <div class="meta">
                 {e.processing.failureCode ?? "unknown failure"}
                 {e.processing.failureDetail &&
@@ -136,24 +136,24 @@ function FailedEpisodes({
             </div>
             <div class="actions">
               <button
-                id={`retry-${e.videoId}`}
+                id={`retry-${e.episodeId}`}
                 type="button"
                 disabled={busy}
                 onClick={() =>
                   act(c.channelId, () =>
-                    api.retryEpisode(c.channelId, e.videoId),
+                    api.retryEpisode(c.channelId, e.episodeId),
                   )
                 }
               >
                 Retry
               </button>
               <button
-                id={`skip-${e.videoId}`}
+                id={`skip-${e.episodeId}`}
                 type="button"
                 disabled={busy}
                 onClick={() =>
                   act(c.channelId, () =>
-                    api.skipEpisode(c.channelId, e.videoId),
+                    api.skipEpisode(c.channelId, e.episodeId),
                   )
                 }
               >

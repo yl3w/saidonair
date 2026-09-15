@@ -34,13 +34,13 @@ export function channelIds(count: number): string[] {
   );
 }
 
-// 11-character video ids.
-export const VIDEO_A = "aaaaaaaaaaa";
-export const VIDEO_B = "bbbbbbbbbbb";
-export const VIDEO_C = "ccccccccccc";
+// 11-character episode ids.
+export const EPISODE_A = "aaaaaaaaaaa";
+export const EPISODE_B = "bbbbbbbbbbb";
+export const EPISODE_C = "ccccccccccc";
 
-/** `count` distinct valid video ids, for exercising parameter chunking. */
-export function videoIds(count: number): string[] {
+/** `count` distinct valid episode ids, for exercising parameter chunking. */
+export function episodeIds(count: number): string[] {
   return Array.from(
     { length: count },
     (_, i) => `v${String(i).padStart(10, "0")}`,
@@ -199,7 +199,7 @@ type EpisodeSeed = {
 };
 
 export async function seedEpisode(
-  videoId: string,
+  episodeId: string,
   channelId: string,
   seed: EpisodeSeed = {},
 ): Promise<void> {
@@ -216,15 +216,15 @@ export async function seedEpisode(
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episodes
-         (video_id, channel_id, discovered_by_run_id, title, published_at, status,
+         (episode_id, channel_id, discovered_by_run_id, title, published_at, status,
           intent, window_started_at, window_deadline_at, next_attempt_at, attempt_count,
           failure_code, failure_detail, skip_reason, skipped_at, skipped_by_email, transcript_checked_at,
           chunk_count, vectorized_at, processed_at, active_vector_generation, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      videoId,
+      episodeId,
       channelId,
       runId,
-      seed.title ?? `Episode ${videoId}`,
+      seed.title ?? `Episode ${episodeId}`,
       seed.publishedAt ?? 1,
       status,
       window?.intent ?? null,
@@ -243,7 +243,7 @@ export async function seedEpisode(
       available ? (seed.chunkCount ?? 3) : null,
       available ? at : null,
       available ? at : null,
-      available ? `gen-${videoId}` : null,
+      available ? `gen-${episodeId}` : null,
       at,
       at,
     );
@@ -256,24 +256,24 @@ type SummarySeed =
       executiveSummary?: string;
       takeaways?: Takeaway[];
       topicTags?: string[];
-      relatedVideoIds?: string[];
+      relatedEpisodeIds?: string[];
     }
-  | { format: "raw_fallback"; rawText?: string; relatedVideoIds?: string[] };
+  | { format: "raw_fallback"; rawText?: string; relatedEpisodeIds?: string[] };
 
 export async function seedSummary(
-  videoId: string,
+  episodeId: string,
   seed: SummarySeed = {},
 ): Promise<void> {
   // The product's own write (do/registry/summaries.ts), so the seed and completeAttempt cannot drift.
-  const related = seed.relatedVideoIds ?? [];
+  const related = seed.relatedEpisodeIds ?? [];
   await runInDurableObject(registry(), (_, ctx) => {
     if (seed.format === "raw_fallback") {
       upsertSummary(
         ctx.storage.sql,
-        videoId,
+        episodeId,
         {
           format: "raw_fallback",
-          rawText: seed.rawText ?? `Raw summary of ${videoId}`,
+          rawText: seed.rawText ?? `Raw summary of ${episodeId}`,
           model: "test-model",
           promptVersion: "v0",
         },
@@ -284,10 +284,10 @@ export async function seedSummary(
     }
     upsertSummary(
       ctx.storage.sql,
-      videoId,
+      episodeId,
       {
         format: "structured",
-        executiveSummary: seed.executiveSummary ?? `Summary of ${videoId}`,
+        executiveSummary: seed.executiveSummary ?? `Summary of ${episodeId}`,
         takeaways: seed.takeaways ?? [{ text: "takeaway", startSec: 12 }],
         topicTags: seed.topicTags ?? ["tag"],
         model: "test-model",
@@ -326,7 +326,7 @@ const DEFAULT_OUTCOME: Record<AttemptStatus, AttemptOutcomeCode | null> = {
 
 /** One row of the attempt ledger. The episode row must already exist. */
 export async function seedAttempt(
-  videoId: string,
+  episodeId: string,
   seed: AttemptSeed = {},
 ): Promise<string> {
   const attemptId = seed.attemptId ?? crypto.randomUUID();
@@ -336,11 +336,11 @@ export async function seedAttempt(
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episode_ingestion_attempts
-         (attempt_id, video_id, trigger, intent, staged_chunk_count, workflow_id,
+         (attempt_id, episode_id, trigger, intent, staged_chunk_count, workflow_id,
           requested_by_email, status, outcome_code, failure_detail, started_at, finished_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       attemptId,
-      videoId,
+      episodeId,
       trigger,
       seed.intent ?? "publish",
       seed.stagedChunkCount ?? null,

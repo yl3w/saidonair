@@ -5,23 +5,23 @@ import {
   ALICE,
   BOB,
   CHANNEL_A,
+  EPISODE_A,
+  EPISODE_B,
   expectDomainError,
   userDO,
-  VIDEO_A,
-  VIDEO_B,
 } from "./helpers";
 
 const SOURCE_A = {
-  videoId: VIDEO_A,
+  episodeId: EPISODE_A,
   channelId: CHANNEL_A,
-  videoTitle: "Video A",
+  episodeTitle: "Video A",
   channelTitle: "Channel A",
   startSec: 12.5,
 };
 const SOURCE_B = {
   ...SOURCE_A,
-  videoId: VIDEO_B,
-  videoTitle: "Video B",
+  episodeId: EPISODE_B,
+  episodeTitle: "Video B",
   startSec: 0,
 };
 
@@ -103,10 +103,10 @@ describe("user chats", () => {
       content: "Two videos covered it.",
     });
     expect(
-      completed.sources.map((s) => [s.position, s.videoId, s.startSec]),
+      completed.sources.map((s) => [s.position, s.episodeId, s.startSec]),
     ).toEqual([
-      [0, VIDEO_A, 12.5],
-      [1, VIDEO_B, 0],
+      [0, EPISODE_A, 12.5],
+      [1, EPISODE_B, 0],
     ]);
 
     const history = await stub.getMessages(chat.chatId);

@@ -36,7 +36,7 @@ auto-playlist prefixes replace `UC` in the channel id and are read with `playlis
 
 - The three **partition the channel feed exactly**: every entry of `channel_id=` fell in exactly one prefix feed, no
   overlap, nothing unclassified, on all thirteen channels.
-- Entry shape is **identical** to the channel feed — same `<yt:videoId>`, `<title>`, `<published>`, `<link>`. Only
+- Entry shape is **identical** to the channel feed — same `<yt:episodeId>`, `<title>`, `<published>`, `<link>`. Only
   the feed head differs (§3.2).
 - Composition of the newest fifteen channel-feed entries: All-In 4 long-form / 11 Shorts; CNN 3 / 12; PBS NewsHour
   1 / 10 / 4 live; Lofi Girl 3 / 11; BBC 9 / 6; MKBHD 11 / 4; Fireship 15 / 0.

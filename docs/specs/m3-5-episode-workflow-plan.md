@@ -44,7 +44,7 @@ reset between tests.
 - 2.3 The sections: `sectionize` over the chunks; `formatTranscript` per section; `parseSummary` with `durationSec`
   from the transcript's last segment when the provider gave none.
 - 2.4 The related step: centroid from the per-batch sums, `query(topK: 50)` (spec §2 "Related query width"), dedupe
-  by `videoId` excluding the episode's own, candidates to `completeAttempt`.
+  by `episodeId` excluding the episode's own, candidates to `completeAttempt`.
 - 2.5 **Plan decision:** the test step runner (`test/fake-step.ts`) runs `do` inline, honours `retries.limit` by
   re-invoking the callback on a throw, and records step names, so a test can assert which steps ran and how often.
   When M3.1 Step 0.1 found the pool runs Workflows, one additional test creates a real instance through the binding
@@ -76,7 +76,7 @@ increasing delays (the M3.4 log-line assertion is replaced).
 **Files:** `apps/api/src/do/registry/episodes.ts`, `apps/api/test/registry-episodes.test.ts`,
 `apps/api/test/routes-follows-digest.test.ts`.
 
-- 4.1 `listDigest`: `processed_at >= ?`, `ORDER BY processed_at DESC, video_id`; the comment loses "until M3".
+- 4.1 `listDigest`: `processed_at >= ?`, `ORDER BY processed_at DESC, episode_id`; the comment loses "until M3".
 
 **Tests:** spec §4.12.
 
@@ -111,7 +111,7 @@ one replacement, three direct probes).
 
 Decisions made while implementing (plan decisions, stand unless vetoed), beyond the spec's §2 rows:
 
-- A new Registry read, `describeAttempt(attemptId)`, and a facade `getEpisode(channelId, videoId)`; `attempts.ts` gained
+- A new Registry read, `describeAttempt(attemptId)`, and a facade `getEpisode(channelId, episodeId)`; `attempts.ts` gained
   `previousWithGeneration`. The starter keeps `IngestParams` at four fields.
 - The stagger counts launched attempts only: a blocked or running episode does not consume a slot.
 - `RECONCILE_AFTER_MS` (one hour) lives in `lib/ingestion.ts`; the Retry route reads the episode's latest attempt
@@ -119,7 +119,7 @@ Decisions made while implementing (plan decisions, stand unless vetoed), beyond 
 - The verify loop is `verify:<n>` steps with `verify-wait:<n>` sleeps between them; the schedule is the exported
   `VERIFY_DELAYS_SEC` (17 × 10 s, then 30, 60, 120, 240, 480, 960 s: about 34 minutes in all, longer than the spec's
   "about 21" because the six back-off waits sum to 31.5 minutes).
-- Test seams: `AI_FAKE` gained `embedThrows`; `WORKFLOW_FAKE`'s `createThrows` matches an attempt id or a video id;
+- Test seams: `AI_FAKE` gained `embedThrows`; `WORKFLOW_FAKE`'s `createThrows` matches an attempt id or a episode id;
   `test/fake-step.ts` runs steps inline and honours `retries.limit`; one test runs a real instance through the binding
   with `introspectWorkflowInstance` and `disableSleeps` (the pool runs Workflows, M3.1 Step 0.1).
 - The Workflow's own `console.log` lines do reach the `wrangler dev` output (`ingest.published` appeared), so the

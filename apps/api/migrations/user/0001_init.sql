@@ -8,7 +8,7 @@
 
 -- Read receipts for shared summaries. No row means unread.
 CREATE TABLE summary_reads (
-  video_id TEXT PRIMARY KEY,
+  episode_id TEXT PRIMARY KEY,
   read_at INTEGER NOT NULL CHECK (read_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0)
 );
@@ -52,9 +52,9 @@ CREATE TABLE chat_message_sources (
   source_id TEXT PRIMARY KEY,
   message_id TEXT NOT NULL REFERENCES chat_messages (message_id),
   position INTEGER NOT NULL CHECK (position >= 0),
-  video_id TEXT NOT NULL,
+  episode_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
-  video_title TEXT NOT NULL,
+  episode_title TEXT NOT NULL,
   channel_title TEXT NOT NULL,
   start_sec REAL NOT NULL CHECK (start_sec >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),

@@ -52,7 +52,7 @@ describe("recordDiscovery", () => {
       episodeLimit: 5,
     });
     expect(run.finishedAt).toBeGreaterThanOrEqual(run.startedAt);
-    expect(created.map((e) => e.videoId)).toEqual(
+    expect(created.map((e) => e.episodeId)).toEqual(
       feed.entries.slice(0, 5).map((e) => e.videoId),
     );
     for (const episode of created) {
@@ -139,13 +139,13 @@ describe("recordDiscovery", () => {
       discoveredCount: 1,
       episodeLimit: null,
     });
-    expect(created.map((e) => e.videoId)).toEqual(["newupload01"]);
+    expect(created.map((e) => e.episodeId)).toEqual(["newupload01"]);
     // The four old untracked entries and the one published at the approval instant are never created.
     const all = await stub.listEpisodes(CHANNEL_B, {
       relatedScope: [],
       limit: 200,
     });
-    expect(all.map((e) => e.videoId).sort()).toEqual([
+    expect(all.map((e) => e.episodeId).sort()).toEqual([
       "newupload01",
       "old00000000",
       "old00000001",
@@ -208,7 +208,7 @@ describe("recordDiscovery", () => {
       ]),
     );
     expect(run.discoveredCount).toBe(3);
-    expect(created.map((e) => e.videoId)).toEqual([
+    expect(created.map((e) => e.episodeId)).toEqual([
       "newest00001",
       "dupe0000001",
       "middle00001",

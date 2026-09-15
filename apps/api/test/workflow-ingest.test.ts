@@ -21,31 +21,31 @@ import {
 } from "../src/workflows/ingest";
 import { fakeStep, stepNames } from "./fake-step";
 import {
+  EPISODE_AUTH_FAILS,
+  EPISODE_ENGLISH,
+  EPISODE_HTTP_FAILS,
+  EPISODE_LIMIT_FAILS,
+  EPISODE_LIVE,
+  EPISODE_NO_CAPTIONS,
+  EPISODE_NON_ENGLISH,
+  EPISODE_PARSE_FAILS,
+  EPISODE_RATE_LIMITED,
+  EPISODE_SHORT,
+  EPISODE_UNPLAYABLE,
   englishSegments,
   FAKE_TRANSCRIPTS,
   type FakeTranscriptEntry,
-  VIDEO_AUTH_FAILS,
-  VIDEO_ENGLISH,
-  VIDEO_HTTP_FAILS,
-  VIDEO_LIMIT_FAILS,
-  VIDEO_LIVE,
-  VIDEO_NO_CAPTIONS,
-  VIDEO_NON_ENGLISH,
-  VIDEO_PARSE_FAILS,
-  VIDEO_RATE_LIMITED,
-  VIDEO_SHORT,
-  VIDEO_UNPLAYABLE,
 } from "./fixtures/transcripts";
 import {
   ALICE,
   CHANNEL_A,
+  EPISODE_B,
   OWNER,
   registry,
   seedApprovedChannel,
   seedEpisode,
   seedSummary,
   userDO,
-  VIDEO_B,
 } from "./helpers";
 
 const ENGLISH_CHUNKS = chunkTranscript(englishSegments()).length;
@@ -54,42 +54,42 @@ function inRegistry<T>(work: (sql: SqlStorage) => T): Promise<T> {
   return runInDurableObject(registry(), (_, ctx) => work(ctx.storage.sql));
 }
 
-function generations(videoId: string) {
+function generations(episodeId: string) {
   return inRegistry((sql) =>
     sql
       .exec<{ active: string | null; staged: string | null }>(
-        "SELECT active_vector_generation AS active, staged_vector_generation AS staged FROM episodes WHERE video_id = ?",
-        videoId,
+        "SELECT active_vector_generation AS active, staged_vector_generation AS staged FROM episodes WHERE episode_id = ?",
+        episodeId,
       )
       .one(),
   );
 }
 
-function storedRelated(videoId: string) {
+function storedRelated(episodeId: string) {
   return inRegistry(
     (sql) =>
       sql
         .exec<{ related: string }>(
-          "SELECT related_video_ids_json AS related FROM episode_summaries WHERE video_id = ?",
-          videoId,
+          "SELECT related_episode_ids_json AS related FROM episode_summaries WHERE episode_id = ?",
+          episodeId,
         )
         .one().related,
   );
 }
 
-async function pendingNow(videoId: string) {
-  await seedEpisode(videoId, CHANNEL_A, {
+async function pendingNow(episodeId: string) {
+  await seedEpisode(episodeId, CHANNEL_A, {
     status: "pending",
     window: { intent: "publish", startedAt: Date.now() },
   });
 }
 
 async function begin(
-  videoId: string,
+  episodeId: string,
   trigger: "channel_ingestion" | "owner_retry" = "channel_ingestion",
 ) {
   const start = await registry().beginAttempt(
-    videoId,
+    episodeId,
     trigger,
     trigger === "owner_retry" ? OWNER : undefined,
   );
@@ -97,11 +97,11 @@ async function begin(
   return start.attempt.attemptId;
 }
 
-async function run(videoId: string, attemptId: string, startDelaySec = 0) {
+async function run(episodeId: string, attemptId: string, startDelaySec = 0) {
   const step = fakeStep();
   const result = await ingestAttempt(step, env, {
     attemptId,
-    videoId,
+    episodeId,
     channelId: CHANNEL_A,
     startDelaySec,
   });
@@ -109,10 +109,10 @@ async function run(videoId: string, attemptId: string, startDelaySec = 0) {
 }
 
 /** Registers one more canned video for a test, restored by `afterEach`. */
-function withVideo(videoId: string, entry: FakeTranscriptEntry) {
+function withEpisode(episodeId: string, entry: FakeTranscriptEntry) {
   env.TRANSCRIPTS_FAKE = JSON.stringify({
     ...FAKE_TRANSCRIPTS,
-    videos: { ...FAKE_TRANSCRIPTS.videos, [videoId]: entry },
+    episodes: { ...FAKE_TRANSCRIPTS.episodes, [episodeId]: entry },
   });
 }
 
@@ -205,11 +205,11 @@ describe("classify", () => {
 describe("ingestAttempt", () => {
   it("publishes an English episode: transcript, stage, verify, summarize, related, publish", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_ENGLISH);
-    const attemptId = await begin(VIDEO_ENGLISH);
-    const { staged } = await generations(VIDEO_ENGLISH);
+    await pendingNow(EPISODE_ENGLISH);
+    const attemptId = await begin(EPISODE_ENGLISH);
+    const { staged } = await generations(EPISODE_ENGLISH);
 
-    const { step, result } = await run(VIDEO_ENGLISH, attemptId);
+    const { step, result } = await run(EPISODE_ENGLISH, attemptId);
 
     expect(result).toEqual({
       attemptId,
@@ -228,7 +228,7 @@ describe("ingestAttempt", () => {
       "publish",
     ]);
     expect(step.sleeps).toEqual([]);
-    const episode = await registry().getEpisode(CHANNEL_A, VIDEO_ENGLISH);
+    const episode = await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH);
     expect(episode).toMatchObject({
       status: "available",
       summaryAvailableAt: expect.any(Number),
@@ -260,9 +260,9 @@ describe("ingestAttempt", () => {
         .map((c) => Math.floor(c.startSec)),
     );
     expect(fakeVectorIds().sort()).toEqual(
-      generationIds(VIDEO_ENGLISH, staged ?? "", ENGLISH_CHUNKS).sort(),
+      generationIds(EPISODE_ENGLISH, staged ?? "", ENGLISH_CHUNKS).sort(),
     );
-    expect(await generations(VIDEO_ENGLISH)).toEqual({
+    expect(await generations(EPISODE_ENGLISH)).toEqual({
       active: staged,
       staged: null,
     });
@@ -270,36 +270,40 @@ describe("ingestAttempt", () => {
 
   it("sleeps the stagger first when asked", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_ENGLISH);
-    const { step } = await run(VIDEO_ENGLISH, await begin(VIDEO_ENGLISH), 6);
+    await pendingNow(EPISODE_ENGLISH);
+    const { step } = await run(
+      EPISODE_ENGLISH,
+      await begin(EPISODE_ENGLISH),
+      6,
+    );
     expect(step.sleeps).toEqual([{ name: "stagger", seconds: 6 }]);
   });
 
   it.each([
-    [VIDEO_SHORT, "skipped", "SHORT", "skipped", 1],
-    [VIDEO_NON_ENGLISH, "skipped", "NON_ENGLISH", "skipped", 1],
-    [VIDEO_UNPLAYABLE, "skipped", "UNPLAYABLE", "skipped", 1],
+    [EPISODE_SHORT, "skipped", "SHORT", "skipped", 1],
+    [EPISODE_NON_ENGLISH, "skipped", "NON_ENGLISH", "skipped", 1],
+    [EPISODE_UNPLAYABLE, "skipped", "UNPLAYABLE", "skipped", 1],
     // A live or upcoming video is a deterministic skip, one provider call, window closed.
-    [VIDEO_LIVE, "skipped", "UNPLAYABLE", "skipped", 1],
-    [VIDEO_NO_CAPTIONS, "waiting", "CAPTIONS", "pending", 1],
-    [VIDEO_LIMIT_FAILS, "waiting", "PROVIDER_LIMIT", "pending", 1],
-    [VIDEO_AUTH_FAILS, "failed", "PROVIDER_AUTH", "pending", 1],
+    [EPISODE_LIVE, "skipped", "UNPLAYABLE", "skipped", 1],
+    [EPISODE_NO_CAPTIONS, "waiting", "CAPTIONS", "pending", 1],
+    [EPISODE_LIMIT_FAILS, "waiting", "PROVIDER_LIMIT", "pending", 1],
+    [EPISODE_AUTH_FAILS, "failed", "PROVIDER_AUTH", "pending", 1],
     [
-      VIDEO_HTTP_FAILS,
+      EPISODE_HTTP_FAILS,
       "failed",
       "PROVIDER_HTTP",
       "pending",
       (TRANSCRIPT_STEP.retries?.limit ?? 0) + 1,
     ],
     [
-      VIDEO_RATE_LIMITED,
+      EPISODE_RATE_LIMITED,
       "failed",
       "PROVIDER_RATE_LIMIT",
       "pending",
       (TRANSCRIPT_STEP.retries?.limit ?? 0) + 1,
     ],
     [
-      VIDEO_PARSE_FAILS,
+      EPISODE_PARSE_FAILS,
       "failed",
       "PROVIDER_PARSE",
       "pending",
@@ -307,11 +311,11 @@ describe("ingestAttempt", () => {
     ],
   ] as const)(
     "%s finishes %s %s and leaves the episode %s",
-    async (videoId, status, code, episodeStatus, transcriptAttempts) => {
+    async (episodeId, status, code, episodeStatus, transcriptAttempts) => {
       await seedApprovedChannel(CHANNEL_A, "A");
-      await pendingNow(videoId);
-      const attemptId = await begin(videoId);
-      const { step, result } = await run(videoId, attemptId);
+      await pendingNow(episodeId);
+      const attemptId = await begin(episodeId);
+      const { step, result } = await run(episodeId, attemptId);
       expect(result).toEqual({
         attemptId,
         ended: "finished",
@@ -321,7 +325,7 @@ describe("ingestAttempt", () => {
       expect(step.calls.find((c) => c.name === "transcript")?.attempts).toBe(
         transcriptAttempts,
       );
-      const episode = await registry().getEpisode(CHANNEL_A, videoId);
+      const episode = await registry().getEpisode(CHANNEL_A, episodeId);
       expect(episode?.status).toBe(episodeStatus);
       expect(episode?.processing.latestAttempt).toMatchObject({
         attemptId,
@@ -337,10 +341,10 @@ describe("ingestAttempt", () => {
 
   it("finishes EMBEDDING_FAILED after the step's retries and leaves the staged count behind", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_ENGLISH);
-    const attemptId = await begin(VIDEO_ENGLISH);
+    await pendingNow(EPISODE_ENGLISH);
+    const attemptId = await begin(EPISODE_ENGLISH);
     env.AI_FAKE = JSON.stringify({ embedThrows: true });
-    const { step, result } = await run(VIDEO_ENGLISH, attemptId);
+    const { step, result } = await run(EPISODE_ENGLISH, attemptId);
     expect(result).toMatchObject({
       ended: "finished",
       outcome: { status: "failed", code: "EMBEDDING_FAILED" },
@@ -348,7 +352,7 @@ describe("ingestAttempt", () => {
     expect(step.calls.find((c) => c.name === "stage:0")?.attempts).toBe(
       (UPSERT_STEP.retries?.limit ?? 0) + 1,
     );
-    const episode = await registry().getEpisode(CHANNEL_A, VIDEO_ENGLISH);
+    const episode = await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH);
     expect(episode?.status).toBe("pending");
     expect(episode?.processing.latestAttempt).toMatchObject({
       outcomeCode: "EMBEDDING_FAILED",
@@ -359,15 +363,15 @@ describe("ingestAttempt", () => {
 
   it("finishes VECTORIZE_INCOMPLETE when an upsert fails, and when the generation never becomes readable", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_ENGLISH);
+    await pendingNow(EPISODE_ENGLISH);
     env.VECTORIZE_FAKE = JSON.stringify({ throwOn: ["upsert"] });
-    const first = await run(VIDEO_ENGLISH, await begin(VIDEO_ENGLISH));
+    const first = await run(EPISODE_ENGLISH, await begin(EPISODE_ENGLISH));
     expect(first.result).toMatchObject({
       outcome: { status: "failed", code: "VECTORIZE_INCOMPLETE" },
     });
 
     env.VECTORIZE_FAKE = JSON.stringify({ visibilityDelayReads: 1_000 });
-    const second = await run(VIDEO_ENGLISH, await begin(VIDEO_ENGLISH));
+    const second = await run(EPISODE_ENGLISH, await begin(EPISODE_ENGLISH));
     expect(second.result).toMatchObject({
       outcome: { status: "failed", code: "VECTORIZE_INCOMPLETE" },
     });
@@ -390,7 +394,7 @@ describe("ingestAttempt", () => {
         ),
       );
 
-    withVideo("invalidonce", marked("[[invalid-once]]"));
+    withEpisode("invalidonce", marked("[[invalid-once]]"));
     await pendingNow("invalidonce");
     const once = await run("invalidonce", await begin("invalidonce"));
     expect(once.result).toMatchObject({ ended: "published" });
@@ -399,7 +403,7 @@ describe("ingestAttempt", () => {
       (await registry().getEpisode(CHANNEL_A, "invalidonce"))?.summary?.format,
     ).toBe("structured");
 
-    withVideo("invalidalwy", marked("[[invalid]]"));
+    withEpisode("invalidalwy", marked("[[invalid]]"));
     await pendingNow("invalidalwy");
     const always = await run("invalidalwy", await begin("invalidalwy"));
     expect(always.result).toMatchObject({ ended: "published" });
@@ -409,7 +413,7 @@ describe("ingestAttempt", () => {
     if (fallback?.format === "raw_fallback")
       expect(fallback.rawText).toMatch(/cannot produce/);
 
-    withVideo("throwsummar", marked("[[throw]]"));
+    withEpisode("throwsummar", marked("[[throw]]"));
     await pendingNow("throwsummar");
     const failed = await run("throwsummar", await begin("throwsummar"));
     expect(failed.result).toMatchObject({
@@ -422,7 +426,7 @@ describe("ingestAttempt", () => {
 
   it("summarises a long episode section by section and synthesises over them", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    withVideo("longepisode", english(englishSegments(1200, 5), 6000)); // 100 minutes
+    withEpisode("longepisode", english(englishSegments(1200, 5), 6000)); // 100 minutes
     await pendingNow("longepisode");
     const { step, result } = await run(
       "longepisode",
@@ -451,7 +455,7 @@ describe("ingestAttempt", () => {
   it("keeps the allocated takeaways when the synthesis fails, instead of falling back to raw text", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
     env.AI_FAKE = JSON.stringify({ synthesisInvalid: true });
-    withVideo("nosynthesis", english(englishSegments(1200, 5), 6000)); // 100 minutes
+    withEpisode("nosynthesis", english(englishSegments(1200, 5), 6000)); // 100 minutes
     await pendingNow("nosynthesis");
     const { step, result } = await run(
       "nosynthesis",
@@ -474,7 +478,7 @@ describe("ingestAttempt", () => {
   it("falls back to raw text only when no section parsed at all", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
     // The marker rides the transcript, so it reaches every section's map prompt.
-    withVideo(
+    withEpisode(
       "allmapsfail",
       english(
         englishSegments(1200, 5).map((seg) => ({
@@ -499,7 +503,7 @@ describe("ingestAttempt", () => {
       startSec: i,
       durationSec: 1,
     }));
-    withVideo("hugetrnscrp", english(huge, 8_000));
+    withEpisode("hugetrnscrp", english(huge, 8_000));
     await pendingNow("hugetrnscrp");
     const { result } = await run("hugetrnscrp", await begin("hugetrnscrp"));
     expect(result).toMatchObject({
@@ -514,22 +518,22 @@ describe("ingestAttempt", () => {
 
   it("replaces content atomically: old summary and vectors stay until the new generation is verified, then only the new one remains", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(VIDEO_ENGLISH, CHANNEL_A, {
+    await seedEpisode(EPISODE_ENGLISH, CHANNEL_A, {
       status: "available",
       chunkCount: 3,
       processedAt: 1,
     });
-    await seedSummary(VIDEO_ENGLISH);
-    const oldIds = generationIds(VIDEO_ENGLISH, `gen-${VIDEO_ENGLISH}`, 3);
+    await seedSummary(EPISODE_ENGLISH);
+    const oldIds = generationIds(EPISODE_ENGLISH, `gen-${EPISODE_ENGLISH}`, 3);
     await vectorStore(env).upsert(
       SHARED_NAMESPACE,
       oldIds.map((id, i) => ({
         id,
         values: Array.from({ length: 8 }, (_, k) => (k === i ? 1 : 0)),
         metadata: {
-          videoId: VIDEO_ENGLISH,
+          episodeId: EPISODE_ENGLISH,
           channelId: CHANNEL_A,
-          generationId: `gen-${VIDEO_ENGLISH}`,
+          generationId: `gen-${EPISODE_ENGLISH}`,
           channelTitle: "A",
           title: "t",
           startSec: 0,
@@ -539,12 +543,12 @@ describe("ingestAttempt", () => {
         },
       })),
     );
-    await userDO(ALICE).markRead([VIDEO_ENGLISH]);
-    await registry().retryEpisode(CHANNEL_A, VIDEO_ENGLISH);
-    const attemptId = await begin(VIDEO_ENGLISH, "owner_retry");
-    const { staged } = await generations(VIDEO_ENGLISH);
+    await userDO(ALICE).markRead([EPISODE_ENGLISH]);
+    await registry().retryEpisode(CHANNEL_A, EPISODE_ENGLISH);
+    const attemptId = await begin(EPISODE_ENGLISH, "owner_retry");
+    const { staged } = await generations(EPISODE_ENGLISH);
 
-    const { step, result } = await run(VIDEO_ENGLISH, attemptId);
+    const { step, result } = await run(EPISODE_ENGLISH, attemptId);
     expect(result).toEqual({
       attemptId,
       ended: "published",
@@ -552,7 +556,7 @@ describe("ingestAttempt", () => {
       replaced: true,
     });
     expect(stepNames(step)).toContain("cleanup");
-    const episode = await registry().getEpisode(CHANNEL_A, VIDEO_ENGLISH);
+    const episode = await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH);
     expect(episode).toMatchObject({
       status: "available",
       summaryAvailableAt: 1,
@@ -560,76 +564,76 @@ describe("ingestAttempt", () => {
       processing: { chunkCount: ENGLISH_CHUNKS, intent: null },
     });
     expect(fakeVectorIds().sort()).toEqual(
-      generationIds(VIDEO_ENGLISH, staged ?? "", ENGLISH_CHUNKS).sort(),
+      generationIds(EPISODE_ENGLISH, staged ?? "", ENGLISH_CHUNKS).sort(),
     );
-    expect(await userDO(ALICE).readVideoIds([VIDEO_ENGLISH])).toEqual([
-      VIDEO_ENGLISH,
+    expect(await userDO(ALICE).readEpisodeIds([EPISODE_ENGLISH])).toEqual([
+      EPISODE_ENGLISH,
     ]);
   });
 
   it("deletes exactly the abandoned generation of a failed attempt before staging its own", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_ENGLISH);
+    await pendingNow(EPISODE_ENGLISH);
     env.VECTORIZE_FAKE = JSON.stringify({ visibilityDelayReads: 1_000 });
-    const first = await begin(VIDEO_ENGLISH);
-    const firstGeneration = (await generations(VIDEO_ENGLISH)).staged ?? "";
-    expect((await run(VIDEO_ENGLISH, first)).result).toMatchObject({
+    const first = await begin(EPISODE_ENGLISH);
+    const firstGeneration = (await generations(EPISODE_ENGLISH)).staged ?? "";
+    expect((await run(EPISODE_ENGLISH, first)).result).toMatchObject({
       outcome: { code: "VECTORIZE_INCOMPLETE" },
     });
     expect(fakeVectorIds().sort()).toEqual(
-      generationIds(VIDEO_ENGLISH, firstGeneration, ENGLISH_CHUNKS).sort(),
+      generationIds(EPISODE_ENGLISH, firstGeneration, ENGLISH_CHUNKS).sort(),
     );
 
     env.VECTORIZE_FAKE = "{}";
-    const second = await begin(VIDEO_ENGLISH);
-    const secondGeneration = (await generations(VIDEO_ENGLISH)).staged ?? "";
-    const { step, result } = await run(VIDEO_ENGLISH, second);
+    const second = await begin(EPISODE_ENGLISH);
+    const secondGeneration = (await generations(EPISODE_ENGLISH)).staged ?? "";
+    const { step, result } = await run(EPISODE_ENGLISH, second);
     expect(result).toMatchObject({ ended: "published" });
     expect(stepNames(step)).toContain("discard");
     expect(fakeVectorIds().sort()).toEqual(
-      generationIds(VIDEO_ENGLISH, secondGeneration, ENGLISH_CHUNKS).sort(),
+      generationIds(EPISODE_ENGLISH, secondGeneration, ENGLISH_CHUNKS).sort(),
     );
   });
 
   it("publishes even when cleanup or the related lookup fails", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(VIDEO_ENGLISH, CHANNEL_A, {
+    await seedEpisode(EPISODE_ENGLISH, CHANNEL_A, {
       status: "available",
       chunkCount: 3,
       processedAt: 1,
     });
-    await seedSummary(VIDEO_ENGLISH);
-    await registry().retryEpisode(CHANNEL_A, VIDEO_ENGLISH);
+    await seedSummary(EPISODE_ENGLISH);
+    await registry().retryEpisode(CHANNEL_A, EPISODE_ENGLISH);
     env.VECTORIZE_FAKE = JSON.stringify({ throwOn: ["deleteByIds", "query"] });
     const { step, result } = await run(
-      VIDEO_ENGLISH,
-      await begin(VIDEO_ENGLISH, "owner_retry"),
+      EPISODE_ENGLISH,
+      await begin(EPISODE_ENGLISH, "owner_retry"),
     );
     expect(result).toMatchObject({ ended: "published", replaced: true });
     expect(stepNames(step)).toContain("cleanup");
     expect(stepNames(step)).toContain("related");
     expect(
-      (await registry().getEpisode(CHANNEL_A, VIDEO_ENGLISH))?.status,
+      (await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH))?.status,
     ).toBe("available");
-    expect(await storedRelated(VIDEO_ENGLISH)).toBe("[]");
+    expect(await storedRelated(EPISODE_ENGLISH)).toBe("[]");
   });
 
   it("stores related candidates that are available episodes", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       status: "available",
       chunkCount: 1,
     });
     await vectorStore(env).upsert(SHARED_NAMESPACE, [
       {
-        id: generationIds(VIDEO_B, `gen-${VIDEO_B}`, 1)[0] ?? "",
+        id: generationIds(EPISODE_B, `gen-${EPISODE_B}`, 1)[0] ?? "",
         values: (await import("../src/lib/ai")).fakeEmbedding(
           englishSegments(1)[0]?.text ?? "",
         ),
         metadata: {
-          videoId: VIDEO_B,
+          episodeId: EPISODE_B,
           channelId: CHANNEL_A,
-          generationId: `gen-${VIDEO_B}`,
+          generationId: `gen-${EPISODE_B}`,
           channelTitle: "A",
           title: "b",
           startSec: 0,
@@ -639,24 +643,26 @@ describe("ingestAttempt", () => {
         },
       },
     ]);
-    await pendingNow(VIDEO_ENGLISH);
-    const { result } = await run(VIDEO_ENGLISH, await begin(VIDEO_ENGLISH));
+    await pendingNow(EPISODE_ENGLISH);
+    const { result } = await run(EPISODE_ENGLISH, await begin(EPISODE_ENGLISH));
     expect(result).toMatchObject({ ended: "published" });
-    expect(JSON.parse(await storedRelated(VIDEO_ENGLISH))).toEqual([VIDEO_B]);
+    expect(JSON.parse(await storedRelated(EPISODE_ENGLISH))).toEqual([
+      EPISODE_B,
+    ]);
   });
 
   it("exits at load without writing when the attempt is no longer current", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_ENGLISH);
-    const attemptId = await begin(VIDEO_ENGLISH);
+    await pendingNow(EPISODE_ENGLISH);
+    const attemptId = await begin(EPISODE_ENGLISH);
     await registry().finishAttempt(attemptId, {
       status: "waiting",
       code: "CAPTIONS",
     });
-    const { step, result } = await run(VIDEO_ENGLISH, attemptId);
+    const { step, result } = await run(EPISODE_ENGLISH, attemptId);
     expect(result).toEqual({ attemptId, ended: "stale" });
     expect(stepNames(step)).toEqual(["load"]);
-    const episode = await registry().getEpisode(CHANNEL_A, VIDEO_ENGLISH);
+    const episode = await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH);
     expect(episode?.processing.latestAttempt).toMatchObject({
       attemptId,
       status: "waiting",
@@ -666,8 +672,8 @@ describe("ingestAttempt", () => {
 
   it("runs as a real Workflow instance through the binding and publishes", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_ENGLISH);
-    const attemptId = await begin(VIDEO_ENGLISH);
+    await pendingNow(EPISODE_ENGLISH);
+    const attemptId = await begin(EPISODE_ENGLISH);
     const instance = await introspectWorkflowInstance(
       env.INGEST_WORKFLOW,
       attemptId,
@@ -680,7 +686,7 @@ describe("ingestAttempt", () => {
         id: attemptId,
         params: {
           attemptId,
-          videoId: VIDEO_ENGLISH,
+          episodeId: EPISODE_ENGLISH,
           channelId: CHANNEL_A,
           startDelaySec: 3,
         },
@@ -695,7 +701,7 @@ describe("ingestAttempt", () => {
       await instance.dispose();
     }
     expect(
-      (await registry().getEpisode(CHANNEL_A, VIDEO_ENGLISH))?.status,
+      (await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH))?.status,
     ).toBe("available");
   });
 });

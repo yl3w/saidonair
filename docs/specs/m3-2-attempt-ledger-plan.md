@@ -47,8 +47,8 @@ Spec §4, all fourteen criteria.
   composition had to live in a third module to avoid an import cycle.)
 - 2.2 `attempts.ts`: `insertRunning`, `insertBlocked`, `requireCurrent(sql, attemptId)` (running and generation
   matches the episode's staged one, else `INVALID_STATE`), `finish(sql, attemptId, status, code, detail, now)`,
-  `abandonedGeneration(sql, videoId)`.
-- 2.3 `episodes.ts`: `openStaged(sql, videoId, generationId, now)` (staged generation, `attempt_count += 1`),
+  `abandonedGeneration(sql, episodeId)`.
+- 2.3 `episodes.ts`: `openStaged(sql, episodeId, generationId, now)` (staged generation, `attempt_count += 1`),
   `clearWindow`, `markSkipped`, the `transcript_checked_at` write. `beginAttempt`, `markStaged`, `finishAttempt`,
   `recordBlockedAttempt` compose these under one transaction each.
 - 2.4 Facade methods and `types.ts` unions (`AttemptStart`, `AttemptOutcome`, `BlockReason`).
@@ -82,7 +82,7 @@ on 2026-09-13 against `main` at `5a73f18`; the three steps landed as one working
 tests before, 27 files and 202 tests after (`registry-discovery.test.ts` 5, `registry-attempts.test.ts` 22).
 
 Modules as built: `runs.ts` gained `getRun` and `recordDiscovery`; `episodes.ts` gained `EpisodeState` with
-`getState`/`requireState`, `hasAnyEpisode`, `existingVideoIds`, `insertDiscovered`, `listByVideoIds`, and the
+`getState`/`requireState`, `hasAnyEpisode`, `existingEpisodeIds`, `insertDiscovered`, `listByEpisodeIds`, and the
 window writes (`openStaged`, `scheduleNextAttempt`, `closeWindow`, `markSkipped`, `markTimedOut`,
 `markTranscriptChecked`, `publish`) plus `RETRY_INTERVAL_MS`; `attempts.ts` gained the row writes (`insertRunning`,
 `insertBlocked`, `setStagedChunkCount`, `finish`) and reads (`getAttempt`, `runningFor`, `latestWithGeneration`);

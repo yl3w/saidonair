@@ -1,7 +1,7 @@
 import type { ChatMessageStatus, ChatRole } from "@media-digest/shared";
 import { DomainError } from "../../lib/errors";
 import { chunk, placeholders } from "../../lib/sql";
-import { requireChannelId, requireVideoId } from "../../lib/youtube/ids";
+import { requireChannelId, requireEpisodeId } from "../../lib/youtube/ids";
 import type {
   Chat,
   ChatMessage,
@@ -35,9 +35,9 @@ type SourceRow = {
   source_id: string;
   message_id: string;
   position: number;
-  video_id: string;
+  episode_id: string;
   channel_id: string;
-  video_title: string;
+  episode_title: string;
   channel_title: string;
   start_sec: number;
 };
@@ -45,7 +45,7 @@ type SourceRow = {
 const CHAT_COLUMNS = "chat_id, title, created_at, updated_at";
 const MESSAGE_COLUMNS = `message_id, chat_id, sequence_number, role, content, status, failure_code,
   reply_to_message_id, channel_id, created_at, updated_at`;
-const SOURCE_COLUMNS = `source_id, message_id, position, video_id, channel_id, video_title,
+const SOURCE_COLUMNS = `source_id, message_id, position, episode_id, channel_id, episode_title,
   channel_title, start_sec`;
 
 const MAX_TITLE_LENGTH = 200;
@@ -188,15 +188,15 @@ export function completeAssistantMessage(
   validated.forEach((source, position) => {
     sql.exec(
       `INSERT INTO chat_message_sources
-         (source_id, message_id, position, video_id, channel_id, video_title, channel_title,
+         (source_id, message_id, position, episode_id, channel_id, episode_title, channel_title,
           start_sec, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       crypto.randomUUID(),
       message.messageId,
       position,
-      source.videoId,
+      source.episodeId,
       source.channelId,
-      source.videoTitle,
+      source.episodeTitle,
       source.channelTitle,
       source.startSec,
       now,
@@ -313,18 +313,18 @@ function requireContent(raw: string): string {
 }
 
 function validateSource(input: ChatMessageSourceInput): ChatMessageSourceInput {
-  const videoTitle = input.videoTitle.trim();
+  const episodeTitle = input.episodeTitle.trim();
   const channelTitle = input.channelTitle.trim();
-  if (videoTitle.length === 0 || channelTitle.length === 0) {
+  if (episodeTitle.length === 0 || channelTitle.length === 0) {
     throw new DomainError("INVALID_INPUT", "source titles are required");
   }
   if (!Number.isFinite(input.startSec) || input.startSec < 0) {
     throw new DomainError("INVALID_INPUT", "source startSec must be >= 0");
   }
   return {
-    videoId: requireVideoId(input.videoId),
+    episodeId: requireEpisodeId(input.episodeId),
     channelId: requireChannelId(input.channelId),
-    videoTitle,
+    episodeTitle,
     channelTitle,
     startSec: input.startSec,
   };
@@ -360,9 +360,9 @@ function toSource(row: SourceRow): ChatMessageSource {
   return {
     sourceId: row.source_id,
     position: row.position,
-    videoId: row.video_id,
+    episodeId: row.episode_id,
     channelId: row.channel_id,
-    videoTitle: row.video_title,
+    episodeTitle: row.episode_title,
     channelTitle: row.channel_title,
     startSec: row.start_sec,
   };

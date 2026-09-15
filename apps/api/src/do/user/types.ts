@@ -10,9 +10,9 @@ export type Chat = {
 export type ChatMessageSource = {
   sourceId: string;
   position: number;
-  videoId: string;
+  episodeId: string;
   channelId: string;
-  videoTitle: string;
+  episodeTitle: string;
   channelTitle: string;
   startSec: number;
 };

@@ -244,9 +244,9 @@ function EpisodesTable({
           {list.map((e) => {
             const p = e.processing;
             return (
-              <tr key={e.videoId}>
+              <tr key={e.episodeId}>
                 <td class="wrap">
-                  <a href={`https://youtu.be/${e.videoId}`}>{e.title}</a>
+                  <a href={`https://youtu.be/${e.episodeId}`}>{e.title}</a>
                 </td>
                 <td>
                   <Time at={e.publishedAt} />
@@ -305,20 +305,20 @@ function EpisodeActions({
   return (
     <div class="actions">
       <button
-        id={`detail-retry-${e.videoId}`}
+        id={`detail-retry-${e.episodeId}`}
         type="button"
         disabled={busy || runningRecently}
         title={runningRecently ? "An attempt is running" : undefined}
-        onClick={() => act(() => api.retryEpisode(e.channelId, e.videoId))}
+        onClick={() => act(() => api.retryEpisode(e.channelId, e.episodeId))}
       >
         Retry
       </button>
       {e.status === "failed" && (
         <button
-          id={`detail-skip-${e.videoId}`}
+          id={`detail-skip-${e.episodeId}`}
           type="button"
           disabled={busy}
-          onClick={() => act(() => api.skipEpisode(e.channelId, e.videoId))}
+          onClick={() => act(() => api.skipEpisode(e.channelId, e.episodeId))}
         >
           Skip
         </button>

@@ -135,7 +135,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   ├── migrations/               # DO SQLite migrations: registry/ and user/ (see Data & schema)
 │   │   ├── test/                     # setup.ts wipes the Registry after each test; helpers.ts expectShape and the seed
 │   │   │                             # fixtures (channels, runs, episodes naming a run, attempts, summaries);
-│   │   │                             # fixtures/transcripts.ts is the TRANSCRIPTS_FAKE content and its video ids
+│   │   │                             # fixtures/transcripts.ts is the TRANSCRIPTS_FAKE content and its episode ids
 │   │   ├── .dev.vars.example         # copy to .dev.vars (gitignored) for OWNER_EMAIL and DOWNSUB_API_KEY
 │   │   ├── wrangler.jsonc            # three environments: the top level is staging, env.dev is local, env.production
 │   │   │                             # is live; bindings repeat per environment (see Environments)
@@ -221,7 +221,7 @@ deploy, `media-rag` before the first production deploy.
 for index in media-rag-dev media-rag-staging media-rag; do
   wrangler vectorize create $index --dimensions=768 --metric=cosine
   wrangler vectorize create-metadata-index $index --property-name=channelId --type=string
-  wrangler vectorize create-metadata-index $index --property-name=videoId   --type=string
+  wrangler vectorize create-metadata-index $index --property-name=episodeId   --type=string
 done
 wrangler secret put OWNER_EMAIL --env=""                 # staging; in .dev.vars locally
 wrangler secret put DOWNSUB_API_KEY --env=""             # staging; in .dev.vars locally
@@ -368,6 +368,13 @@ Discovery runs, episode attempts, recovery, transcripts, and generation-safe pub
   values so the transcript step spends no retries on them.
 - `lib/workflows.ts` `ingestLauncher(env)` is the one path to the `INGEST_WORKFLOW` binding (create, status);
   `WORKFLOW_FAKE` replaces it in tests.
+- **`episodeId` is the product's noun; `videoId` survives only where the value is YouTube's own.** An episode id is
+  the YouTube video id it was discovered as, but everything we model, store, route and render calls it `episodeId`
+  (renamed 2026-09-15, `docs/PRD.md` §9). The exceptions are exactly two, and both are visible in one line of code:
+  `lib/youtube/rss.ts` parses the feed's `<yt:videoId>` into a `FeedEntry.videoId`, which `insertDiscovered` writes as
+  `episodes.episode_id`; and `lib/transcripts/downsub.ts` `watchUrl(videoId)` puts the id into a YouTube watch URL.
+  The shape is asserted once, by `requireEpisodeId` in `lib/youtube/ids.ts`, which lives there because the shape is
+  YouTube's even though the noun is ours.
 - `lib/youtube/ids.ts` and `lib/youtube/rss.ts` are the only code that talks to YouTube. Two feeds of the one public
   endpoint: `fetchChannelFeed` reads `channel_id=` for add-time verification and the channel title, and
   `fetchLongFormFeed` reads `playlist_id=UULF…` for every discovery run, so Shorts and live streams never become
@@ -392,15 +399,15 @@ export type TranscriptResult = {
   durationSec: number | null;
   captionStatus: "english" | "none" | "non_english";
 };
-export type TranscriptSource = { fetch(videoId: string): Promise<TranscriptResult> };
+export type TranscriptSource = { fetch(episodeId: string): Promise<TranscriptResult> };
 export class TranscriptError extends Error { readonly reason: TranscriptFailure } // UNPLAYABLE | PROVIDER_AUTH |
 // PROVIDER_LIMIT | PROVIDER_RATE_LIMIT | PROVIDER_HTTP | PROVIDER_PARSE
 // The reason is also the message prefix, as DomainError's code is, so it survives a Workflow step boundary and
 // `transcriptFailure(error)` recovers it the way `domainErrorCode` does.
 ```
 
-- `index.ts` exports `transcriptSource(env)`: the test-only `TRANSCRIPTS_FAKE` binding wins (JSON `{ status?, videos }`:
-  the provider's health plus a canned complete `TranscriptResult` or `{ failure }` per video id, built from
+- `index.ts` exports `transcriptSource(env)`: the test-only `TRANSCRIPTS_FAKE` binding wins (JSON `{ status?, episodes }`:
+  the provider's health plus a canned complete `TranscriptResult` or `{ failure }` per episode id, built from
   `test/fixtures/transcripts.ts`, the `YOUTUBE_FEEDS_FAKE` pattern; `status.ts` answers the fake's health too); otherwise
   the DownSub adapter. With neither the fake nor `DOWNSUB_API_KEY`, `fetch` throws `PROVIDER_AUTH` without calling out.
 - `downsub.ts`: `GET https://api.downsub.com/download?url=https://www.youtube.com/watch?v=<id>` with
@@ -533,7 +540,7 @@ Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`; bind
   through `lib/validation.ts` and the shared schemas; RSS XML and AI JSON by hand.
 - Errors: throw typed errors in `lib/`, convert to HTTP responses only in routes/middleware.
 - Comments explain *why*, not *what*. Keep them short.
-- Logging: `console.log` with a JSON object `{ event, email?, videoId?, ... }`. Never log transcript text or chat content.
+- Logging: `console.log` with a JSON object `{ event, email?, episodeId?, ... }`. Never log transcript text or chat content.
 
 ## Git
 

@@ -352,7 +352,7 @@ export const channelRoutes = new Hono<AppEnv>()
         : [];
       const read = await readSubset(
         c,
-        summaries.map((record) => record.videoId),
+        summaries.map((record) => record.episodeId),
       );
 
       return c.json<EpisodesResponse>({
@@ -360,7 +360,7 @@ export const channelRoutes = new Hono<AppEnv>()
           toEpisode(record, {
             read:
               eligible.has(channel.channelId) && record.summary !== null
-                ? read.has(record.videoId)
+                ? read.has(record.episodeId)
                 : undefined,
           }),
         ),
@@ -369,7 +369,7 @@ export const channelRoutes = new Hono<AppEnv>()
   )
 
   .get(
-    "/:id/episodes/:videoId",
+    "/:id/episodes/:episodeId",
     describeRoute({
       tags: ["episodes"],
       summary: "Get one episode",
@@ -382,23 +382,23 @@ export const channelRoutes = new Hono<AppEnv>()
     }),
     validate("param", EpisodeParamsSchema),
     async (c) => {
-      const { id, videoId } = c.req.valid("param");
+      const { id, episodeId } = c.req.valid("param");
       await requireChannel(c, id);
       const eligible = await eligibleChannelIds(c);
-      const record = await c.var.registry.getEpisode(id, videoId, [
+      const record = await c.var.registry.getEpisode(id, episodeId, [
         ...eligible,
       ]);
       if (!record) throw new DomainError("NOT_FOUND", "episode not found");
       const reports = eligible.has(id) && record.summary !== null;
       const read = reports
-        ? (await readSubset(c, [videoId])).has(videoId)
+        ? (await readSubset(c, [episodeId])).has(episodeId)
         : undefined;
       return c.json<EpisodeResponse>({ episode: toEpisode(record, { read }) });
     },
   )
 
   .post(
-    "/:id/episodes/:videoId/read",
+    "/:id/episodes/:episodeId/read",
     describeRoute({
       tags: ["episodes"],
       summary: "Mark a summary read",
@@ -414,9 +414,9 @@ export const channelRoutes = new Hono<AppEnv>()
     }),
     validate("param", EpisodeParamsSchema),
     async (c) => {
-      const { id, videoId } = c.req.valid("param");
-      const record = await requireReadableSummary(c, id, videoId);
-      await c.var.user.markRead([videoId]);
+      const { id, episodeId } = c.req.valid("param");
+      const record = await requireReadableSummary(c, id, episodeId);
+      await c.var.user.markRead([episodeId]);
       return c.json<EpisodeResponse>({
         episode: toEpisode(record, { read: true }),
       });
@@ -424,7 +424,7 @@ export const channelRoutes = new Hono<AppEnv>()
   )
 
   .delete(
-    "/:id/episodes/:videoId/read",
+    "/:id/episodes/:episodeId/read",
     describeRoute({
       tags: ["episodes"],
       summary: "Undo a read receipt",
@@ -440,9 +440,9 @@ export const channelRoutes = new Hono<AppEnv>()
     }),
     validate("param", EpisodeParamsSchema),
     async (c) => {
-      const { id, videoId } = c.req.valid("param");
-      const record = await requireReadableSummary(c, id, videoId);
-      await c.var.user.clearRead([videoId]);
+      const { id, episodeId } = c.req.valid("param");
+      const record = await requireReadableSummary(c, id, episodeId);
+      await c.var.user.clearRead([episodeId]);
       return c.json<EpisodeResponse>({
         episode: toEpisode(record, { read: false }),
       });
@@ -450,7 +450,7 @@ export const channelRoutes = new Hono<AppEnv>()
   )
 
   .post(
-    "/:id/episodes/:videoId/retry",
+    "/:id/episodes/:episodeId/retry",
     describeRoute({
       tags: ["episodes"],
       summary: "Retry an episode",
@@ -469,9 +469,9 @@ export const channelRoutes = new Hono<AppEnv>()
     }),
     validate("param", EpisodeParamsSchema),
     async (c) => {
-      const { id, videoId } = c.req.valid("param");
+      const { id, episodeId } = c.req.valid("param");
       const registry = c.var.registry;
-      const before = await registry.getEpisode(id, videoId);
+      const before = await registry.getEpisode(id, episodeId);
       if (!before) throw new DomainError("NOT_FOUND", "episode not found");
 
       // A running attempt refuses Retry, unless it is old and the engine has lost it (rule 17).
@@ -492,7 +492,7 @@ export const channelRoutes = new Hono<AppEnv>()
       const block = preflight(await transcriptProviderHealth(c.env));
       if (block) {
         const blocked = await registry.recordBlockedAttempt(
-          videoId,
+          episodeId,
           "owner_retry",
           block,
           c.var.identity.email,
@@ -503,7 +503,7 @@ export const channelRoutes = new Hono<AppEnv>()
         });
       }
 
-      const reopened = await registry.retryEpisode(id, videoId);
+      const reopened = await registry.retryEpisode(id, episodeId);
       const [result] = await startEpisodeAttempts(
         c.env,
         [reopened],
@@ -514,7 +514,7 @@ export const channelRoutes = new Hono<AppEnv>()
       );
       if (!result)
         throw new Error("the starter answered nothing for one episode");
-      const after = await registry.getEpisode(id, videoId);
+      const after = await registry.getEpisode(id, episodeId);
       return c.json<EpisodeRetryResponse>({
         episode: toEpisode(after ?? reopened),
         attempt: result.attempt,
@@ -523,7 +523,7 @@ export const channelRoutes = new Hono<AppEnv>()
   )
 
   .post(
-    "/:id/episodes/:videoId/skip",
+    "/:id/episodes/:episodeId/skip",
     describeRoute({
       tags: ["episodes"],
       summary: "Skip a failed episode",
@@ -539,11 +539,11 @@ export const channelRoutes = new Hono<AppEnv>()
     }),
     validate("param", EpisodeParamsSchema),
     async (c) => {
-      const { id, videoId } = c.req.valid("param");
+      const { id, episodeId } = c.req.valid("param");
       const record = await c.var.registry.skipEpisode(
         c.var.identity.email,
         id,
-        videoId,
+        episodeId,
       );
       return c.json<EpisodeResponse>({ episode: toEpisode(record) });
     },
@@ -648,10 +648,10 @@ async function eligibleChannelIds(c: Ctx): Promise<Set<string>> {
 /** The caller's receipts among the given summaries; the empty list never crosses to the User DO. */
 async function readSubset(
   c: Ctx,
-  videoIds: string[],
+  episodeIds: string[],
 ): Promise<ReadonlySet<string>> {
-  if (videoIds.length === 0) return new Set<string>();
-  return new Set(await c.var.user.readVideoIds(videoIds));
+  if (episodeIds.length === 0) return new Set<string>();
+  return new Set(await c.var.user.readEpisodeIds(episodeIds));
 }
 
 /**
@@ -662,13 +662,13 @@ async function readSubset(
 async function requireReadableSummary(
   c: Ctx,
   channelId: string,
-  videoId: string,
+  episodeId: string,
 ) {
   const eligible = await eligibleChannelIds(c);
   if (!eligible.has(channelId)) {
     throw new DomainError("NOT_FOUND", "episode not found");
   }
-  const record = await c.var.registry.getEpisode(channelId, videoId, [
+  const record = await c.var.registry.getEpisode(channelId, episodeId, [
     ...eligible,
   ]);
   if (!record) throw new DomainError("NOT_FOUND", "episode not found");

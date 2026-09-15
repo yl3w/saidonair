@@ -31,7 +31,7 @@ DownSub key now produces `available` episodes with summaries in the Registry and
 | Where the lost-attempt helper lands | `closeLostEpisodeAttempt(env, attemptId, now)` lands here for Retry; M3.6's sweep reuses it. | Retry needs it first, and the fake launcher it is tested against arrives here. |
 | Pre-flight reading | `auth_failed` → `PROVIDER_AUTH`; `ok` with `remainingCredits === 0` → `PROVIDER_LIMIT`; `ok` otherwise and `unreachable` → proceed. Read once per batch. | Parent §2 "Pre-flight gate". |
 | A `create()` that throws | `finishAttempt(failed WORKFLOW_LOST, detail = message)`; the batch continues with the next episode. | PRD rule 8. |
-| Digest basis | `listDigest` selects `processed_at >= since` and orders `processed_at DESC, video_id`; the web changes nothing. | PRD §4.4; the route already exposes `summaryAvailableAt`. The 2026-09-12 plan had no step for this; it belongs where episodes first become available. |
+| Digest basis | `listDigest` selects `processed_at >= since` and orders `processed_at DESC, episode_id`; the web changes nothing. | PRD §4.4; the route already exposes `summaryAvailableAt`. The 2026-09-12 plan had no step for this; it belongs where episodes first become available. |
 | Step retries and timeouts | Transcript: 5 retries, exponential from 10 s, 2-minute timeout. Each AI call: 3 retries, 3-minute timeout. Each upsert: 3 retries. Verify: a check every 10 s for the first 3 minutes (18 checks), then exponential from 30 s up to 6 more (about 21 minutes in all), so asynchronous visibility is absorbed before `VECTORIZE_INCOMPLETE` and a generation that is ready at 80 s is published at about 90 s, not on an exponential schedule's next stop. Registry writes: 3 retries. Discard and cleanup: 2 retries, then logged and swallowed. | Parent §3 timeouts. M3.3's probe measured 10–80 s before a write was readable on a fresh index (owner decision 2026-09-13 on hearing it: publish as soon as the data is there, the extra reads are cheap). The owner may tune the counts. |
 | The transcript step's result | The step returns the segments when their JSON is under 700 KB, else `{ tooLarge: true }`, and the instance finishes `TRANSCRIPT_TOO_LARGE`. | Workflows cap a step result at 1 MiB (parent §2). |
 | Verify step result | Only the count of missing ids crosses the step boundary. | Step results stay small. |
@@ -47,7 +47,7 @@ DownSub key now produces `available` episodes with summaries in the Registry and
 ### 3.1 `lib/workflows.ts`
 
 ```ts
-export type IngestParams = { attemptId: string; videoId: string; channelId: string; startDelaySec: number };
+export type IngestParams = { attemptId: string; episodeId: string; channelId: string; startDelaySec: number };
 export type InstanceStatus = "active" | "gone" | "missing";
 export type IngestLauncher = { create(params: IngestParams): Promise<void>; status(attemptId: string): Promise<InstanceStatus> };
 export function ingestLauncher(env): IngestLauncher;    // WORKFLOW_FAKE or env.INGEST_WORKFLOW; instance id = attemptId
@@ -74,7 +74,7 @@ delay 0.
 
 ### 3.3 The Retry route
 
-`POST /channels/:id/episodes/:videoId/retry` answers `EpisodeRetryResponse` `{ episode, attempt }`. With a running
+`POST /channels/:id/episodes/:episodeId/retry` answers `EpisodeRetryResponse` `{ episode, attempt }`. With a running
 latest attempt: started under an hour ago → 409 `INVALID_STATE`; older → `launcher.status(attemptId)`: `active` →
 409; `gone` or `missing` → `closeLostEpisodeAttempt`, then continue. Then the order of §2. The Skip route is
 unchanged. Channel status and the caller's role are never read.

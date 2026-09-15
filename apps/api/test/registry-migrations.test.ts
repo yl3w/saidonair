@@ -169,7 +169,7 @@ describe("registry migrations", () => {
       const sql = state.storage.sql;
       const insert = (cols: string, vals: string) =>
         sql.exec(
-          `INSERT INTO episodes (video_id, channel_id, discovered_by_run_id, title, published_at, ${cols}, updated_at, created_at)
+          `INSERT INTO episodes (episode_id, channel_id, discovered_by_run_id, title, published_at, ${cols}, updated_at, created_at)
            VALUES ('v', ?, ?, 't', 1, ${vals}, 1, 1)`,
           CHANNEL_A,
           runId,
@@ -246,18 +246,18 @@ describe("registry migrations", () => {
       sql.exec(
         `UPDATE episodes SET status = 'skipped', intent = NULL, window_started_at = NULL,
            window_deadline_at = NULL, next_attempt_at = NULL, staged_vector_generation = NULL,
-           skip_reason = 'SHORT', skipped_at = 1 WHERE video_id = 'v'`,
+           skip_reason = 'SHORT', skipped_at = 1 WHERE episode_id = 'v'`,
       );
       sql.exec(
         `UPDATE episodes SET status = 'available', skip_reason = NULL, skipped_at = NULL,
            chunk_count = 2, vectorized_at = 1, processed_at = 1, active_vector_generation = 'g1',
            intent = 'replace', window_started_at = 5, window_deadline_at = 6, next_attempt_at = 5
-         WHERE video_id = 'v'`,
+         WHERE episode_id = 'v'`,
       );
       sql.exec(
         `UPDATE episodes SET status = 'failed', failure_code = 'INGESTION_TIMEOUT', failure_detail = 'CAPTIONS',
            intent = NULL, window_started_at = NULL, window_deadline_at = NULL, next_attempt_at = NULL
-         WHERE video_id = 'v'`,
+         WHERE episode_id = 'v'`,
       );
     });
   });
@@ -270,14 +270,14 @@ describe("registry migrations", () => {
     await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;
       sql.exec(
-        `INSERT INTO episodes (video_id, channel_id, discovered_by_run_id, title, published_at, status, updated_at, created_at)
+        `INSERT INTO episodes (episode_id, channel_id, discovered_by_run_id, title, published_at, status, updated_at, created_at)
          VALUES ('v', ?, ?, 't', 1, 'pending', 1, 1)`,
         CHANNEL_A,
         runId,
       );
       const insert = (id: string, cols: string, vals: string) =>
         sql.exec(
-          `INSERT INTO episode_ingestion_attempts (attempt_id, video_id, intent, started_at, created_at, ${cols})
+          `INSERT INTO episode_ingestion_attempts (attempt_id, episode_id, intent, started_at, created_at, ${cols})
            VALUES ('${id}', 'v', 'publish', 1, 1, ${vals})`,
         );
       // Running has no end; every other status has one.

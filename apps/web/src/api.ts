@@ -153,33 +153,33 @@ export const api = {
       `/channels/${enc(channelId)}/episodes${limit === undefined ? "" : `?limit=${limit}`}`,
     ),
   /** One episode with its summary, related titles and read state: the reading view's deep link. */
-  getEpisode: (channelId: string, videoId: string) =>
+  getEpisode: (channelId: string, episodeId: string) =>
     request<EpisodeResponse>(
       "GET",
-      `/channels/${enc(channelId)}/episodes/${enc(videoId)}`,
+      `/channels/${enc(channelId)}/episodes/${enc(episodeId)}`,
     ),
   /** Done. The one write that marks a summary read (docs/PRD.md §4.4); nothing else records one. */
-  markRead: (channelId: string, videoId: string) =>
+  markRead: (channelId: string, episodeId: string) =>
     request<EpisodeResponse>(
       "POST",
-      `/channels/${enc(channelId)}/episodes/${enc(videoId)}/read`,
+      `/channels/${enc(channelId)}/episodes/${enc(episodeId)}/read`,
     ),
   /** Undo, offered from History where the row is visible. */
-  clearRead: (channelId: string, videoId: string) =>
+  clearRead: (channelId: string, episodeId: string) =>
     request<EpisodeResponse>(
       "DELETE",
-      `/channels/${enc(channelId)}/episodes/${enc(videoId)}/read`,
+      `/channels/${enc(channelId)}/episodes/${enc(episodeId)}/read`,
     ),
   /** The episode and its new attempt: `running` when work started, `blocked` when pre-flight refused it. */
-  retryEpisode: (channelId: string, videoId: string) =>
+  retryEpisode: (channelId: string, episodeId: string) =>
     request<EpisodeRetryResponse>(
       "POST",
-      `/channels/${enc(channelId)}/episodes/${enc(videoId)}/retry`,
+      `/channels/${enc(channelId)}/episodes/${enc(episodeId)}/retry`,
     ),
-  skipEpisode: (channelId: string, videoId: string) =>
+  skipEpisode: (channelId: string, episodeId: string) =>
     request<EpisodeResponse>(
       "POST",
-      `/channels/${enc(channelId)}/episodes/${enc(videoId)}/skip`,
+      `/channels/${enc(channelId)}/episodes/${enc(episodeId)}/skip`,
     ),
   listIngestionRuns: (channelId: string) =>
     request<IngestionRunsResponse>("GET", `/channels/${enc(channelId)}/runs`),

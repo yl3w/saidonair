@@ -95,7 +95,7 @@ Decisions made while implementing (plan decisions, stand unless vetoed):
 - The fake is a stub `Vectorize` behind `realStore`, so the namespace filter, the id-ownership check, and the
   batching run the same code in tests as in production; `throwOn` was added to the fake's options for M3.5's
   failure paths; `fakeVectorIds()` is exported for assertions.
-- `upsert` refuses a record whose id does not parse as `${videoId}:${generationId}:${index}` or whose metadata names
+- `upsert` refuses a record whose id does not parse as `${episodeId}:${generationId}:${index}` or whose metadata names
   a different video: nothing but our own ids is ever written.
 - `embed` also refuses an empty batch; a vector with a non-finite value is `EMBEDDING_FAILED`.
 - The fake summarizer's takeaways reuse the first three `[h:mm:ss]` markers of the prompt, so M3.5's tests get

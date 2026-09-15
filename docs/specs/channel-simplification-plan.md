@@ -26,7 +26,7 @@
 - Typed errors: throw `DomainError(code, detail)` in `do/` and `lib/`; `middleware/errors.ts` maps `INVALID_INPUT` 400, `NOT_OWNER` 403, `NOT_FOUND` 404, `INVALID_STATE` 409.
 - Named exports only; no `any`; `snake_case` tables and columns; every table carries `created_at`; ids are `TEXT`; DO SQLite takes at most 100 bound parameters, so `IN (...)` lists go through `chunk()` from `lib/sql.ts`.
 - Copy: "Declined" for a declined channel never approved, "Withdrawn" for one that was; "awaiting owner approval"; "paused"; "nobody is waiting"; skip reasons humanised in `apps/web/src/lib/copy.ts` only.
-- Tests: Vitest in `apps/api`; `expectShape(schema, body)` on one response per shared schema; owner is `owner@example.com` (`OWNER` in `test/helpers.ts`), users `ALICE` and `BOB`; ids `CHANNEL_A`…`E`, `VIDEO_A`…`C`. `apps/web` has typecheck and lint only.
+- Tests: Vitest in `apps/api`; `expectShape(schema, body)` on one response per shared schema; owner is `owner@example.com` (`OWNER` in `test/helpers.ts`), users `ALICE` and `BOB`; ids `CHANNEL_A`…`E`, `EPISODE_A`…`C`. `apps/web` has typecheck and lint only.
 - Commits: conventional (`feat(api): …`, `feat(web): …`, `test(api): …`, `docs: …`), one logical change each, ending with the attribution lines the session provides.
 
 ## Not in this plan
@@ -1060,7 +1060,7 @@ git commit -m "feat(api): add-or-follow, request again, approve, decline, pause,
 
 **Interfaces:**
 - Produces (shared): `EpisodeStatus = "pending" | "available" | "failed" | "skipped"`; `EpisodeWaitingCode = "CAPTIONS" | "LIVE_OR_UPCOMING" | "PROVIDER_LIMIT"`; `EpisodeSkipReason = "SHORT" | "NON_ENGLISH" | "NO_CAPTIONS" | "LIVE_OR_UPCOMING" | "UNPLAYABLE" | "OWNER"`; `EpisodeCounts = { tracked, available, pending, waiting, failed, skipped }`; `EpisodeProcessing` gains `waitingCode, skipReason, skippedAt, skippedByEmail`; `IngestionRunEpisodeStatus = "selected" | "available" | "failed" | "skipped" | "waiting" | "not_attempted"`; `Channel.episodes: EpisodeCounts` replaces `processedCount`; `Catalog.episodes = { available, pending, waiting, failed, skipped }`.
-- Produces (store): `listAvailableVideoIds(sql, channelIds)` replaces `listProcessedVideoIds`; `zeroCounts()` returns the six-field shape.
+- Produces (store): `listAvailableEpisodeIds(sql, channelIds)` replaces `listProcessedEpisodeIds`; `zeroCounts()` returns the six-field shape.
 - Produces (lib): `zeroEpisodeCounts(): EpisodeCounts` in `lib/channel-view.ts`; `ChannelView.episodes: EpisodeCounts`.
 
 - [ ] **Step 1: Rewrite the migration's episode tables and the failing tests**
@@ -1074,7 +1074,7 @@ it("ties episode columns to status", async () => {
   await runInDurableObject(stub, (_, state) => {
     const sql = state.storage.sql;
     const insert = (cols: string, vals: string) =>
-      sql.exec(`INSERT INTO episodes (video_id, channel_id, title, published_at, ${cols}, updated_at, created_at) VALUES ('v', ?, 't', 1, ${vals}, 1, 1)`, CHANNEL_A);
+      sql.exec(`INSERT INTO episodes (episode_id, channel_id, title, published_at, ${cols}, updated_at, created_at) VALUES ('v', ?, 't', 1, ${vals}, 1, 1)`, CHANNEL_A);
     expect(() => insert("status", "'processed'")).toThrow(/CHECK/i);
     expect(() => insert("status", "'available'")).toThrow(/CHECK/i);
     expect(() => insert("status, chunk_count, vectorized_at, processed_at", "'available', 0, 1, 1")).toThrow(/CHECK/i);
@@ -1084,8 +1084,8 @@ it("ties episode columns to status", async () => {
     expect(() => insert("status", "'failed'")).toThrow(/CHECK/i);
     expect(() => insert("status, waiting_code, chunk_count, vectorized_at, processed_at", "'available', 'CAPTIONS', 1, 1, 1")).toThrow(/CHECK/i);
     insert("status, waiting_code", "'pending', 'CAPTIONS'");
-    sql.exec("UPDATE episodes SET status = 'skipped', waiting_code = NULL, skip_reason = 'SHORT', skipped_at = 1 WHERE video_id = 'v'");
-    sql.exec("UPDATE episodes SET status = 'available', skip_reason = NULL, skipped_at = NULL, chunk_count = 2, vectorized_at = 1, processed_at = 1 WHERE video_id = 'v'");
+    sql.exec("UPDATE episodes SET status = 'skipped', waiting_code = NULL, skip_reason = 'SHORT', skipped_at = 1 WHERE episode_id = 'v'");
+    sql.exec("UPDATE episodes SET status = 'available', skip_reason = NULL, skipped_at = NULL, chunk_count = 2, vectorized_at = 1, processed_at = 1 WHERE episode_id = 'v'");
   });
 });
 ```
@@ -1115,7 +1115,7 @@ export const EpisodeCountsSchema = z.object({ tracked: Count, available: Count, 
 
 - [ ] **Step 3: Store, projection, routes**
 
-`episodes.ts`: add `e.waiting_code, e.skip_reason, e.skipped_at, e.skipped_by_email` to `EPISODE_SELECT` and `EpisodeRow`; `toStatus` accepts the four values; `toWaitingCode` and `toSkipReason` narrow like `toStatus`; `toRecord.processing` carries the four new fields. Rename `listProcessedVideoIds` to `listAvailableVideoIds` with `status = 'available'`; `listDigest` and `attachRelated` filter on `'available'`. Counts:
+`episodes.ts`: add `e.waiting_code, e.skip_reason, e.skipped_at, e.skipped_by_email` to `EPISODE_SELECT` and `EpisodeRow`; `toStatus` accepts the four values; `toWaitingCode` and `toSkipReason` narrow like `toStatus`; `toRecord.processing` carries the four new fields. Rename `listProcessedEpisodeIds` to `listAvailableEpisodeIds` with `status = 'available'`; `listDigest` and `attachRelated` filter on `'available'`. Counts:
 
 ```ts
 export function zeroCounts(): EpisodeCounts {
@@ -1127,13 +1127,13 @@ export function zeroCounts(): EpisodeCounts {
 // and per row: entry.tracked += n; entry[status] += n; if (row.waiting) entry.waiting += n;
 ```
 
-`runs.ts` `toEpisodeStatus`: the six run-episode values. `catalog.ts` `summarize`: `episodes` from one grouped query over `status` and `waiting_code IS NOT NULL` into `{ available, pending, waiting, failed, skipped }`. `registry.ts`: rename `listProcessedVideoIds` to `listAvailableVideoIds`. `lib/channel-view.ts`: `ChannelView.episodes: EpisodeCounts`, `toChannel` emits `episodes`, and `export function zeroEpisodeCounts(): EpisodeCounts` (same literal as the store's, so routes need not import from `do/`). `routes/channels.ts` and `routes/follows.ts`: pass `counts[id] ?? zeroEpisodeCounts()`; `unreadByChannel` calls `listAvailableVideoIds`.
+`runs.ts` `toEpisodeStatus`: the six run-episode values. `catalog.ts` `summarize`: `episodes` from one grouped query over `status` and `waiting_code IS NOT NULL` into `{ available, pending, waiting, failed, skipped }`. `registry.ts`: rename `listProcessedEpisodeIds` to `listAvailableEpisodeIds`. `lib/channel-view.ts`: `ChannelView.episodes: EpisodeCounts`, `toChannel` emits `episodes`, and `export function zeroEpisodeCounts(): EpisodeCounts` (same literal as the store's, so routes need not import from `do/`). `routes/channels.ts` and `routes/follows.ts`: pass `counts[id] ?? zeroEpisodeCounts()`; `unreadByChannel` calls `listAvailableEpisodeIds`.
 
 Web compile: `EpisodeItem.tsx` compares to `"available"`; `ChannelList.tsx`, `Channel.tsx`, `CatalogTable.tsx` read `channel.episodes.available` and `channel.episodes.tracked`; `CatalogHealth.tsx` shows `available` and the sum; `OwnerChannel.tsx` episode rows show `e.processing?.skipReason ?? e.processing?.failureCode ?? "—"` in the Failure column.
 
 - [ ] **Step 4: Tests, check, commit**
 
-`registry-episodes.test.ts`: the counts assertion becomes the six-field shape with one `pending` seeded with `waitingCode: "CAPTIONS"` counted in both `pending` and `waiting`; `listProcessedVideoIds` → `listAvailableVideoIds`. `registry-runs.test.ts`: seeded run-episode statuses become `available`, `failed`, `skipped`. `registry-management.test.ts`, `routes-channels.test.ts`, `routes-follows-digest.test.ts`: `processedCount: n` → `episodes: expect.objectContaining({ available: n })`; the catalog summary expects the five counts. `openapi.test.ts`: nothing.
+`registry-episodes.test.ts`: the counts assertion becomes the six-field shape with one `pending` seeded with `waitingCode: "CAPTIONS"` counted in both `pending` and `waiting`; `listProcessedEpisodeIds` → `listAvailableEpisodeIds`. `registry-runs.test.ts`: seeded run-episode statuses become `available`, `failed`, `skipped`. `registry-management.test.ts`, `routes-channels.test.ts`, `routes-follows-digest.test.ts`: `processedCount: n` → `episodes: expect.objectContaining({ available: n })`; the catalog summary expects the five counts. `openapi.test.ts`: nothing.
 
 Run: `pnpm check`
 Expected: PASS.
@@ -1150,10 +1150,10 @@ git commit -m "feat(api): episodes are pending, available, failed, or skipped, w
 - Test: `apps/api/test/registry-episodes.test.ts`, `apps/api/test/routes-channels.test.ts`, `apps/api/test/registry-management.test.ts`
 
 **Interfaces:**
-- Produces (store `episodes.ts`): `getEpisode(sql, channelId, videoId): EpisodeRecord | null` (no related titles), `retryEpisode(sql, channelId, videoId, now): EpisodeRecord`, `skipEpisode(sql, channelId, videoId, ownerEmail, now): EpisodeRecord`. (store `runs.ts`): `hasActiveRun(sql, channelId): boolean`.
-- Produces (facade): `retryEpisode(actor, channelId, videoId): EpisodeRecord`, `skipEpisode(actor, channelId, videoId): EpisodeRecord`.
-- Produces (shared): `EpisodeParamsSchema { id, videoId }`, `EpisodeResponseSchema { episode: Episode }`, `Catalog.attention = { failedEpisodes, neverStarted, requested }`.
-- Produces (routes): `POST /channels/:id/episodes/:videoId/retry`, `POST /channels/:id/episodes/:videoId/skip` (owner). `IngestionReason` gains `"episode_retry"`.
+- Produces (store `episodes.ts`): `getEpisode(sql, channelId, episodeId): EpisodeRecord | null` (no related titles), `retryEpisode(sql, channelId, episodeId, now): EpisodeRecord`, `skipEpisode(sql, channelId, episodeId, ownerEmail, now): EpisodeRecord`. (store `runs.ts`): `hasActiveRun(sql, channelId): boolean`.
+- Produces (facade): `retryEpisode(actor, channelId, episodeId): EpisodeRecord`, `skipEpisode(actor, channelId, episodeId): EpisodeRecord`.
+- Produces (shared): `EpisodeParamsSchema { id, episodeId }`, `EpisodeResponseSchema { episode: Episode }`, `Catalog.attention = { failedEpisodes, neverStarted, requested }`.
+- Produces (routes): `POST /channels/:id/episodes/:episodeId/retry`, `POST /channels/:id/episodes/:episodeId/skip` (owner). `IngestionReason` gains `"episode_retry"`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1163,21 +1163,21 @@ Add to `registry-episodes.test.ts`:
 it("owner retry reopens a failed or skipped episode; owner skip closes a failed one; both refuse an active run", async () => {
   const stub = registry();
   await stub.createChannel(OWNER, { channelId: CHANNEL_A, title: "A", status: "approved" });
-  await seedEpisode(VIDEO_A, CHANNEL_A, { status: "failed", attemptCount: 3, failureCode: "PROVIDER_HTTP" });
-  await seedEpisode(VIDEO_B, CHANNEL_A, { status: "skipped", skipReason: "SHORT" });
-  await seedEpisode(VIDEO_C, CHANNEL_A, { status: "available" });
+  await seedEpisode(EPISODE_A, CHANNEL_A, { status: "failed", attemptCount: 3, failureCode: "PROVIDER_HTTP" });
+  await seedEpisode(EPISODE_B, CHANNEL_A, { status: "skipped", skipReason: "SHORT" });
+  await seedEpisode(EPISODE_C, CHANNEL_A, { status: "available" });
 
-  const skipped = await stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_A);
+  const skipped = await stub.skipEpisode(OWNER, CHANNEL_A, EPISODE_A);
   expect(skipped.status).toBe("skipped");
   expect(skipped.processing).toMatchObject({ skipReason: "OWNER", skippedByEmail: OWNER });
-  const retried = await stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_A);
+  const retried = await stub.retryEpisode(OWNER, CHANNEL_A, EPISODE_A);
   expect(retried.status).toBe("pending");
   expect(retried.processing).toMatchObject({ attemptCount: 0, failureCode: null, skipReason: null, skippedAt: null, skippedByEmail: null });
-  expect((await stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_B)).status).toBe("pending");
-  await expectDomainError(stub.skipEpisode(OWNER, CHANNEL_A, VIDEO_C), "INVALID_STATE");
-  await expectDomainError(stub.retryEpisode(OWNER, CHANNEL_A, VIDEO_C), "INVALID_STATE");
-  await expectDomainError(stub.retryEpisode(ALICE, CHANNEL_A, VIDEO_A), "NOT_OWNER");
-  await expectDomainError(stub.retryEpisode(OWNER, CHANNEL_B, VIDEO_A), "NOT_FOUND");
+  expect((await stub.retryEpisode(OWNER, CHANNEL_A, EPISODE_B)).status).toBe("pending");
+  await expectDomainError(stub.skipEpisode(OWNER, CHANNEL_A, EPISODE_C), "INVALID_STATE");
+  await expectDomainError(stub.retryEpisode(OWNER, CHANNEL_A, EPISODE_C), "INVALID_STATE");
+  await expectDomainError(stub.retryEpisode(ALICE, CHANNEL_A, EPISODE_A), "NOT_OWNER");
+  await expectDomainError(stub.retryEpisode(OWNER, CHANNEL_B, EPISODE_A), "NOT_FOUND");
 
   await seedEpisode("ddddddddddd", CHANNEL_A, { status: "failed" });
   await seedRun(CHANNEL_A, { status: "running" });
@@ -1207,50 +1207,50 @@ export function hasActiveRun(sql: SqlStorage, channelId: string): boolean {
 `episodes.ts`:
 
 ```ts
-export function getEpisode(sql: SqlStorage, channelId: string, videoId: string): EpisodeRecord | null {
-  const row = sql.exec<EpisodeRow>(`${EPISODE_SELECT} WHERE e.channel_id = ? AND e.video_id = ?`, channelId, videoId).toArray()[0];
+export function getEpisode(sql: SqlStorage, channelId: string, episodeId: string): EpisodeRecord | null {
+  const row = sql.exec<EpisodeRow>(`${EPISODE_SELECT} WHERE e.channel_id = ? AND e.episode_id = ?`, channelId, episodeId).toArray()[0];
   return row ? toRecord(row, []) : null;
 }
 
 /** Owner: `failed | skipped → pending`, attempts and skip fields cleared. The caller starts the one-episode run. */
-export function retryEpisode(sql: SqlStorage, channelId: string, videoId: string, now: number): EpisodeRecord {
-  const episode = requireOwnerActionable(sql, channelId, videoId);
+export function retryEpisode(sql: SqlStorage, channelId: string, episodeId: string, now: number): EpisodeRecord {
+  const episode = requireOwnerActionable(sql, channelId, episodeId);
   if (episode.status !== "failed" && episode.status !== "skipped") {
     throw new DomainError("INVALID_STATE", `only failed or skipped episodes can be retried (status: ${episode.status})`);
   }
   sql.exec(
     `UPDATE episodes SET status = 'pending', attempt_count = 0, failure_code = NULL, failure_detail = NULL,
        skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL, waiting_code = NULL, updated_at = ?
-     WHERE video_id = ?`, now, videoId,
+     WHERE episode_id = ?`, now, episodeId,
   );
-  return getEpisode(sql, channelId, videoId) ?? episode;
+  return getEpisode(sql, channelId, episodeId) ?? episode;
 }
 
 /** Owner: `failed → skipped OWNER`. */
-export function skipEpisode(sql: SqlStorage, channelId: string, videoId: string, ownerEmail: string, now: number): EpisodeRecord {
-  const episode = requireOwnerActionable(sql, channelId, videoId);
+export function skipEpisode(sql: SqlStorage, channelId: string, episodeId: string, ownerEmail: string, now: number): EpisodeRecord {
+  const episode = requireOwnerActionable(sql, channelId, episodeId);
   if (episode.status !== "failed") {
     throw new DomainError("INVALID_STATE", `only failed episodes can be skipped (status: ${episode.status})`);
   }
   sql.exec(
     `UPDATE episodes SET status = 'skipped', skip_reason = 'OWNER', skipped_at = ?, skipped_by_email = ?,
-       failure_code = NULL, failure_detail = NULL, updated_at = ? WHERE video_id = ?`, now, ownerEmail, now, videoId,
+       failure_code = NULL, failure_detail = NULL, updated_at = ? WHERE episode_id = ?`, now, ownerEmail, now, episodeId,
   );
-  return getEpisode(sql, channelId, videoId) ?? episode;
+  return getEpisode(sql, channelId, episodeId) ?? episode;
 }
 
 /** An approved channel, no active run, and an episode that belongs to it. */
-function requireOwnerActionable(sql: SqlStorage, channelId: string, videoId: string): EpisodeRecord {
+function requireOwnerActionable(sql: SqlStorage, channelId: string, episodeId: string): EpisodeRecord {
   const channel = requireChannel(sql, channelId);
   if (channel.status !== "approved") throw new DomainError("INVALID_STATE", "episode actions need an approved channel");
   if (hasActiveRun(sql, channelId)) throw new DomainError("INVALID_STATE", "a run is active on this channel");
-  const episode = getEpisode(sql, channelId, videoId);
+  const episode = getEpisode(sql, channelId, episodeId);
   if (!episode) throw new DomainError("NOT_FOUND", "episode not found");
   return episode;
 }
 ```
 
-Facade: `retryEpisode(actorEmail, channelId, videoId)` and `skipEpisode(actorEmail, channelId, videoId)` assert the owner, validate ids with `requireChannelId` and `requireVideoId`, and run in `#transaction`. `catalog.ts` `summarize` adds
+Facade: `retryEpisode(actorEmail, channelId, episodeId)` and `skipEpisode(actorEmail, channelId, episodeId)` assert the owner, validate ids with `requireChannelId` and `requireEpisodeId`, and run in `#transaction`. `catalog.ts` `summarize` adds
 
 ```ts
 attention: {
@@ -1266,18 +1266,18 @@ with `CatalogSchema` gaining `attention: z.object({ failedEpisodes: Count, never
 
 - [ ] **Step 3: Routes**
 
-Shared: `EpisodeParamsSchema = z.object({ id: …, videoId: z.string().min(1).describe("YouTube video id.") })` and `EpisodeResponseSchema = z.object({ episode: EpisodeSchema }).meta({ id: "EpisodeResponse", description: "`POST /channels/:id/episodes/:videoId/retry|skip`" })`. In `routes/channels.ts`:
+Shared: `EpisodeParamsSchema = z.object({ id: …, episodeId: z.string().min(1).describe("YouTube episode id.") })` and `EpisodeResponseSchema = z.object({ episode: EpisodeSchema }).meta({ id: "EpisodeResponse", description: "`POST /channels/:id/episodes/:episodeId/retry|skip`" })`. In `routes/channels.ts`:
 
 ```ts
-.post("/:id/episodes/:videoId/retry",
+.post("/:id/episodes/:episodeId/retry",
   describeRoute({ tags: ["episodes"], summary: "Retry a failed or skipped episode (owner)",
     description: "Back to `pending` with attempts reset; starts a one-episode run. Refused while a run is active on the channel or the channel is not approved.",
     responses: { 200: jsonResponse(EpisodeResponseSchema, "The episode, pending again."),
       ...errorResponses({ owner: true, notFound: true, conflict: "The episode is not failed or skipped, the channel is not approved, or a run is active" }) } }),
   requireOwner, validate("param", EpisodeParamsSchema),
   async (c) => {
-    const { id, videoId } = c.req.valid("param");
-    const record = await c.var.registry.retryEpisode(c.var.identity.email, id, videoId);
+    const { id, episodeId } = c.req.valid("param");
+    const record = await c.var.registry.retryEpisode(c.var.identity.email, id, episodeId);
     requestIngestion(id, "episode_retry");
     return c.json<EpisodeResponse>({ episode: toEpisode(record, { includeSummary: true, includeProcessing: true }) });
   })
@@ -1287,7 +1287,7 @@ and `skip` alike (conflict "The episode is not failed, the channel is not approv
 
 - [ ] **Step 4: Route test, check, commit**
 
-Add to `routes-channels.test.ts` `ownerOnly`: `["POST", `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`]` and `…/skip`. Add one owner test: seed a failed episode on the approved channel, `POST …/skip` is 200 with `expectShape(EpisodeResponseSchema, json)` and `episode.status === "skipped"`, then `POST …/retry` is 200 with `status === "pending"`; after `seedRun(CHANNEL_A, { status: "queued" })` the retry is 409. `GET /catalog` asserts `expectShape(CatalogResponseSchema, json)` still.
+Add to `routes-channels.test.ts` `ownerOnly`: `["POST", `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/retry`]` and `…/skip`. Add one owner test: seed a failed episode on the approved channel, `POST …/skip` is 200 with `expectShape(EpisodeResponseSchema, json)` and `episode.status === "skipped"`, then `POST …/retry` is 200 with `status === "pending"`; after `seedRun(CHANNEL_A, { status: "queued" })` the retry is 409. `GET /catalog` asserts `expectShape(CatalogResponseSchema, json)` still.
 
 Run: `pnpm check`
 Expected: PASS.
@@ -1309,7 +1309,7 @@ git commit -m "feat(api): owner retry and skip per episode, and the catalog atte
 - Modify: `apps/web/src/api.ts`, `apps/web/src/lib/copy.ts`
 
 **Interfaces:**
-- Produces (`api`): `listChannels({ scope? })`, `addChannel(body: CreateChannelBody)`, `getChannel(id)`, `requestChannel(id)`, `approveChannel(id, body: ApproveChannelBody)`, `declineChannel(id, body: DeclineChannelBody)`, `pauseChannel(id)`, `resumeChannel(id)`, `listEpisodes(id, limit?)`, `retryEpisode(id, videoId)`, `skipEpisode(id, videoId)`, `listIngestionRuns(id)`, `listFollowers(id)`, `listFollows()`, `follow(id)`, `unfollow(id)`, `getDigest(sinceMs?)`, `getCatalog()`, `getMe()`.
+- Produces (`api`): `listChannels({ scope? })`, `addChannel(body: CreateChannelBody)`, `getChannel(id)`, `requestChannel(id)`, `approveChannel(id, body: ApproveChannelBody)`, `declineChannel(id, body: DeclineChannelBody)`, `pauseChannel(id)`, `resumeChannel(id)`, `listEpisodes(id, limit?)`, `retryEpisode(id, episodeId)`, `skipEpisode(id, episodeId)`, `listIngestionRuns(id)`, `listFollowers(id)`, `listFollows()`, `follow(id)`, `unfollow(id)`, `getDigest(sinceMs?)`, `getCatalog()`, `getMe()`.
 - Produces (`copy.ts`): `CHANNEL_STATUS_COPY`, `channelStateCopy(channel: Channel): string` ("Awaiting owner approval", "Approved", "Approved · paused", "Declined", "Withdrawn"), `reviewCopy(channel): string | null` ("Declined on <date>: “note”" or "Withdrawn on <date>: “note”"), `EPISODE_STATUS_COPY`, `SKIP_REASON_COPY`, `WAITING_CODE_COPY`, `episodePhrase(episode: Episode): string | null`, `CHANNEL_ID_HELP`, `isDeclinedResponse(error: unknown): error is ApiError & { body: ChannelDeclinedResponse }`.
 
 - [ ] **Step 1: The client**
@@ -1329,10 +1329,10 @@ pauseChannel: (channelId: string) => request<ChannelResponse>("POST", `/channels
 resumeChannel: (channelId: string) => request<ChannelResponse>("POST", `/channels/${enc(channelId)}/resume`),
 listEpisodes: (channelId: string, limit?: number) =>
   request<EpisodesResponse>("GET", `/channels/${enc(channelId)}/episodes${limit === undefined ? "" : `?limit=${limit}`}`),
-retryEpisode: (channelId: string, videoId: string) =>
-  request<EpisodeResponse>("POST", `/channels/${enc(channelId)}/episodes/${enc(videoId)}/retry`),
-skipEpisode: (channelId: string, videoId: string) =>
-  request<EpisodeResponse>("POST", `/channels/${enc(channelId)}/episodes/${enc(videoId)}/skip`),
+retryEpisode: (channelId: string, episodeId: string) =>
+  request<EpisodeResponse>("POST", `/channels/${enc(channelId)}/episodes/${enc(episodeId)}/retry`),
+skipEpisode: (channelId: string, episodeId: string) =>
+  request<EpisodeResponse>("POST", `/channels/${enc(channelId)}/episodes/${enc(episodeId)}/skip`),
 listIngestionRuns: (channelId: string) => request<IngestionRunsResponse>("GET", `/channels/${enc(channelId)}/ingestion-runs`),
 listFollowers: (channelId: string) => request<FollowersResponse>("GET", `/channels/${enc(channelId)}/followers`),
 ```

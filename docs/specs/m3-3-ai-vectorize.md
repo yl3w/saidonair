@@ -26,7 +26,7 @@ with hard rule 3 enforced in code, generation-aware ids, and an in-memory fake. 
 | Hard rule 3 on id-based calls | `getByIds(ns, ids)` returns only ids whose stored `namespace` is `ns`; `deleteByIds(ns, ids)` reads first and deletes only the ids confirmed in `ns`. `Namespace` is a one-member literal type, so a wrong namespace is a compile error and a runtime throw. | Vectorize's `getByIds` and `deleteByIds` accept no namespace; the helper is where `AGENTS.md` says the scope is enforced. |
 | The fake store | `VECTORIZE_FAKE` selects an in-memory map per namespace, module-level for the isolate, cleared by `test/setup.ts` after every test. Its JSON carries `visibilityDelayReads` (default 0): how many `getByIds` calls after an upsert omit the new ids; and `throwOn` (default none): the methods that fail, for M3.5's cleanup-failure and related-failure paths. `query` computes cosine similarity over stored vectors and honours `filter.channelId.$in`. The fake is a stub index behind the real store code, so namespace and ownership checks run the same path in tests. | Real behaviour where it matters (asynchronous visibility, filters, failures), no network. |
 | The fake AI | `AI_FAKE` embeddings are deterministic per text (a seeded hash spread over 768 dimensions, unit-normalised). Summaries are canned, with per-call overrides selected by a marker in the input (`[[invalid-once]]`, `[[invalid]]`, `[[throw]]`) so validation, the one retry, the fallback, and a failure are testable. | Determinism makes vector ids, centroids, and related lookups reproducible. |
-| Related candidates | Nothing in `ai.ts`. The Workflow (M3.5) averages the per-batch vector sums `embed` returns, queries the store with `topK: 50` (the cap with metadata; 20 in the first draft, widened on 2026-09-13 so one chunky neighbour cannot crowd the list) and no filter, dedupes by `videoId` excluding its own; the Registry keeps available ones, at most five (M3.2). | The list is small and the Registry already validates availability. |
+| Related candidates | Nothing in `ai.ts`. The Workflow (M3.5) averages the per-batch vector sums `embed` returns, queries the store with `topK: 50` (the cap with metadata; 20 in the first draft, widened on 2026-09-13 so one chunky neighbour cannot crowd the list) and no filter, dedupes by `episodeId` excluding its own; the Registry keeps available ones, at most five (M3.2). | The list is small and the Registry already validates availability. |
 | Retrieval's generation check | Out of this chunk. `parseVectorId` is the contract M4 uses; the retrieval test of the 2026-09-12 plan's Step 5 moves to the M4 plan. | Nothing queries for chat until M4; a test of code that does not exist would test the fake. |
 | Embedding batch and dimension | 20 texts per `embed` call; the wrapper throws `EMBEDDING_FAILED` when any vector is not 768 wide. | Matches the parent pipeline; well under the model's input cap. |
 | Timestamp markers | `formatTranscript` writes `[h:mm:ss]` on every chunk line, hours included below one hour (`[0:04:12]`); `parseSummary` accepts `h:mm:ss` and `mm:ss`. | One marker shape in the prompt; tolerance on the way back. |
@@ -38,7 +38,7 @@ with hard rule 3 enforced in code, generation-aware ids, and an in-memory fake. 
 ```ts
 export const SHARED_NAMESPACE = "shared-catalog";
 export type Namespace = typeof SHARED_NAMESPACE;
-export type ChunkMetadata = { videoId; channelId; generationId; channelTitle; title; startSec; endSec; text; publishedAt };
+export type ChunkMetadata = { episodeId; channelId; generationId; channelTitle; title; startSec; endSec; text; publishedAt };
 export type VectorRecord = { id: string; values: number[]; metadata: ChunkMetadata };
 export type VectorMatch = { id: string; score: number; metadata: ChunkMetadata };
 export type VectorStore = {
@@ -48,14 +48,14 @@ export type VectorStore = {
   deleteByIds(ns: Namespace, ids: string[]): Promise<void>;
 };
 export function vectorStore(env): VectorStore;                              // VECTORIZE_FAKE or env.VECTORS
-export function vectorId(videoId, generationId, index): string;             // `${videoId}:${generationId}:${index}`
-export function generationIds(videoId, generationId, count): string[];
-export function parseVectorId(id): { videoId; generationId; index } | null;
+export function vectorId(episodeId, generationId, index): string;             // `${episodeId}:${generationId}:${index}`
+export function generationIds(episodeId, generationId, count): string[];
+export function parseVectorId(id): { episodeId; generationId; index } | null;
 ```
 
 The helper splits records and ids into batches below the API's per-call ceilings; the ceilings are exported
 constants set from Cloudflare's documentation at implementation. Metadata carries every PRD §6 field; `channelId` and
-`videoId` are the filter fields, `generationId` is diagnostic only.
+`episodeId` are the filter fields, `generationId` is diagnostic only.
 
 ### 3.2 `lib/ai.ts`
 
@@ -105,7 +105,7 @@ with them. The approved texts as of 2026-09-13, moved here from the 2026-09-12 p
 > what the transcript supports; do not invent names, numbers, or timestamps. Transcript follows, with `[h:mm:ss]`
 > markers.
 
-> You are given summaries of consecutive sections of one YouTube episode, each with timestamped takeaways. Return
+> You are given summaries of consecutive sections of one YouTube video, each with timestamped takeaways. Return
 > only JSON with the same three fields for the whole episode: `executiveSummary` (at most three sentences),
 > `takeaways` (three to five, chosen or merged from the sections, each keeping the `at` timestamp of the section
 > takeaway it comes from), `topicTags` (one to eight). Do not add anything the sections do not say.

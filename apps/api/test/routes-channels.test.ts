@@ -20,6 +20,9 @@ import {
   CHANNEL_C,
   CHANNEL_D,
   CHANNEL_E,
+  EPISODE_A,
+  EPISODE_B,
+  EPISODE_C,
   expectShape,
   OWNER,
   registry,
@@ -29,15 +32,12 @@ import {
   seedRun,
   seedSummary,
   userDO,
-  VIDEO_A,
-  VIDEO_B,
-  VIDEO_C,
 } from "./helpers";
 
 type Json = Record<string, unknown>;
 
-/** An extra 11-character video id, for the skipped episode seeded mid-test. */
-const VIDEO_SKIPPED = "sssssssssss";
+/** An extra 11-character episode id, for the skipped episode seeded mid-test. */
+const EPISODE_SKIPPED = "sssssssssss";
 
 async function call(
   email: string,
@@ -69,11 +69,11 @@ async function seedCatalog() {
   await stub.declineChannel(OWNER, CHANNEL_C);
   // Approval pauses a channel nobody follows yet (Ruling R4); these fixtures want A running.
   await stub.resumeChannel(CHANNEL_A);
-  await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: 3_000 });
-  await seedSummary(VIDEO_A, { relatedVideoIds: [VIDEO_B] });
-  await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: 2_000 });
-  await seedSummary(VIDEO_B);
-  await seedEpisode(VIDEO_C, CHANNEL_A, {
+  await seedEpisode(EPISODE_A, CHANNEL_A, { publishedAt: 3_000 });
+  await seedSummary(EPISODE_A, { relatedEpisodeIds: [EPISODE_B] });
+  await seedEpisode(EPISODE_B, CHANNEL_A, { publishedAt: 2_000 });
+  await seedSummary(EPISODE_B);
+  await seedEpisode(EPISODE_C, CHANNEL_A, {
     publishedAt: 1_000,
     status: "failed",
   });
@@ -83,14 +83,14 @@ async function seedCatalog() {
 describe("channel and catalog routes", () => {
   it("accepts every operation from any identity: the API enforces no authorization", async () => {
     await seedCatalog();
-    // Skip first (VIDEO_C is failed), then retry the skipped episode; both by a plain user.
+    // Skip first (EPISODE_C is failed), then retry the skipped episode; both by a plain user.
     const anyIdentity: [string, string, unknown?][] = [
       ["GET", "/catalog"],
       ["GET", "/channels?scope=all"],
       ["GET", `/channels/${CHANNEL_A}/runs`],
       ["GET", `/channels/${CHANNEL_A}/followers`],
-      ["POST", `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/skip`],
-      ["POST", `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`],
+      ["POST", `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/skip`],
+      ["POST", `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/retry`],
     ];
     for (const [method, path, body] of anyIdentity) {
       const { status, json } = await call(ALICE, method, path, body);
@@ -110,7 +110,7 @@ describe("channel and catalog routes", () => {
     const catalog = await call(ALICE, "GET", "/catalog");
     expectShape(CatalogResponseSchema, catalog.json);
     expect(catalog.status).toBe(200);
-    // VIDEO_C went failed → skipped → pending through the calls above. A's episodes name a run, so
+    // EPISODE_C went failed → skipped → pending through the calls above. A's episodes name a run, so
     // nothing approved is "never started".
     expect(catalog.json.catalog).toMatchObject({
       channels: { requested: 1, approved: 1, paused: 0, declined: 1 },
@@ -321,10 +321,10 @@ describe("channel and catalog routes", () => {
     const bob = await call(BOB, "GET", `/channels/${CHANNEL_A}/episodes`);
     expect(bob.status).toBe(200);
     const bobEpisodes = bob.json.episodes as Json[];
-    expect(bobEpisodes.map((e) => e.videoId)).toEqual([
-      VIDEO_A,
-      VIDEO_B,
-      VIDEO_C,
+    expect(bobEpisodes.map((e) => e.episodeId)).toEqual([
+      EPISODE_A,
+      EPISODE_B,
+      EPISODE_C,
     ]);
     // Bob follows nothing: he still receives the summaries and `processing` (the API enforces no
     // authorization), related titles filtered to his empty eligible set, and no read state at all.
@@ -343,9 +343,9 @@ describe("channel and catalog routes", () => {
     const firstEpisodes = first.json.episodes as Json[];
     expect(firstEpisodes).toHaveLength(2);
     expect(firstEpisodes[0]).toMatchObject({
-      videoId: VIDEO_A,
+      episodeId: EPISODE_A,
       summary: { format: "structured" },
-      related: [{ videoId: VIDEO_B, title: `Episode ${VIDEO_B}` }],
+      related: [{ episodeId: EPISODE_B, title: `Episode ${EPISODE_B}` }],
       read: false,
     });
 
@@ -358,12 +358,14 @@ describe("channel and catalog routes", () => {
       false,
       undefined,
     ]);
-    expect(await userDO(ALICE).readVideoIds([VIDEO_A, VIDEO_B])).toEqual([]);
+    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A, EPISODE_B])).toEqual(
+      [],
+    );
 
     await call(
       ALICE,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/read`,
     );
     const afterRead = await call(
       ALICE,
@@ -397,7 +399,7 @@ describe("channel and catalog routes", () => {
     expect(ownerEpisodes[0]?.related).toEqual([]);
 
     // A skipped episode tells every caller why there is no summary, at the top level and in `processing`.
-    await seedEpisode(VIDEO_SKIPPED, CHANNEL_A, {
+    await seedEpisode(EPISODE_SKIPPED, CHANNEL_A, {
       publishedAt: 500,
       status: "skipped",
       skipReason: "UNPLAYABLE",
@@ -409,7 +411,7 @@ describe("channel and catalog routes", () => {
     );
     const skippedEpisode = (withSkipped.json.episodes as Json[]).at(-1);
     expect(skippedEpisode).toMatchObject({
-      videoId: VIDEO_SKIPPED,
+      episodeId: EPISODE_SKIPPED,
       status: "skipped",
       skipReason: "UNPLAYABLE",
       summary: null,
@@ -459,17 +461,19 @@ describe("channel and catalog routes", () => {
         await call(
           ALICE,
           "POST",
-          `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+          `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/read`,
         )
       ).status,
     ).toBe(404);
-    expect(await userDO(ALICE).readVideoIds([VIDEO_A, VIDEO_B])).toEqual([]);
+    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A, EPISODE_B])).toEqual(
+      [],
+    );
   });
 
   it("answers one episode, and records or undoes its receipt for an eligible caller only", async () => {
     await seedCatalog();
     await registry().recordFollow(ALICE, CHANNEL_A);
-    const path = `/channels/${CHANNEL_A}/episodes/${VIDEO_A}`;
+    const path = `/channels/${CHANNEL_A}/episodes/${EPISODE_A}`;
 
     // The reading view's deep link: one episode with its summary, related titles in the caller's
     // scope, `processing`, and read state — and it records nothing.
@@ -477,18 +481,23 @@ describe("channel and catalog routes", () => {
     expect(cold.status).toBe(200);
     expectShape(EpisodeResponseSchema, cold.json);
     expect(cold.json.episode).toMatchObject({
-      videoId: VIDEO_A,
+      episodeId: EPISODE_A,
       summary: { format: "structured" },
-      related: [{ videoId: VIDEO_B, title: `Episode ${VIDEO_B}` }],
+      related: [{ episodeId: EPISODE_B, title: `Episode ${EPISODE_B}` }],
       read: false,
     });
-    expect(await userDO(ALICE).readVideoIds([VIDEO_A])).toEqual([]);
+    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A])).toEqual([]);
 
     const marked = await call(ALICE, "POST", `${path}/read`);
     expect(marked.status).toBe(200);
     expectShape(EpisodeResponseSchema, marked.json);
-    expect(marked.json.episode).toMatchObject({ videoId: VIDEO_A, read: true });
-    expect(await userDO(ALICE).readVideoIds([VIDEO_A])).toEqual([VIDEO_A]);
+    expect(marked.json.episode).toMatchObject({
+      episodeId: EPISODE_A,
+      read: true,
+    });
+    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A])).toEqual([
+      EPISODE_A,
+    ]);
     // Idempotent, and it keeps the original time.
     expect((await call(ALICE, "POST", `${path}/read`)).status).toBe(200);
     expect(((await call(ALICE, "GET", path)).json.episode as Json).read).toBe(
@@ -498,7 +507,7 @@ describe("channel and catalog routes", () => {
     const undone = await call(ALICE, "DELETE", `${path}/read`);
     expect(undone.status).toBe(200);
     expect(undone.json.episode).toMatchObject({ read: false });
-    expect(await userDO(ALICE).readVideoIds([VIDEO_A])).toEqual([]);
+    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A])).toEqual([]);
     expect((await call(ALICE, "DELETE", `${path}/read`)).status).toBe(200);
 
     // Bob follows nothing: he reads the episode like everyone else, with no read state, and his
@@ -508,15 +517,15 @@ describe("channel and catalog routes", () => {
     expect(bob.json.episode).not.toHaveProperty("read");
     expect((await call(BOB, "POST", `${path}/read`)).status).toBe(404);
     expect((await call(BOB, "DELETE", `${path}/read`)).status).toBe(404);
-    expect(await userDO(BOB).readVideoIds([VIDEO_A])).toEqual([]);
+    expect(await userDO(BOB).readEpisodeIds([EPISODE_A])).toEqual([]);
 
-    // A summary is the only thing a receipt can name; VIDEO_C is failed.
+    // A summary is the only thing a receipt can name; EPISODE_C is failed.
     expect(
       (
         await call(
           ALICE,
           "POST",
-          `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/read`,
+          `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/read`,
         )
       ).status,
     ).toBe(409);
@@ -526,11 +535,11 @@ describe("channel and catalog routes", () => {
         .status,
     ).toBe(404);
     expect(
-      (await call(ALICE, "GET", `/channels/${CHANNEL_D}/episodes/${VIDEO_A}`))
+      (await call(ALICE, "GET", `/channels/${CHANNEL_D}/episodes/${EPISODE_A}`))
         .status,
     ).toBe(404);
     expect(
-      (await call(ALICE, "GET", `/channels/${CHANNEL_C}/episodes/${VIDEO_A}`))
+      (await call(ALICE, "GET", `/channels/${CHANNEL_C}/episodes/${EPISODE_A}`))
         .status,
     ).toBe(404);
     expect(
@@ -569,7 +578,7 @@ describe("channel and catalog routes", () => {
     const skip = await call(
       OWNER,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/skip`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/skip`,
     );
     expect(skip.status).toBe(200);
     expectShape(EpisodeResponseSchema, skip.json);
@@ -580,7 +589,7 @@ describe("channel and catalog routes", () => {
     const retry = await call(
       OWNER,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/retry`,
     );
     expect(retry.status).toBe(200);
     expectShape(EpisodeRetryResponseSchema, retry.json);
@@ -598,11 +607,11 @@ describe("channel and catalog routes", () => {
     });
 
     // Only a running attempt refuses Retry.
-    await seedAttempt(VIDEO_C, { status: "running" });
+    await seedAttempt(EPISODE_C, { status: "running" });
     const blocked = await call(
       OWNER,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/retry`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/retry`,
     );
     expect(blocked.status).toBe(409);
   });
@@ -639,36 +648,36 @@ describe("channel and catalog routes", () => {
       ["waitnoatmpt", null, null],
     ];
     let published = 100;
-    for (const [videoId, attempt] of cases) {
-      await seedEpisode(videoId, CHANNEL_A, {
+    for (const [episodeId, attempt] of cases) {
+      await seedEpisode(episodeId, CHANNEL_A, {
         status: "pending",
         publishedAt: published++,
         window: { intent: "publish" },
       });
-      if (attempt) await seedAttempt(videoId, attempt);
+      if (attempt) await seedAttempt(episodeId, attempt);
     }
 
     // Bob follows nothing and still reads the reason and the attempt (no authorization).
     const bob = await call(BOB, "GET", `/channels/${CHANNEL_A}/episodes`);
     expect(bob.status).toBe(200);
     const byId = new Map(
-      (bob.json.episodes as Json[]).map((e) => [e.videoId as string, e]),
+      (bob.json.episodes as Json[]).map((e) => [e.episodeId as string, e]),
     );
-    for (const [videoId, attempt, expected] of cases) {
-      const episode = byId.get(videoId) as Json;
-      expect(episode.waitReason, videoId).toBe(expected);
+    for (const [episodeId, attempt, expected] of cases) {
+      const episode = byId.get(episodeId) as Json;
+      expect(episode.waitReason, episodeId).toBe(expected);
       const processing = episode.processing as Json;
       if (attempt) {
-        expect(processing.latestAttempt, videoId).toMatchObject({
+        expect(processing.latestAttempt, episodeId).toMatchObject({
           status: attempt.status,
         });
       } else {
-        expect(processing.latestAttempt, videoId).toBeNull();
+        expect(processing.latestAttempt, episodeId).toBeNull();
       }
-      expect(processing.intent, videoId).toBe("publish");
+      expect(processing.intent, episodeId).toBe("publish");
     }
     // A summarised episode never waits.
-    expect((byId.get(VIDEO_A) as Json).waitReason).toBeNull();
+    expect((byId.get(EPISODE_A) as Json).waitReason).toBeNull();
   });
 
   it("honours title and initialImportCount from any caller", async () => {

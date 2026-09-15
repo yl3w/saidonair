@@ -98,11 +98,11 @@ the caller passes, so nothing leaks across eligibility.
 - `listChannelsByIds(sql, ids)`: any state, including deleted. For follows, request outcomes, and channel views.
 
 `episodes.ts`
-- `listProcessedVideoIds(sql, channelIds)`: `{ channelId, videoId }[]` where `status = 'processed'`.
+- `listProcessedEpisodeIds(sql, channelIds)`: `{ channelId, episodeId }[]` where `status = 'processed'`.
 - `countByChannel(sql, channelIds)`: per channel `{ processed, pending, processing, noTranscript, failed }`.
 - `listDigest(sql, channelIds, sinceMs)`: processed episodes with `published_at >= since`, joined to
   `episode_summaries` and `channels.title`, newest first. Parses the `_json` columns. Resolves
-  `related_video_ids_json` to titles with a second query restricted to processed episodes in the same channel ids,
+  `related_episode_ids_json` to titles with a second query restricted to processed episodes in the same channel ids,
   so ineligible titles never leave the DO.
 - `listByChannel(sql, channelId, limit)`: every episode in every status, newest published first, left-joined to its
   summary and carrying the processing fields. One row shape serves both the reader (route strips `processing`,
@@ -126,7 +126,7 @@ the caller passes, so nothing leaks across eligibility.
 - `listByChannel(sql, channelId)`: for `GET /channels/:id/requests`.
 
 `registry.ts` facade
-- Scoped by the ids passed, any caller: `listChannelsByIds`, `listProcessedVideoIds`, `listDigest`,
+- Scoped by the ids passed, any caller: `listChannelsByIds`, `listProcessedEpisodeIds`, `listDigest`,
   `listEpisodes(channelId, limit)`.
 - Owner-checked: `getCatalogSummary(actor)`, `listChannelManagement(actor, channelIds?)` (channels joined to
   counts, latest run, requester count, and `stuckPending` inside the DO, so `GET /channels?scope=all` and the
@@ -149,7 +149,7 @@ title; approve with no title anywhere → `INVALID_INPUT`; every owner-checked m
 - `extractChannelId(input)`: trims; a bare `UC…` id or a URL whose path contains `/channel/UC…` returns the id;
   anything else, including `@handle` and `/c/…`, throws `INVALID_INPUT` with the instruction text from the spec
   ("open About on the channel's page, then Share channel, then Copy channel ID"). Pure.
-- `rss.ts`: `feedUrl(channelId)`; `parseFeed(xml)` → `{ channelId, title, entries: { videoId, title, publishedAt }[] }`,
+- `rss.ts`: `feedUrl(channelId)`; `parseFeed(xml)` → `{ channelId, title, entries: { episodeId, title, publishedAt }[] }`,
   pure, entity-decoding, tolerant of attribute order (workerd has no `DOMParser`, so this is a small tag scanner
   over `<entry>` blocks, not a regex over the whole document); `fetchChannelFeed(channelId, fetchImpl = fetch)`
   returns `null` on 404 and throws on any other non-2xx, network error, or unparsable body. M3 will use the same
@@ -188,7 +188,7 @@ test ever reaches YouTube. The pool's `fetchMock` no longer exists in the pinned
   methods → `{ channel }`; retry logs the ingestion hook.
 - `GET /channels/:id/episodes?limit=`: 404 for readers unless the channel is available and non-deleted; the owner
   may read any state. `listEpisodes` → for the caller: followers and the owner keep `summary` and `related` and get
-  `wasUnread` from `readVideoIds`, then `markRead` of exactly the returned video ids; non-followers get episodes with
+  `wasUnread` from `readEpisodeIds`, then `markRead` of exactly the returned episode ids; non-followers get episodes with
   `summary: null` and no `wasUnread`; only the owner keeps `processing`. **Plan decision:** the owner's own read
   receipts are recorded like anyone's when summaries are returned to them.
 - `GET /channels/:id/ingestion-runs` (owner) → `listRuns` → `{ runs }`.
@@ -219,13 +219,13 @@ already written in 1.5); edit `index.ts`.
 - `POST /channel-requests/:id/approve { title?, initialImportCount?, explanation? }` (owner) → `approveRequest` →
   `{ request, channel, channelCreated }`; log the ingestion hook when created. `POST …/reject { explanation? }`
   (owner) → `{ request }`.
-- `GET /follows`: active follows → `listChannelsByIds` → processed ids → `readVideoIds` → per-channel unread →
+- `GET /follows`: active follows → `listChannelsByIds` → processed ids → `readEpisodeIds` → per-channel unread →
   `Follow[]` each embedding `toChannel(...)`; sorted by last ingestion, then title.
 - `PUT /follows/:channelId`: 404 if unknown, `INVALID_STATE` (409) unless available and non-deleted, else
   `user.follow` → `{ follow }`. `DELETE`: `user.unfollow` (404 if never followed) → `{ follow }` with `unfollowedAt`.
 - `GET /digest?since=`: ISO parse, default now − 24 h, invalid → `INVALID_INPUT`. **Plan decision:** `since` is
   clamped to at most 7 days back, matching "Show last 7 days" with no further paging. Eligible → `listDigest` →
-  `readVideoIds` → `wasUnread` → `markRead` of exactly the returned ids → `{ since, episodes }`.
+  `readEpisodeIds` → `wasUnread` → `markRead` of exactly the returned ids → `{ since, episodes }`.
 
 **Tests:** requests stay isolated between two emails while the owner's `?scope=all` sees both; a user's
 `?scope=all` is 403; submission covers handle → 400, no feed → 400 (canned 404), already available → 409 body,

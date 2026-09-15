@@ -21,24 +21,24 @@ import {
   CHANNEL_B,
   CHANNEL_C,
   CHANNEL_D,
+  EPISODE_A,
+  EPISODE_B,
+  EPISODE_C,
   expectDomainError,
   registry,
   seedApprovedChannel,
   seedEpisode,
   seedSummary,
   setChannelState,
-  VIDEO_A,
-  VIDEO_B,
-  VIDEO_C,
 } from "./helpers";
 
 const HOUR = 60 * 60 * 1000;
 const SIX_HOURS = 6 * HOUR;
 const WINDOW = 48 * HOUR;
-const VIDEO_D = "ddddddddddd";
-const VIDEO_E = "eeeeeeeeeee";
-const VIDEO_F = "fffffffffff";
-const VIDEO_G = "ggggggggggg";
+const EPISODE_D = "ddddddddddd";
+const EPISODE_E = "eeeeeeeeeee";
+const EPISODE_F = "fffffffffff";
+const EPISODE_G = "ggggggggggg";
 
 /** Fires one cron through the Worker's exported `scheduled` handler, the way the runtime does. */
 async function scheduled(cron: string): Promise<void> {
@@ -55,11 +55,11 @@ async function scheduled(cron: string): Promise<void> {
 
 /** A pending episode inside an open `publish` window, due one millisecond ago unless told otherwise. */
 async function due(
-  videoId: string,
+  episodeId: string,
   channelId: string,
   options: { startedAt?: number; nextAttemptAt?: number } = {},
 ): Promise<void> {
-  await seedEpisode(videoId, channelId, {
+  await seedEpisode(episodeId, channelId, {
     status: "pending",
     window: {
       intent: "publish",
@@ -70,8 +70,8 @@ async function due(
 }
 
 /** A real running attempt through the ledger, so it is the episode's current one, aged by `ageMs`. */
-async function running(videoId: string, ageMs: number): Promise<string> {
-  const start = await registry().beginAttempt(videoId, "channel_ingestion");
+async function running(episodeId: string, ageMs: number): Promise<string> {
+  const start = await registry().beginAttempt(episodeId, "channel_ingestion");
   if (start.kind !== "started") throw new Error("expected a fresh attempt");
   const startedAt = Date.now() - ageMs;
   await runInDurableObject(registry(), (_, ctx) => {
@@ -85,9 +85,9 @@ async function running(videoId: string, ageMs: number): Promise<string> {
   return start.attempt.attemptId;
 }
 
-async function episode(channelId: string, videoId: string) {
-  const record = await registry().getEpisode(channelId, videoId);
-  if (!record) throw new Error(`no episode ${videoId}`);
+async function episode(channelId: string, episodeId: string) {
+  const record = await registry().getEpisode(channelId, episodeId);
+  if (!record) throw new Error(`no episode ${episodeId}`);
   return record;
 }
 
@@ -102,24 +102,24 @@ describe("the recovery cron", () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
     await stub.resumeChannel(CHANNEL_A);
-    await due(VIDEO_A, CHANNEL_A);
+    await due(EPISODE_A, CHANNEL_A);
     const runsBefore = (await stub.listRuns(CHANNEL_A)).length;
 
     await scheduled(DISCOVERY_CRON);
     expect(await stub.listRuns(CHANNEL_A)).toHaveLength(runsBefore + 1);
     expect(
-      (await episode(CHANNEL_A, VIDEO_A)).processing.latestAttempt,
+      (await episode(CHANNEL_A, EPISODE_A)).processing.latestAttempt,
     ).toBeNull();
     expect(createdInstances()).toEqual([]);
 
     await scheduled(RECOVERY_CRON);
     expect(await stub.listRuns(CHANNEL_A)).toHaveLength(runsBefore + 1);
     expect(
-      (await episode(CHANNEL_A, VIDEO_A)).processing.latestAttempt,
+      (await episode(CHANNEL_A, EPISODE_A)).processing.latestAttempt,
     ).toMatchObject({ status: "running", trigger: "scheduled_recovery" });
-    expect(createdInstances().map((p) => [p.videoId, p.startDelaySec])).toEqual(
-      [[VIDEO_A, 0]],
-    );
+    expect(
+      createdInstances().map((p) => [p.episodeId, p.startDelaySec]),
+    ).toEqual([[EPISODE_A, 0]]);
 
     // The strings wrangler.jsonc declares (test/wrangler-config.test.ts checks the file).
     expect(DISCOVERY_CRON).toBe("0 */6 * * *");
@@ -140,14 +140,14 @@ describe("the recovery cron", () => {
     ).toEqual([CHANNEL_A]);
 
     const now = Date.now();
-    await due(VIDEO_A, CHANNEL_A, { nextAttemptAt: now - 4000 });
-    await due(VIDEO_B, CHANNEL_B, { nextAttemptAt: now - 3000 });
-    await due(VIDEO_C, CHANNEL_C, { nextAttemptAt: now - 2000 });
-    await due(VIDEO_D, CHANNEL_D, { nextAttemptAt: now - 1000 });
-    await due(VIDEO_E, CHANNEL_A, { nextAttemptAt: now + HOUR });
-    await due(VIDEO_F, CHANNEL_A);
-    const inFlight = await running(VIDEO_F, 0);
-    await seedEpisode(VIDEO_G, CHANNEL_A, {
+    await due(EPISODE_A, CHANNEL_A, { nextAttemptAt: now - 4000 });
+    await due(EPISODE_B, CHANNEL_B, { nextAttemptAt: now - 3000 });
+    await due(EPISODE_C, CHANNEL_C, { nextAttemptAt: now - 2000 });
+    await due(EPISODE_D, CHANNEL_D, { nextAttemptAt: now - 1000 });
+    await due(EPISODE_E, CHANNEL_A, { nextAttemptAt: now + HOUR });
+    await due(EPISODE_F, CHANNEL_A);
+    const inFlight = await running(EPISODE_F, 0);
+    await seedEpisode(EPISODE_G, CHANNEL_A, {
       status: "failed",
       failureDetail: "CAPTIONS",
     });
@@ -159,31 +159,35 @@ describe("the recovery cron", () => {
       blocked: 0,
     });
     expect(
-      createdInstances().map((p) => [p.channelId, p.videoId, p.startDelaySec]),
+      createdInstances().map((p) => [
+        p.channelId,
+        p.episodeId,
+        p.startDelaySec,
+      ]),
     ).toEqual([
-      [CHANNEL_A, VIDEO_A, 0],
-      [CHANNEL_B, VIDEO_B, 3],
-      [CHANNEL_C, VIDEO_C, 6],
-      [CHANNEL_D, VIDEO_D, 9],
+      [CHANNEL_A, EPISODE_A, 0],
+      [CHANNEL_B, EPISODE_B, 3],
+      [CHANNEL_C, EPISODE_C, 6],
+      [CHANNEL_D, EPISODE_D, 9],
     ]);
-    for (const [channelId, videoId] of [
-      [CHANNEL_A, VIDEO_A],
-      [CHANNEL_B, VIDEO_B],
-      [CHANNEL_C, VIDEO_C],
-      [CHANNEL_D, VIDEO_D],
+    for (const [channelId, episodeId] of [
+      [CHANNEL_A, EPISODE_A],
+      [CHANNEL_B, EPISODE_B],
+      [CHANNEL_C, EPISODE_C],
+      [CHANNEL_D, EPISODE_D],
     ] as const) {
-      expect((await episode(channelId, videoId)).processing).toMatchObject({
+      expect((await episode(channelId, episodeId)).processing).toMatchObject({
         attemptCount: 1,
         latestAttempt: { status: "running", trigger: "scheduled_recovery" },
       });
     }
     expect(
-      (await episode(CHANNEL_A, VIDEO_E)).processing.latestAttempt,
+      (await episode(CHANNEL_A, EPISODE_E)).processing.latestAttempt,
     ).toBeNull();
     expect(
-      (await episode(CHANNEL_A, VIDEO_F)).processing.latestAttempt,
+      (await episode(CHANNEL_A, EPISODE_F)).processing.latestAttempt,
     ).toMatchObject({ attemptId: inFlight, status: "running" });
-    expect(await episode(CHANNEL_A, VIDEO_G)).toMatchObject({
+    expect(await episode(CHANNEL_A, EPISODE_G)).toMatchObject({
       status: "failed",
       processing: { latestAttempt: null },
     });
@@ -192,13 +196,13 @@ describe("the recovery cron", () => {
   it("reconciles running attempts older than an hour: gone and missing finish WORKFLOW_LOST inside the window, active stays, young ones are not asked", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    for (const videoId of [VIDEO_A, VIDEO_B, VIDEO_C, VIDEO_D]) {
-      await due(videoId, CHANNEL_A, { startedAt: Date.now() - 2 * HOUR });
+    for (const episodeId of [EPISODE_A, EPISODE_B, EPISODE_C, EPISODE_D]) {
+      await due(episodeId, CHANNEL_A, { startedAt: Date.now() - 2 * HOUR });
     }
-    const gone = await running(VIDEO_A, 2 * HOUR);
-    const missing = await running(VIDEO_B, 2 * HOUR);
-    const active = await running(VIDEO_C, 2 * HOUR);
-    const young = await running(VIDEO_D, 30 * 60 * 1000);
+    const gone = await running(EPISODE_A, 2 * HOUR);
+    const missing = await running(EPISODE_B, 2 * HOUR);
+    const active = await running(EPISODE_C, 2 * HOUR);
+    const young = await running(EPISODE_D, 30 * 60 * 1000);
     // Anything not named is gone, so the young attempt proves it was never asked.
     env.WORKFLOW_FAKE = JSON.stringify({
       default: "gone",
@@ -221,8 +225,8 @@ describe("the recovery cron", () => {
         "running",
       );
     }
-    for (const videoId of [VIDEO_A, VIDEO_B]) {
-      const { processing } = await episode(CHANNEL_A, videoId);
+    for (const episodeId of [EPISODE_A, EPISODE_B]) {
+      const { processing } = await episode(CHANNEL_A, episodeId);
       expect(processing.intent).toBe("publish");
       // The Registry stamps its own clock, a few milliseconds after `now`.
       expect(processing.nextAttemptAt).toBeGreaterThan(now);
@@ -250,11 +254,11 @@ describe("the recovery cron", () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
     const startedAt = Date.now() - WINDOW - HOUR; // the deadline passed an hour ago
-    await due(VIDEO_A, CHANNEL_A, {
+    await due(EPISODE_A, CHANNEL_A, {
       startedAt,
       nextAttemptAt: startedAt + WINDOW,
     });
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       status: "available",
       window: {
         intent: "replace",
@@ -262,7 +266,7 @@ describe("the recovery cron", () => {
         nextAttemptAt: startedAt + WINDOW,
       },
     });
-    await seedSummary(VIDEO_B, { executiveSummary: "Kept." });
+    await seedSummary(EPISODE_B, { executiveSummary: "Kept." });
 
     expect(await runRecoveryTick(env)).toEqual({
       reconciled: 0,
@@ -272,13 +276,16 @@ describe("the recovery cron", () => {
     });
     const [publish, replace] = createdInstances();
     if (!publish || !replace) throw new Error("expected two instances");
-    expect([publish.videoId, replace.videoId]).toEqual([VIDEO_A, VIDEO_B]);
+    expect([publish.episodeId, replace.episodeId]).toEqual([
+      EPISODE_A,
+      EPISODE_B,
+    ]);
 
     await stub.finishAttempt(publish.attemptId, {
       status: "waiting",
       code: "CAPTIONS",
     });
-    expect(await episode(CHANNEL_A, VIDEO_A)).toMatchObject({
+    expect(await episode(CHANNEL_A, EPISODE_A)).toMatchObject({
       status: "failed",
       processing: {
         intent: null,
@@ -292,7 +299,7 @@ describe("the recovery cron", () => {
       status: "failed",
       code: "PROVIDER_HTTP",
     });
-    expect(await episode(CHANNEL_A, VIDEO_B)).toMatchObject({
+    expect(await episode(CHANNEL_A, EPISODE_B)).toMatchObject({
       status: "available",
       summary: { executiveSummary: "Kept." },
       processing: { intent: null, nextAttemptAt: null, failureCode: null },
@@ -302,9 +309,9 @@ describe("the recovery cron", () => {
   it("records a blocked attempt per due episode when the provider refuses work, moving it before the deadline and closing the window at it", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
     const now = Date.now();
-    await due(VIDEO_A, CHANNEL_A);
+    await due(EPISODE_A, CHANNEL_A);
     const startedAt = now - WINDOW - HOUR;
-    await due(VIDEO_B, CHANNEL_A, {
+    await due(EPISODE_B, CHANNEL_A, {
       startedAt,
       nextAttemptAt: startedAt + WINDOW,
     });
@@ -320,7 +327,7 @@ describe("the recovery cron", () => {
       blocked: 2,
     });
     expect(createdInstances()).toEqual([]);
-    const moved = await episode(CHANNEL_A, VIDEO_A);
+    const moved = await episode(CHANNEL_A, EPISODE_A);
     expect(moved).toMatchObject({
       status: "pending",
       processing: {
@@ -335,7 +342,7 @@ describe("the recovery cron", () => {
       },
     });
     expect(moved.processing.nextAttemptAt).toBeGreaterThan(now);
-    expect(await episode(CHANNEL_A, VIDEO_B)).toMatchObject({
+    expect(await episode(CHANNEL_A, EPISODE_B)).toMatchObject({
       status: "failed",
       processing: {
         intent: null,
@@ -352,7 +359,7 @@ describe("the recovery cron", () => {
       Object.fromEntries(Object.keys(FAKE_FEEDS).map((id) => [id, null])),
     );
     await seedApprovedChannel(CHANNEL_A, "A");
-    await due(VIDEO_A, CHANNEL_A);
+    await due(EPISODE_A, CHANNEL_A);
 
     expect(await runRecoveryTick(env)).toEqual({
       reconciled: 0,
@@ -360,6 +367,6 @@ describe("the recovery cron", () => {
       started: 1,
       blocked: 0,
     });
-    expect(createdInstances().map((p) => p.videoId)).toEqual([VIDEO_A]);
+    expect(createdInstances().map((p) => p.episodeId)).toEqual([EPISODE_A]);
   });
 });

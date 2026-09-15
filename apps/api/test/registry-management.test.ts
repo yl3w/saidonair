@@ -6,6 +6,9 @@ import {
   CHANNEL_C,
   CHANNEL_D,
   CHANNEL_E,
+  EPISODE_A,
+  EPISODE_B,
+  EPISODE_C,
   expectDomainError,
   OWNER,
   registry,
@@ -13,9 +16,6 @@ import {
   seedEpisode,
   seedRun,
   setChannelState,
-  VIDEO_A,
-  VIDEO_B,
-  VIDEO_C,
 } from "./helpers";
 
 /**
@@ -41,9 +41,9 @@ async function seedCatalog() {
   await setChannelState(CHANNEL_D, { status: "requested" });
   await stub.pauseChannel(CHANNEL_E);
 
-  await seedEpisode(VIDEO_A, CHANNEL_A, { publishedAt: 2 });
-  await seedEpisode(VIDEO_B, CHANNEL_A, { publishedAt: 3 });
-  await seedEpisode(VIDEO_C, CHANNEL_A, { status: "failed", publishedAt: 4 });
+  await seedEpisode(EPISODE_A, CHANNEL_A, { publishedAt: 2 });
+  await seedEpisode(EPISODE_B, CHANNEL_A, { publishedAt: 3 });
+  await seedEpisode(EPISODE_C, CHANNEL_A, { status: "failed", publishedAt: 4 });
   await seedRun(CHANNEL_A, {
     kind: "scheduled",
     feedStatus: "read",
@@ -71,9 +71,9 @@ describe("registry catalog summary and management", () => {
     expect(await stub.getCatalogSummary()).toEqual({
       channels: { requested: 1, approved: 3, paused: 1, declined: 0 },
       episodes: { available: 2, pending: 0, failed: 1, skipped: 0 },
-      // The newest first availability anywhere: VIDEO_B was processed at 3.
+      // The newest first availability anywhere: EPISODE_B was processed at 3.
       lastSuccessfulIngestionAt: 3,
-      // One failed episode (VIDEO_C on A). Approved with no run row: C, and E (paused channels
+      // One failed episode (EPISODE_C on A). Approved with no run row: C, and E (paused channels
       // keep channels.status = 'approved'). `requested` reuses the `channels.requested` total.
       attention: { failedEpisodes: 1, neverStarted: 2, requested: 1 },
     });

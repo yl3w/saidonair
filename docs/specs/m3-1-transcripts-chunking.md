@@ -25,7 +25,7 @@ because their answers decide how the ledger (M3.2) and Workflow (M3.5) chunks ar
 
 | Question | Decision | Why |
 |---|---|---|
-| What the fake binding carries | `TRANSCRIPTS_FAKE` is JSON `{ status?: TranscriptProviderHealth, videos: Record<videoId, TranscriptResult \| { failure: TranscriptFailure }> }`. `transcriptSource(env)` serves `videos`; `lib/transcripts/status.ts` answers `status` (default `unreachable`) when the fake is set, so pre-flight can be driven to `auth_failed` and zero credits without a network. An unknown video id is `PROVIDER_HTTP`. | The pinned pool has no `fetchMock` (AGENTS.md → Testing); a binding is the one seam that reaches the Worker under `SELF`. One binding for download and status keeps the provider a single fake. |
+| What the fake binding carries | `TRANSCRIPTS_FAKE` is JSON `{ status?: TranscriptProviderHealth, videos: Record<episodeId, TranscriptResult \| { failure: TranscriptFailure }> }`. `transcriptSource(env)` serves `videos`; `lib/transcripts/status.ts` answers `status` (default `unreachable`) when the fake is set, so pre-flight can be driven to `auth_failed` and zero credits without a network. An unknown episode id is `PROVIDER_HTTP`. | The pinned pool has no `fetchMock` (AGENTS.md → Testing); a binding is the one seam that reaches the Worker under `SELF`. One binding for download and status keeps the provider a single fake. |
 | Missing key outside tests | With neither `TRANSCRIPTS_FAKE` nor `DOWNSUB_API_KEY`, `fetch` throws `TranscriptError("PROVIDER_AUTH")` without calling out; status already reads `unreachable`. | The attempt records a real reason and recovers on the six-hour schedule instead of failing opaquely. |
 | Step 0 lives here | The platform checks of the 2026-09-12 plan's Step 0 run first in this chunk and are recorded in this plan's walkthrough, plus one more: whether a value assigned to `env.X` from `cloudflare:test` is visible to `SELF` requests in the pinned pool. | They cost an hour and decide how M3.2 and M3.5 drive provider status and Workflow states at the route level. |
 | Token estimate | `Math.ceil(chars / 4)`, as PRD §6 approximates. | No tokenizer dependency (hard rule 1). |
@@ -107,7 +107,7 @@ not in a step, so a replay recomputes the same chunks. The constants (`TARGET_SE
    request is made.
 6. The Step 0 answers are recorded in the plan: Workflow instances in the pool, `remote: true` bindings beside local
    Durable Objects, `env` assignment visibility under `SELF`, and the owner's confirmation that `media-rag` is 768
-   dimensions, cosine, with the `channelId` and `videoId` metadata indexes.
+   dimensions, cosine, with the `channelId` and `episodeId` metadata indexes.
 7. `pnpm check` green; the probe against the real provider ran once under `wrangler dev` and left no trace in the
    tree.
 

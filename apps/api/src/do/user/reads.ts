@@ -1,5 +1,5 @@
 import { chunk, placeholders } from "../../lib/sql";
-import { requireVideoId } from "../../lib/youtube/ids";
+import { requireEpisodeId } from "../../lib/youtube/ids";
 
 /**
  * Records read receipts for summaries actually returned to this user. Existing receipts
@@ -8,17 +8,17 @@ import { requireVideoId } from "../../lib/youtube/ids";
  */
 export function markRead(
   sql: SqlStorage,
-  videoIds: readonly string[],
+  episodeIds: readonly string[],
   now: number,
 ): number {
   let marked = 0;
-  for (const videoId of uniqueVideoIds(videoIds)) {
+  for (const episodeId of uniqueEpisodeIds(episodeIds)) {
     marked += sql
       .exec(
-        `INSERT OR IGNORE INTO summary_reads (video_id, read_at, created_at)
+        `INSERT OR IGNORE INTO summary_reads (episode_id, read_at, created_at)
          VALUES (?, ?, ?)
-         RETURNING video_id`,
-        videoId,
+         RETURNING episode_id`,
+        episodeId,
         now,
         now,
       )
@@ -33,37 +33,37 @@ export function markRead(
  */
 export function clearRead(
   sql: SqlStorage,
-  videoIds: readonly string[],
+  episodeIds: readonly string[],
 ): number {
   let cleared = 0;
-  for (const videoId of uniqueVideoIds(videoIds)) {
+  for (const episodeId of uniqueEpisodeIds(episodeIds)) {
     cleared += sql
       .exec(
-        "DELETE FROM summary_reads WHERE video_id = ? RETURNING video_id",
-        videoId,
+        "DELETE FROM summary_reads WHERE episode_id = ? RETURNING episode_id",
+        episodeId,
       )
       .toArray().length;
   }
   return cleared;
 }
 
-/** The subset of `videoIds` this user has already read. Callers derive unread state. */
-export function readVideoIds(
+/** The subset of `episodeIds` this user has already read. Callers derive unread state. */
+export function readEpisodeIds(
   sql: SqlStorage,
-  videoIds: readonly string[],
+  episodeIds: readonly string[],
 ): string[] {
   const read: string[] = [];
-  for (const batch of chunk(uniqueVideoIds(videoIds))) {
-    for (const row of sql.exec<{ video_id: string }>(
-      `SELECT video_id FROM summary_reads WHERE video_id IN (${placeholders(batch.length)})`,
+  for (const batch of chunk(uniqueEpisodeIds(episodeIds))) {
+    for (const row of sql.exec<{ episode_id: string }>(
+      `SELECT episode_id FROM summary_reads WHERE episode_id IN (${placeholders(batch.length)})`,
       ...batch,
     )) {
-      read.push(row.video_id);
+      read.push(row.episode_id);
     }
   }
   return read.sort();
 }
 
-function uniqueVideoIds(videoIds: readonly string[]): string[] {
-  return [...new Set(videoIds.map(requireVideoId))];
+function uniqueEpisodeIds(episodeIds: readonly string[]): string[] {
+  return [...new Set(episodeIds.map(requireEpisodeId))];
 }

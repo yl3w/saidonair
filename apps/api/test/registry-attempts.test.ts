@@ -12,6 +12,10 @@ import {
   CHANNEL_A,
   CHANNEL_B,
   CHANNEL_C,
+  EPISODE_A,
+  EPISODE_B,
+  EPISODE_C,
+  episodeIds,
   expectDomainError,
   OWNER,
   registry,
@@ -20,10 +24,6 @@ import {
   seedEpisode,
   seedSummary,
   setChannelState,
-  VIDEO_A,
-  VIDEO_B,
-  VIDEO_C,
-  videoIds,
 } from "./helpers";
 
 const HOUR = 60 * 60 * 1000;
@@ -49,7 +49,7 @@ function inRegistry<T>(work: (sql: SqlStorage) => T): Promise<T> {
 }
 
 /** The generation columns the API never exposes. */
-function generations(videoId: string) {
+function generations(episodeId: string) {
   return inRegistry((sql) =>
     sql
       .exec<{
@@ -58,34 +58,34 @@ function generations(videoId: string) {
         checked: number | null;
       }>(
         `SELECT active_vector_generation AS active, staged_vector_generation AS staged,
-           transcript_checked_at AS checked FROM episodes WHERE video_id = ?`,
-        videoId,
+           transcript_checked_at AS checked FROM episodes WHERE episode_id = ?`,
+        episodeId,
       )
       .one(),
   );
 }
 
-function storedRelated(videoId: string) {
+function storedRelated(episodeId: string) {
   return inRegistry(
     (sql) =>
       sql
         .exec<{ related: string }>(
-          "SELECT related_video_ids_json AS related FROM episode_summaries WHERE video_id = ?",
-          videoId,
+          "SELECT related_episode_ids_json AS related FROM episode_summaries WHERE episode_id = ?",
+          episodeId,
         )
         .one().related,
   );
 }
 
-async function pendingNow(videoId: string, channelId: string) {
-  await seedEpisode(videoId, channelId, {
+async function pendingNow(episodeId: string, channelId: string) {
+  await seedEpisode(episodeId, channelId, {
     status: "pending",
     window: { intent: "publish", startedAt: Date.now() },
   });
 }
 
-async function started(videoId: string) {
-  const start = await registry().beginAttempt(videoId, "channel_ingestion");
+async function started(episodeId: string) {
+  const start = await registry().beginAttempt(episodeId, "channel_ingestion");
   if (start.kind !== "started") throw new Error("expected a started attempt");
   return start;
 }
@@ -94,17 +94,17 @@ describe("the attempt ledger", () => {
   it("begins, stages, and publishes a first attempt; a second begin reports the running one; stale writes are refused", async () => {
     const stub = registry();
     const channel = await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_A, CHANNEL_A);
-    await seedEpisode(VIDEO_B, CHANNEL_A, { status: "available" });
-    await seedSummary(VIDEO_B);
-    await seedEpisode(VIDEO_C, CHANNEL_A, { status: "pending" });
+    await pendingNow(EPISODE_A, CHANNEL_A);
+    await seedEpisode(EPISODE_B, CHANNEL_A, { status: "available" });
+    await seedSummary(EPISODE_B);
+    await seedEpisode(EPISODE_C, CHANNEL_A, { status: "pending" });
 
-    const start = await stub.beginAttempt(VIDEO_A, "channel_ingestion");
+    const start = await stub.beginAttempt(EPISODE_A, "channel_ingestion");
     expect(start.kind).toBe("started");
     if (start.kind !== "started") return;
     expect(start.abandonedGeneration).toBeNull();
     expect(start.attempt).toMatchObject({
-      videoId: VIDEO_A,
+      episodeId: EPISODE_A,
       trigger: "channel_ingestion",
       intent: "publish",
       status: "running",
@@ -115,39 +115,40 @@ describe("the attempt ledger", () => {
       finishedAt: null,
     });
     expect(start.attempt.workflowId).toBe(start.attempt.attemptId);
-    const { staged } = await generations(VIDEO_A);
+    const { staged } = await generations(EPISODE_A);
     expect(staged).toEqual(expect.any(String));
 
-    const again = await stub.beginAttempt(VIDEO_A, "scheduled_recovery");
+    const again = await stub.beginAttempt(EPISODE_A, "scheduled_recovery");
     expect(again).toEqual({ kind: "running", attempt: start.attempt });
     const listed = await stub.listEpisodes(CHANNEL_A, { relatedScope: [] });
-    expect(listed.find((e) => e.videoId === VIDEO_A)?.processing).toMatchObject(
-      {
-        attemptCount: 1,
-        latestAttempt: {
-          attemptId: start.attempt.attemptId,
-          status: "running",
-        },
+    expect(
+      listed.find((e) => e.episodeId === EPISODE_A)?.processing,
+    ).toMatchObject({
+      attemptCount: 1,
+      latestAttempt: {
+        attemptId: start.attempt.attemptId,
+        status: "running",
       },
-    );
+    });
 
     const marked = await stub.markStaged(start.attempt.attemptId, 12, 8787);
     expect(marked.stagedChunkCount).toBe(12);
     // The runtime the provider reported is the only place it is ever stored (0002).
     expect(
-      (await registry().getEpisode(CHANNEL_A, VIDEO_A))?.processing.durationSec,
+      (await registry().getEpisode(CHANNEL_A, EPISODE_A))?.processing
+        .durationSec,
     ).toBe(8787);
-    expect((await generations(VIDEO_A)).checked).toEqual(expect.any(Number));
+    expect((await generations(EPISODE_A)).checked).toEqual(expect.any(Number));
 
     const done = await stub.completeAttempt(
       start.attempt.attemptId,
       12,
       STRUCTURED,
       [
-        VIDEO_C, // pending: dropped
-        VIDEO_B,
-        VIDEO_A, // itself: dropped
-        VIDEO_B, // duplicate: dropped
+        EPISODE_C, // pending: dropped
+        EPISODE_B,
+        EPISODE_A, // itself: dropped
+        EPISODE_B, // duplicate: dropped
       ],
     );
     expect(done.previousGeneration).toBeNull();
@@ -180,14 +181,14 @@ describe("the attempt ledger", () => {
         },
       },
     });
-    expect(await storedRelated(VIDEO_A)).toBe(JSON.stringify([VIDEO_B]));
+    expect(await storedRelated(EPISODE_A)).toBe(JSON.stringify([EPISODE_B]));
     const inScope = await stub.listEpisodes(CHANNEL_A, {
       relatedScope: [CHANNEL_A],
     });
-    expect(inScope.find((e) => e.videoId === VIDEO_A)?.related).toEqual([
-      { videoId: VIDEO_B, title: `Episode ${VIDEO_B}` },
+    expect(inScope.find((e) => e.episodeId === EPISODE_A)?.related).toEqual([
+      { episodeId: EPISODE_B, title: `Episode ${EPISODE_B}` },
     ]);
-    const after = await generations(VIDEO_A);
+    const after = await generations(EPISODE_A);
     expect(after).toMatchObject({ active: staged, staged: null });
 
     // Stale: the attempt is no longer running.
@@ -213,10 +214,10 @@ describe("the attempt ledger", () => {
   it("keeps an unfinished publication in its window, schedules it six hours later, and hands the abandoned generation to the next attempt", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_A, CHANNEL_A);
+    await pendingNow(EPISODE_A, CHANNEL_A);
 
-    const first = await started(VIDEO_A);
-    const firstGeneration = (await generations(VIDEO_A)).staged;
+    const first = await started(EPISODE_A);
+    const firstGeneration = (await generations(EPISODE_A)).staged;
     await stub.markStaged(first.attempt.attemptId, 30, null);
     const before = Date.now();
     const failed = await stub.finishAttempt(first.attempt.attemptId, {
@@ -239,14 +240,14 @@ describe("the attempt ledger", () => {
     expect(p.nextAttemptAt).toBeGreaterThanOrEqual(before + SIX_HOURS - 1_000);
     expect(p.nextAttemptAt).toBeLessThanOrEqual(p.windowDeadlineAt ?? 0);
     // The staged generation stays on the episode until the next attempt replaces it.
-    expect((await generations(VIDEO_A)).staged).toBe(firstGeneration);
+    expect((await generations(EPISODE_A)).staged).toBe(firstGeneration);
 
-    const second = await started(VIDEO_A);
+    const second = await started(EPISODE_A);
     expect(second.abandonedGeneration).toEqual({
       generationId: firstGeneration,
       chunkCount: 30,
     });
-    expect((await generations(VIDEO_A)).staged).not.toBe(firstGeneration);
+    expect((await generations(EPISODE_A)).staged).not.toBe(firstGeneration);
     // Waiting on captions never reached embedding: nothing abandoned for the third attempt.
     const waiting = await stub.finishAttempt(second.attempt.attemptId, {
       status: "waiting",
@@ -258,8 +259,8 @@ describe("the attempt ledger", () => {
       failureDetail: null,
     });
     expect(waiting.episode.processing.attemptCount).toBe(2);
-    expect((await generations(VIDEO_A)).checked).toEqual(expect.any(Number));
-    const third = await started(VIDEO_A);
+    expect((await generations(EPISODE_A)).checked).toEqual(expect.any(Number));
+    const third = await started(EPISODE_A);
     expect(third.abandonedGeneration).toBeNull();
   });
 
@@ -268,7 +269,7 @@ describe("the attempt ledger", () => {
     await seedApprovedChannel(CHANNEL_A, "A");
     const start = 1_000_000;
     const deadline = start + WINDOW;
-    await seedEpisode(VIDEO_A, CHANNEL_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, {
       status: "pending",
       window: { intent: "publish", startedAt: start },
     });
@@ -276,7 +277,7 @@ describe("the attempt ledger", () => {
     const first = await inRegistry((sql) =>
       processing.beginAttempt(
         sql,
-        VIDEO_A,
+        EPISODE_A,
         "scheduled_recovery",
         null,
         start + 1_000,
@@ -301,7 +302,7 @@ describe("the attempt ledger", () => {
     const final = await inRegistry((sql) =>
       processing.beginAttempt(
         sql,
-        VIDEO_A,
+        EPISODE_A,
         "scheduled_recovery",
         null,
         deadline,
@@ -334,21 +335,21 @@ describe("the attempt ledger", () => {
         latestAttempt: { status: "waiting", outcomeCode: "CAPTIONS" },
       },
     });
-    expect((await generations(VIDEO_A)).staged).toBeNull();
+    expect((await generations(EPISODE_A)).staged).toBeNull();
 
     // A replacement that exhausts its window closes without touching the readable content.
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       status: "available",
       chunkCount: 3,
       processedAt: 1,
     });
-    await seedSummary(VIDEO_B);
-    const replacing = await stub.retryEpisode(CHANNEL_A, VIDEO_B);
+    await seedSummary(EPISODE_B);
+    const replacing = await stub.retryEpisode(CHANNEL_A, EPISODE_B);
     const replaceDeadline = replacing.processing.windowDeadlineAt ?? 0;
     const attempt = await inRegistry((sql) =>
       processing.beginAttempt(
         sql,
-        VIDEO_B,
+        EPISODE_B,
         "owner_retry",
         OWNER,
         replaceDeadline - HOUR,
@@ -368,12 +369,12 @@ describe("the attempt ledger", () => {
       summaryAvailableAt: 1,
       summary: {
         format: "structured",
-        executiveSummary: `Summary of ${VIDEO_B}`,
+        executiveSummary: `Summary of ${EPISODE_B}`,
       },
       processing: { intent: null, chunkCount: 3, failureCode: null },
     });
-    expect(await generations(VIDEO_B)).toMatchObject({
-      active: `gen-${VIDEO_B}`,
+    expect(await generations(EPISODE_B)).toMatchObject({
+      active: `gen-${EPISODE_B}`,
       staged: null,
     });
   });
@@ -383,8 +384,8 @@ describe("the attempt ledger", () => {
     async (code) => {
       const stub = registry();
       await seedApprovedChannel(CHANNEL_A, "A");
-      await pendingNow(VIDEO_A, CHANNEL_A);
-      const start = await started(VIDEO_A);
+      await pendingNow(EPISODE_A, CHANNEL_A);
+      const start = await started(EPISODE_A);
       const status = (WAITING_CODES as readonly string[]).includes(code)
         ? "waiting"
         : "failed";
@@ -414,8 +415,8 @@ describe("the attempt ledger", () => {
     // The closed set is fourteen values since 2026-09-14; the schema is where that is enforced
     // for anything that bypasses the typed path (spec §7.9).
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_A, CHANNEL_A);
-    const start = await started(VIDEO_A);
+    await pendingNow(EPISODE_A, CHANNEL_A);
+    const start = await started(EPISODE_A);
     await expect(
       inRegistry((sql) =>
         sql.exec(
@@ -436,16 +437,16 @@ describe("the attempt ledger", () => {
   it("counts launched attempts only, never making the episode terminal", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_A, CHANNEL_A);
+    await pendingNow(EPISODE_A, CHANNEL_A);
     for (let i = 0; i < 5; i++) {
-      const start = await started(VIDEO_A);
+      const start = await started(EPISODE_A);
       await stub.finishAttempt(start.attempt.attemptId, {
         status: "failed",
         code: "PROVIDER_HTTP",
       });
     }
     const blocked = await stub.recordBlockedAttempt(
-      VIDEO_A,
+      EPISODE_A,
       "scheduled_recovery",
       "PROVIDER_LIMIT",
     );
@@ -456,11 +457,11 @@ describe("the attempt ledger", () => {
   it("records blocked starts: automatic ones move the episode or settle it at the deadline, owner ones leave it untouched", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_A, CHANNEL_A);
+    await pendingNow(EPISODE_A, CHANNEL_A);
     const before = Date.now();
 
     const automatic = await stub.recordBlockedAttempt(
-      VIDEO_A,
+      EPISODE_A,
       "scheduled_recovery",
       "PROVIDER_LIMIT",
     );
@@ -486,7 +487,7 @@ describe("the attempt ledger", () => {
 
     // Blocked at every start for the whole window: the timeout still names the real cause.
     const start = 5_000_000;
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       status: "pending",
       window: { intent: "publish", startedAt: start },
     });
@@ -495,7 +496,7 @@ describe("the attempt ledger", () => {
       await inRegistry((sql) =>
         processing.recordBlockedAttempt(
           sql,
-          VIDEO_B,
+          EPISODE_B,
           "scheduled_recovery",
           "PROVIDER_LIMIT",
           null,
@@ -506,7 +507,7 @@ describe("the attempt ledger", () => {
     const settled = await inRegistry((sql) =>
       processing.recordBlockedAttempt(
         sql,
-        VIDEO_B,
+        EPISODE_B,
         "scheduled_recovery",
         "PROVIDER_LIMIT",
         null,
@@ -525,16 +526,16 @@ describe("the attempt ledger", () => {
     });
 
     // An owner's block: the attempt is recorded, the episode is exactly as before, window or not.
-    await seedEpisode(VIDEO_C, CHANNEL_A, {
+    await seedEpisode(EPISODE_C, CHANNEL_A, {
       status: "available",
       chunkCount: 3,
     });
-    await seedSummary(VIDEO_C);
+    await seedSummary(EPISODE_C);
     const untouched = (
       await stub.listEpisodes(CHANNEL_A, { relatedScope: [] })
-    ).find((e) => e.videoId === VIDEO_C);
+    ).find((e) => e.episodeId === EPISODE_C);
     const owner = await stub.recordBlockedAttempt(
-      VIDEO_C,
+      EPISODE_C,
       "owner_retry",
       "PROVIDER_AUTH",
       ALICE,
@@ -569,32 +570,32 @@ describe("the attempt ledger", () => {
     // Refusals.
     await expectDomainError(
       stub.recordBlockedAttempt(
-        VIDEO_C,
+        EPISODE_C,
         "scheduled_recovery",
         "PROVIDER_LIMIT",
       ),
       "INVALID_STATE", // no window open for an automatic start
     );
     await expectDomainError(
-      stub.recordBlockedAttempt(VIDEO_C, "owner_retry", "PROVIDER_LIMIT"),
+      stub.recordBlockedAttempt(EPISODE_C, "owner_retry", "PROVIDER_LIMIT"),
       "INVALID_INPUT", // owner_retry needs a requester
     );
     await expectDomainError(
       stub.recordBlockedAttempt(
-        VIDEO_A,
+        EPISODE_A,
         "scheduled_recovery",
         "CAPTIONS" as never,
       ),
       "INVALID_INPUT",
     );
     await expectDomainError(
-      stub.recordBlockedAttempt(VIDEO_A, "cron" as never, "PROVIDER_LIMIT"),
+      stub.recordBlockedAttempt(EPISODE_A, "cron" as never, "PROVIDER_LIMIT"),
       "INVALID_INPUT",
     );
-    await started(VIDEO_A);
+    await started(EPISODE_A);
     await expectDomainError(
       stub.recordBlockedAttempt(
-        VIDEO_A,
+        EPISODE_A,
         "scheduled_recovery",
         "PROVIDER_LIMIT",
       ),
@@ -605,8 +606,8 @@ describe("the attempt ledger", () => {
   it("skips a publication on a deterministic result and leaves a replacement's content alone", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_A, CHANNEL_A);
-    const first = await started(VIDEO_A);
+    await pendingNow(EPISODE_A, CHANNEL_A);
+    const first = await started(EPISODE_A);
     const skipped = await stub.finishAttempt(first.attempt.attemptId, {
       status: "skipped",
       code: "SHORT",
@@ -626,16 +627,16 @@ describe("the attempt ledger", () => {
         transcriptCheckedAt: expect.any(Number),
       },
     });
-    expect((await generations(VIDEO_A)).staged).toBeNull();
+    expect((await generations(EPISODE_A)).staged).toBeNull();
 
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       status: "available",
       chunkCount: 3,
       processedAt: 1,
     });
-    await seedSummary(VIDEO_B);
-    await stub.retryEpisode(CHANNEL_A, VIDEO_B);
-    const replacing = await stub.beginAttempt(VIDEO_B, "owner_retry", OWNER);
+    await seedSummary(EPISODE_B);
+    await stub.retryEpisode(CHANNEL_A, EPISODE_B);
+    const replacing = await stub.beginAttempt(EPISODE_B, "owner_retry", OWNER);
     if (replacing.kind !== "started") throw new Error("expected started");
     expect(replacing.attempt).toMatchObject({
       intent: "replace",
@@ -656,8 +657,8 @@ describe("the attempt ledger", () => {
       summary: { format: "structured" },
       processing: { intent: null, chunkCount: 3, skippedAt: null },
     });
-    expect(await generations(VIDEO_B)).toMatchObject({
-      active: `gen-${VIDEO_B}`,
+    expect(await generations(EPISODE_B)).toMatchObject({
+      active: `gen-${EPISODE_B}`,
       staged: null,
     });
   });
@@ -665,16 +666,16 @@ describe("the attempt ledger", () => {
   it("replaces content atomically, preserving first availability and handing back the previous generation", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(VIDEO_A, CHANNEL_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, {
       status: "available",
       chunkCount: 3,
       processedAt: 1,
     });
-    await seedSummary(VIDEO_A);
-    await stub.retryEpisode(CHANNEL_A, VIDEO_A);
-    const start = await stub.beginAttempt(VIDEO_A, "owner_retry", OWNER);
+    await seedSummary(EPISODE_A);
+    await stub.retryEpisode(CHANNEL_A, EPISODE_A);
+    const start = await stub.beginAttempt(EPISODE_A, "owner_retry", OWNER);
     if (start.kind !== "started") throw new Error("expected started");
-    const newGeneration = (await generations(VIDEO_A)).staged;
+    const newGeneration = (await generations(EPISODE_A)).staged;
     await stub.markStaged(start.attempt.attemptId, 7, null);
 
     const done = await stub.completeAttempt(
@@ -689,7 +690,7 @@ describe("the attempt ledger", () => {
       [],
     );
     expect(done.previousGeneration).toEqual({
-      generationId: `gen-${VIDEO_A}`,
+      generationId: `gen-${EPISODE_A}`,
       chunkCount: 3,
     });
     expect(done.episode).toMatchObject({
@@ -698,28 +699,28 @@ describe("the attempt ledger", () => {
       summary: { format: "raw_fallback", rawText: "the new text" },
       processing: { chunkCount: 7, intent: null, attemptCount: 1 },
     });
-    expect(await generations(VIDEO_A)).toMatchObject({
+    expect(await generations(EPISODE_A)).toMatchObject({
       active: newGeneration,
       staged: null,
     });
-    expect(await storedRelated(VIDEO_A)).toBe("[]");
+    expect(await storedRelated(EPISODE_A)).toBe("[]");
   });
 
   it("stores at most five available related episodes, in the attempt's order", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await pendingNow(VIDEO_A, CHANNEL_A);
-    const others = videoIds(8);
+    await pendingNow(EPISODE_A, CHANNEL_A);
+    const others = episodeIds(8);
     for (const id of others)
       await seedEpisode(id, CHANNEL_A, { status: "available" });
-    const start = await started(VIDEO_A);
+    const start = await started(EPISODE_A);
     await stub.completeAttempt(
       start.attempt.attemptId,
       3,
       STRUCTURED,
       [...others].reverse(),
     );
-    expect(JSON.parse(await storedRelated(VIDEO_A))).toEqual(
+    expect(JSON.parse(await storedRelated(EPISODE_A))).toEqual(
       [...others].reverse().slice(0, 5),
     );
   });
@@ -732,12 +733,12 @@ describe("the attempt ledger", () => {
     await setChannelState(CHANNEL_A, { status: "requested" });
     await stub.declineChannel(OWNER, CHANNEL_B);
     for (const channelId of [CHANNEL_A, CHANNEL_B, CHANNEL_C]) {
-      const videoId = `v${channelId.slice(2, 12)}`;
-      await seedEpisode(videoId, channelId, { status: "failed" });
+      const episodeId = `v${channelId.slice(2, 12)}`;
+      await seedEpisode(episodeId, channelId, { status: "failed" });
       const channel = await stub.getChannel(channelId);
-      const retried = await stub.retryEpisode(channelId, videoId);
+      const retried = await stub.retryEpisode(channelId, episodeId);
       expect(retried.status).toBe("pending");
-      const start = await stub.beginAttempt(videoId, "owner_retry", OWNER);
+      const start = await stub.beginAttempt(episodeId, "owner_retry", OWNER);
       expect(start.kind).toBe("started");
       const skipped = await stub.finishAttempt(
         start.kind === "started" ? start.attempt.attemptId : "",
@@ -761,21 +762,21 @@ describe("the attempt ledger", () => {
       stub.beginAttempt("unknown0001", "channel_ingestion"),
       "NOT_FOUND",
     );
-    await seedEpisode(VIDEO_B, CHANNEL_A, { status: "available" }); // no window
+    await seedEpisode(EPISODE_B, CHANNEL_A, { status: "available" }); // no window
     await expectDomainError(
-      stub.beginAttempt(VIDEO_B, "channel_ingestion"),
+      stub.beginAttempt(EPISODE_B, "channel_ingestion"),
       "INVALID_STATE",
     );
-    await pendingNow(VIDEO_A, CHANNEL_A);
+    await pendingNow(EPISODE_A, CHANNEL_A);
     await expectDomainError(
-      stub.beginAttempt(VIDEO_A, "owner_retry"),
+      stub.beginAttempt(EPISODE_A, "owner_retry"),
       "INVALID_INPUT",
     );
     await expectDomainError(
-      stub.beginAttempt(VIDEO_A, "nightly" as never),
+      stub.beginAttempt(EPISODE_A, "nightly" as never),
       "INVALID_INPUT",
     );
-    const start = await started(VIDEO_A);
+    const start = await started(EPISODE_A);
     const id = start.attempt.attemptId;
     await expectDomainError(stub.markStaged(id, 0, null), "INVALID_INPUT");
     await expectDomainError(stub.markStaged("", 3, null), "INVALID_INPUT");
@@ -818,7 +819,7 @@ describe("the attempt ledger", () => {
       "INVALID_INPUT",
     );
     // Still running and current after every refusal.
-    const again = await stub.beginAttempt(VIDEO_A, "channel_ingestion");
+    const again = await stub.beginAttempt(EPISODE_A, "channel_ingestion");
     expect(again).toMatchObject({
       kind: "running",
       attempt: { attemptId: id },
@@ -836,16 +837,16 @@ describe("the recovery selection reads", () => {
       startedAt: 1,
       nextAttemptAt,
     });
-    // Two due at exactly `now` (tie broken by video id), one due earlier under `replace`.
-    await seedEpisode(VIDEO_B, CHANNEL_A, {
+    // Two due at exactly `now` (tie broken by episode id), one due earlier under `replace`.
+    await seedEpisode(EPISODE_B, CHANNEL_A, {
       status: "pending",
       window: window("publish", now),
     });
-    await seedEpisode(VIDEO_A, CHANNEL_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, {
       status: "pending",
       window: window("publish", now),
     });
-    await seedEpisode(VIDEO_C, CHANNEL_A, {
+    await seedEpisode(EPISODE_C, CHANNEL_A, {
       status: "available",
       window: window("replace", now - 10),
     });
@@ -864,14 +865,14 @@ describe("the recovery selection reads", () => {
       failureDetail: "CAPTIONS",
     });
 
-    expect((await stub.listDueEpisodes(now)).map((e) => e.videoId)).toEqual([
-      VIDEO_C,
-      VIDEO_A,
-      VIDEO_B,
+    expect((await stub.listDueEpisodes(now)).map((e) => e.episodeId)).toEqual([
+      EPISODE_C,
+      EPISODE_A,
+      EPISODE_B,
     ]);
     expect(
-      (await stub.listDueEpisodes(now - 10)).map((e) => e.videoId),
-    ).toEqual([VIDEO_C]);
+      (await stub.listDueEpisodes(now - 10)).map((e) => e.episodeId),
+    ).toEqual([EPISODE_C]);
     expect(await stub.listDueEpisodes(0)).toEqual([]);
     await expectDomainError(stub.listDueEpisodes(-1), "INVALID_INPUT");
   });
@@ -879,29 +880,29 @@ describe("the recovery selection reads", () => {
   it("lists running attempts started strictly before the cutoff, oldest first, never a finished one", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    for (const videoId of [VIDEO_A, VIDEO_B, VIDEO_C]) {
-      await seedEpisode(videoId, CHANNEL_A, {
+    for (const episodeId of [EPISODE_A, EPISODE_B, EPISODE_C]) {
+      await seedEpisode(episodeId, CHANNEL_A, {
         status: "pending",
         window: { intent: "publish", startedAt: 1 },
       });
     }
-    const old = await seedAttempt(VIDEO_A, {
+    const old = await seedAttempt(EPISODE_A, {
       status: "running",
       startedAt: 100,
     });
-    const older = await seedAttempt(VIDEO_B, {
+    const older = await seedAttempt(EPISODE_B, {
       status: "running",
       startedAt: 50,
     });
-    await seedAttempt(VIDEO_C, { status: "running", startedAt: 200 });
-    await seedAttempt(VIDEO_A, { status: "waiting", startedAt: 10 });
+    await seedAttempt(EPISODE_C, { status: "running", startedAt: 200 });
+    await seedAttempt(EPISODE_A, { status: "waiting", startedAt: 10 });
 
     expect(
       (await stub.listRunningAttempts(200)).map((a) => a.attemptId),
     ).toEqual([older, old]);
-    expect((await stub.listRunningAttempts(201)).map((a) => a.videoId)).toEqual(
-      [VIDEO_B, VIDEO_A, VIDEO_C],
-    );
+    expect(
+      (await stub.listRunningAttempts(201)).map((a) => a.episodeId),
+    ).toEqual([EPISODE_B, EPISODE_A, EPISODE_C]);
     expect(await stub.listRunningAttempts(50)).toEqual([]);
     await expectDomainError(
       stub.listRunningAttempts(Number.NaN),

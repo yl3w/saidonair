@@ -3,35 +3,34 @@ import {
   ALICE,
   BOB,
   CHANNEL_A,
+  EPISODE_A,
+  EPISODE_B,
+  episodeIds,
   expectDomainError,
   registry,
   seedApprovedChannel,
   userDO,
-  VIDEO_A,
-  VIDEO_B,
-  videoIds,
 } from "./helpers";
 
 describe("user read receipts", () => {
   it("records receipts once and reports the read subset", async () => {
     const stub = userDO(ALICE);
 
-    expect(await stub.markRead([VIDEO_A, VIDEO_A, VIDEO_B])).toBe(2);
-    expect(await stub.markRead([VIDEO_A])).toBe(0);
-    expect(await stub.readVideoIds([VIDEO_B, VIDEO_A, "ccccccccccc"])).toEqual([
-      VIDEO_A,
-      VIDEO_B,
-    ]);
+    expect(await stub.markRead([EPISODE_A, EPISODE_A, EPISODE_B])).toBe(2);
+    expect(await stub.markRead([EPISODE_A])).toBe(0);
+    expect(
+      await stub.readEpisodeIds([EPISODE_B, EPISODE_A, "ccccccccccc"]),
+    ).toEqual([EPISODE_A, EPISODE_B]);
     expect(await stub.markRead([])).toBe(0);
-    expect(await stub.readVideoIds([])).toEqual([]);
+    expect(await stub.readEpisodeIds([])).toEqual([]);
   });
 
   it("handles id lists above the bound-parameter limit", async () => {
     const stub = userDO(ALICE);
-    const ids = videoIds(250);
+    const ids = episodeIds(250);
 
     expect(await stub.markRead(ids)).toBe(250);
-    expect(await stub.readVideoIds(ids)).toEqual([...ids].sort());
+    expect(await stub.readEpisodeIds(ids)).toEqual([...ids].sort());
   });
 
   it("keeps receipts through unfollow and isolates them per user", async () => {
@@ -39,14 +38,14 @@ describe("user read receipts", () => {
     await seedApprovedChannel(CHANNEL_A, "Channel A");
     const alice = userDO(ALICE);
     await registry().recordFollow(ALICE, CHANNEL_A);
-    await alice.markRead([VIDEO_A]);
+    await alice.markRead([EPISODE_A]);
     await registry().recordUnfollow(ALICE, CHANNEL_A);
 
-    expect(await alice.readVideoIds([VIDEO_A])).toEqual([VIDEO_A]);
-    expect(await userDO(BOB).readVideoIds([VIDEO_A])).toEqual([]);
+    expect(await alice.readEpisodeIds([EPISODE_A])).toEqual([EPISODE_A]);
+    expect(await userDO(BOB).readEpisodeIds([EPISODE_A])).toEqual([]);
   });
 
-  it("rejects malformed video ids", async () => {
+  it("rejects malformed episode ids", async () => {
     await expectDomainError(
       userDO(ALICE).markRead(["too short"]),
       "INVALID_INPUT",

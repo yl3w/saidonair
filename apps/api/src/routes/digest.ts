@@ -35,7 +35,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
     tags: ["digest"],
     summary: "The caller's digest",
     description:
-      "Available episodes with summaries from eligible follows (active follows on approved channels), selected and ordered by `summaryAvailableAt`, newest first. `from` and `to` bound the range (inclusive and exclusive); omitting both asks for everything. `unread=true` is the queue and omitting it is History; `channelId` repeats to narrow the range; `cursor` and `limit` page it; `compact=true` answers rows rather than episodes. There is no default window and no clamp: day grouping is the client's, from its own local boundaries. A pure read — `POST /channels/{id}/episodes/{videoId}/read` is the only thing that records a receipt.",
+      "Available episodes with summaries from eligible follows (active follows on approved channels), selected and ordered by `summaryAvailableAt`, newest first. `from` and `to` bound the range (inclusive and exclusive); omitting both asks for everything. `unread=true` is the queue and omitting it is History; `channelId` repeats to narrow the range; `cursor` and `limit` page it; `compact=true` answers rows rather than episodes. There is no default window and no clamp: day grouping is the client's, from its own local boundaries. A pure read — `POST /channels/{id}/episodes/{episodeId}/read` is the only thing that records a receipt.",
     responses: {
       200: jsonResponse(
         DigestResponseSchema,
@@ -88,7 +88,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
         compact: true,
         rows: page.items.map((row) => ({
           ...row,
-          read: read.has(row.videoId),
+          read: read.has(row.episodeId),
         })),
         nextCursor: page.nextCursor,
       });
@@ -103,7 +103,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
     return c.json<DigestResponse>({
       compact: false,
       episodes: page.items.map((record) =>
-        toEpisode(record, { read: read.has(record.videoId) }),
+        toEpisode(record, { read: read.has(record.episodeId) }),
       ),
       nextCursor: page.nextCursor,
     });
@@ -111,7 +111,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
 );
 
 /** A row the page can resume from. Every row the digest selects carries both fields. */
-type Positioned = { videoId: string; summaryAvailableAt: number | null };
+type Positioned = { episodeId: string; summaryAvailableAt: number | null };
 
 /**
  * One page of the range. The Registry answers `limit + 1` rows at a time so the end of the range is
@@ -138,13 +138,13 @@ async function pageThrough<T extends Positioned>(
       exhausted = true;
       break;
     }
-    const read = options.unread ? await readVideoIds(c, batch) : null;
+    const read = options.unread ? await readEpisodeIds(c, batch) : null;
     let consumed = 0;
     for (const row of batch) {
       if (items.length === options.limit) break;
       consumed++;
       after = positionOf(row);
-      if (read === null || !read.has(row.videoId)) items.push(row);
+      if (read === null || !read.has(row.episodeId)) items.push(row);
     }
     // The Registry was asked for one more than the page needs, so a short batch is the end.
     if (consumed === batch.length && batch.length <= options.limit) {
@@ -165,15 +165,15 @@ async function readState(
   unread: boolean,
 ): Promise<ReadonlySet<string>> {
   if (unread || items.length === 0) return new Set<string>();
-  return readVideoIds(c, items);
+  return readEpisodeIds(c, items);
 }
 
-async function readVideoIds(
+async function readEpisodeIds(
   c: Ctx,
   items: readonly Positioned[],
 ): Promise<Set<string>> {
   return new Set(
-    await c.var.user.readVideoIds(items.map((item) => item.videoId)),
+    await c.var.user.readEpisodeIds(items.map((item) => item.episodeId)),
   );
 }
 
@@ -181,7 +181,7 @@ async function readVideoIds(
 function positionOf(row: Positioned): DigestPosition {
   return {
     summaryAvailableAt: row.summaryAvailableAt ?? 0,
-    videoId: row.videoId,
+    episodeId: row.episodeId,
   };
 }
 
@@ -199,12 +199,12 @@ function requireRange(query: DigestQuery): {
 }
 
 /**
- * The cursor is the last row's `(summaryAvailableAt, videoId)` as opaque base64url (plan decision,
+ * The cursor is the last row's `(summaryAvailableAt, episodeId)` as opaque base64url (plan decision,
  * docs/specs/design-phase-plan.md §2.2): the client never composes one, so changing the key is not
  * a breaking change.
  */
 function encodeCursor(position: DigestPosition): string {
-  return btoa(`${position.summaryAvailableAt}.${position.videoId}`)
+  return btoa(`${position.summaryAvailableAt}.${position.episodeId}`)
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replaceAll("=", "");
@@ -220,11 +220,11 @@ function decodeCursor(raw: string): DigestPosition {
   }
   const separator = decoded.indexOf(".");
   const summaryAvailableAt = Number(decoded.slice(0, separator));
-  const videoId = decoded.slice(separator + 1);
-  if (separator < 1 || !Number.isInteger(summaryAvailableAt) || !videoId) {
+  const episodeId = decoded.slice(separator + 1);
+  if (separator < 1 || !Number.isInteger(summaryAvailableAt) || !episodeId) {
     throw invalidCursor();
   }
-  return { summaryAvailableAt, videoId };
+  return { summaryAvailableAt, episodeId };
 }
 
 function invalidCursor(): DomainError {

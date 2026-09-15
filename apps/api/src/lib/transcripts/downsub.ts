@@ -1,4 +1,4 @@
-import { requireVideoId } from "../youtube/ids";
+import { requireEpisodeId } from "../youtube/ids";
 import {
   TranscriptError,
   type TranscriptResult,
@@ -46,8 +46,8 @@ export function downsubSource(
   fetchImpl: FetchLike = (input, init) => fetch(input, init),
 ): TranscriptSource {
   return {
-    async fetch(videoId) {
-      const id = requireVideoId(videoId);
+    async fetch(episodeId) {
+      const id = requireEpisodeId(episodeId);
       const key = apiKey?.trim();
       if (!key) {
         throw new TranscriptError(
@@ -94,12 +94,12 @@ type DownloadBody = {
 async function download(
   fetchImpl: FetchLike,
   key: string,
-  videoId: string,
+  episodeId: string,
 ): Promise<DownloadBody> {
   let response: Response;
   try {
     response = await fetchImpl(
-      `${DOWNSUB_DOWNLOAD_URL}?url=${encodeURIComponent(watchUrl(videoId))}`,
+      `${DOWNSUB_DOWNLOAD_URL}?url=${encodeURIComponent(watchUrl(episodeId))}`,
       {
         headers: { authorization: `Bearer ${key}`, accept: "application/json" },
       },

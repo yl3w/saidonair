@@ -7,7 +7,7 @@
 
 export type IngestParams = {
   attemptId: string;
-  videoId: string;
+  episodeId: string;
   channelId: string;
   /** The k-th attempt of a batch sleeps k × 3 seconds first (docs/PRD.md §4.2 rule 8). */
   startDelaySec: number;
@@ -77,7 +77,7 @@ type FakeOptions = {
   default: InstanceStatus;
   /** Statuses by attempt id. */
   instances: Record<string, InstanceStatus>;
-  /** Attempt ids or video ids whose `create` throws, for the WORKFLOW_LOST path. */
+  /** Attempt ids or episode ids whose `create` throws, for the WORKFLOW_LOST path. */
   createThrows: string[];
 };
 
@@ -106,7 +106,7 @@ function fakeLauncher(options: FakeOptions): IngestLauncher {
     async create(params) {
       if (
         options.createThrows.includes(params.attemptId) ||
-        options.createThrows.includes(params.videoId)
+        options.createThrows.includes(params.episodeId)
       ) {
         throw new Error("workflow fake: create is configured to fail");
       }

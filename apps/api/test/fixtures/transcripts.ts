@@ -33,25 +33,25 @@ export type FakeTranscripts = {
     remainingCredits: number | null;
     status: "ok" | "auth_failed" | "unreachable";
   };
-  videos: Record<string, FakeTranscriptEntry>;
+  episodes: Record<string, FakeTranscriptEntry>;
 };
 
 /**
- * Eleven-character ids, so `requireVideoId` accepts them. `VIDEO_LIVE` is an `UNPLAYABLE` failure
+ * Eleven-character ids, so `requireEpisodeId` accepts them. `EPISODE_LIVE` is an `UNPLAYABLE` failure
  * since 2026-09-14: live content is no longer discovered, and the provider's live `error` bodies all
  * throw (docs/specs/discovery-long-form-feed.md).
  */
-export const VIDEO_ENGLISH = "english0001";
-export const VIDEO_NO_CAPTIONS = "nocaption01";
-export const VIDEO_NON_ENGLISH = "nonenglish1";
-export const VIDEO_LIVE = "livestream1";
-export const VIDEO_SHORT = "shortvideo1";
-export const VIDEO_UNPLAYABLE = "unplayable1";
-export const VIDEO_AUTH_FAILS = "authfail001";
-export const VIDEO_LIMIT_FAILS = "limitfail01";
-export const VIDEO_RATE_LIMITED = "ratelimit01";
-export const VIDEO_HTTP_FAILS = "httpfail001";
-export const VIDEO_PARSE_FAILS = "parsefail01";
+export const EPISODE_ENGLISH = "english0001";
+export const EPISODE_NO_CAPTIONS = "nocaption01";
+export const EPISODE_NON_ENGLISH = "nonenglish1";
+export const EPISODE_LIVE = "livestream1";
+export const EPISODE_SHORT = "shortvideo1";
+export const EPISODE_UNPLAYABLE = "unplayable1";
+export const EPISODE_AUTH_FAILS = "authfail001";
+export const EPISODE_LIMIT_FAILS = "limitfail01";
+export const EPISODE_RATE_LIMITED = "ratelimit01";
+export const EPISODE_HTTP_FAILS = "httpfail001";
+export const EPISODE_PARSE_FAILS = "parsefail01";
 
 const SENTENCES = [
   "Today we look at how a small team keeps a long-lived tool maintainable.",
@@ -81,33 +81,33 @@ export function englishSegments(count = 120, secondsEach = 5): FakeSegment[] {
 
 export const FAKE_TRANSCRIPTS: FakeTranscripts = {
   status: { remainingCredits: 1000, status: "ok" },
-  videos: {
-    [VIDEO_ENGLISH]: {
+  episodes: {
+    [EPISODE_ENGLISH]: {
       segments: englishSegments(),
       durationSec: 600,
       captionStatus: "english",
     },
-    [VIDEO_NO_CAPTIONS]: {
+    [EPISODE_NO_CAPTIONS]: {
       segments: null,
       durationSec: 900,
       captionStatus: "none",
     },
-    [VIDEO_NON_ENGLISH]: {
+    [EPISODE_NON_ENGLISH]: {
       segments: null,
       durationSec: 1200,
       captionStatus: "non_english",
     },
-    [VIDEO_LIVE]: { failure: "UNPLAYABLE" },
-    [VIDEO_SHORT]: {
+    [EPISODE_LIVE]: { failure: "UNPLAYABLE" },
+    [EPISODE_SHORT]: {
       segments: englishSegments(12),
       durationSec: 60,
       captionStatus: "english",
     },
-    [VIDEO_UNPLAYABLE]: { failure: "UNPLAYABLE" },
-    [VIDEO_AUTH_FAILS]: { failure: "PROVIDER_AUTH" },
-    [VIDEO_LIMIT_FAILS]: { failure: "PROVIDER_LIMIT" },
-    [VIDEO_RATE_LIMITED]: { failure: "PROVIDER_RATE_LIMIT" },
-    [VIDEO_HTTP_FAILS]: { failure: "PROVIDER_HTTP" },
-    [VIDEO_PARSE_FAILS]: { failure: "PROVIDER_PARSE" },
+    [EPISODE_UNPLAYABLE]: { failure: "UNPLAYABLE" },
+    [EPISODE_AUTH_FAILS]: { failure: "PROVIDER_AUTH" },
+    [EPISODE_LIMIT_FAILS]: { failure: "PROVIDER_LIMIT" },
+    [EPISODE_RATE_LIMITED]: { failure: "PROVIDER_RATE_LIMIT" },
+    [EPISODE_HTTP_FAILS]: { failure: "PROVIDER_HTTP" },
+    [EPISODE_PARSE_FAILS]: { failure: "PROVIDER_PARSE" },
   },
 };

@@ -192,7 +192,7 @@ projections and routes; seeds and route tests; web.
   `migrations/registry/index.ts` lists `0001_init` alone. Both `0001` headers already say governance is open (PRD §5.4).
   - `global_users`, `channel_followers`, `episode_summaries`: unchanged from the 2026-09-10 file.
   - `channels`: unchanged minus `lifecycle_version` and `last_ingested_at`.
-  - `episodes`: `video_id` PK, `channel_id` FK, `discovered_by_run_id` FK to `ingestion_runs` (NOT NULL), `title`,
+  - `episodes`: `episode_id` PK, `channel_id` FK, `discovered_by_run_id` FK to `ingestion_runs` (NOT NULL), `title`,
     `published_at`, `status IN ('pending','available','failed','skipped')`, nullable `intent IN
     ('publish','replace')`, `window_started_at?`, `window_deadline_at?`, `next_attempt_at?`,
     `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, nullable `skip_reason IN
@@ -206,7 +206,7 @@ projections and routes; seeds and route tests; web.
   - `ingestion_runs`: `run_id` PK, `channel_id` FK, `kind IN ('initial','scheduled')`, `feed_status IN
     ('read','unavailable')`, `discovered_count DEFAULT 0`, `episode_limit?`, `started_at`, `finished_at`, `created_at`.
     No status, `workflow_id`, `failure_code`, or `failure_detail`; no run-episode table.
-  - `episode_ingestion_attempts`: `attempt_id` PK, `video_id` FK, `trigger IN
+  - `episode_ingestion_attempts`: `attempt_id` PK, `episode_id` FK, `trigger IN
     ('channel_ingestion','scheduled_recovery','owner_retry')`, `intent IN ('publish','replace')`,
     `generation_id?`, `staged_chunk_count?`, `workflow_id?` UNIQUE, `requested_by_email?` FK, `status IN
     ('running','available','waiting','failed','skipped','blocked')`, `outcome_code?`, `failure_detail?`, `started_at`,
@@ -217,10 +217,10 @@ projections and routes; seeds and route tests; web.
   - Indexes: `channels(status, paused_by)`; `channel_followers(channel_id, unfollowed_at)`;
     `episodes(channel_id, status, published_at)`; `episodes(next_attempt_at)`; `episodes(discovered_by_run_id)`;
     `episodes(channel_id, processed_at)`; `ingestion_runs(channel_id, created_at)`;
-    `episode_ingestion_attempts(video_id, created_at)`; `episode_ingestion_attempts(status, started_at)`.
+    `episode_ingestion_attempts(episode_id, created_at)`; `episode_ingestion_attempts(status, started_at)`.
   - After the commit lands locally, the owner wipes `wrangler dev` state with the `clean-local-do` skill (only on the
     owner's word); the already-applied `0001_init` version does not re-run otherwise (AGENTS.md → Data & schema).
-- 4.2 **Read model** (`do/registry/*`): episodes with their latest attempt (newest `created_at` per `video_id`), the
+- 4.2 **Read model** (`do/registry/*`): episodes with their latest attempt (newest `created_at` per `episode_id`), the
   summary read as `Takeaway[]` objects, related ids filtered to the caller's scope; runs newest first as feed history;
   counts by the four statuses per channel and globally; `lastIngestedAt` per channel and `lastSuccessfulIngestionAt`
   as `MAX(processed_at)`; management rows with `latestRun` (newest run) and `neverStarted` (approved, no run row);
@@ -261,7 +261,7 @@ projections and routes; seeds and route tests; web.
   `latestRun.feedStatus` / `discoveredCount`. `apps/web` stays typecheck and lint only.
 - 4.9 `test/helpers.ts`: `seedRun` writes `kind`, `feed_status`, `discovered_count`, `episode_limit`, `started_at`,
   `finished_at`; `seedEpisode` requires or creates a run for `discovered_by_run_id`, seeds window fields, and loses
-  `waitingCode`; new `seedAttempt(videoId, { trigger, status, outcomeCode, … })`. `setChannelState` is unchanged.
+  `waitingCode`; new `seedAttempt(episodeId, { trigger, status, outcomeCode, … })`. `setChannelState` is unchanged.
 - 4.10 `test/registry-migrations.test.ts`: a fresh Registry lists `["0001_init"]` alone; no `ingestion_run_episodes`
   table, no `waiting_code` or `last_ingested_at` column, no `lifecycle_version`; each table check above rejects the
   write it forbids: an approved channel without `approved_at`, a paused channel that is not approved, a `replace`
@@ -314,7 +314,7 @@ tag test, and the parse rule fail until each is right, so no step here waits on 
 
 | Operation | Registered by | Tag | Success | Errors |
 |---|---|---|---|---|
-| `POST /channels/{id}/episodes/{videoId}/retry` (switch) | M3 Step 7 | episodes | 200 `EpisodeRetryResponse` | 400 404 409 |
+| `POST /channels/{id}/episodes/{episodeId}/retry` (switch) | M3 Step 7 | episodes | 200 `EpisodeRetryResponse` | 400 404 409 |
 | `POST /channels/{id}/runs` | M3 Step 7 | runs | 200 `IngestionRunResponse` | 400 404 409 502 (`errorResponses({ notFound, conflict, upstream })`) |
 | `POST /chats`, `GET /chats` | M4 | chats (add the tag) | 201 `ChatResponse`, 200 `ChatsResponse` | 400 |
 | `GET /chats/{id}/messages`, `POST /chats/{id}/messages` | M4 | chats | 200 `ChatMessagesResponse`, 200 `ChatExchangeResponse` | 400 404 |

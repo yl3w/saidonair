@@ -51,20 +51,20 @@ export class UserDO extends DurableObject<Env> {
   // --- read receipts ----------------------------------------------------------
 
   /** Records receipts for summaries actually returned to the user; returns how many were new. */
-  markRead(videoIds: string[]): number {
+  markRead(episodeIds: string[]): number {
     return this.#transaction(() =>
-      reads.markRead(this.#sql, videoIds, Date.now()),
+      reads.markRead(this.#sql, episodeIds, Date.now()),
     );
   }
 
   /** Removes receipts for the given summaries; returns how many rows went. */
-  clearRead(videoIds: string[]): number {
-    return this.#transaction(() => reads.clearRead(this.#sql, videoIds));
+  clearRead(episodeIds: string[]): number {
+    return this.#transaction(() => reads.clearRead(this.#sql, episodeIds));
   }
 
-  /** The already-read subset of `videoIds`. */
-  readVideoIds(videoIds: string[]): string[] {
-    return reads.readVideoIds(this.#sql, videoIds);
+  /** The already-read subset of `episodeIds`. */
+  readEpisodeIds(episodeIds: string[]): string[] {
+    return reads.readEpisodeIds(this.#sql, episodeIds);
   }
 
   // --- chats ------------------------------------------------------------------

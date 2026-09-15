@@ -88,10 +88,10 @@ tests fail. Verified by reverting `readFeed` before committing.
 - 3.5 `copy.ts`: `WAIT_REASON_COPY` loses its entry; `OUTCOME_CODE_COPY` loses its entry and its `UNPLAYABLE` reads
   "video unavailable or live"; `SKIP_REASON_COPY.UNPLAYABLE` matches. Both records are exhaustive over their enum,
   so a missed edit is a typecheck failure, not a runtime surprise.
-- 3.6 Fixtures: `test/fixtures/transcripts.ts` drops `isLive` from its shape; `VIDEO_LIVE` becomes a
+- 3.6 Fixtures: `test/fixtures/transcripts.ts` drops `isLive` from its shape; `EPISODE_LIVE` becomes a
   `{ failure: "UNPLAYABLE" }` entry.
 
-**Tests:** spec §7.6–§7.9. `workflow-ingest.test.ts`'s table row for `VIDEO_LIVE` becomes
+**Tests:** spec §7.6–§7.9. `workflow-ingest.test.ts`'s table row for `EPISODE_LIVE` becomes
 `["skipped", "UNPLAYABLE", "skipped", 1]`; `registry-attempts.test.ts` and `routes-channels.test.ts` swap their
 `LIVE_OR_UPCOMING` waiting cases for `CAPTIONS` (the remaining transcript-step wait); a new case asserts the CHECK
 rejects the retired value.

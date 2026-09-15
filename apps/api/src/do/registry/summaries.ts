@@ -13,25 +13,25 @@ export const MAX_RELATED = 5;
 
 export function upsertSummary(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   input: EpisodeSummaryInput,
-  relatedVideoIds: readonly string[],
+  relatedEpisodeIds: readonly string[],
   now: number,
 ): void {
   const summary = requireSummaryInput(input);
-  const related = JSON.stringify(relatedVideoIds);
+  const related = JSON.stringify(relatedEpisodeIds);
   if (summary.format === "structured") {
     sql.exec(
       `INSERT INTO episode_summaries
-         (video_id, format, executive_summary, takeaways_json, topic_tags_json, raw_text,
-          related_video_ids_json, model, prompt_version, created_at)
+         (episode_id, format, executive_summary, takeaways_json, topic_tags_json, raw_text,
+          related_episode_ids_json, model, prompt_version, created_at)
        VALUES (?, 'structured', ?, ?, ?, NULL, ?, ?, ?, ?)
-       ON CONFLICT (video_id) DO UPDATE SET
+       ON CONFLICT (episode_id) DO UPDATE SET
          format = excluded.format, executive_summary = excluded.executive_summary,
          takeaways_json = excluded.takeaways_json, topic_tags_json = excluded.topic_tags_json,
-         raw_text = NULL, related_video_ids_json = excluded.related_video_ids_json,
+         raw_text = NULL, related_episode_ids_json = excluded.related_episode_ids_json,
          model = excluded.model, prompt_version = excluded.prompt_version, created_at = excluded.created_at`,
-      videoId,
+      episodeId,
       summary.executiveSummary,
       JSON.stringify(summary.takeaways),
       JSON.stringify(summary.topicTags),
@@ -44,14 +44,14 @@ export function upsertSummary(
   }
   sql.exec(
     `INSERT INTO episode_summaries
-       (video_id, format, executive_summary, takeaways_json, topic_tags_json, raw_text,
-        related_video_ids_json, model, prompt_version, created_at)
+       (episode_id, format, executive_summary, takeaways_json, topic_tags_json, raw_text,
+        related_episode_ids_json, model, prompt_version, created_at)
      VALUES (?, 'raw_fallback', NULL, NULL, NULL, ?, ?, ?, ?, ?)
-     ON CONFLICT (video_id) DO UPDATE SET
+     ON CONFLICT (episode_id) DO UPDATE SET
        format = excluded.format, executive_summary = NULL, takeaways_json = NULL, topic_tags_json = NULL,
-       raw_text = excluded.raw_text, related_video_ids_json = excluded.related_video_ids_json,
+       raw_text = excluded.raw_text, related_episode_ids_json = excluded.related_episode_ids_json,
        model = excluded.model, prompt_version = excluded.prompt_version, created_at = excluded.created_at`,
-    videoId,
+    episodeId,
     summary.rawText,
     related,
     summary.model,
@@ -66,11 +66,11 @@ export function upsertSummary(
  */
 export function relatedFromCandidates(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   candidates: readonly string[],
 ): string[] {
   const ordered: string[] = [];
-  const seen = new Set<string>([videoId]);
+  const seen = new Set<string>([episodeId]);
   for (const candidate of candidates) {
     if (typeof candidate !== "string" || seen.has(candidate)) continue;
     seen.add(candidate);
@@ -78,11 +78,11 @@ export function relatedFromCandidates(
   }
   const available = new Set<string>();
   for (const batch of chunk(ordered)) {
-    for (const row of sql.exec<{ video_id: string }>(
-      `SELECT video_id FROM episodes WHERE status = 'available' AND video_id IN (${placeholders(batch.length)})`,
+    for (const row of sql.exec<{ episode_id: string }>(
+      `SELECT episode_id FROM episodes WHERE status = 'available' AND episode_id IN (${placeholders(batch.length)})`,
       ...batch,
     )) {
-      available.add(row.video_id);
+      available.add(row.episode_id);
     }
   }
   return ordered.filter((id) => available.has(id)).slice(0, MAX_RELATED);

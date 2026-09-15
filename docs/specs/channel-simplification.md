@@ -216,12 +216,12 @@ Classification, carrying the 2026-09-08 rules onto the new statuses:
 
 Owner actions are independent of both channel status and channel runs:
 
-- `POST /channels/:id/episodes/:videoId/retry`: any episode state and any channel status. When pre-flight permits, it
+- `POST /channels/:id/episodes/:episodeId/retry`: any episode state and any channel status. When pre-flight permits, it
   opens a new 48-hour window, `publish` or `replace`, and one immediate episode attempt. A blocked pre-flight
   records a blocked owner attempt but leaves episode and recovery state unchanged. Retry is refused only while that
   episode has a running attempt; a running attempt older than an hour whose instance is gone is reconciled inline
   and the Retry proceeds.
-- `POST /channels/:id/episodes/:videoId/skip`: `failed → skipped OWNER` in any channel status.
+- `POST /channels/:id/episodes/:episodeId/skip`: `failed → skipped OWNER` in any channel status.
 
 ### 3.4 Scheduling
 
@@ -274,8 +274,8 @@ stopped enforcing any authorization (PRD §9): every operation, `?scope=all`, an
 | `POST /channels/:id/pause`, `POST /channels/:id/resume` | owner | new | Owner pause; resume clears any pause. `approved` only |
 | `POST /channels/:id/retry` | owner | **removed** | |
 | `GET /channels/:id/episodes?limit=` | anyone | changed | Episode `status` takes the new values; the owner's `processing` block adds intent/window start/deadline/next attempt, attempt count, latest outcome, and latest attempt |
-| `POST /channels/:id/episodes/:videoId/retry` | owner | as planned | Any episode state and channel status; when pre-flight permits, opens a fresh 48-hour window and starts an immediate attempt, never a channel run; blocked leaves recovery/content unchanged |
-| `POST /channels/:id/episodes/:videoId/skip` | owner | new | `failed → skipped OWNER` in any channel status |
+| `POST /channels/:id/episodes/:episodeId/retry` | owner | as planned | Any episode state and channel status; when pre-flight permits, opens a fresh 48-hour window and starts an immediate attempt, never a channel run; blocked leaves recovery/content unchanged |
+| `POST /channels/:id/episodes/:episodeId/skip` | owner | new | `failed → skipped OWNER` in any channel status |
 | `GET /channels/:id/runs` | owner | clarified; renamed from `ingestion-runs` 2026-09-12 | Initial/scheduled feed-discovery runs with feed status and discovered episodes; all processing history is exposed through episode attempts |
 | `GET /channels/:id/followers` | owner | new, replaces `/requests` | Emails and `followedAt` of active followers; the UI shows emails only in the queue and counts elsewhere |
 | `GET /follows`, `PUT /follows/:channelId`, `DELETE /follows/:channelId` | anyone (own) | changed | Follow any `requested` or `approved` channel (409 with the note for `declined`); each write also records the follower in the Registry |
@@ -386,7 +386,7 @@ CREATE INDEX channel_followers_channel_id_unfollowed_at ON channel_followers (ch
 -- 2026-09-10 shape. The 2026-09-12 rewrite (m3-ingestion-plan.md Step 4) replaces this table's recovery and reason columns.
 -- `skipped` remains a deliberate, reversible outcome by the system or the owner.
 CREATE TABLE episodes (
-  video_id TEXT PRIMARY KEY,
+  episode_id TEXT PRIMARY KEY,
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
   title TEXT NOT NULL,
   published_at INTEGER NOT NULL CHECK (published_at >= 0),
@@ -423,13 +423,13 @@ CREATE TABLE episodes (
 CREATE INDEX episodes_channel_id_status_published_at ON episodes (channel_id, status, published_at);
 
 CREATE TABLE episode_summaries (
-  video_id TEXT PRIMARY KEY REFERENCES episodes (video_id),
+  episode_id TEXT PRIMARY KEY REFERENCES episodes (episode_id),
   format TEXT NOT NULL CHECK (format IN ('structured', 'raw_fallback')),
   executive_summary TEXT,
   takeaways_json TEXT,
   topic_tags_json TEXT,
   raw_text TEXT,
-  related_video_ids_json TEXT NOT NULL,
+  related_episode_ids_json TEXT NOT NULL,
   model TEXT NOT NULL,
   prompt_version TEXT NOT NULL,
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
@@ -464,13 +464,13 @@ CREATE UNIQUE INDEX ingestion_runs_one_active_per_channel
 -- `selected` is the row's state until the run reaches the episode; `not_attempted` is a run that ended early.
 CREATE TABLE ingestion_run_episodes (
   run_id TEXT NOT NULL REFERENCES ingestion_runs (run_id),
-  video_id TEXT NOT NULL REFERENCES episodes (video_id),
+  episode_id TEXT NOT NULL REFERENCES episodes (episode_id),
   status TEXT NOT NULL CHECK (status IN ('selected', 'available', 'failed', 'skipped', 'waiting', 'not_attempted')),
   failure_code TEXT,
   started_at INTEGER CHECK (started_at IS NULL OR started_at >= 0),
   finished_at INTEGER CHECK (finished_at IS NULL OR finished_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  PRIMARY KEY (run_id, video_id)
+  PRIMARY KEY (run_id, episode_id)
 );
 ```
 

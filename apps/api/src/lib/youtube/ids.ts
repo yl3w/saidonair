@@ -43,13 +43,13 @@ export function requireChannelIds(raw: readonly string[]): string[] {
   return [...new Set(raw.map(requireChannelId))];
 }
 
-export function requireVideoId(raw: string): string {
-  const videoId = raw.trim();
-  if (!VIDEO_ID_SHAPE.test(videoId)) {
+export function requireEpisodeId(raw: string): string {
+  const episodeId = raw.trim();
+  if (!VIDEO_ID_SHAPE.test(episodeId)) {
     throw new DomainError(
       "INVALID_INPUT",
-      "videoId must be an 11-character id",
+      "episodeId must be an 11-character id",
     );
   }
-  return videoId;
+  return episodeId;
 }

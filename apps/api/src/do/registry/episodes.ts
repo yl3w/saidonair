@@ -11,7 +11,7 @@ import type {
 import { DomainError } from "../../lib/errors";
 import { chunk, MAX_BOUND_PARAMS, placeholders } from "../../lib/sql";
 import type { FeedEntry } from "../../lib/youtube/rss";
-import { hasRunning, latestByVideo } from "./attempts";
+import { hasRunning, latestByEpisode } from "./attempts";
 import { requireChannel } from "./channels";
 import type {
   DigestRowRecord,
@@ -21,7 +21,7 @@ import type {
 } from "./types";
 
 type EpisodeRow = {
-  video_id: string;
+  episode_id: string;
   channel_id: string;
   channel_title: string;
   title: string;
@@ -50,19 +50,19 @@ type EpisodeRow = {
   takeaways_json: string | null;
   topic_tags_json: string | null;
   raw_text: string | null;
-  related_video_ids_json: string | null;
+  related_episode_ids_json: string | null;
 };
 
-const EPISODE_SELECT = `SELECT e.video_id, e.channel_id, c.title AS channel_title, e.title, e.published_at,
+const EPISODE_SELECT = `SELECT e.episode_id, e.channel_id, c.title AS channel_title, e.title, e.published_at,
     e.status, e.discovered_by_run_id, e.intent, e.window_started_at, e.window_deadline_at,
     e.next_attempt_at, e.attempt_count, e.failure_code, e.failure_detail, e.skip_reason, e.skipped_at,
     e.skipped_by_email, e.transcript_checked_at, e.duration_sec, e.chunk_count, e.vectorized_at, e.processed_at,
     e.created_at, e.updated_at,
     s.format AS summary_format, s.executive_summary, s.takeaways_json, s.topic_tags_json,
-    s.raw_text, s.related_video_ids_json
+    s.raw_text, s.related_episode_ids_json
   FROM episodes e
   JOIN channels c ON c.channel_id = e.channel_id
-  LEFT JOIN episode_summaries s ON s.video_id = e.video_id`;
+  LEFT JOIN episode_summaries s ON s.episode_id = e.episode_id`;
 
 export const DEFAULT_EPISODE_LIMIT = 20;
 export const MAX_EPISODE_LIMIT = 200;
@@ -76,7 +76,7 @@ export const RETRY_INTERVAL_MS = 6 * 60 * 60 * 1000;
  * window, without the joins the API record carries.
  */
 export type EpisodeState = {
-  videoId: string;
+  episodeId: string;
   channelId: string;
   status: EpisodeStatus;
   intent: ProcessingIntent | null;
@@ -92,11 +92,11 @@ export type EpisodeState = {
 
 export function getState(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
 ): EpisodeState | null {
   const row = sql
     .exec<{
-      video_id: string;
+      episode_id: string;
       channel_id: string;
       status: string;
       intent: string | null;
@@ -109,15 +109,15 @@ export function getState(
       chunk_count: number | null;
       processed_at: number | null;
     }>(
-      `SELECT video_id, channel_id, status, intent, window_started_at, window_deadline_at, next_attempt_at,
+      `SELECT episode_id, channel_id, status, intent, window_started_at, window_deadline_at, next_attempt_at,
          attempt_count, staged_vector_generation, active_vector_generation, chunk_count, processed_at
-       FROM episodes WHERE video_id = ?`,
-      videoId,
+       FROM episodes WHERE episode_id = ?`,
+      episodeId,
     )
     .toArray()[0];
   if (!row) return null;
   return {
-    videoId: row.video_id,
+    episodeId: row.episode_id,
     channelId: row.channel_id,
     status: toStatus(row.status),
     intent: toIntent(row.intent),
@@ -132,8 +132,8 @@ export function getState(
   };
 }
 
-export function requireState(sql: SqlStorage, videoId: string): EpisodeState {
-  const state = getState(sql, videoId);
+export function requireState(sql: SqlStorage, episodeId: string): EpisodeState {
+  const state = getState(sql, episodeId);
   if (!state) throw new DomainError("NOT_FOUND", "episode not found");
   return state;
 }
@@ -151,17 +151,17 @@ export function hasAnyEpisode(sql: SqlStorage, channelId: string): boolean {
 }
 
 /** Which of the given ids already exist anywhere in the Registry; discovery never selects them. */
-export function existingVideoIds(
+export function existingEpisodeIds(
   sql: SqlStorage,
-  videoIds: readonly string[],
+  episodeIds: readonly string[],
 ): Set<string> {
   const existing = new Set<string>();
-  for (const batch of chunk(videoIds)) {
-    for (const row of sql.exec<{ video_id: string }>(
-      `SELECT video_id FROM episodes WHERE video_id IN (${placeholders(batch.length)})`,
+  for (const batch of chunk(episodeIds)) {
+    for (const row of sql.exec<{ episode_id: string }>(
+      `SELECT episode_id FROM episodes WHERE episode_id IN (${placeholders(batch.length)})`,
       ...batch,
     )) {
-      existing.add(row.video_id);
+      existing.add(row.episode_id);
     }
   }
   return existing;
@@ -169,7 +169,8 @@ export function existingVideoIds(
 
 /**
  * The episodes one feed check creates: `pending`, intent `publish`, the 48-hour window open from
- * now, due at once, naming the run that discovered them (docs/PRD.md §4.2 rules 3 and 5).
+ * now, due at once, naming the run that discovered them (docs/PRD.md §4.2 rules 3 and 5). This is
+ * the boundary: a feed entry's `videoId` is YouTube's name for it, and becomes our `episode_id`.
  */
 export function insertDiscovered(
   sql: SqlStorage,
@@ -181,7 +182,7 @@ export function insertDiscovered(
   for (const entry of entries) {
     sql.exec(
       `INSERT INTO episodes
-         (video_id, channel_id, discovered_by_run_id, title, published_at, status,
+         (episode_id, channel_id, discovered_by_run_id, title, published_at, status,
           intent, window_started_at, window_deadline_at, next_attempt_at, attempt_count,
           created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 'pending', 'publish', ?, ?, ?, 0, ?, ?)`,
@@ -202,30 +203,30 @@ export function insertDiscovered(
 /** Records the generation a new attempt will stage and counts the launch (rule 13). */
 export function openStaged(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   generationId: string,
   now: number,
 ): void {
   sql.exec(
     `UPDATE episodes SET staged_vector_generation = ?, attempt_count = attempt_count + 1, updated_at = ?
-     WHERE video_id = ?`,
+     WHERE episode_id = ?`,
     generationId,
     now,
-    videoId,
+    episodeId,
   );
 }
 
 export function scheduleNextAttempt(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   nextAttemptAt: number,
   now: number,
 ): void {
   sql.exec(
-    "UPDATE episodes SET next_attempt_at = ?, updated_at = ? WHERE video_id = ?",
+    "UPDATE episodes SET next_attempt_at = ?, updated_at = ? WHERE episode_id = ?",
     nextAttemptAt,
     now,
-    videoId,
+    episodeId,
   );
 }
 
@@ -235,48 +236,48 @@ const CLOSE_WINDOW = `intent = NULL, window_started_at = NULL, window_deadline_a
 /** Closes the window and forgets the staged generation; content state is untouched. */
 export function closeWindow(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   now: number,
 ): void {
   sql.exec(
-    `UPDATE episodes SET ${CLOSE_WINDOW}, updated_at = ? WHERE video_id = ?`,
+    `UPDATE episodes SET ${CLOSE_WINDOW}, updated_at = ? WHERE episode_id = ?`,
     now,
-    videoId,
+    episodeId,
   );
 }
 
 /** A deterministic result under intent `publish`: skipped, reversibly, with the window closed (rule 12). */
 export function markSkipped(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   reason: "SHORT" | "NON_ENGLISH" | "UNPLAYABLE",
   now: number,
 ): void {
   sql.exec(
     `UPDATE episodes SET status = 'skipped', skip_reason = ?, skipped_at = ?, skipped_by_email = NULL,
        failure_code = NULL, failure_detail = NULL, ${CLOSE_WINDOW}, updated_at = ?
-     WHERE video_id = ?`,
+     WHERE episode_id = ?`,
     reason,
     now,
     now,
-    videoId,
+    episodeId,
   );
 }
 
 /** A publication that exhausted its window: the one time `failure_code` is written (rule 14). */
 export function markTimedOut(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   detail: string,
   now: number,
 ): void {
   sql.exec(
     `UPDATE episodes SET status = 'failed', failure_code = 'INGESTION_TIMEOUT', failure_detail = ?,
        skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL, ${CLOSE_WINDOW}, updated_at = ?
-     WHERE video_id = ?`,
+     WHERE episode_id = ?`,
     detail,
     now,
-    videoId,
+    episodeId,
   );
 }
 
@@ -287,17 +288,17 @@ export function markTimedOut(
  */
 export function markTranscriptChecked(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   durationSec: number | null,
   now: number,
 ): void {
   sql.exec(
     `UPDATE episodes SET transcript_checked_at = ?, duration_sec = COALESCE(?, duration_sec),
-       updated_at = ? WHERE video_id = ?`,
+       updated_at = ? WHERE episode_id = ?`,
     now,
     durationSec === null ? null : Math.round(durationSec),
     now,
-    videoId,
+    episodeId,
   );
 }
 
@@ -308,7 +309,7 @@ export function markTranscriptChecked(
  */
 export function publish(
   sql: SqlStorage,
-  videoId: string,
+  episodeId: string,
   chunkCount: number,
   now: number,
 ): void {
@@ -318,53 +319,53 @@ export function publish(
        active_vector_generation = staged_vector_generation,
        failure_code = NULL, failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL,
        ${CLOSE_WINDOW}, updated_at = ?
-     WHERE video_id = ?`,
+     WHERE episode_id = ?`,
     chunkCount,
     now,
     now,
     now,
     now,
-    videoId,
+    episodeId,
   );
 }
 
 /** Episodes by id, in the order given, with processing detail and no related titles. */
-export function listByVideoIds(
+export function listByEpisodeIds(
   sql: SqlStorage,
-  videoIds: readonly string[],
+  episodeIds: readonly string[],
 ): EpisodeRecord[] {
   const rows: EpisodeRow[] = [];
-  for (const batch of chunk(videoIds)) {
+  for (const batch of chunk(episodeIds)) {
     rows.push(
       ...sql
         .exec<EpisodeRow>(
-          `${EPISODE_SELECT} WHERE e.video_id IN (${placeholders(batch.length)})`,
+          `${EPISODE_SELECT} WHERE e.episode_id IN (${placeholders(batch.length)})`,
           ...batch,
         )
         .toArray(),
     );
   }
-  const order = new Map(videoIds.map((id, index) => [id, index]));
+  const order = new Map(episodeIds.map((id, index) => [id, index]));
   rows.sort(
-    (a, b) => (order.get(a.video_id) ?? 0) - (order.get(b.video_id) ?? 0),
+    (a, b) => (order.get(a.episode_id) ?? 0) - (order.get(b.episode_id) ?? 0),
   );
   return complete(sql, rows, []);
 }
 
 /** Available episodes per channel; callers derive counts and unread state from these. */
-export function listAvailableVideoIds(
+export function listAvailableEpisodeIds(
   sql: SqlStorage,
   channelIds: readonly string[],
-): { channelId: string; videoId: string }[] {
-  const ids: { channelId: string; videoId: string }[] = [];
+): { channelId: string; episodeId: string }[] {
+  const ids: { channelId: string; episodeId: string }[] = [];
   for (const batch of chunk(channelIds)) {
-    for (const row of sql.exec<{ channel_id: string; video_id: string }>(
-      `SELECT channel_id, video_id FROM episodes
+    for (const row of sql.exec<{ channel_id: string; episode_id: string }>(
+      `SELECT channel_id, episode_id FROM episodes
        WHERE status = 'available' AND channel_id IN (${placeholders(batch.length)})
-       ORDER BY channel_id, video_id`,
+       ORDER BY channel_id, episode_id`,
       ...batch,
     )) {
-      ids.push({ channelId: row.channel_id, videoId: row.video_id });
+      ids.push({ channelId: row.channel_id, episodeId: row.episode_id });
     }
   }
   return ids;
@@ -436,9 +437,9 @@ export function lastProcessedAt(sql: SqlStorage): number | null {
 
 /** Five bindings can join the channel list (`from`, `to`, two for the cursor, `limit`). */
 const DIGEST_CHANNEL_BATCH = MAX_BOUND_PARAMS - 5;
-const DIGEST_ORDER = "ORDER BY e.processed_at DESC, e.video_id LIMIT ?";
+const DIGEST_ORDER = "ORDER BY e.processed_at DESC, e.episode_id LIMIT ?";
 const DIGEST_JOIN = `FROM episodes e
-  LEFT JOIN episode_summaries s ON s.video_id = e.video_id`;
+  LEFT JOIN episode_summaries s ON s.episode_id = e.episode_id`;
 
 /**
  * The digest's selection as SQL: an available episode with a stored summary, in this batch of
@@ -450,7 +451,7 @@ function digestClause(
 ): { where: string; params: (string | number)[] } {
   const conditions = [
     "e.status = 'available'",
-    "s.video_id IS NOT NULL",
+    "s.episode_id IS NOT NULL",
     "e.processed_at IS NOT NULL",
     `e.channel_id IN (${placeholders(batch.length)})`,
   ];
@@ -466,12 +467,12 @@ function digestClause(
   }
   if (selection.after !== null) {
     conditions.push(
-      "(e.processed_at < ? OR (e.processed_at = ? AND e.video_id > ?))",
+      "(e.processed_at < ? OR (e.processed_at = ? AND e.episode_id > ?))",
     );
     params.push(
       selection.after.summaryAvailableAt,
       selection.after.summaryAvailableAt,
-      selection.after.videoId,
+      selection.after.episodeId,
     );
   }
   return { where: conditions.join(" AND "), params };
@@ -479,7 +480,7 @@ function digestClause(
 
 /**
  * One digest page: available episodes with a stored summary, selected and ordered by first
- * availability (`processed_at`, the API's `summaryAvailableAt`) newest first with `video_id` as the
+ * availability (`processed_at`, the API's `summaryAvailableAt`) newest first with `episode_id` as the
  * only tiebreak (docs/PRD.md §4.4). Publication time is metadata here, never the basis. Each batch
  * of channels is ordered and limited in SQL, then merged, so a wide follow list still reads one
  * page. Related titles are resolved within the same channels.
@@ -515,14 +516,17 @@ export function listDigestRows(
   channelIds: readonly string[],
   selection: DigestSelection,
 ): DigestRowRecord[] {
-  const rows: { video_id: string; channel_id: string; processed_at: number }[] =
-    [];
+  const rows: {
+    episode_id: string;
+    channel_id: string;
+    processed_at: number;
+  }[] = [];
   for (const batch of chunk(channelIds, DIGEST_CHANNEL_BATCH)) {
     const { where, params } = digestClause(selection, batch);
     rows.push(
       ...sql
-        .exec<{ video_id: string; channel_id: string; processed_at: number }>(
-          `SELECT e.video_id, e.channel_id, e.processed_at ${DIGEST_JOIN}
+        .exec<{ episode_id: string; channel_id: string; processed_at: number }>(
+          `SELECT e.episode_id, e.channel_id, e.processed_at ${DIGEST_JOIN}
            WHERE ${where} ${DIGEST_ORDER}`,
           ...params,
           selection.limit,
@@ -532,7 +536,7 @@ export function listDigestRows(
   }
   rows.sort(byAvailability);
   return rows.slice(0, selection.limit).map((row) => ({
-    videoId: row.video_id,
+    episodeId: row.episode_id,
     channelId: row.channel_id,
     summaryAvailableAt: row.processed_at,
   }));
@@ -549,7 +553,7 @@ export function listByChannel(
     .exec<EpisodeRow>(
       `${EPISODE_SELECT}
        WHERE e.channel_id = ?
-       ORDER BY e.published_at DESC, e.video_id
+       ORDER BY e.published_at DESC, e.episode_id
        LIMIT ?`,
       channelId,
       limit,
@@ -561,7 +565,7 @@ export function listByChannel(
 /**
  * The recovery tick's selection (docs/specs/m3-6-recovery.md §2): every episode whose open window
  * says its next attempt is due and that has no attempt running, in every channel status and pause
- * state. Due order, then video id, so one tick's stagger is deterministic. No related titles.
+ * state. Due order, then episode id, so one tick's stagger is deterministic. No related titles.
  */
 export function listDue(sql: SqlStorage, now: number): EpisodeRecord[] {
   const rows = sql
@@ -570,9 +574,9 @@ export function listDue(sql: SqlStorage, now: number): EpisodeRecord[] {
        WHERE e.intent IS NOT NULL AND e.next_attempt_at IS NOT NULL AND e.next_attempt_at <= ?
          AND NOT EXISTS (
            SELECT 1 FROM episode_ingestion_attempts a
-           WHERE a.video_id = e.video_id AND a.status = 'running'
+           WHERE a.episode_id = e.episode_id AND a.status = 'running'
          )
-       ORDER BY e.next_attempt_at, e.video_id`,
+       ORDER BY e.next_attempt_at, e.episode_id`,
       now,
     )
     .toArray();
@@ -587,14 +591,14 @@ export function listDue(sql: SqlStorage, now: number): EpisodeRecord[] {
 export function getEpisode(
   sql: SqlStorage,
   channelId: string,
-  videoId: string,
+  episodeId: string,
   relatedScope: readonly string[] = [],
 ): EpisodeRecord | null {
   const row = sql
     .exec<EpisodeRow>(
-      `${EPISODE_SELECT} WHERE e.channel_id = ? AND e.video_id = ?`,
+      `${EPISODE_SELECT} WHERE e.channel_id = ? AND e.episode_id = ?`,
       channelId,
-      videoId,
+      episodeId,
     )
     .toArray()[0];
   return row ? (complete(sql, [row], relatedScope)[0] ?? null) : null;
@@ -610,11 +614,11 @@ export function getEpisode(
 export function retryEpisode(
   sql: SqlStorage,
   channelId: string,
-  videoId: string,
+  episodeId: string,
   now: number,
 ): EpisodeRecord {
-  const episode = requireEpisode(sql, channelId, videoId);
-  if (hasRunning(sql, videoId)) {
+  const episode = requireEpisode(sql, channelId, episodeId);
+  if (hasRunning(sql, episodeId)) {
     throw new DomainError(
       "INVALID_STATE",
       "an attempt is running for this episode",
@@ -625,12 +629,12 @@ export function retryEpisode(
     sql.exec(
       `UPDATE episodes SET intent = 'replace', window_started_at = ?, window_deadline_at = ?,
          next_attempt_at = ?, attempt_count = 0, staged_vector_generation = NULL, updated_at = ?
-       WHERE video_id = ?`,
+       WHERE episode_id = ?`,
       now,
       deadline,
       now,
       now,
-      videoId,
+      episodeId,
     );
   } else {
     sql.exec(
@@ -638,26 +642,26 @@ export function retryEpisode(
          window_deadline_at = ?, next_attempt_at = ?, attempt_count = 0, failure_code = NULL,
          failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL,
          staged_vector_generation = NULL, updated_at = ?
-       WHERE video_id = ?`,
+       WHERE episode_id = ?`,
       now,
       deadline,
       now,
       now,
-      videoId,
+      episodeId,
     );
   }
-  return requireEpisode(sql, channelId, videoId);
+  return requireEpisode(sql, channelId, episodeId);
 }
 
 /** `failed → skipped OWNER`, recording whoever skipped it, in any channel status (docs/PRD.md §4.2 rule 18). */
 export function skipEpisode(
   sql: SqlStorage,
   channelId: string,
-  videoId: string,
+  episodeId: string,
   actorEmail: string,
   now: number,
 ): EpisodeRecord {
-  const episode = requireEpisode(sql, channelId, videoId);
+  const episode = requireEpisode(sql, channelId, episodeId);
   if (episode.status !== "failed") {
     throw new DomainError(
       "INVALID_STATE",
@@ -666,23 +670,23 @@ export function skipEpisode(
   }
   sql.exec(
     `UPDATE episodes SET status = 'skipped', skip_reason = 'OWNER', skipped_at = ?, skipped_by_email = ?,
-       failure_code = NULL, failure_detail = NULL, updated_at = ? WHERE video_id = ?`,
+       failure_code = NULL, failure_detail = NULL, updated_at = ? WHERE episode_id = ?`,
     now,
     actorEmail,
     now,
-    videoId,
+    episodeId,
   );
-  return requireEpisode(sql, channelId, videoId);
+  return requireEpisode(sql, channelId, episodeId);
 }
 
 /** An episode that belongs to the named channel; channel status is not consulted. */
 function requireEpisode(
   sql: SqlStorage,
   channelId: string,
-  videoId: string,
+  episodeId: string,
 ): EpisodeRecord {
   requireChannel(sql, channelId);
-  const episode = getEpisode(sql, channelId, videoId);
+  const episode = getEpisode(sql, channelId, episodeId);
   if (!episode) throw new DomainError("NOT_FOUND", "episode not found");
   return episode;
 }
@@ -720,21 +724,21 @@ function requireLimit(value: number | undefined): number {
 }
 
 /**
- * Newest first availability first; `video_id` breaks ties so the order is stable (docs/PRD.md §4.4).
+ * Newest first availability first; `episode_id` breaks ties so the order is stable (docs/PRD.md §4.4).
  * The cursor encodes exactly this pair, so merging batches here matches what SQL ordered.
  */
 function byAvailability(
-  a: { processed_at: number | null; video_id: string },
-  b: { processed_at: number | null; video_id: string },
+  a: { processed_at: number | null; episode_id: string },
+  b: { processed_at: number | null; episode_id: string },
 ): number {
   return (
     (b.processed_at ?? 0) - (a.processed_at ?? 0) ||
-    a.video_id.localeCompare(b.video_id)
+    a.episode_id.localeCompare(b.episode_id)
   );
 }
 
 /**
- * Turns rows into records: resolves each row's related video ids to titles, keeping only available
+ * Turns rows into records: resolves each row's related episode ids to titles, keeping only available
  * episodes whose channel is in `scope` and never the episode itself (docs/PRD.md §4.4), and attaches
  * each episode's latest attempt, where its reason lives.
  */
@@ -747,10 +751,10 @@ function complete(
   const wanted = new Set<string>();
   for (const row of rows) {
     const ids = parseStringArray(
-      row.related_video_ids_json,
-      "related_video_ids_json",
+      row.related_episode_ids_json,
+      "related_episode_ids_json",
     );
-    relatedIds.set(row.video_id, ids);
+    relatedIds.set(row.episode_id, ids);
     for (const id of ids) wanted.add(id);
   }
 
@@ -759,33 +763,33 @@ function complete(
     const inScope = new Set(scope);
     for (const batch of chunk([...wanted])) {
       for (const row of sql.exec<{
-        video_id: string;
+        episode_id: string;
         channel_id: string;
         title: string;
       }>(
-        `SELECT video_id, channel_id, title FROM episodes
-         WHERE status = 'available' AND video_id IN (${placeholders(batch.length)})`,
+        `SELECT episode_id, channel_id, title FROM episodes
+         WHERE status = 'available' AND episode_id IN (${placeholders(batch.length)})`,
         ...batch,
       )) {
-        if (inScope.has(row.channel_id)) titles.set(row.video_id, row.title);
+        if (inScope.has(row.channel_id)) titles.set(row.episode_id, row.title);
       }
     }
   }
 
-  const latest = latestByVideo(
+  const latest = latestByEpisode(
     sql,
-    rows.map((row) => row.video_id),
+    rows.map((row) => row.episode_id),
   );
 
   return rows.map((row) => {
     const related: RelatedEpisode[] = [];
-    for (const videoId of relatedIds.get(row.video_id) ?? []) {
-      const title = titles.get(videoId);
-      if (videoId !== row.video_id && title !== undefined) {
-        related.push({ videoId, title });
+    for (const episodeId of relatedIds.get(row.episode_id) ?? []) {
+      const title = titles.get(episodeId);
+      if (episodeId !== row.episode_id && title !== undefined) {
+        related.push({ episodeId, title });
       }
     }
-    return toRecord(row, related, latest[row.video_id] ?? null);
+    return toRecord(row, related, latest[row.episode_id] ?? null);
   });
 }
 
@@ -796,7 +800,7 @@ function toRecord(
 ): EpisodeRecord {
   const status = toStatus(row.status);
   return {
-    videoId: row.video_id,
+    episodeId: row.episode_id,
     channelId: row.channel_id,
     channelTitle: row.channel_title,
     title: row.title,

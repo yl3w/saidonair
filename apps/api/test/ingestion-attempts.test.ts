@@ -12,15 +12,15 @@ import { FAKE_TRANSCRIPTS } from "./fixtures/transcripts";
 import {
   ALICE,
   CHANNEL_A,
+  EPISODE_A,
+  EPISODE_B,
+  EPISODE_C,
   expectShape,
   OWNER,
   registry,
   seedApprovedChannel,
   seedEpisode,
   seedSummary,
-  VIDEO_A,
-  VIDEO_B,
-  VIDEO_C,
 } from "./helpers";
 
 type Json = Record<string, unknown>;
@@ -42,12 +42,12 @@ async function call(
   return { status: response.status, json: (await response.json()) as Json };
 }
 
-async function pendingNow(videoId: string) {
-  await seedEpisode(videoId, CHANNEL_A, {
+async function pendingNow(episodeId: string) {
+  await seedEpisode(episodeId, CHANNEL_A, {
     status: "pending",
     window: { intent: "publish", startedAt: Date.now() },
   });
-  const record = await registry().getEpisode(CHANNEL_A, videoId);
+  const record = await registry().getEpisode(CHANNEL_A, episodeId);
   if (!record) throw new Error("seed failed");
   return record;
 }
@@ -68,9 +68,9 @@ describe("the attempt starter", () => {
   it("spaces a batch three seconds apart, reports a running one, and records a lost launch", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
     const episodes = [
-      await pendingNow(VIDEO_A),
-      await pendingNow(VIDEO_B),
-      await pendingNow(VIDEO_C),
+      await pendingNow(EPISODE_A),
+      await pendingNow(EPISODE_B),
+      await pendingNow(EPISODE_C),
     ];
 
     const results = await startEpisodeAttempts(
@@ -83,19 +83,19 @@ describe("the attempt starter", () => {
       "started",
       "started",
     ]);
-    expect(createdInstances().map((p) => [p.videoId, p.startDelaySec])).toEqual(
-      [
-        [VIDEO_A, 0],
-        [VIDEO_B, 3],
-        [VIDEO_C, 6],
-      ],
-    );
+    expect(
+      createdInstances().map((p) => [p.episodeId, p.startDelaySec]),
+    ).toEqual([
+      [EPISODE_A, 0],
+      [EPISODE_B, 3],
+      [EPISODE_C, 6],
+    ]);
     expect(createdInstances().map((p) => p.attemptId)).toEqual(
       results.map((r) => r.attempt.attemptId),
     );
-    for (const videoId of [VIDEO_A, VIDEO_B, VIDEO_C]) {
+    for (const episodeId of [EPISODE_A, EPISODE_B, EPISODE_C]) {
       expect(
-        (await registry().getEpisode(CHANNEL_A, videoId))?.processing,
+        (await registry().getEpisode(CHANNEL_A, episodeId))?.processing,
       ).toMatchObject({
         attemptCount: 1,
         latestAttempt: { status: "running", trigger: "channel_ingestion" },
@@ -108,7 +108,7 @@ describe("the attempt starter", () => {
       "scheduled_recovery",
     );
     expect(again).toEqual([
-      { videoId: VIDEO_A, kind: "running", attempt: results[0]?.attempt },
+      { episodeId: EPISODE_A, kind: "running", attempt: results[0]?.attempt },
     ]);
     expect(createdInstances()).toHaveLength(3);
 
@@ -137,7 +137,7 @@ describe("the attempt starter", () => {
 
   it("records a blocked attempt per episode when the provider refuses work, and launches nothing", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    const a = await pendingNow(VIDEO_A);
+    const a = await pendingNow(EPISODE_A);
     withProviderStatus({ remainingCredits: 0, status: "ok" });
     const limited = await startEpisodeAttempts(env, [a], "scheduled_recovery");
     expect(limited[0]).toMatchObject({
@@ -156,7 +156,7 @@ describe("the attempt starter", () => {
     });
     expect(createdInstances()).toEqual([]);
     expect(
-      (await registry().getEpisode(CHANNEL_A, VIDEO_A))?.processing
+      (await registry().getEpisode(CHANNEL_A, EPISODE_A))?.processing
         .attemptCount,
     ).toBe(0);
     // Unreachable never blocks.
@@ -181,20 +181,20 @@ describe("the attempt starter", () => {
   });
 });
 
-describe("POST /channels/:id/episodes/:videoId/retry", () => {
+describe("POST /channels/:id/episodes/:episodeId/retry", () => {
   it("reopens the window and starts one attempt at once, in any channel status", async () => {
     const stub = registry();
     const channel = await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(VIDEO_A, CHANNEL_A, { status: "failed" });
-    await seedEpisode(VIDEO_B, CHANNEL_A, { status: "available" });
-    await seedSummary(VIDEO_B);
+    await seedEpisode(EPISODE_A, CHANNEL_A, { status: "failed" });
+    await seedEpisode(EPISODE_B, CHANNEL_A, { status: "available" });
+    await seedSummary(EPISODE_B);
     await stub.declineChannel(OWNER, CHANNEL_A);
     const runsBefore = await stub.listRuns(CHANNEL_A);
 
     const retry = await call(
       ALICE,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/retry`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/retry`,
     );
     expectShape(EpisodeRetryResponseSchema, retry.json);
     expect(retry.status).toBe(200);
@@ -215,14 +215,14 @@ describe("POST /channels/:id/episodes/:videoId/retry", () => {
     expect(createdInstances()).toEqual([
       {
         attemptId: (retry.json.attempt as Json).attemptId,
-        videoId: VIDEO_A,
+        episodeId: EPISODE_A,
         channelId: CHANNEL_A,
         startDelaySec: 0,
       },
     ]);
     // The sibling and the channel are untouched.
     expect(
-      (await stub.getEpisode(CHANNEL_A, VIDEO_B))?.processing.latestAttempt,
+      (await stub.getEpisode(CHANNEL_A, EPISODE_B))?.processing.latestAttempt,
     ).toBeNull();
     expect(await stub.getChannel(CHANNEL_A)).toEqual(
       await stub.getChannel(CHANNEL_A),
@@ -236,7 +236,7 @@ describe("POST /channels/:id/episodes/:videoId/retry", () => {
     const replace = await call(
       OWNER,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_B}/retry`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_B}/retry`,
     );
     expect(replace.status).toBe(200);
     expect(replace.json.episode).toMatchObject({
@@ -252,18 +252,18 @@ describe("POST /channels/:id/episodes/:videoId/retry", () => {
   it("refuses a running attempt under an hour old, asks the engine about an older one, and reconciles a lost instance inline", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(VIDEO_A, CHANNEL_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, {
       status: "pending",
       window: { intent: "publish", startedAt: Date.now() },
     });
-    const start = await stub.beginAttempt(VIDEO_A, "channel_ingestion");
+    const start = await stub.beginAttempt(EPISODE_A, "channel_ingestion");
     if (start.kind !== "started") throw new Error("expected started");
     const runningId = start.attempt.attemptId;
 
     const young = await call(
       OWNER,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/retry`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/retry`,
     );
     expect(young.status).toBe(409);
     expect(young.json.code).toBe("INVALID_STATE");
@@ -286,7 +286,7 @@ describe("POST /channels/:id/episodes/:videoId/retry", () => {
         await call(
           OWNER,
           "POST",
-          `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/retry`,
+          `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/retry`,
         )
       ).status,
     ).toBe(409);
@@ -298,7 +298,7 @@ describe("POST /channels/:id/episodes/:videoId/retry", () => {
     const reconciled = await call(
       OWNER,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/retry`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/retry`,
     );
     expect(reconciled.status).toBe(200);
     expect((reconciled.json.attempt as Json).attemptId).not.toBe(runningId);
@@ -318,17 +318,17 @@ describe("POST /channels/:id/episodes/:videoId/retry", () => {
   it("records a blocked attempt and leaves the episode untouched when the provider refuses work", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(VIDEO_A, CHANNEL_A, {
+    await seedEpisode(EPISODE_A, CHANNEL_A, {
       status: "failed",
       failureDetail: "CAPTIONS",
     });
-    const before = await stub.getEpisode(CHANNEL_A, VIDEO_A);
+    const before = await stub.getEpisode(CHANNEL_A, EPISODE_A);
     withProviderStatus({ remainingCredits: 0, status: "ok" });
 
     const blocked = await call(
       OWNER,
       "POST",
-      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/retry`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/retry`,
     );
     expectShape(EpisodeRetryResponseSchema, blocked.json);
     expect(blocked.status).toBe(200);

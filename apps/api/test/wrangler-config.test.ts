@@ -172,7 +172,7 @@ describe("the clean-local skill", () => {
   });
 
   it("never calls the forbidden `wrangler vectorize delete`, which would drop the metadata indexes", () => {
-    // AGENTS.md hard rule 4 forbids it, and deleting the index would take `channelId` and `videoId` with
+    // AGENTS.md hard rule 4 forbids it, and deleting the index would take `channelId` and `episodeId` with
     // it; vectors upserted afterwards would be unfilterable with no error to notice.
     expect(cleanVectors).not.toMatch(/"vectorize",\s*"delete"/);
   });

@@ -26,7 +26,7 @@ export function toEpisode(
   view: EpisodeView = {},
 ): Episode {
   const episode: Episode = {
-    videoId: record.videoId,
+    episodeId: record.episodeId,
     channelId: record.channelId,
     channelTitle: record.channelTitle,
     title: record.title,

@@ -30,7 +30,7 @@ Eleven decisions, all recorded in PRD §9 on 2026-09-14 and all reflected in the
 |---|---|---|
 | 1 | No role gate; the owner is a reader with one extra destination | One nav, `/curate` added for the owner, controls beside the objects they govern |
 | 2 | Only **Done** marks a summary read | Every read route becomes pure; one explicit write records the receipt |
-| 3 | A summary gets its own screen and URL | `/read/:videoId`, and a single-episode read on the API |
+| 3 | A summary gets its own screen and URL | `/read/:episodeId`, and a single-episode read on the API |
 | 4 | Home splits into Queue and Sources; chats get `/chats` | Four reader destinations, not one page with jump links |
 | 5 | The 24-hour window is dropped; days are kept | `/digest` loses its clamp, gains a range and a cursor |
 | 6 | Unread and History are two views over one receipt | No `archived_at`; History is where a receipt can be undone |
@@ -105,7 +105,7 @@ used: `badge`, `status`, `stat`, `table`, `collapse`, `skeleton`, `avatar`, `mod
 |---|---|---|
 | `/` | Sign in | unchanged in behaviour; restyled |
 | `/queue` | Unread | the reader's home; `/home` is gone |
-| `/read/:videoId` | Reading view | new |
+| `/read/:episodeId` | Reading view | new |
 | `/history` · `/history/2026-09-12` | History | new; the day is an address, with its year |
 | `/sources` · `/sources/:id` | Sources, one source | `/channel/:id` is gone |
 | `/account` | Account | new; carries what was scattered in the header |
@@ -121,11 +121,11 @@ Three API changes, all of them removals or additions of the same shape:
 
 - `GET /digest` **stops recording read receipts** and so does `GET /channels/:id/episodes`. Every read route is pure.
   `wasUnread` becomes `read`, which describes the row rather than the request that fetched it.
-- `POST /channels/:channelId/episodes/:videoId/read` records the receipt; `DELETE` removes it. Eligibility is
+- `POST /channels/:channelId/episodes/:episodeId/read` records the receipt; `DELETE` removes it. Eligibility is
   unchanged — an active follower of an approved channel — and a call from anyone else records nothing and answers
-  404, exactly as the old implicit rule did. `summary_reads` already holds `video_id` and `read_at`; no migration.
-- `GET /channels/:channelId/episodes/:videoId` returns one episode with its summary, related items and read state,
-  so `/read/:videoId` is a deep link that works on a cold load.
+  404, exactly as the old implicit rule did. `summary_reads` already holds `episode_id` and `read_at`; no migration.
+- `GET /channels/:channelId/episodes/:episodeId` returns one episode with its summary, related items and read state,
+  so `/read/:episodeId` is a deep link that works on a cold load.
 
 ### 4.4 Queue and History
 
@@ -208,7 +208,7 @@ anything. The calendar is a grid with arrow-key traversal and a full date in eve
 2. Every route in §4.2 deep-links and reloads under `wrangler pages dev`.
 3. `GET /digest` and `GET /channels/:id/episodes` record no receipt; a test asserts a summary stays unread after both.
 4. `POST …/read` records one and `DELETE …/read` removes it; an ineligible caller gets 404 and writes nothing.
-5. `GET /channels/:id/episodes/:videoId` answers a single episode with summary, related and read state.
+5. `GET /channels/:id/episodes/:episodeId` answers a single episode with summary, related and read state.
 6. `/digest` honours `from`/`to`/`unread`/`channelId`/`cursor`/`compact`, has no clamp, and rejects a range it cannot
    page.
 7. The queue shows no row carrying a receipt; History shows both and undoes one.

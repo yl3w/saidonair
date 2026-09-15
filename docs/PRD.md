@@ -128,7 +128,7 @@ Chat query: current follows ∩ approved channels
 | Orchestration | Cloudflare Workflows, one instance per episode attempt; two Cron Triggers in the same Worker: discovery `0 */6 * * *` and recovery `30 */6 * * *` (UTC) |
 | LLM | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
 | Embeddings | Workers AI `@cf/baai/bge-base-en-v1.5`, 768 dimensions, 512-token input cap (the deployed model id carries `.5`, corrected 2026-09-08) |
-| Vectors | Vectorize, cosine, explicit `shared-catalog` namespace, `channelId` and `videoId` metadata indexes; one index per environment: `media-rag` (production), `media-rag-staging`, `media-rag-dev` (decided 2026-09-13) |
+| Vectors | Vectorize, cosine, explicit `shared-catalog` namespace, `channelId` and `episodeId` metadata indexes; one index per environment: `media-rag` (production), `media-rag-staging`, `media-rag-dev` (decided 2026-09-13) |
 | Transcripts | DownSub's API behind one transcript seam (`DOWNSUB_API_KEY` secret); a canned fake in tests |
 | UI | Cloudflare Pages, Vite + Preact + TypeScript, `preact-iso` history routing; daisyUI 5 components over Tailwind CSS 4 with one custom theme, in the single `styles.css`; no state library (decided 2026-09-14, §9) |
 | Tests | Vitest + `@cloudflare/vitest-pool-workers`; env-selected fakes for Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds |
@@ -457,7 +457,7 @@ episode's row, phrased from its latest attempt.
 - Otherwise embed the question, retrieve the best three eligible chunks (§6), combine their exact text with the user's
   preferences and this chat's recent history, and ask Workers AI to answer with video/timestamp citations.
 - Store citation snapshots (video/channel IDs, titles, start time) with each reply. Link to
-  `https://youtu.be/<videoId>?t=<startSec>`; later catalog changes must not erase historical sources.
+  `https://youtu.be/<episodeId>?t=<startSec>`; later catalog changes must not erase historical sources.
 
 ## 5. Logical database schema
 
@@ -475,10 +475,10 @@ Tables and columns are `snake_case`.
 | `global_users` | `email`, `role DEFAULT 'user'`, `last_seen_at` | PK `email`, normalized |
 | `channels` | `channel_id`, `title`, `canonical_url`, `status`, `initial_import_count DEFAULT 5`, `approved_at?`, `reviewed_at?`, `reviewed_by_email?`, `review_note?`, `paused_by?`, `paused_at?`, `last_checked_at?`, `updated_at` | PK `channel_id` (YouTube `UC…` ID); FK `reviewed_by_email → global_users.email`; API `lastIngestedAt` is derived from episodes; there is no `last_ingested_at` column |
 | `channel_followers` | `channel_id`, `user_email`, `followed_at`, `unfollowed_at?`, `updated_at` | Composite PK `(channel_id, user_email)`; FKs to `channels.channel_id` and `global_users.email`; an active follow is `unfollowed_at IS NULL` |
-| `episodes` | `video_id`, `channel_id`, `discovered_by_run_id`, `title`, `published_at`, `status`, `intent?`, `window_started_at?`, `window_deadline_at?`, `next_attempt_at?`, `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, `skip_reason?`, `skipped_at?`, `skipped_by_email?`, `transcript_checked_at?`, `chunk_count?`, `vectorized_at?`, `processed_at?`, `active_vector_generation?`, `staged_vector_generation?`, `updated_at` | PK `video_id`; FKs to channel, discovery run, and skipping owner |
-| `episode_summaries` | `video_id`, `format`, `executive_summary?`, `takeaways_json?`, `topic_tags_json?`, `raw_text?`, `related_video_ids_json`, `model`, `prompt_version` | PK/FK `video_id → episodes.video_id`; `prompt_version` is a TEXT identifier |
+| `episodes` | `episode_id`, `channel_id`, `discovered_by_run_id`, `title`, `published_at`, `status`, `intent?`, `window_started_at?`, `window_deadline_at?`, `next_attempt_at?`, `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, `skip_reason?`, `skipped_at?`, `skipped_by_email?`, `transcript_checked_at?`, `chunk_count?`, `vectorized_at?`, `processed_at?`, `active_vector_generation?`, `staged_vector_generation?`, `updated_at` | PK `episode_id`; FKs to channel, discovery run, and skipping owner |
+| `episode_summaries` | `episode_id`, `format`, `executive_summary?`, `takeaways_json?`, `topic_tags_json?`, `raw_text?`, `related_episode_ids_json`, `model`, `prompt_version` | PK/FK `episode_id → episodes.episode_id`; `prompt_version` is a TEXT identifier |
 | `ingestion_runs` | `run_id`, `channel_id`, `kind`, `feed_status`, `discovered_count DEFAULT 0`, `episode_limit?`, `started_at`, `finished_at` | PK `run_id`; FK `channel_id → channels.channel_id`; a completed feed-discovery record, so no status or Workflow columns |
-| `episode_ingestion_attempts` | `attempt_id`, `video_id`, `trigger`, `intent`, `generation_id?`, `staged_chunk_count?`, `workflow_id?`, `requested_by_email?`, `status`, `outcome_code?`, `failure_detail?`, `started_at`, `finished_at?` | PK `attempt_id`; unique nullable `workflow_id`; FKs to episode and optional owner; all episode executions |
+| `episode_ingestion_attempts` | `attempt_id`, `episode_id`, `trigger`, `intent`, `generation_id?`, `staged_chunk_count?`, `workflow_id?`, `requested_by_email?`, `status`, `outcome_code?`, `failure_detail?`, `started_at`, `finished_at?` | PK `attempt_id`; unique nullable `workflow_id`; FKs to episode and optional owner; all episode executions |
 
 `channel_followers` is the only record of follows: a user's own list is `WHERE user_email = ? AND unfollowed_at IS
 NULL`, eligibility joins it to approved channels, and the same rows count followers, list who is waiting on a
@@ -487,16 +487,16 @@ requested channel, and pause a channel nobody follows.
 when a declined channel is requested again. An episode's `discovered_by_run_id` is immutable and supplies the exact
 membership of a discovery run. Processing history is entirely in `episode_ingestion_attempts`; `staged_chunk_count`
 is set when embedding starts so the next attempt can delete an abandoned generation.
-`related_video_ids_json` is an array of shared episode IDs, validated in the Registry and filtered at read time.
+`related_episode_ids_json` is an array of shared episode IDs, validated in the Registry and filtered at read time.
 
 ### 5.2 Per-user DO
 
 | Table | Columns in addition to `created_at` | Keys and relationships |
 |---|---|---|
-| `summary_reads` | `video_id`, `read_at` | PK `video_id`; no row means unread |
+| `summary_reads` | `episode_id`, `read_at` | PK `episode_id`; no row means unread |
 | `chats` | `chat_id`, `title?`, `updated_at` | PK `chat_id` |
 | `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
-| `chat_message_sources` | `source_id`, `message_id`, `position`, `video_id`, `channel_id`, `video_title`, `channel_title`, `start_sec` | PK `source_id`; FK to message; unique `(message_id, position)` |
+| `chat_message_sources` | `source_id`, `message_id`, `position`, `episode_id`, `channel_id`, `episode_title`, `channel_title`, `start_sec` | PK `source_id`; FK to message; unique `(message_id, position)` |
 | `user_preferences` | `id`, `system_rules`, `updated_at` | Singleton PK constrained to `id = 'default'` |
 
 Email is implicit in the owning User DO, not repeated in each row. The User DO holds no follows: those are Registry
@@ -561,7 +561,7 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
   `channel_followers(user_email, unfollowed_at)` for a user's own list and eligibility;
   `episodes(channel_id, status, published_at)`; `episodes(next_attempt_at)` for recovery;
   `episodes(discovered_by_run_id)`; `episodes(channel_id, processed_at)` for the derived ingestion time;
-  `ingestion_runs(channel_id, created_at)`; `episode_ingestion_attempts(video_id, created_at)` and
+  `ingestion_runs(channel_id, created_at)`; `episode_ingestion_attempts(episode_id, created_at)` and
   `episode_ingestion_attempts(status, started_at)`. No index on open runs: a discovery run exists only once complete.
 - User indexes: `chats(updated_at)`. The unique chat/message sequence and message/source position indexes also
   support ordered reads.
@@ -590,9 +590,9 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
 
 - Store transcript text only as shared Vectorize chunk metadata, not duplicated in each user database or namespace.
   Metadata `text` is what the LLM reads at query time, so it is exact.
-- Namespace: `shared-catalog`. ID: `${videoId}:${generationId}:${chunkIndex}`. Metadata:
-  `{ videoId, channelId, generationId, channelTitle, title, startSec, endSec, text, publishedAt }`. `channelId` and
-  `videoId` are required on every vector because retrieval filters on them.
+- Namespace: `shared-catalog`. ID: `${episodeId}:${generationId}:${chunkIndex}`. Metadata:
+  `{ episodeId, channelId, generationId, channelTitle, title, startSec, endSec, text, publishedAt }`. `channelId` and
+  `episodeId` are required on every vector because retrieval filters on them.
 - Chunking is a hybrid time/token strategy: group consecutive segments into about 60 seconds of speech; split a group
   over about 400 tokens (approximated as `chars / 4`) on segment boundaries; overlap consecutive chunks by 1–2
   segments so a point straddling a boundary is still retrievable; never emit a chunk over 480 tokens, because the
@@ -610,7 +610,7 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
   generation (§4.2 rules 24–26).
 - Declining a channel does not require vector deletion or rewriting every vector. Current catalog eligibility excludes
   the retained vectors; approving the channel again reuses them.
-- The owner must create the index and its `channelId` and `videoId` metadata indexes before the first upsert; vectors
+- The owner must create the index and its `channelId` and `episodeId` metadata indexes before the first upsert; vectors
   inserted earlier are not filterable on those fields and would have to be re-upserted. See
   [Cloudflare metadata filtering](https://developers.cloudflare.com/vectorize/reference/metadata-filtering/).
 
@@ -621,7 +621,7 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
 The UI is web based: images, avatars, thumbnails, and rich embeds are permitted; structured text (lists, headings) is fine.
 Routing is history mode, and deep links and reloads must work. Section navigation within a page uses anchors, not
 client-side tab state. Assistant messages render as plain text with newlines preserved; only `youtube.com` URLs are
-linkified, and a chat source with a start time links to `https://youtu.be/<videoId>?t=<startSec>`. The owner label is
+linkified, and a chat source with a start time links to `https://youtu.be/<episodeId>?t=<startSec>`. The owner label is
 "Owner" throughout. Owner controls render only when `GET /me` returns the owner role; the client's role is for
 rendering, and the web is the only gate: the API enforces no authorization (§9). Where this document says the owner
 sees something readers do not, that is the web's rendering; the API returns the same representation to every identity. The user-facing phrases for channel statuses, skip reasons, and
@@ -737,8 +737,8 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | `POST /channels/:id/decline` `{ explanation? }` | anyone; UI: owner | `requested → declined`, or `approved → declined` with the pause cleared; stops new discovery, not existing episode recovery |
 | `POST /channels/:id/pause` / `POST /channels/:id/resume` | anyone; UI: owner | Owner pause; resume clears either kind of pause. Approved channels only |
 | `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; every caller gets `status`, a top-level `skipReason`, on a pending episode a top-level `waitReason` derived from its latest attempt (§4.2 rule 11), the available summary and related items, and the `processing` block with the active intent and window, next attempt, latest attempt, and diagnostic outcome; an eligible caller (active follower of an approved channel) also gets read state, and the summaries returned to them are marked read (§4.4) |
-| `POST /channels/:id/episodes/:videoId/retry` | anyone; UI: owner | Any episode state in any channel status; opens a fresh 48-hour window when pre-flight permits and returns the new attempt, never a channel run. An available episode keeps its summary and active vector generation until replacement succeeds; a blocked Retry records a `blocked` attempt and leaves the episode unchanged; 409 while an attempt is running |
-| `POST /channels/:id/episodes/:videoId/skip` | anyone; UI: owner | `failed → skipped OWNER`, regardless of channel status |
+| `POST /channels/:id/episodes/:episodeId/retry` | anyone; UI: owner | Any episode state in any channel status; opens a fresh 48-hour window when pre-flight permits and returns the new attempt, never a channel run. An available episode keeps its summary and active vector generation until replacement succeeds; a blocked Retry records a `blocked` attempt and leaves the episode unchanged; 409 while an attempt is running |
+| `POST /channels/:id/episodes/:episodeId/skip` | anyone; UI: owner | `failed → skipped OWNER`, regardless of channel status |
 | `GET /channels/:id/runs` | anyone; UI: owner | Initial and scheduled RSS discovery runs newest first with feed status and discovered count (each owner episode carries `discoveredByRunId`; there is no per-run episode list); all processing history lives on episode attempts |
 | `POST /channels/:id/runs` | anyone; UI: owner | Checks an approved channel's feed now, ignoring pause (409 `INVALID_STATE` for any other status): 200 with the completed discovery run, including nothing new; 502 `UPSTREAM_UNAVAILABLE` when YouTube does not answer, after the `feed unavailable` run is recorded |
 | `GET /channels/:id/followers` | anyone; UI: owner | Emails and follow times of the channel's active followers |
@@ -880,7 +880,7 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   available on the queue row as well as on the summary's own screen so nothing has to be opened to be dismissed, and
   it advances to the next unread. Every read route stays a pure read, which is the simpler API and the testable one,
   and an accidental open or a shared link cannot cost a reader an item. **Two:** a summary gets its own screen and its own URL,
-  `/read/:videoId` — a measured column, the executive summary, the takeaways with their timestamps as the body, and
+  `/read/:episodeId` — a measured column, the executive summary, the takeaways with their timestamps as the body, and
   nothing else — so the API gains a single-episode read, since deep links and reloads must work (§7). **Three:**
   Home splits in two. `/queue` is what is waiting to be read, one row per episode with the executive summary as the
   excerpt; `/sources` holds following, the catalog, and adding a channel, and M4's chats become `/chats` rather than
@@ -1014,6 +1014,15 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   2026-09-12) and a web search found no product, company, or podcast using the name; no trademark database was
   searched. The web brand text and the API document title follow the name. Whether the repository name, the
   `@media-digest/*` package scope, the Worker name, and the browser storage keys follow it needs an owner decision.
+- **`episodeId`, not `videoId` — decided 2026-09-15.** The product's noun for a thing with a summary is an
+  *episode*, and every layer now says so: the shared schemas, every route and path parameter, both Durable Objects'
+  methods, the SQLite columns (`episodes.episode_id`, `summary_reads.episode_id`, `episode_summaries.episode_id` and
+  its `related_episode_ids_json`, `chat_message_sources.episode_id` and `episode_title`, and the attempt ledger), the
+  Vectorize metadata, the web, and the tests. An episode id is still the YouTube video id it was discovered as — that
+  is a fact about where it came from, not what it is — so `videoId` survives in exactly two places, both of them one
+  line wide: the feed parser reading `<yt:videoId>` into a `FeedEntry`, and the watch URL the transcript provider is
+  given. `AGENTS.md` → Ingestion implementation states the rule. The `0001_init.sql` of both Durable Objects was
+  rewritten rather than migrated, which is allowed while nothing is deployed (§5.4); dev state was wiped once.
 - **Cron cadence — decided 2026-09-12:** channel discovery runs at `0 */6 * * *` UTC and episode recovery at
   `30 */6 * * *` UTC; both have a six-hour cadence. The triggers exist in production only (2026-09-13, below).
 - **Environments — decided 2026-09-13: three, dev, staging, production.** Local `wrangler dev` runs as dev against

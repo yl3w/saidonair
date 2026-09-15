@@ -188,14 +188,14 @@ async function unreadByChannel(
   channelIds: string[],
 ): Promise<Record<string, number>> {
   if (channelIds.length === 0) return {};
-  const processed = await c.var.registry.listAvailableVideoIds(channelIds);
+  const processed = await c.var.registry.listAvailableEpisodeIds(channelIds);
   if (processed.length === 0) return {};
   const read = new Set(
-    await c.var.user.readVideoIds(processed.map((p) => p.videoId)),
+    await c.var.user.readEpisodeIds(processed.map((p) => p.episodeId)),
   );
   const unread: Record<string, number> = {};
-  for (const { channelId, videoId } of processed) {
-    if (!read.has(videoId)) unread[channelId] = (unread[channelId] ?? 0) + 1;
+  for (const { channelId, episodeId } of processed) {
+    if (!read.has(episodeId)) unread[channelId] = (unread[channelId] ?? 0) + 1;
   }
   return unread;
 }
