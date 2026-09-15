@@ -771,7 +771,7 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | Method and path | Who | Purpose |
 |---|---|---|
 | `GET /me` | anyone | Caller's normalized email and role (`owner` or `user`); the UI uses it to show owner controls |
-| `GET /catalog` | anyone; UI: owner | Aggregate catalog state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, failed, skipped }` (no `waiting` count; wait reasons live on episode rows), `attention { failedEpisodes, neverStarted, requested }`, `lastSuccessfulIngestionAt` (`MAX(episodes.processed_at)`), and `transcripts { remainingCredits, status: ok | auth_failed | unreachable }` |
+| `GET /catalog` | anyone; UI: owner | Aggregate catalog state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, failed, skipped }` (no `waiting` count; wait reasons live on episode rows), `attention { failedEpisodes (in approved channels only, §9), neverStarted, requested }`, `lastSuccessfulIngestionAt` (`MAX(episodes.processed_at)`), and `transcripts { remainingCredits, status: ok | auth_failed | unreachable }` |
 | `GET /channels` | anyone | Requested and approved channels, each with `status`, `paused`, `following`, `followerCount`, episode counts, and derived `lastIngestedAt`; every caller receives a `management` block whose `latestRun` reports the feed result and number of episodes discovered; `?scope=all` (any caller) adds declined ones |
 | `POST /channels` `{ channelId, title?, initialImportCount? }` | anyone | Creates a `requested` channel and follows the caller (201), whoever calls; there is no owner shortcut (2026-09-12), the web's owner add follows with an approve. An existing `requested` or `approved` id is followed and returned (200); a `declined` id is 409 `ChannelDeclinedResponse` with the owner's note. A handle or an id with no feed is 400. `title` and `initialImportCount` are honoured from any caller; the UI offers them to the owner only |
 | `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; the owner also gets `management` |
@@ -1188,6 +1188,15 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **`attention.failedEpisodes` counts approved channels only — corrected 2026-09-15.** It read `episodes.failed`,
+  the catalog-wide total, and a failed episode can outlive its channel's place in the catalog: declining stops
+  discovery but not recovery (§4.2 rule 28), so an episode can exhaust its 48 hours after the channel is gone.
+  Curate's Needs you has always filtered to approved channels, so the nav badge could say one while the section
+  showed none — visible only faintly while that section answered with three zeroes, and plainly once it answered
+  with a sentence. §4.2 rule 14 settles which side is right: only failed **publications** enter Needs attention,
+  and an episode of a channel that has left the catalog is not work to nudge anyone toward. `episodes.failed` is
+  unchanged and still counts everything, because it is a census rather than a worklist. A paused channel keeps
+  `status = 'approved'`, so its failures still count.
 - **Curate says nothing needs you, once — decided 2026-09-15.** Needs you rendered three categories whatever the
   state of the catalog, so a healthy day was met with three headings, three zeroes and three sentences explaining
   the zeroes. A healthy day is also the usual day, and the one an owner is most often looking at: the nav carries a

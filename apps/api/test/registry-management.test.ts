@@ -79,6 +79,20 @@ describe("registry catalog summary and management", () => {
     });
   });
 
+  it("counts a failed episode as attention only while its channel is approved", async () => {
+    const stub = await seedCatalog();
+    expect((await stub.getCatalogSummary()).attention.failedEpisodes).toBe(1);
+
+    // Declining stops discovery, not recovery (PRD §4.2 rule 28), so the episode stays failed and
+    // keeps counting in `episodes.failed` — but it is no longer work anyone should be nudged to do,
+    // and Curate's Needs you has always filtered to approved channels.
+    await stub.declineChannel(OWNER, CHANNEL_A);
+
+    const after = await stub.getCatalogSummary();
+    expect(after.episodes.failed).toBe(1);
+    expect(after.attention.failedEpisodes).toBe(0);
+  });
+
   it("is empty-safe before anything exists", async () => {
     expect(await registry().getCatalogSummary()).toEqual({
       channels: { requested: 0, approved: 0, paused: 0, declined: 0 },

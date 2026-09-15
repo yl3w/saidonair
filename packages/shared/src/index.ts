@@ -878,7 +878,7 @@ export const CatalogSchema = z
     episodes: EpisodeCountsSchema,
     attention: z.object({
       failedEpisodes: Count.describe(
-        "Publications that exhausted their 48-hour window.",
+        "Publications that exhausted their 48-hour window, in approved channels: a declined channel's episodes keep recovering but are not the owner's work.",
       ),
       neverStarted: Count.describe(
         "Approved channels with no discovery run row at all.",

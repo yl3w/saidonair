@@ -34,7 +34,19 @@ export function summarize(sql: SqlStorage): CatalogSummary {
     episodes,
     lastSuccessfulIngestionAt: lastProcessedAt(sql),
     attention: {
-      failedEpisodes: episodes.failed,
+      // Only a failed publication in an **approved** channel is work: declining stops discovery but
+      // not recovery (docs/PRD.md §4.2 rule 28), so an episode can time out after its channel has
+      // left the catalog, and retrying that is not something to nudge the owner toward. This read
+      // `episodes.failed`, the global total, which counted those — so the nav badge could say one
+      // while Curate's Needs you, which has always filtered to approved, showed nothing at all
+      // (corrected 2026-09-15, §9). A paused channel keeps `status = 'approved'` and still counts.
+      failedEpisodes: sql
+        .exec<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM episodes e
+             JOIN channels c ON c.channel_id = e.channel_id
+            WHERE e.status = 'failed' AND c.status = 'approved'`,
+        )
+        .one().n,
       neverStarted: sql
         .exec<{ n: number }>(
           `SELECT COUNT(*) AS n FROM channels WHERE status = 'approved'
