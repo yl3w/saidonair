@@ -584,6 +584,22 @@ export function listDue(sql: SqlStorage, now: number): EpisodeRecord[] {
 }
 
 /**
+ * One episode by id alone, whatever channel it belongs to. `episode_id` is the primary key, so this
+ * is the natural lookup; the channel-scoped one below exists for callers that already know the
+ * channel and want a mismatch to be a 404.
+ */
+export function getById(
+  sql: SqlStorage,
+  episodeId: string,
+  relatedScope: readonly string[] = [],
+): EpisodeRecord | null {
+  const row = sql
+    .exec<EpisodeRow>(`${EPISODE_SELECT} WHERE e.episode_id = ?`, episodeId)
+    .toArray()[0];
+  return row ? (complete(sql, [row], relatedScope)[0] ?? null) : null;
+}
+
+/**
  * One episode of one channel, with processing detail. Related titles are resolved only within
  * `relatedScope`, the caller's eligible channels; the empty default is the ingestion paths, which
  * never show them.

@@ -4,6 +4,7 @@ import { useLocation } from "preact-iso";
 import { api } from "../api";
 import { Avatar } from "../components/Avatar";
 import { attentionCount } from "../components/CatalogHealth";
+import { Choice } from "../components/Choice";
 import { Page } from "../components/Page";
 import { actionErrorCopy, curateWaitingCopy } from "../lib/copy";
 import {
@@ -83,33 +84,35 @@ function SettingsScreen() {
         title="Reading"
         note="Kept in this browser. Another machine of yours can read differently."
       >
-        <Choice
-          legend="Type"
-          value={settings.readingFont}
-          options={READING_FONTS.map((font) => ({
-            value: font,
-            label: font === "serif" ? "Serif" : "Sans",
-          }))}
-          onChange={(readingFont) => change({ readingFont })}
-        />
-        <Choice
-          legend="Size"
-          value={settings.readingSize}
-          options={READING_SIZES.map((size) => ({
-            value: size,
-            label: SIZE_LABELS[size],
-          }))}
-          onChange={(readingSize) => change({ readingSize })}
-        />
-        <Choice
-          legend="Theme"
-          value={settings.readingTheme}
-          options={READING_THEMES.map((theme) => ({
-            value: theme,
-            label: theme[0]?.toUpperCase() + theme.slice(1),
-          }))}
-          onChange={(readingTheme) => change({ readingTheme })}
-        />
+        <div class="flex flex-col gap-3">
+          <Choice
+            legend="Type"
+            value={settings.readingFont}
+            options={READING_FONTS.map((font) => ({
+              value: font,
+              label: font === "serif" ? "Serif" : "Sans",
+            }))}
+            onChange={(readingFont) => change({ readingFont })}
+          />
+          <Choice
+            legend="Size"
+            value={settings.readingSize}
+            options={READING_SIZES.map((size) => ({
+              value: size,
+              label: SIZE_LABELS[size],
+            }))}
+            onChange={(readingSize) => change({ readingSize })}
+          />
+          <Choice
+            legend="Theme"
+            value={settings.readingTheme}
+            options={READING_THEMES.map((theme) => ({
+              value: theme,
+              label: theme[0]?.toUpperCase() + theme.slice(1),
+            }))}
+            onChange={(readingTheme) => change({ readingTheme })}
+          />
+        </div>
         <div
           data-reading-theme={settings.readingTheme}
           class={`mt-4 rounded border border-reading-rule p-4 ${
@@ -250,41 +253,5 @@ function Section({
       )}
       <div class="mt-3">{children}</div>
     </section>
-  );
-}
-
-/**
- * A segmented choice built from real radios, so it is one stop on the keyboard and arrow keys move
- * between the options. daisyUI supplies the form; the words are ours (docs/design.md §2.6).
- */
-function Choice<T extends string>({
-  legend,
-  value,
-  options,
-  onChange,
-}: {
-  legend: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <fieldset class="mb-3 flex flex-wrap items-center gap-3">
-      <legend class="sr-only">{legend}</legend>
-      <span class="w-14 text-meta text-ink-3">{legend}</span>
-      <div class="join">
-        {options.map((option) => (
-          <input
-            key={option.value}
-            type="radio"
-            name={legend}
-            class="btn join-item min-h-11 border-edge bg-panel text-ui text-ink-2 checked:bg-base-200 checked:font-semibold checked:text-ink"
-            aria-label={option.label}
-            checked={value === option.value}
-            onChange={() => onChange(option.value)}
-          />
-        ))}
-      </div>
-    </fieldset>
   );
 }

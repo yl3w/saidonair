@@ -1080,6 +1080,14 @@ export const ChannelParamsSchema = z.object({
 });
 export type ChannelParams = z.infer<typeof ChannelParamsSchema>;
 
+/** `/episodes/:episodeId` — an episode names itself; its id is unique across the catalog. */
+export const EpisodeIdParamsSchema = z.object({
+  episodeId: Id.describe(
+    "The episode id: the YouTube video id it was discovered as.",
+  ),
+});
+export type EpisodeIdParams = z.infer<typeof EpisodeIdParamsSchema>;
+
 /** `/channels/:id/episodes/:episodeId/retry|skip`. */
 export const EpisodeParamsSchema = z.object({
   id: Id.describe("Canonical `UC…` channel id."),

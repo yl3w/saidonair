@@ -8,6 +8,7 @@ import type {
   Episode,
   EpisodeSkipReason,
   EpisodeStatus,
+  EpisodeSummary,
   EpisodeWaitReason,
   IngestionRun,
   ProcessingIntent,
@@ -168,3 +169,52 @@ export function curateWaitingCopy(waiting: number | null): string {
   }
   return `${waiting} ${waiting === 1 ? "thing needs" : "things need"} you in Curate, which needs a wider screen than this one.`;
 }
+
+/** The reading time of a summary, from its own length: the number a reader decides on. */
+export function readingMinutes(summary: EpisodeSummary | null): number {
+  if (summary === null) return 1;
+  const words =
+    summary.format === "raw_fallback"
+      ? summary.rawText.split(/\s+/).length
+      : summary.executiveSummary.split(/\s+/).length +
+        summary.takeaways.reduce(
+          (total, takeaway) => total + takeaway.text.split(/\s+/).length,
+          0,
+        );
+  return Math.max(1, Math.round(words / 220));
+}
+
+/** `1 h 42 m` / `18 m`: an episode's runtime, as the transcript provider reported it. */
+export function runtimeCopy(durationSec: number | null): string | null {
+  if (durationSec === null || durationSec <= 0) return null;
+  const minutes = Math.round(durationSec / 60);
+  if (minutes < 60) return `${minutes} m`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} m`;
+}
+
+/** `h:mm:ss` or `m:ss` for a takeaway's moment, as it hangs in the reading column's margin. */
+export function momentCopy(seconds: number): string {
+  const whole = Math.floor(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const rest = whole % 60;
+  const mm = hours > 0 ? String(minutes).padStart(2, "0") : String(minutes);
+  return `${hours > 0 ? `${hours}:` : ""}${mm}:${String(rest).padStart(2, "0")}`;
+}
+
+/**
+ * The end of the queue, which says what is waiting rather than fading out (docs/specs/design-phase.md
+ * §4.4). The History count is switched off with every other count.
+ */
+export function endOfQueueCopy(inHistory: number | null): string {
+  if (inHistory === null || inHistory === 0) {
+    return "That is everything waiting.";
+  }
+  return `That is everything waiting — ${inHistory} ${inHistory === 1 ? "summary sits" : "summaries sit"} in History.`;
+}
+
+export const QUEUE_EMPTY_TITLE = "You are through everything";
+export const QUEUE_EMPTY_NOTE =
+  "Nothing is waiting. What you have already read is in History, by the day it arrived.";
+export const QUEUE_NO_FOLLOWS_NOTE =
+  "Follow a channel and its summaries will land here as they are written.";

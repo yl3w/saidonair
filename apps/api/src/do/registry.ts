@@ -285,6 +285,21 @@ export class RegistryDO extends DurableObject<Env> {
   }
 
   /**
+   * One episode by id alone, or null: the reading view's deep link knows the episode, not the
+   * channel. Related titles are resolved within `relatedScope`, the caller's eligible channels.
+   */
+  getEpisodeById(
+    episodeId: string,
+    relatedScope?: string[],
+  ): EpisodeRecord | null {
+    return episodes.getById(
+      this.#sql,
+      requireEpisodeId(episodeId),
+      relatedScope === undefined ? [] : requireChannelIds(relatedScope),
+    );
+  }
+
+  /**
    * One episode of one channel with processing detail, or null. Related titles are resolved within
    * `relatedScope` (the caller's eligible channels) and left out when it is omitted.
    */

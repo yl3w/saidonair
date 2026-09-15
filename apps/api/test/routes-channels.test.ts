@@ -519,6 +519,27 @@ describe("channel and catalog routes", () => {
     expect((await call(BOB, "DELETE", `${path}/read`)).status).toBe(404);
     expect(await userDO(BOB).readEpisodeIds([EPISODE_A])).toEqual([]);
 
+    // The reading view knows the episode, not its channel: `/episodes/:episodeId` answers the same
+    // episode, and an id no channel holds is 404.
+    const byId = await call(ALICE, "GET", `/episodes/${EPISODE_A}`);
+    expect(byId.status).toBe(200);
+    expectShape(EpisodeResponseSchema, byId.json);
+    expect(byId.json.episode).toMatchObject({
+      episodeId: EPISODE_A,
+      channelId: CHANNEL_A,
+      summary: { format: "structured" },
+      related: [{ episodeId: EPISODE_B }],
+      read: false,
+    });
+    expect((await call(ALICE, "GET", "/episodes/zzzzzzzzzzz")).status).toBe(
+      404,
+    );
+    expect((await call(ALICE, "GET", "/episodes/bad")).status).toBe(400);
+    // Bob follows nothing: same episode, no read state, and still nothing recorded.
+    expect(
+      (await call(BOB, "GET", `/episodes/${EPISODE_A}`)).json.episode,
+    ).not.toHaveProperty("read");
+
     // A summary is the only thing a receipt can name; EPISODE_C is failed.
     expect(
       (

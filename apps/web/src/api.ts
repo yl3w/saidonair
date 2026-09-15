@@ -152,7 +152,13 @@ export const api = {
       "GET",
       `/channels/${enc(channelId)}/episodes${limit === undefined ? "" : `?limit=${limit}`}`,
     ),
-  /** One episode with its summary, related titles and read state: the reading view's deep link. */
+  /**
+   * One episode by its own id: what the reading view has on a cold load, since `/read/:episodeId`
+   * names the episode and not its channel.
+   */
+  getEpisodeById: (episodeId: string) =>
+    request<EpisodeResponse>("GET", `/episodes/${enc(episodeId)}`),
+  /** The same episode through its channel, where a mismatch is a 404. */
   getEpisode: (channelId: string, episodeId: string) =>
     request<EpisodeResponse>(
       "GET",

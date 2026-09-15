@@ -161,11 +161,13 @@
   --text-label--line-height: 1.3;
   --text-label--letter-spacing: 0.09em;
 
-  /* The measures of docs/design.md §2.3, as `max-w-*`. */
+  /* The measures of docs/design.md §2.3, as `max-w-*` and (for the rail) `w-*`. */
   --container-reading: 42.5rem; /* 680 px */
   --container-list: 47.5rem; /* 760 px */
   --container-rail: 14.5rem; /* 232 px */
   --container-rail-wide: 18rem; /* 288 px, when it holds the calendar */
+  --width-rail: 14.5rem;
+  --width-rail-wide: 18rem;
 }
 
 /**

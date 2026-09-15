@@ -45,6 +45,7 @@ const OPERATIONS = [
   "delete /channels/{id}/episodes/{episodeId}/read",
   "post /channels/{id}/episodes/{episodeId}/retry",
   "post /channels/{id}/episodes/{episodeId}/skip",
+  "get /episodes/{episodeId}",
   "get /channels/{id}/runs",
   "post /channels/{id}/runs",
   "get /follows",
