@@ -15,7 +15,6 @@ import {
   READING_PANEL_CLOSE,
   READING_PANEL_TITLE,
   RELATED_HEADING,
-  readStateCopy,
   runtimeCopy,
   SIZE_LABELS,
   TAKEAWAYS_HEADING,
@@ -197,8 +196,9 @@ function ReadingScreen() {
             </a>
           )}
 
-          {/* Only on a summary that still needs dealing with. A read one says so in the meta line
-              instead, and its receipt is undone in History, where the row is (docs/design.md §4). */}
+          {/* Only on a summary that still needs dealing with. A read one carries no receipt control
+              at all: undo lives in History, where the row is and where it says "Read"
+              (docs/design.md §4). */}
           {episode !== null && summary !== null && episode.read === false && (
             <button
               type="button"
@@ -240,14 +240,19 @@ function ReadingScreen() {
             <h1 class="mt-2 font-reading text-reading-title-sm font-semibold text-ink md:text-reading-title">
               {episode.title}
             </h1>
+            {/* The episode, not the reader's relationship to it: where someone stands with a
+                summary is a triage fact and lives where they triage, on the History row that says
+                "Read" and carries the Undo (owner decision 2026-09-15, docs/PRD.md §9). Assembled
+                rather than written out, so the separator belongs to the line. */}
             <p class="mt-3 flex flex-wrap gap-x-2 text-meta text-ink-3">
-              {episode.read !== undefined && (
-                <span>{readStateCopy(episode.read)} ·</span>
-              )}
-              <span>{longDate(episode.publishedAt)}</span>
-              {runtimeCopy(episode.processing.durationSec) !== null && (
-                <span>· {runtimeCopy(episode.processing.durationSec)}</span>
-              )}
+              {[
+                longDate(episode.publishedAt),
+                runtimeCopy(episode.processing.durationSec),
+              ]
+                .filter((item): item is string => item !== null)
+                .map((item, index) => (
+                  <span key={item}>{index === 0 ? item : `· ${item}`}</span>
+                ))}
             </p>
 
             {summary === null ? (

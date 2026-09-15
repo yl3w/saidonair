@@ -659,8 +659,9 @@ somewhere extra to go.
   and **Done**, with a scroll-progress rule at the top. **The arrow names the list the summary was opened from** —
   the queue, a day in History, or a source — and returns the reader to it at the row they left; a related title
   moves within the column and leaves that unchanged, and with no origin, as on a cold deep link, it is the queue.
-  **Done renders only on a summary with no receipt**; a read one says "Read" in its meta line instead, and its
-  receipt is undone in History, where the row is. **Nothing on this screen writes anything until Done**, which
+  **Done renders only on a summary with no receipt**, and a read one carries no receipt control at all; the meta
+  line is the episode's own facts and says neither "Read" nor "Unread" (§9, 2026-09-15), the receipt being undone
+  in History, where the row is. **Nothing on this screen writes anything until Done**, which
   records the receipt and hands the reader back to that same list (decided 2026-09-15, §9, withdrawing the advance
   to the next unread). A deep link works on a cold load through `GET /episodes/:episodeId`.
 - **History `/history` and `/history/2026-09-12`:** the library — everything the reader is currently eligible for,
@@ -1102,10 +1103,16 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the word beside it. A mixed list owes "read" or "unread" in words, and that is the accessibility floor talking:
   the difference between the two kinds of row may never live in colour or a dimmed row alone. The queue is not a
   mixed list. Every row in it is unread by definition — that is the screen — so the word was a constant with a
-  label, and it is gone from the queue's rows while staying on History's, a source's, and the reading view's, all
-  three of which hold both kinds. The reading view keeps both words rather than printing "Read" alone, because
-  making the unread state the absence of a word is the shape the floor rule exists to prevent; pairing the word
-  with the action is what History's rows already do, saying "Unread" beside the check. The same reading fixed a
+  label, and it is gone from the queue's rows while staying on History's and a source's, which hold both kinds.
+  **The reading column shows neither word** (amended later the same day): the floor rule governs *lists*, where it
+  keeps one row distinguishable from the next, and a single article has no sibling to be told apart from, so citing
+  it there was applying a rule outside the case it governs. "Unread" above the text a reader is reading is also
+  faintly absurd, and the state is already carried by a labelled control, `Done` rendering exactly when there is no
+  receipt. The line that settles it: **the meta line describes the episode — its date, its length — not the
+  reader's standing with it**, which is a triage fact and lives where they triage, on the History row that says
+  "Read" and carries the Undo. What that costs is named rather than discovered: a summary read weeks ago offers no
+  `Done` and nothing explaining its absence, and if that ever bites the answer is a word where `Done` would have
+  been, not a state label on the meta line. The same reading fixed a
   defect: `read` is **optional** in the API, absent for anyone who is not an active follower of an approved channel
   (§7), and the row rendered absent as "Unread" — so browsing a source you do not follow labelled every episode
   unread, asserting a receipt state the caller cannot have and the API never claimed. The word is now printed only

@@ -230,10 +230,11 @@ the right marks it done without opening it. The excerpt is always the executive 
 **Every item on that line is a measured fact, and every one of them can vary.** Two consequences, both settled on
 2026-09-15 (PRD §9). There is no reading-time estimate: the takeaway budget bounds a summary tightly enough that the
 number could only ever say one, two or three minutes, and said two on nearly every row. And the read state is
-printed where it varies — History, a source, the reading view — but not in the queue, whose every row is unread by
-definition, so the word carried nothing. Where a list *is* mixed the word is owed, and §7 is why: the difference
-between a read row and an unread one may never live in colour or a dimmed row. Nor is the word printed for a caller
-the API gave no receipt state to — not following a channel is not the same as not having read something.
+printed **in a mixed list and nowhere else** — History and a source, not the queue, whose every row is unread by
+definition, and not the reading column, which describes the episode and not the reader's standing with it. Where a
+list *is* mixed the word is owed, and §7 is why: the difference between a read row and an unread one may never live
+in colour or a dimmed row. Nor is the word printed for a caller the API gave no receipt state to — not following a
+channel is not the same as not having read something.
 
 The general rule, and the one to apply to the next thing somebody wants on a row: **a value that cannot vary is not
 information, and a guess among facts devalues the facts.**
@@ -241,6 +242,10 @@ information, and a guess among facts devalues the facts.**
 **The reading column.** Channel, title, a meta line opening with "Read" or "Unread", the lede set off by a rule, then
 the takeaways as the body with their timestamps hanging in the left margin as links into the video. Tags, then
 related titles. Chrome is a back arrow, `Aa`, `Watch` once, and `Done`.
+
+The meta line is the episode's own facts — its publication date and its length — and **not the reader's standing
+with it**: no "Read", no "Unread". Where someone stands with a summary is a triage fact and belongs where they
+triage, on the History row that says the word and carries the Undo (2026-09-15, PRD §9).
 
 **The lede is the opening and carries no heading; every section after it is named**, above its own 1 px rule, in the
 12 px uppercase label — Takeaways, Topics, Related (2026-09-15, PRD §9). Three flowing sentences running into a
