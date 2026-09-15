@@ -1,21 +1,28 @@
 import type { Channel } from "@media-digest/shared";
+import { type LucideIcon, Pause, Play, RotateCw } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { api } from "../api";
-import { declineQuestion } from "../lib/copy";
+import { CHANNEL_ACTION_COPY, declineQuestion } from "../lib/copy";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Icon } from "./Icon";
 
 /** One channel action; the caller reloads whatever it shows once the work settles. */
 export type ChannelAct = (work: () => Promise<unknown>) => Promise<void>;
 
 /**
- * Approve, decline, pause, resume, or start a channel, by status (docs/PRD.md §7). Start checks an
- * approved channel's feed now, paused or not.
+ * Approve, decline, pause, resume, or check the feed of a channel, by status (docs/PRD.md §7).
+ * Checking the feed reads an approved channel's uploads now, paused or not.
  *
- * Actions are text with the padding and weight to be found and to be hit (docs/design.md §3), and
- * the colour says what kind of thing they are: safe actions wear the accent, and Decline — the only
- * one here anybody else feels — wears the consequence red and asks first, naming the follower count
- * and what those readers lose.
+ * **Form says what kind of act each one is** (owner decision 2026-09-15, docs/PRD.md §9). The two
+ * reversible knobs nobody else feels — check the feed now, pause and resume ingestion — are glyphs:
+ * conventional, complementary, and used often enough to be learnt. The one decision that reaches
+ * other readers keeps its word, in the consequence red, and asks first. No glyph means "withdraw
+ * approval" anyway: `x`, `ban` and `circle-minus` all read as *delete*, and withdrawing deletes
+ * nothing.
+ *
+ * Words are still what these are called — `CHANNEL_ACTION_COPY` — and a glyph carries its name for
+ * assistive technology and as its tooltip; a list with room for the word uses the word.
  */
 export function ChannelStatusActions({
   channel: c,
@@ -36,7 +43,7 @@ export function ChannelStatusActions({
       busy={busy}
       onClick={() => act(() => api.approveChannel(c.channelId, {}))}
     >
-      Approve
+      {CHANNEL_ACTION_COPY.approve}
     </Action>
   );
 
@@ -48,7 +55,9 @@ export function ChannelStatusActions({
         tone="consequence"
         onClick={() => setConfirming(true)}
       >
-        {c.approvedAt === null ? "Decline" : "Withdraw"}
+        {c.approvedAt === null
+          ? CHANNEL_ACTION_COPY.decline
+          : CHANNEL_ACTION_COPY.withdraw}
       </Action>
       <ConfirmDialog
         open={confirming}
@@ -77,17 +86,21 @@ export function ChannelStatusActions({
   if (c.status === "approved") {
     return (
       <div class="flex flex-wrap items-center gap-1">
-        <Action
+        <IconAction
           id={`${idPrefix}start-${c.channelId}`}
           busy={busy}
-          title="Check the feed now, paused or not"
+          icon={RotateCw}
+          label={CHANNEL_ACTION_COPY.checkFeed}
+          hint={CHANNEL_ACTION_COPY.checkFeedHint}
           onClick={() => act(() => api.startRun(c.channelId))}
-        >
-          Start
-        </Action>
-        <Action
+        />
+        <IconAction
           id={`${idPrefix}${c.paused ? "resume" : "pause"}-${c.channelId}`}
           busy={busy}
+          icon={c.paused ? Play : Pause}
+          label={
+            c.paused ? CHANNEL_ACTION_COPY.resume : CHANNEL_ACTION_COPY.pause
+          }
           onClick={() =>
             act(() =>
               c.paused
@@ -95,9 +108,7 @@ export function ChannelStatusActions({
                 : api.pauseChannel(c.channelId),
             )
           }
-        >
-          {c.paused ? "Resume" : "Pause"}
-        </Action>
+        />
         {decline}
       </div>
     );
@@ -138,6 +149,43 @@ export function Action({
       onClick={onClick}
     >
       {children}
+    </button>
+  );
+}
+
+/**
+ * The same action as a glyph, for the two that are reversible, conventional and offered in a dense
+ * group. A 44 px square target, and the word still exists: `label` is the accessible name and the
+ * tooltip, so the control is never nameless to assistive technology or to a pointer that rests on
+ * it. Only for acts nobody else feels — anything with a consequence keeps its word (docs/design.md
+ * §2.4).
+ */
+export function IconAction({
+  id,
+  busy,
+  icon,
+  label,
+  hint,
+  onClick,
+}: {
+  id?: string;
+  busy: boolean;
+  icon: LucideIcon;
+  label: string;
+  /** A fuller sentence for the tooltip where the name alone still leaves a question. */
+  hint?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      id={id}
+      type="button"
+      title={hint ?? label}
+      disabled={busy}
+      class="flex size-11 shrink-0 items-center justify-center rounded text-primary"
+      onClick={onClick}
+    >
+      <Icon of={icon} size={20} label={label} />
     </button>
   );
 }

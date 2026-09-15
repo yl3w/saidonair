@@ -148,6 +148,33 @@ export function isDeclinedResponse(
   return body?.status === "declined" && typeof body.channelId === "string";
 }
 
+/**
+ * What the owner's channel actions are called, in one place so the same act has one name wherever
+ * it is offered — as a glyph in a dense group, as a word in a list with room (owner decision
+ * 2026-09-15, docs/PRD.md §9).
+ *
+ * Two of these were renamed because they did not say what they did. "Start" never said what starts;
+ * it checks the feed. And "Withdraw" sat a few pixels from "Unfollow" and reads as the same act to
+ * anyone moving quickly — naming what is withdrawn, the approval, separates them, and is true: a
+ * withdrawal is the owner's decision about the catalog, an unfollow is one reader's own.
+ */
+export const CHANNEL_ACTION_COPY = {
+  approve: "Approve",
+  checkFeed: "Check feed",
+  /** The glyph's accessible name and tooltip: it has room to say what the word cannot. */
+  checkFeedHint: "Check the feed now, paused or not",
+  pause: "Pause ingestion",
+  resume: "Resume ingestion",
+  decline: "Decline",
+  withdraw: "Withdraw approval",
+} as const;
+
+/** How many readers a catalog decision reaches, beside the controls rather than only in the dialog. */
+export function followerCountCopy(count: number): string {
+  if (count === 0) return "No followers";
+  return `${count} ${count === 1 ? "follower" : "followers"}`;
+}
+
 /** The owner's line on Account when Curate cannot fit on this screen (docs/design.md §6). */
 export function curateWaitingCopy(waiting: number | null): string {
   if (waiting === null || waiting === 0) {

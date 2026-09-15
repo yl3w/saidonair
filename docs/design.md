@@ -125,8 +125,17 @@ rules are 1 px `--rule`. One shadow, and only on things that float: popovers, sh
 **Lucide**, through `lucide-preact`, at stroke-width 2 with round caps and joins, rendered at 16, 20 or 24 px —
 `Icon.tsx` fixes those defaults so no screen sets them by hand. The set in use is small and deliberate: `chevron-*`,
 `plus`, `check`, `search`, `calendar`, `list`, `list-filter`, `message-square`, `circle-plus`, `circle-alert`,
-`table`, `external-link`, `rotate-cw`, `x`. When a feature needs another, take it from Lucide by name; never draw your
-own, and never use emoji anywhere in the product.
+`table`, `external-link`, `rotate-cw`, `pause`, `play`, `x`. When a feature needs another, take it from Lucide by
+name; never draw your own, and never use emoji anywhere in the product.
+
+**When a control may be a glyph instead of a word** (2026-09-15, PRD §9). All three have to hold: it is
+**reversible**, so a mis-tap costs nothing; the glyph is **conventional**, meaning the reader has met it in other
+software rather than learning it here; and it is **used often enough to be learnt**. Pause and resume qualify;
+checking a feed does, on `rotate-cw`. A decision somebody else feels never does — and for withdrawing approval
+there is no honest glyph in any case, since `x`, `ban` and `circle-minus` all read as *delete* and a withdrawal
+deletes nothing. The word is still the control's name: a glyph takes it as its accessible name and its tooltip, and
+a list with room for the word uses the word. **A mixed group is the point, not a compromise** — two quiet glyphs
+beside one red word say which acts are knobs and which is a decision, without a divider.
 
 ### 2.5 Avatars
 

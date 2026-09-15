@@ -17,6 +17,7 @@ import {
   actionErrorCopy,
   channelStateCopy,
   episodePhrase,
+  followerCountCopy,
   reviewCopy,
 } from "../lib/copy";
 import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
@@ -265,6 +266,11 @@ function Header({
             idPrefix="source-"
             act={act}
           />
+          {/* Who a catalog decision reaches, beside the control rather than only in the dialog it
+              opens: a consequence should be visible before it is chosen (docs/design.md §4). */}
+          <span class="text-meta text-ink-3">
+            {followerCountCopy(channel.followerCount)}
+          </span>
           <a
             class="inline-flex min-h-11 items-center text-primary"
             href={`/curate/${channel.channelId}`}

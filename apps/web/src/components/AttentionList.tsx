@@ -3,6 +3,7 @@ import type { ComponentChildren } from "preact";
 import { api } from "../api";
 import {
   attemptCountCopy,
+  CHANNEL_ACTION_COPY,
   failureDetailCopy,
   retryWaitCopy,
 } from "../lib/copy";
@@ -89,9 +90,10 @@ export function AttentionList({
             <Action
               id={`attention-start-${c.channelId}`}
               busy={disabled || (busy[c.channelId] ?? false)}
+              title={CHANNEL_ACTION_COPY.checkFeedHint}
               onClick={() => act(c.channelId, () => api.startRun(c.channelId))}
             >
-              Start
+              {CHANNEL_ACTION_COPY.checkFeed}
             </Action>
           </div>
         ))}

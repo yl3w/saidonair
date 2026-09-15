@@ -191,7 +191,7 @@ import outcome.
 
 #### Discovery runs
 
-1. The first approval, the owner's Start (`POST /channels/:id/runs`), or the channel cron
+1. The first approval, the owner's **Check feed** (`POST /channels/:id/runs`, called Start until 2026-09-15, §9), or the channel cron
    performs one RSS discovery run for one channel and records it as completed feed history with its feed result. A
    run never fetches transcripts, checks the transcript provider, or waits for episode outcomes. Discovery reads
    YouTube's auto-generated **long-form uploads playlist**, `…/feeds/videos.xml?playlist_id=UULF<channel id without
@@ -701,7 +701,7 @@ somewhere extra to go.
   - **Needs you**, which never paginates: channels waiting for a decision, oldest first, with who is waiting on
     each and the Approve (title, import count, note) and Decline (note) forms; publications that exhausted their 48
     hours, grouped by channel with `INGESTION_TIMEOUT`, the last reason and the attempt count, carrying Retry and
-    Skip; and approved channels with no discovery run at all, each carrying Start. "Never started" means approved
+    Skip; and approved channels with no discovery run at all, each carrying **Check feed**. "Never started" means approved
     and no run, with no age window. Episode actions never depend on channel status.
   - **Catalog**: the health strip from `GET /catalog` — channel counts, which double as the table's status
     filters, then episodes by status, transcript credits and key status, and the last successful ingestion — then
@@ -1076,6 +1076,20 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
+- **Owner actions say what they do, and their form says what kind of act they are — decided 2026-09-15.** Three
+  words were wrong. **Start** never said what starts, and it starts nothing durable: it reads the feed now, so it
+  is **Check feed**. **Pause** is **Pause ingestion**, which names what stops — the channel's summaries stay
+  readable and its episodes keep recovering, and "Pause" alone suggested otherwise. And **Withdraw** sat a few
+  pixels from **Unfollow** and reads as the same act to anyone moving quickly; it is **Withdraw approval**, which
+  names what is withdrawn and separates the owner's decision about the shared catalog from one reader's decision
+  about their own queue. Form now carries the same distinction: the two reversible knobs nobody else feels are
+  **glyphs** — `rotate-cw`, and `pause`/`play` — while the one decision other readers feel keeps its word, in the
+  consequence red, and still confirms. That is also what buys the space the dense Curate table wanted; `docs/design.md`
+  §2.4 states the three conditions a control must meet before it may be a glyph, and withdrawing meets none of them.
+  The words remain the controls' names: a glyph carries its name for assistive technology and as its tooltip, and
+  the attention list, which has room, spells "Check feed" out. Last, the **follower count now sits beside the
+  controls** on a channel page rather than appearing for the first time in the confirmation dialog: a consequence
+  should be visible before it is chosen, not explained after.
 - **A row is identified by what the list does not already say — decided 2026-09-15.** In a queue or a day of
   History, which mix channels, that is the source: the mark, the name, and the time it arrived. On a channel's own
   page it is not, and repeating one monogram and one name down thirty rows says nothing thirty times. Those rows
