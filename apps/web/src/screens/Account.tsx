@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { recentEmails } from "../account";
+import { useDocumentTitle } from "../lib/title";
 import { useSession } from "../session";
 
 /**
@@ -10,6 +11,9 @@ import { useSession } from "../session";
  * other place an account is chosen.
  */
 export function Account() {
+  // The front door, whose heading is the wordmark: the product's own name and no second one.
+  useDocumentTitle(null);
+
   const { state, select } = useSession();
   const { route } = useLocation();
   const [value, setValue] = useState("");

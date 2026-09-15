@@ -33,6 +33,7 @@ import {
 } from "../lib/copy";
 import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { relativeTime } from "../lib/time";
+import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { Guard, useReadySession } from "../session";
 
@@ -76,6 +77,11 @@ function SourceScreen() {
   // Coming back from a summary: this history is publication-ordered and nothing leaves it, so the
   // row the reader opened is always still there to return to.
   useReturnAnchor(episodes.status === "ready");
+
+  // Before the early return below: a hook's order is not something a screen's state may change.
+  useDocumentTitle(
+    channel.status === "ready" ? channel.data.channel.title : null,
+  );
 
   const act: ChannelAct = async (work) => {
     setBusy(true);

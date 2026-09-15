@@ -20,6 +20,7 @@ import {
   readSettings,
   writeSettings,
 } from "../lib/settings";
+import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { Guard, useReadySession, useSession } from "../session";
 
@@ -35,6 +36,7 @@ import { Guard, useReadySession, useSession } from "../session";
  * /preferences` stay registered and anything already stored is untouched.
  */
 export function Settings() {
+  useDocumentTitle("Account");
   return (
     <Guard>
       <SettingsScreen />

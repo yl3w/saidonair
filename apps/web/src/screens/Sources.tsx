@@ -16,6 +16,7 @@ import {
   SOURCES_TABS,
 } from "../lib/copy";
 import { relativeTime } from "../lib/time";
+import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { Guard, useReadySession } from "../session";
 
@@ -24,6 +25,7 @@ type Sort = keyof typeof SOURCE_SORTS;
 const PAGE = 25;
 
 export function Sources() {
+  useDocumentTitle("Sources");
   return (
     <Guard>
       <SourcesScreen />
@@ -96,12 +98,12 @@ function SourcesScreen() {
 
   return (
     <Page>
-      <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
-        Sources
-      </h1>
+      {/* Named by the nav, in both bars, so the heading is sr-only and the tabs lead
+          (owner decision 2026-09-15, docs/PRD.md §9; the tab carries the name, lib/title.ts). */}
+      <h1 class="sr-only">Sources</h1>
 
       <nav
-        class="mt-4 flex flex-wrap gap-4 border-b border-rule"
+        class="flex flex-wrap gap-4 border-b border-rule"
         aria-label="Sections"
       >
         {(Object.keys(SOURCES_TABS) as Tab[]).map((name) => (

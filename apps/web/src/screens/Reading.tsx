@@ -33,6 +33,7 @@ import {
   readSettings,
   writeSettings,
 } from "../lib/settings";
+import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { useMediaQuery, WIDE } from "../lib/use-media-query";
 import { Guard } from "../session";
@@ -93,6 +94,8 @@ function ReadingScreen() {
     () => api.getEpisodeById(episodeId),
     [episodeId],
   );
+
+  useDocumentTitle(load.status === "ready" ? load.data.episode.title : null);
 
   function change(patch: Partial<ReaderSettings>) {
     setSettings(writeSettings(patch));

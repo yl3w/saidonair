@@ -631,7 +631,10 @@ wait reasons live in one place in the web app.
 The screens below are the ones the Design phase built (`docs/specs/design-phase.md`, 2026-09-15); how they look
 and behave in detail is `docs/design.md`, which this section does not repeat. There are four reader destinations
 and one more for the owner. **There is no role gate**: one navigation for everyone, and the owner simply has
-somewhere extra to go.
+somewhere extra to go. **A screen prints its name only where the frame does not already carry it** (§9,
+2026-09-15): Queue, Sources and Curate are named by the bar and the phone's tab bar, so their heading is `sr-only`
+and their own controls lead; History, which is in neither, keeps a visible title. Every route names itself in the
+browser tab — `Queue · Said on Air` — which is what a bookmark and a history entry read.
 
 - **Sign in `/`:** "Who is this for?" — an email and the ones this browser has used before. There is no password
   because there is nothing to authenticate. An account already selected goes straight to `/queue`. The remembered
@@ -1194,6 +1197,27 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **A screen is named where the frame does not name it — decided 2026-09-15.** Queue, Sources and Curate each
+  printed their own name in a 27 px heading directly beneath a bar already carrying that word, marked current in
+  weight, in a rule and in `aria-current`; below 768 px the same words sit in the phone's tab bar. **Neither bar
+  ever scrolls away** — the top one is sticky, the tab bar fixed — so the heading was not orientation, it was a
+  constant on the one screen it named, which is the fault this product has now removed five times: the queue row's
+  "Unread", the reading-time estimate, `structured` in Curate's table, the three zeroes of Needs you, and this.
+  The heading is **`sr-only` on those three, not deleted**: a document whose first heading is an h2 day group has
+  no name for anyone navigating by headings, and `aria-current` names a link rather than a page. Each now leads
+  with what is actually its own — the channel filter, the Sources tabs, and in Curate the Needs you section itself:
+  the three anchor links went out with the heading, a table of contents over three headings already on one screen,
+  and one of the three (`#reviewed`) had no target on the page to scroll to at all. A phone gains about 40 px at
+  the top of the queue. **History keeps its visible title**: it is in neither bar, it is reached by
+  a link from the queue's ending and from a day heading, and on a day the title *is* the day. The rule generalises
+  the row rule of the same day — a row is identified by what its list does not already say, a screen by what the
+  frame does not. What the change turned up: **`document.title` was static**. `index.html` sets "Said on Air" and
+  no route had ever changed it, so every tab, every bookmark and every entry in the browser's history menu named
+  the product and not the screen — survivable only while each screen shouted its name in serif. Every route sets
+  it now, with the name it would have printed: `Queue`, `Sources`, `Curate`, `History` or the day, the episode's
+  title for a summary, the channel's for a source, the channel and `Curate` for its review, and the product alone
+  on the identity screen and while a name is still being fetched — never the previous screen's, which is wrong
+  rather than merely absent.
 - **The summary row has one shape — decided 2026-09-15.** Three lists draw a summary row — the queue, a day of
   History, a channel's own page — and only the queue offered a second, compact form of it, which dropped the
   excerpt and halved the row's padding so that more of a heavy day fit one screen. One list in three behaving

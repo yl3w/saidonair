@@ -8,10 +8,12 @@ import { Page } from "../components/Page";
 import { ReviewedList, ReviewQueue } from "../components/RequestQueue";
 import { Retry } from "../components/Retry";
 import { actionErrorCopy, NEEDS_YOU_CLEAR_COPY, staleCopy } from "../lib/copy";
+import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
 export function Curate() {
+  useDocumentTitle("Curate");
   return (
     <Guard ownerOnly>
       <CurateScreen />
@@ -90,21 +92,10 @@ function CurateScreen() {
 
   return (
     <Page measure="wide" desktopOnly>
+      {/* The owner's nav link says Curate, and carries the count; the heading would be the same
+          word twice (owner decision 2026-09-15, docs/PRD.md §9). sr-only, and in the tab. */}
       <header class="flex flex-wrap items-baseline gap-4">
-        <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
-          Curate
-        </h1>
-        <nav class="flex flex-wrap gap-4" aria-label="Sections">
-          {[
-            ["#needs-you", "Needs you"],
-            ["#catalog", "Catalog"],
-            ["#reviewed", "Reviewed"],
-          ].map(([href, label]) => (
-            <a key={href} class="min-h-11 text-ui text-primary" href={href}>
-              {label}
-            </a>
-          ))}
-        </nav>
+        <h1 class="sr-only">Curate</h1>
       </header>
 
       {channels.status === "loading" && (

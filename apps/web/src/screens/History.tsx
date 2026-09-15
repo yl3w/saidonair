@@ -28,6 +28,7 @@ import {
 } from "../lib/day";
 import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { readSettings } from "../lib/settings";
+import { useDocumentTitle } from "../lib/title";
 import { Guard } from "../session";
 
 const PAGE = 50;
@@ -67,6 +68,10 @@ function HistoryScreen() {
 
   // Coming back from a summary: the row is still here, now saying "Read" instead of "Unread".
   useReturnAnchor(rows.status === "ready");
+
+  // History is in neither bar, so it keeps its heading on screen; the tab says the same thing,
+  // and on a day it is the day — a bookmark of one day of history should say which day.
+  useDocumentTitle(validDay === null ? "History" : dayLabel(validDay));
 
   const calendar = (
     <Calendar

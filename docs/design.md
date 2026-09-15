@@ -104,7 +104,7 @@ sentences. The split is the fastest way to tell a reader what is content and wha
 | Role | Size / family | Notes |
 |---|---|---|
 | Reading title | 36 px serif 600, `-0.015em`, 1.16 | 25 px on a phone |
-| Screen title | 27 px serif 600, `-0.01em` | Queue, Sources, Curate |
+| Screen title | 27 px serif 600, `-0.01em` | History, a channel, Account — the screens the frame does not name |
 | Section head | 18–19 px serif 600 | day headers, chat titles |
 | Row title, full | 20 px serif 600, 1.25 | 17 px on a phone |
 | Row title, compact | 16 px serif 600 | a channel's name in a list — Sources, a feed just verified |
@@ -264,6 +264,17 @@ it is absent rather than present-and-empty, because one destination leading to a
 work read as unfinished too (owner decision 2026-09-15, PRD §9). Content is
 centred. A right rail carries navigation *about* the list — days still waiting, the calendar, a sort order — never
 content.
+
+**A screen is named where the frame does not name it** (2026-09-15, PRD §9). The bar carries Queue · Sources ·
+Curate and marks the current one in words, in weight and in a rule; below 768 px the same words are in the tab bar.
+Neither ever scrolls away — one is sticky, the other fixed — so a 27 px heading repeating that word is a constant on
+the one screen it names, which is the fault a queue row's "Unread" was. Those three carry their name as an
+`sr-only` heading and lead with what is theirs: the channel filter, the Sources tabs, and in Curate the first
+section itself — its three anchor links went out with the heading, being a table of contents over three headings
+already on the screen. **History keeps a visible title** — it is in neither bar, it is reached by a link, and on a day it *is* the day. This is the row rule
+one level up: a row is identified by what its list does not already say, a screen by what the frame does not.
+Taking a name off the screen is not deleting it (§7), and it has to go somewhere: **every route names itself in the
+tab** — `Queue · Said on Air` — which is what a bookmark and the browser's own history menu read.
 
 **A line of facts.** Counts, dates, durations and states, separated by a middle dot — under a title, under a
 channel's name, beside a row. **The separator belongs to the line, not to an item**: give the dot its own element
@@ -472,6 +483,9 @@ Not a review stage. It is part of "done".
   the type scale instead**: a link inside a sentence, and the title of a row or a heading, which is
   content that happens to be clickable. The line to hold is that a *control* never inherits its size
   from the words in it; clarified 2026-09-15, when the floor was walked for the first time.
+- **Every screen has an h1**, drawn or not. A name the design takes off the screen becomes `sr-only`; it is never
+  deleted. A document whose first heading is a day group has no name for anyone navigating by headings, and
+  `aria-current` in the nav names a link, not the page.
 - **State is never colour alone.** Words first, then weight or shape, then colour.
 - Every grid is keyboard-traversable, and every cell has a full accessible name — "12 September 2026, 3 summaries,
   3 unread", not "12".

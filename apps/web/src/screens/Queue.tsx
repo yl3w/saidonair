@@ -16,12 +16,14 @@ import {
 import { type DayKey, dayLabel, groupByDay, shortDayLabel } from "../lib/day";
 import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { readSettings } from "../lib/settings";
+import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
 const PAGE = 50;
 
 export function Queue() {
+  useDocumentTitle("Queue");
   return (
     <Guard>
       <QueueScreen />
@@ -81,10 +83,13 @@ function QueueScreen() {
 
   return (
     <Page rail={<DayRail days={days.map((day) => day.key)} />}>
+      {/* The bar above and the phone's tab bar below both say "Queue" and mark it current, and
+          neither ever scrolls away, so the heading is a constant on the one screen it names
+          (owner decision 2026-09-15, docs/PRD.md §9). It stays in the document and leaves the
+          screen: a page whose first heading is a day group has no name for anyone navigating by
+          headings. The tab carries it now (lib/title.ts). */}
       <header class="flex flex-wrap items-center gap-3">
-        <h1 class="mr-auto font-reading text-screen-title font-semibold tracking-tight text-ink">
-          Queue
-        </h1>
+        <h1 class="sr-only">Queue</h1>
         {channels.length > 1 && (
           <ChannelFilter
             channels={channels}

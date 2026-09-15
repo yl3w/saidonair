@@ -29,6 +29,7 @@ import {
   SKIP_REASON_COPY,
   WAIT_REASON_COPY,
 } from "../lib/copy";
+import { useDocumentTitle } from "../lib/title";
 import { type Load, useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
@@ -63,6 +64,14 @@ function CurateChannelScreen() {
     () => api.listFollowers(channelId),
     [channelId],
     { enabled: showFollowers },
+  );
+
+  // Which channel, and which of the two screens about it: a source's page and its review carry the
+  // same title otherwise, and an owner has both open.
+  useDocumentTitle(
+    channel.status === "ready"
+      ? `${channel.data.channel.title} · Curate`
+      : "Curate",
   );
 
   const [busy, setBusy] = useState(false);
