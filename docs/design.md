@@ -134,10 +134,37 @@ A **deterministic monogram**: one or two letters from the channel title on a tin
 id, out of a fixed six-entry palette. Nothing in this product stores channel artwork and there is no permitted source
 to fetch it from, so a grey disc would be a promise the data cannot keep. Sizes 20 / 28 / 34 / 46.
 
+The six tints (added 2026-09-15, when the palette had to become real code). They are **identity, never state**, which
+is why none of them may be read as one of the three colours that carry meaning: every one is pale and low in chroma,
+and no meaning colour is ever used as a fill. Each carries its own ink, at 6.9:1 or better on its own tint.
+
+| | Tint | Ink | |
+|---|---|---|---|
+| 1 | `#e7e2d8` | `#4a443b` | stone |
+| 2 | `#dee5dc` | `#3f4a40` | sage |
+| 3 | `#ece0d8` | `#55463c` | clay |
+| 4 | `#dfe2ea` | `#434a57` | dusk |
+| 5 | `#e3e6d6` | `#474c38` | moss |
+| 6 | `#e8dfe6` | `#4f4350` | plum |
+
+One letter for a one-word title, two initials otherwise — Computerphile is C, New York Times Podcasts is NY. The
+letters are a visual aid and never the only name: a channel's title is always beside its mark, so the mark is hidden
+from assistive technology, and that is what lets the 20 px size carry 11 px letters without breaking the 12 px floor.
+The hash is FNV-1a over the channel id, so one channel is the same colour on every screen and for every reader.
+
 ### 2.6 Components
 
 daisyUI 5 on Tailwind 4, with **one custom theme** and all 35 built-ins excluded, so the product inherits no
-recognisable default look. Four rules that are not preferences — they are build constraints and their home is
+recognisable default look.
+
+**Every daisyUI slot is one of the §2.1 tokens**, so no colour outside this guide can reach a screen: our `--accent`
+is daisyUI's `primary` and `info`, our `--owner` is its `accent` and `warning`, our `--consequence` is its `error`,
+`--ink` is `neutral`, `--panel` is `base-100` (so card, modal, table and popover land on white with no class of their
+own) and `--ground` is `base-200` and the page. **There is no green**: `success` is the accent, because the product
+has no success colour and a colour nobody designed is worse than a repeated one. Write `text-primary` rather than
+reaching for `--accent` directly — daisyUI owns the name `accent`, and the token is the one place they could drift.
+
+Four rules that are not preferences — they are build constraints and their home is
 `AGENTS.md` → Web UI code; they are here because they shape what you can design:
 
 - the native `<dialog>` modal method only — never the checkbox or anchor variants, which lose escape-to-close and
@@ -295,6 +322,7 @@ and monograms.
 | How to work in the repo | `AGENTS.md` — hard rules, layout, toolchain, testing, code style |
 | Reasoning for a phase | `docs/specs/<name>.md` and its `-plan.md`; the current one is `design-phase` |
 | The wireframes | `https://claude.ai/code/artifact/61ac5352-ede9-49ba-a5e2-792dbeb76557` |
-| Tokens and theme | `apps/web/src/styles.css` |
+| Tokens and theme | `apps/web/src/styles.css` — the one stylesheet: Tailwind, the daisyUI theme, the tokens, the faces |
+| The two font files | `apps/web/public/fonts/` with their OFL licences and a README |
 | Every user-facing phrase | `apps/web/src/lib/copy.ts` |
 | Icons and avatars | `apps/web/src/components/Icon.tsx`, `Avatar.tsx` |

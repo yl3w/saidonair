@@ -11,11 +11,15 @@
   },
   "dependencies": {
     "@media-digest/shared": "workspace:*",
+    "lucide-preact": "^1.46.0",
     "preact": "^10.29.8",
     "preact-iso": "^2.12.2"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
+    "@tailwindcss/vite": "^4.3.3",
+    "daisyui": "^5.7.38",
+    "tailwindcss": "^4.3.3",
     "vite": "^8.2.2"
   }
 }

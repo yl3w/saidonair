@@ -1,282 +1,284 @@
-:root {
-  color: #202020;
-  background: #faf9f6;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  line-height: 1.5;
-  font-size: 15px;
+/**
+ * The one stylesheet (AGENTS.md → Web UI code): Tailwind, daisyUI with a single custom theme, the
+ * self-hosted faces, and the design tokens of docs/design.md §2. No second stylesheet, no CSS-in-JS,
+ * no per-component <style>. Every value here is the design guide's; change it there first.
+ */
+
+@import "tailwindcss";
+
+/* All 35 built-in themes excluded, so the product inherits no recognisable default look. */
+@plugin "daisyui" {
+  themes: false;
+  logs: false;
 }
 
-body {
-  margin: 0;
+/* --- the two families (docs/design.md §2.2) ---------------------------------------------------
+ * Self-hosted, never a font CDN: a Google Fonts stylesheet would tell a third party when each
+ * reader sat down to read. Files and their OFL licences: apps/web/public/fonts.
+ * Plex Sans is one variable file declared at the two weights the design uses, so a stray
+ * `font-bold` cannot render a weight the system does not have. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-latin.woff2") format("woff2");
 }
-
-a {
-  color: #1a4fa0;
-}
-
-main {
-  width: min(42rem, calc(100% - 2rem));
-  margin: 0 auto 4rem;
-}
-
-/* Owner pages carry tables; give them room, but the page itself never scrolls sideways. */
-main.wide {
-  width: min(64rem, calc(100% - 2rem));
-}
-
-h1 {
-  font-size: 1.4rem;
-  margin: 1.5rem 0 0.25rem;
-}
-
-h2 {
-  font-size: 1.15rem;
-  margin: 2rem 0 0.5rem;
-  border-bottom: 1px solid #ddd8cc;
-  padding-bottom: 0.25rem;
-}
-
-h3 {
-  font-size: 1rem;
-  margin: 1.25rem 0 0.4rem;
-}
-
-p {
-  margin: 0.4rem 0;
-}
-
-ul {
-  padding-left: 1.2rem;
-}
-
-/* header + nav */
-header.site {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #ddd8cc;
-}
-
-header.site .brand {
-  font-weight: 700;
-}
-
-header.site .who {
-  color: #555;
-}
-
-nav.primary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  padding: 0.5rem 0;
-}
-
-nav.primary a[aria-current="page"] {
-  font-weight: 700;
-  text-decoration: none;
-}
-
-nav.sections {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  color: #555;
-  margin: 0.5rem 0 0;
-}
-
-/* pieces */
-.card {
-  border: 1px solid #c9c2b2;
-  background: #fff;
-  padding: 0.6rem 0.8rem;
-  margin: 1rem 0;
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.note {
-  background: #fff7d6;
-  border: 1px solid #e6d89a;
-  padding: 0.4rem 0.8rem;
-  margin: 0.75rem 0;
-}
-
-.error {
-  color: #a0281a;
-}
-
-.muted {
-  color: #777;
-}
-
-.tag {
-  font-size: 0.85em;
-  color: #555;
-  margin-right: 0.5rem;
-}
-
-.new {
-  font-size: 0.75em;
-  font-weight: 700;
-  color: #fff;
-  background: #1a4fa0;
-  padding: 0 0.35em;
-  margin-right: 0.5em;
-  vertical-align: middle;
-}
-
-.row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.35rem 0;
-  border-bottom: 1px dotted #ddd8cc;
-  flex-wrap: wrap;
-}
-
-.row .grow {
-  flex: 1 1 auto;
-}
-
-.row .meta {
-  color: #555;
-  font-size: 0.9em;
-}
-
-.episode {
-  padding: 0.75rem 0;
-  border-bottom: 1px dotted #ddd8cc;
-}
-
-.episode .byline {
-  color: #555;
-  font-size: 0.9em;
-}
-
-.episode pre {
-  white-space: pre-wrap;
-  font: inherit;
-  margin: 0.4rem 0;
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-
-button {
-  font: inherit;
-  padding: 0.15rem 0.6rem;
-  background: #fff;
-  border: 1px solid #888;
-  cursor: pointer;
-}
-
-button:disabled {
-  color: #999;
-  border-color: #ccc;
-  cursor: default;
-}
-
-button.danger {
-  border-color: #a0281a;
-  color: #a0281a;
-}
-
-input[type="text"],
-input[type="email"],
-input[type="number"] {
-  font: inherit;
-  padding: 0.2rem 0.4rem;
-  border: 1px solid #888;
-  background: #fff;
-}
-
-form.inline {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  align-items: center;
-  margin: 0.5rem 0;
-}
-
-form.inline input[type="text"],
-form.inline input[type="email"] {
-  flex: 1 1 18rem;
-}
-
-.help {
-  color: #555;
-  font-size: 0.9em;
-}
-
-.table-wrap {
-  overflow-x: auto;
-  margin: 0.5rem 0;
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 0.92em;
-}
-
-th,
-td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.3rem 0.6rem 0.3rem 0;
-  border-bottom: 1px dotted #ddd8cc;
-  white-space: nowrap;
-}
-
-th {
-  color: #555;
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
   font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-sans-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/source-serif-4-latin.woff2") format("woff2");
 }
 
-td.wrap {
-  white-space: normal;
+/* --- tokens (docs/design.md §2.1, §2.5, §2.7) -------------------------------------------------
+ * The palette, by the guide's own names. `#a29c93` and paler are non-text only — dots, hatches, a
+ * disabled swatch; the tertiary grey that carried most secondary labels in the first drafts sat at
+ * 2.8:1 and is gone from text. Three colours carry meaning and are never decorative: `--accent`
+ * "you can act on this", `--owner` "this is yours because you are the owner", `--consequence`
+ * "someone else feels this". */
+:root {
+  --ground: #fdfcfa;
+  --panel: #ffffff;
+  --ink: #1b1917;
+  --ink-2: #57524c;
+  --ink-3: #726b63;
+  --rule: #e6e1d9;
+  --edge: #ddd8d0;
+  --accent: #35618f;
+  --owner: #8a6a1f;
+  --consequence: #8f3a34;
+
+  /* A modal is the one 6 px radius; daisyUI's --radius-box carries the 4 px of cards and inputs. */
+  --radius-modal: 0.375rem;
+
+  /* The six avatar tints (docs/design.md §2.5): identity, never state. Deliberately pale and
+   * low-chroma so none can be read as the accent, the owner amber or the consequence red, each
+   * with its own ink at ≥ 6.8:1 on its tint. */
+  --tint-1-bg: #e7e2d8;
+  --tint-1-ink: #4a443b;
+  --tint-2-bg: #dee5dc;
+  --tint-2-ink: #3f4a40;
+  --tint-3-bg: #ece0d8;
+  --tint-3-ink: #55463c;
+  --tint-4-bg: #dfe2ea;
+  --tint-4-ink: #434a57;
+  --tint-5-bg: #e3e6d6;
+  --tint-5-ink: #474c38;
+  --tint-6-bg: #e8dfe6;
+  --tint-6-ink: #4f4350;
+
+  /* The reading surface's own tokens, defaulting to light so the column renders before a reader
+   * has chosen anything. `[data-reading-theme]` below overrides them. */
+  --reading-ground: var(--ground);
+  --reading-ink: var(--ink);
+  --reading-ink-2: var(--ink-2);
+  --reading-ink-3: var(--ink-3);
+  --reading-rule: var(--rule);
+  --reading-accent: var(--accent);
 }
 
-details {
-  margin: 0.5rem 0;
+/**
+ * Tailwind utilities over the same custom properties — `bg-ground`, `text-ink-2`, `border-edge`,
+ * `font-serif`, `text-lede`, `max-w-reading`. `inline` means the utility resolves to `var(--ink-2)`
+ * rather than a second copy of the value, so the reading themes below can swap a token underneath a
+ * utility that is already on the page.
+ *
+ * There is deliberately no `accent` colour utility: daisyUI owns `--color-accent`, and our accent is
+ * its `primary` (see the theme block). Use `text-primary` / `bg-primary`, or `var(--accent)`.
+ */
+@theme inline {
+  --color-ground: var(--ground);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-rule: var(--rule);
+  --color-edge: var(--edge);
+  --color-owner: var(--owner);
+  --color-consequence: var(--consequence);
+
+  --color-reading-ground: var(--reading-ground);
+  --color-reading-ink: var(--reading-ink);
+  --color-reading-ink-2: var(--reading-ink-2);
+  --color-reading-ink-3: var(--reading-ink-3);
+  --color-reading-rule: var(--reading-rule);
+  --color-reading-accent: var(--reading-accent);
 }
 
-summary {
-  cursor: pointer;
+/**
+ * The type scale of docs/design.md §2.2, as the only sizes in the product. Serif for everything a
+ * person reads for its meaning, sans for the furniture; 12 px is the floor for anything bearing
+ * meaning, uppercase labels included.
+ */
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif;
+
+  --text-reading-title: 2.25rem; /* 36 px */
+  --text-reading-title--line-height: 1.16;
+  --text-reading-title--letter-spacing: -0.015em;
+  --text-reading-title-sm: 1.5625rem; /* 25 px, a phone */
+  --text-reading-title-sm--line-height: 1.2;
+  --text-reading-title-sm--letter-spacing: -0.015em;
+
+  --text-screen-title: 1.6875rem; /* 27 px */
+  --text-screen-title--line-height: 1.2;
+  --text-screen-title--letter-spacing: -0.01em;
+
+  --text-section: 1.1875rem; /* 19 px, day headers and chat titles */
+  --text-section--line-height: 1.3;
+
+  --text-row: 1.25rem; /* 20 px, a row title at full density */
+  --text-row--line-height: 1.25;
+  --text-row-sm: 1.0625rem; /* 17 px, a phone */
+  --text-row-sm--line-height: 1.3;
+  --text-row-compact: 1rem; /* 16 px; the density switch trades the excerpt, never the title */
+  --text-row-compact--line-height: 1.35;
+
+  --text-lede: 1.1875rem; /* 19 px, the executive summary */
+  --text-lede--line-height: 1.58;
+  --text-body: 1.0625rem; /* 17 px, takeaways and chat answers */
+  --text-body--line-height: 1.55;
+  --text-excerpt: 0.9375rem; /* 15 px, three lines at most in a row */
+  --text-excerpt--line-height: 1.5;
+
+  --text-ui: 0.875rem; /* 14 px, nav, buttons, inputs */
+  --text-ui--line-height: 1.4;
+  --text-cell: 0.84375rem; /* 13.5 px, a Curate table cell */
+  --text-cell--line-height: 1.4;
+  --text-meta: 0.78125rem; /* 12.5 px, counts, times, states */
+  --text-meta--line-height: 1.4;
+  --text-label: 0.75rem; /* 12 px uppercase — the floor, not an exception below it */
+  --text-label--line-height: 1.3;
+  --text-label--letter-spacing: 0.09em;
+
+  /* The measures of docs/design.md §2.3, as `max-w-*`. */
+  --container-reading: 42.5rem; /* 680 px */
+  --container-list: 47.5rem; /* 760 px */
+  --container-rail: 14.5rem; /* 232 px */
+  --container-rail-wide: 18rem; /* 288 px, when it holds the calendar */
 }
 
-.strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 1.25rem;
-  padding: 0.5rem 0;
-  color: #333;
+/**
+ * The one custom theme. Every daisyUI slot is one of the tokens above, so no colour outside
+ * docs/design.md §2.1 can reach a screen: our `--accent` is `primary`, our `--owner` is `accent`
+ * and `warning`, our `--consequence` is `error`. There is no green, because the product has no
+ * success colour — `success` is the accent rather than a colour nobody designed.
+ *
+ * `base-100` is `--panel`, so daisyUI's card, modal, table and popover land on white with no class
+ * of their own; the page itself is `--ground`, set in the base layer below.
+ */
+@plugin "daisyui/theme" {
+  name: "digest";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: #ffffff;
+  --color-base-200: #fdfcfa;
+  --color-base-300: #e6e1d9;
+  --color-base-content: #1b1917;
+
+  --color-primary: #35618f;
+  --color-primary-content: #ffffff;
+  --color-secondary: #57524c;
+  --color-secondary-content: #ffffff;
+  --color-accent: #8a6a1f;
+  --color-accent-content: #ffffff;
+  --color-neutral: #1b1917;
+  --color-neutral-content: #fdfcfa;
+
+  --color-info: #35618f;
+  --color-info-content: #ffffff;
+  --color-success: #35618f;
+  --color-success-content: #ffffff;
+  --color-warning: #8a6a1f;
+  --color-warning-content: #ffffff;
+  --color-error: #8f3a34;
+  --color-error-content: #ffffff;
+
+  /* 3 px on controls, 4 px on cards and inputs (docs/design.md §2.3). */
+  --radius-selector: 0.1875rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  /* Flat: one shadow in the product, and only on things that float. */
+  --depth: 0;
+  --noise: 0;
 }
 
-.strip button {
-  border: none;
-  padding: 0;
-  background: none;
-  color: #1a4fa0;
-  text-decoration: underline;
+@layer base {
+  /**
+   * daisyUI paints the page from `--color-base-100`, which is `--panel` here so its components land
+   * on white. The page is `--ground`; `--page-scroll-bg` is daisyUI's own hook for exactly that, and
+   * `body` carries it too so an overscroll matches rather than flashing white.
+   */
+  :root {
+    --page-scroll-bg: var(--ground);
+  }
+
+  body {
+    background-color: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-ui);
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Visible focus with an offset outline on everything focusable (docs/design.md §7). */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
-.unavailable {
-  color: #888;
+/**
+ * The reading surface, and only the reading surface (docs/design.md §2.7). Three themes through a
+ * `data-reading-theme` attribute and its own token block: this is not a product-wide dark mode and
+ * it never touches the daisyUI theme, so the one-custom-theme rule stands untouched. Every value
+ * below meets the 4.5:1 floor against its own ground.
+ */
+[data-reading-theme] {
+  background-color: var(--reading-ground);
+  color: var(--reading-ink);
 }
 
-.choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.5rem 0;
+[data-reading-theme="light"] {
+  --reading-ground: #fdfcfa;
+  --reading-ink: #1b1917;
+  --reading-ink-2: #57524c;
+  --reading-ink-3: #726b63;
+  --reading-rule: #e6e1d9;
+  --reading-accent: #35618f;
+}
+
+[data-reading-theme="sepia"] {
+  --reading-ground: #f3ead7;
+  --reading-ink: #241f18;
+  --reading-ink-2: #55493a;
+  --reading-ink-3: #6b5d49;
+  --reading-rule: #ded0b4;
+  --reading-accent: #2d567f;
+}
+
+[data-reading-theme="dark"] {
+  color-scheme: dark;
+  --reading-ground: #16181b;
+  --reading-ink: #e9e7e3;
+  --reading-ink-2: #b9b4ad;
+  --reading-ink-3: #9a948c;
+  --reading-rule: #2e3136;
+  --reading-accent: #8fb6e3;
 }
