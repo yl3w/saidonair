@@ -711,7 +711,8 @@ somewhere extra to go.
   to `/queue` with a note; the API itself accepts every call from any identity. Three sections as anchors:
   Approving, declining and withdrawing approval happen **only here** (§9, 2026-09-15); a channel's own page
   carries the reversible adjustments and a way through.
-  - **Needs you**, which never paginates: channels waiting for a decision, oldest first, with who is waiting on
+  - **Needs you**, which never paginates and **shows only the categories that hold something** — one line,
+    "Nothing needs your attention.", when none do (§9, 2026-09-15): channels waiting for a decision, oldest first, with who is waiting on
     each and the Approve (title, import count, note) and Decline (note) forms; publications that exhausted their 48
     hours, grouped by channel with `INGESTION_TIMEOUT`, the last reason and the attempt count, carrying Retry and
     Skip; and approved channels with no discovery run at all, each carrying **Check feed**. "Never started" means approved
@@ -1187,6 +1188,13 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **Curate says nothing needs you, once — decided 2026-09-15.** Needs you rendered three categories whatever the
+  state of the catalog, so a healthy day was met with three headings, three zeroes and three sentences explaining
+  the zeroes. A healthy day is also the usual day, and the one an owner is most often looking at: the nav carries a
+  count and renders it only when something waits, so an owner who opens Curate without a badge was guaranteed all
+  three. A category now renders only when it holds something, and the section says it once when none do. `needsYou`
+  derives the three groups in one place, since deciding the section is empty needs all three counts and each list
+  had been filtering the channel array for itself.
 - **Curate's channel review shows what a decision needs, and opens the rest — decided 2026-09-15.** Nine columns
   were on by default and five were diagnosis: the window reads `—` on every healthy row, attempts and chunks matter
   only when something is wrong, "available since" answers nothing anyone asks there, and the summary format said

@@ -368,6 +368,11 @@ radios — one group split across two copies, of which the visible half shows no
 A popover that can only be closed by the button that opened it is a trap, on a touch screen most of all. Every one
 closes on Escape and on a press outside it; a sheet is a native `<dialog>` and has both already (§2.6).
 
+**An empty category does not announce itself.** A screen that lists several kinds of outstanding work shows the
+kinds that have some, and says the whole thing is clear **once** — not a heading, a zero and a sentence per kind,
+which is what a healthy day looked like in Curate (2026-09-15, PRD §9). The counts belong on the headings that
+survive, where they inform.
+
 **Empty, loading, error, stale.** Four states, all of them designed, none of them a spinner alone:
 an empty queue says *You are through everything* and points at History; loading uses skeleton rows of the real row's
 shape; an error says what failed and offers the retry; and a screen showing data it could not refresh says so and

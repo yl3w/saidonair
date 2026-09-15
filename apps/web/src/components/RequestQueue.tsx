@@ -12,41 +12,31 @@ import { Retry } from "./Retry";
  * with who is waiting on it. Never paginates.
  */
 export function ReviewQueue({
-  channels,
+  waiting,
   disabled,
   onChanged,
 }: {
-  channels: Channel[];
+  waiting: Channel[];
   disabled: boolean;
   onChanged: () => void;
 }) {
-  const waiting = channels
-    .filter((c) => c.status === "requested")
-    .sort(
-      (a, b) => (a.management?.createdAt ?? 0) - (b.management?.createdAt ?? 0),
-    );
+  if (waiting.length === 0) return null;
   return (
     <section class="mt-6">
       <h3 class="flex items-baseline gap-2 text-label uppercase text-ink-3">
         Waiting for review
         <span>{waiting.length}</span>
       </h3>
-      {waiting.length === 0 ? (
-        <p class="mt-1 font-reading text-excerpt text-ink-2">
-          Nothing is waiting for a decision.
-        </p>
-      ) : (
-        <div class="mt-1 border-t border-rule">
-          {waiting.map((c) => (
-            <WaitingRow
-              key={c.channelId}
-              channel={c}
-              disabled={disabled}
-              onChanged={onChanged}
-            />
-          ))}
-        </div>
-      )}
+      <div class="mt-1 border-t border-rule">
+        {waiting.map((c) => (
+          <WaitingRow
+            key={c.channelId}
+            channel={c}
+            disabled={disabled}
+            onChanged={onChanged}
+          />
+        ))}
+      </div>
     </section>
   );
 }

@@ -17,6 +17,41 @@ export type Act = (
   work: () => Promise<unknown>,
 ) => Promise<void>;
 
+export type NeedsYou = {
+  /** Channels waiting for a decision, oldest request first. */
+  waiting: Channel[];
+  /** Approved channels holding a publication that exhausted its 48 hours. */
+  failed: Channel[];
+  /** Approved channels with no discovery run at all. */
+  neverStarted: Channel[];
+  total: number;
+};
+
+/**
+ * What needs the owner, derived once so the section, its lists and its emptiness cannot disagree.
+ * Each list used to filter the same array for itself, which was fine while every one of them
+ * rendered an empty sentence and nothing had to know whether *all* of them were empty.
+ */
+export function needsYou(channels: readonly Channel[]): NeedsYou {
+  const waiting = channels
+    .filter((c) => c.status === "requested")
+    .sort(
+      (a, b) => (a.management?.createdAt ?? 0) - (b.management?.createdAt ?? 0),
+    );
+  const failed = channels.filter(
+    (c) => c.status === "approved" && c.episodes.failed > 0,
+  );
+  const neverStarted = channels.filter(
+    (c) => c.status === "approved" && c.management?.neverStarted,
+  );
+  return {
+    waiting,
+    failed,
+    neverStarted,
+    total: waiting.length + failed.length + neverStarted.length,
+  };
+}
+
 /**
  * The part of **Needs you** that is episodes rather than channels: publications that exhausted
  * their 48 hours, grouped by channel with the last reason, and approved channels that never started
@@ -24,33 +59,24 @@ export type Act = (
  * through (docs/specs/design-phase.md §4.8).
  */
 export function AttentionList({
-  channels,
+  failed,
+  neverStarted,
   busy,
   disabled,
   errors,
   act,
 }: {
-  channels: Channel[];
+  failed: Channel[];
+  neverStarted: Channel[];
   busy: Record<string, boolean>;
   disabled: boolean;
   errors: Record<string, string>;
   act: Act;
 }) {
-  const failedChannels = channels.filter(
-    (c) => c.status === "approved" && c.episodes.failed > 0,
-  );
-  const neverStarted = channels.filter(
-    (c) => c.status === "approved" && c.management?.neverStarted,
-  );
-
   return (
     <>
-      <Group
-        title="Failed episodes"
-        empty="No episode has run out of its window."
-        count={failedChannels.length}
-      >
-        {failedChannels.map((c) => (
+      <Group title="Failed episodes" count={failed.length}>
+        {failed.map((c) => (
           <FailedEpisodes
             key={c.channelId}
             channel={c}
@@ -61,11 +87,7 @@ export function AttentionList({
         ))}
       </Group>
 
-      <Group
-        title="Approved, never started"
-        empty="Nothing approved is waiting to start."
-        count={neverStarted.length}
-      >
+      <Group title="Approved, never started" count={neverStarted.length}>
         {neverStarted.map((c) => (
           <div
             key={c.channelId}
@@ -102,28 +124,30 @@ export function AttentionList({
   );
 }
 
+/**
+ * A category of **Needs you**, which renders only when it holds something. A heading, a zero and a
+ * sentence explaining the zero, three times over, was how this screen greeted an owner on every
+ * healthy day — and a healthy day is the usual one, since the nav carries a count and shows it only
+ * when something waits (owner decision 2026-09-15, docs/PRD.md §9). The section says it once
+ * instead.
+ */
 function Group({
   title,
-  empty,
   count,
   children,
 }: {
   title: string;
-  empty: string;
   count: number;
   children: ComponentChildren;
 }) {
+  if (count === 0) return null;
   return (
     <section class="mt-6">
       <h3 class="flex items-baseline gap-2 text-label uppercase text-ink-3">
         {title}
         <span>{count}</span>
       </h3>
-      {count === 0 ? (
-        <p class="mt-1 font-reading text-excerpt text-ink-2">{empty}</p>
-      ) : (
-        <div class="mt-1 border-t border-rule">{children}</div>
-      )}
+      <div class="mt-1 border-t border-rule">{children}</div>
     </section>
   );
 }

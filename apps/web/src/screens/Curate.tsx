@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
-import { type Act, AttentionList } from "../components/AttentionList";
+import { type Act, AttentionList, needsYou } from "../components/AttentionList";
 import { type CatalogFilter, CatalogHealth } from "../components/CatalogHealth";
 import { CatalogTable } from "../components/CatalogTable";
 import { Page } from "../components/Page";
 import { ReviewedList, ReviewQueue } from "../components/RequestQueue";
 import { Retry } from "../components/Retry";
-import { actionErrorCopy, staleCopy } from "../lib/copy";
+import { actionErrorCopy, NEEDS_YOU_CLEAR_COPY, staleCopy } from "../lib/copy";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
@@ -86,6 +86,7 @@ function CurateScreen() {
   }, [url, channels.status]);
 
   const rows = channels.status === "ready" ? channels.data.channels : [];
+  const attention = needsYou(rows);
 
   return (
     <Page measure="wide" desktopOnly>
@@ -134,18 +135,29 @@ function CurateScreen() {
             <h2 class="font-reading text-section font-semibold text-ink">
               Needs you
             </h2>
-            <ReviewQueue
-              channels={rows}
-              disabled={actionsDisabled}
-              onChanged={reloadAll}
-            />
-            <AttentionList
-              channels={rows}
-              busy={busy}
-              disabled={actionsDisabled}
-              errors={errors}
-              act={act}
-            />
+            {/* One line on a healthy day, which is most days, instead of three headings each
+                explaining its own zero (owner decision 2026-09-15, docs/PRD.md §9). */}
+            {attention.total === 0 ? (
+              <p class="mt-2 font-reading text-body text-ink-2">
+                {NEEDS_YOU_CLEAR_COPY}
+              </p>
+            ) : (
+              <>
+                <ReviewQueue
+                  waiting={attention.waiting}
+                  disabled={actionsDisabled}
+                  onChanged={reloadAll}
+                />
+                <AttentionList
+                  failed={attention.failed}
+                  neverStarted={attention.neverStarted}
+                  busy={busy}
+                  disabled={actionsDisabled}
+                  errors={errors}
+                  act={act}
+                />
+              </>
+            )}
           </section>
 
           <section id="catalog" class="mt-10">

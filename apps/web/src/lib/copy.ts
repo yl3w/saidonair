@@ -179,6 +179,9 @@ export function episodePhrase(episode: Episode): string | null {
 }
 
 /** The way back from a screen that carries its own bar; the browser knows where, so it says no more. */
+/** What Curate says when nothing is outstanding, once, in place of three headings and three zeroes. */
+export const NEEDS_YOU_CLEAR_COPY = "Nothing needs your attention.";
+
 export const BACK_COPY = "Back";
 
 /** The way through from a channel to the screen where its decisions are made. */
