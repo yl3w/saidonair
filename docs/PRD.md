@@ -680,7 +680,9 @@ somewhere extra to go.
   the newest landed; then decide. The owner's title, import count and note are in the third step, which is the
   one-step approval; a reader's add is the request. One source shows the channel, the reader's relationship to it,
   and its episodes newest **published** with the ones lacking a summary carrying their phrase, paged by year, with
-  the owner's controls beside the channel they govern. Every row on that page is the same channel, so **a row is
+  the owner's **adjustments** beside the channel they govern — check the feed, pause and resume ingestion, and
+  nothing else: approving, declining and withdrawing approval are decisions and live in Curate (§9, 2026-09-15).
+  Every row on that page is the same channel, so **a row is
   led by its publication date and carries no mark and no channel name** — summarised or not, one shape for the
   whole history (§9, 2026-09-15). Its header carries the mark, the title, and a meta line of how much the channel
   has published and how much of that can be read — "23 episodes · 5 summaries · last summary 3h ago" — with the
@@ -702,6 +704,8 @@ somewhere extra to go.
   declining, retrying and the catalog table are dense, consequential and rare, so they are not designed twice.
   Below the breakpoint the nav item is absent and the screen says where to go instead. Users who reach it are sent
   to `/queue` with a note; the API itself accepts every call from any identity. Three sections as anchors:
+  Approving, declining and withdrawing approval happen **only here** (§9, 2026-09-15); a channel's own page
+  carries the reversible adjustments and a way through.
   - **Needs you**, which never paginates: channels waiting for a decision, oldest first, with who is waiting on
     each and the Approve (title, import count, note) and Decline (note) forms; publications that exhausted their 48
     hours, grouped by channel with `INGESTION_TIMEOUT`, the last reason and the attempt count, carrying Retry and
@@ -1094,6 +1098,23 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the attention list, which has room, spells "Check feed" out. Last, the **follower count now sits beside the
   controls** on a channel page rather than appearing for the first time in the confirmation dialog: a consequence
   should be visible before it is chosen, not explained after.
+- **Adjustments attach to the object; decisions belong to Curate — decided 2026-09-15.** The 2026-09-14 rule that
+  capability attaches to objects stands, and this is it applied rather than reversed: it was read as "every owner
+  control beside every object", and only two of the six qualify. **Beside the channel**: check the feed, pause and
+  resume ingestion — reversible, felt by nobody else, and prompted by looking at the channel and finding it stale
+  or noisy. **In Curate**: approve, decline, withdraw approval — felt by other readers, driven by the queue of
+  requests rather than by browsing, and needing what only Curate carries. Nobody browses to a channel in order to
+  approve it. Three things go wrong together under the old arrangement, and all three are fixed by the split. The
+  object-side **Approve was a worse copy of the real one**: `approveChannel(id, {})` with no title override, no
+  import count and no note, where Curate's is a form with all three (§7). **Withdrawal was offered without its
+  context** — Curate shows the run history, the episode counts and who is waiting; the channel page showed a
+  follower count and a dialog, so a channel could be withdrawn from a page that never said whether its ingestion
+  was healthy. And the arrangement **had a hole in the phone rule**: `Curate` and `CurateChannel` are
+  `desktopOnly`, but the channel page's owner strip carried no breakpoint at all, so an owner on a phone was told
+  by Account that Curate needs a wider screen while that same phone let them approve, decline and withdraw. The
+  split closes it without a new guard, because what remains beside the object is exactly what the 2026-09-14
+  entry's own reasoning never called dense, consequential or rare. A channel that is not approved therefore offers
+  no controls beside itself at all — only the count, and the way through to Curate.
 - **A page about one object carries its own bar — decided 2026-09-15.** The reading column had one from the start;
   a channel's page now has the same. No wordmark and no destinations: a **way back** on the left, and on the right
   the one act that belongs to the whole channel rather than to any row, the way out to YouTube, in the shape

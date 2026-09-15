@@ -232,6 +232,7 @@ function Header({
           channel={c}
           busy={busy}
           idPrefix="detail-"
+          scope="everything"
           act={act}
         />
       </div>

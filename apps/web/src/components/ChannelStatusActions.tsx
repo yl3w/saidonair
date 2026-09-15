@@ -23,19 +23,31 @@ export type ChannelAct = (work: () => Promise<unknown>) => Promise<void>;
  *
  * Words are still what these are called — `CHANNEL_ACTION_COPY` — and a glyph carries its name for
  * assistive technology and as its tooltip; a list with room for the word uses the word.
+ *
+ * **`scope` says which of them this surface may offer** (owner decision 2026-09-15, docs/PRD.md §9).
+ * `adjustments` is what belongs beside the channel itself: the reversible knobs nobody else feels,
+ * reached because a reader was looking at this channel and found it stale or noisy. `everything`
+ * adds the three decisions — approve, decline, withdraw approval — which belong to Curate, because
+ * nobody browses to a channel in order to approve it: that work is driven by the queue of requests,
+ * it is felt by other readers, and it needs the context and the forms (title, import count, note)
+ * that only Curate has. Principle 2 draws this line already — five-second decisions beside the
+ * object, dense administrative work at one destination — and this is it drawn in code.
  */
 export function ChannelStatusActions({
   channel: c,
   busy,
   idPrefix,
+  scope,
   act,
 }: {
   channel: Channel;
   busy: boolean;
   idPrefix: string;
+  scope: "adjustments" | "everything";
   act: ChannelAct;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const decisions = scope === "everything";
 
   const approve = (
     <Action
@@ -74,8 +86,10 @@ export function ChannelStatusActions({
     </>
   );
 
+  // A channel that is not approved offers only decisions, so beside the object it offers nothing at
+  // all; the strip still says where the work is done.
   if (c.status === "requested") {
-    return (
+    return !decisions ? null : (
       <div class="flex flex-wrap items-center gap-1">
         {approve}
         {decline}
@@ -109,12 +123,15 @@ export function ChannelStatusActions({
             )
           }
         />
-        {decline}
+        {decisions && decline}
       </div>
     );
   }
 
-  return <div class="flex flex-wrap items-center gap-1">{approve}</div>;
+  // Declined: approving again is a decision, so it lives in Curate too.
+  return !decisions ? null : (
+    <div class="flex flex-wrap items-center gap-1">{approve}</div>
+  );
 }
 
 /**

@@ -153,6 +153,7 @@ export function CatalogTable({
                     channel={c}
                     busy={disabled || (busy[c.channelId] ?? false)}
                     idPrefix=""
+                    scope="everything"
                     act={(work) => act(c.channelId, work)}
                   />
                 </td>

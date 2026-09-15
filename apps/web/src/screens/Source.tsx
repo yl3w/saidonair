@@ -309,6 +309,7 @@ function Header({
             channel={channel}
             busy={busy}
             idPrefix="source-"
+            scope="adjustments"
             act={act}
           />
           {/* Who a catalog decision reaches, beside the control rather than only in the dialog it

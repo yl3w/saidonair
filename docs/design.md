@@ -35,6 +35,14 @@ beside the thing being decided, and the dense administrative work lives at one s
 *This means:* if you are about to add a mode, a "view as", or a second navigation, you are solving the wrong problem.
 Put the control next to its object, or put the screen in Curate.
 
+**Which is which, made operational** (2026-09-15, PRD §9). Beside the object go the acts that are **reversible**,
+**felt by nobody else**, and **prompted by looking at the thing** — noticing a channel has gone stale, or is too
+noisy. At the destination go the **decisions**: the ones other people feel, the ones driven by a queue rather than
+by browsing, and the ones that need a form or context the object's own page does not carry. Approving is the test
+case that makes the line obvious — nobody browses to a channel in order to approve it, and approval carries a title,
+an import count and a note that only Curate asks for. A bare Approve button beside the object was a worse version of
+the same act, not a convenience.
+
 **3. The queue answers one question: what still needs me.**
 Anything else — what arrived, when, from whom, what I already read — is History. Mixing the two produces a list that
 answers neither.
