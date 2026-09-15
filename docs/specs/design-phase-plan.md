@@ -3,7 +3,8 @@
 **Implements:** `docs/specs/design-phase.md` under `AGENTS.md`; PRD §7, §4.4, §9, §10.
 **Written:** 2026-09-14, against `main` at `f86ebfb`.
 **Status:** APPROVED 2026-09-15 with both dependency questions answered — fonts are self-hosted, and `lucide-preact`
-is the icon dependency (owner decision, hard rule 1 satisfied). Nothing implemented.
+is the icon dependency (owner decision, hard rule 1 satisfied). **Steps 1 to 5 implemented 2026-09-15**; Steps 6 to 9
+remain. What each step actually landed, and what it owes, is in the record at the end of this file.
 **Shape:** nine steps, reordered 2026-09-15 so the two API steps come first. Steps 1 and 2 are API and carry tests; Steps 3 to 9 are web and carry a hand
 walkthrough, because `apps/web` is typecheck and lint only (`AGENTS.md` → Testing). One commit per step, `pnpm check`
 green before the next begins. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
@@ -150,8 +151,23 @@ deleted; `lib/copy.ts`, `lib/day.ts` (new, local day boundaries).
 
 - 9.1 The accessibility pass of spec §4.10 across every screen at both sizes and at 390 px: contrast, the 12 px
   floor, 44 px targets, and state in words rather than colour.
-- 9.2 PRD §7 Screens rewritten to the built design; the route table takes the Step 1 and 2 changes; the
-  implementation-status note loses "the Design phase … has its architecture approved and nothing built".
+- 9.2 PRD §7 Screens rewritten to the built design; the implementation-status note loses "the Design phase … has
+  its architecture approved and nothing built"; and the route table takes **every** change this phase made, which is
+  more than the two API steps (amended 2026-09-15, after Steps 4 and 5 each turned out to need a route the plan had
+  assumed existed):
+  - **Step 1** — `GET /digest` and `GET /channels/:id/episodes` record no receipt and report `read` rather than
+    `wasUnread`; three new rows: `GET /channels/:id/episodes/:episodeId`, and `POST` and `DELETE` of
+    `/channels/:id/episodes/:episodeId/read`.
+  - **Step 2** — the `GET /digest?since=<iso>` row becomes `GET /digest` with `from`, `to`, `unread`, repeatable
+    `channelId`, `cursor`, `limit` and `compact`, no default window and no clamp, answering a `compact`-discriminated
+    body with `nextCursor`. Its "**Changing (§9)**" annotation goes: it has changed.
+  - **Step 4** — `GET` and `PUT /preferences` were listed but had never been registered; they exist now, so the row
+    stops being aspirational.
+  - **Step 5** — one new row, `GET /episodes/:episodeId`. `/read/:episodeId` names the episode and not its channel,
+    so the channel-scoped single-episode read cannot serve a cold load; `episodes.episode_id` is a catalog-wide
+    primary key, so an episode names itself. The channel-scoped twin stays, for callers that already know the
+    channel and want a mismatch to be a 404.
+  - The `:episodeId` spelling throughout is the 2026-09-15 rename, already recorded in §9.
 - 9.3 `AGENTS.md` → Web UI code gains the icon, avatar and reading-theme rules and repoints its screen reference.
 - 9.4 The two superseded specs get a dated line.
 
@@ -172,6 +188,25 @@ deleted; `lib/copy.ts`, `lib/day.ts` (new, local day boundaries).
 - **A long history makes the calendar's range query the widest read in the product.** `compact` is the mitigation;
   if five weeks of a heavy catalog is still slow, the next move is a per-day count aggregate, not pagination.
 
-## Walkthrough record
+## Record
 
-_(to be filled in as the steps run)_
+What each step landed, and what it still owes. The step bodies above are left as they were approved; where one
+turned out to be wrong about the world, the correction is here rather than rewritten into the plan.
+
+| Step | Commit | Note |
+|---|---|---|
+| 1 | `8b8a3d7` | As planned. `apps/web` took the one mechanical rename it needed to typecheck. |
+| 2 | `b63b82a` | As planned. `compact` needed its own response shape, so `DigestResponse` became a union discriminated on `compact`; `unread` is filtered in the route, not the Registry, because receipts live in the User DO. |
+| 3 | `5a337dd` | As planned. Two decisions written into `docs/design.md`: the six avatar tints (§2.5) and the daisyUI slot mapping, including that there is no green (§2.6). |
+| 4 | `ea5fff7` | **4.3 was wrong: there were no "existing preferences routes".** PRD §7 has listed `GET`/`PUT /preferences` since the restart, and the shared schemas, the User DO methods and their migration were all written — but no handler was ever registered, so Account's one server-backed field had nothing to call. Both routes were added here with tests. |
+| 5 | `6c60b03` | **§4.5's deep link could not work as specified.** `GET /channels/:channelId/episodes/:episodeId` needs a channel id that `/read/:episodeId` does not carry, so a cold load had nothing to call; `GET /episodes/:episodeId` was added. |
+
+**Owed:** the hand walkthroughs of Steps 3 to 5 — open → Done → next, and the row check — which need a dev catalog
+with summaries in it. The local Durable Objects were wiped on 2026-09-15 for the `episodeId` rename, so they wait on
+the next ingestion.
+
+**Why both gaps got through review.** A spec is reviewed against the PRD, and in both cases the PRD is where the
+mistake already was: it listed a route nothing had registered, and it described a single-episode read in prose that
+reads correctly and does not survive contact with the address bar. `test/openapi.test.ts` cannot catch either — it
+fails when a *registered* route is missing from the document, never when a documented route was never registered.
+Worth a thought before the next phase's plan is written.

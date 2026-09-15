@@ -117,7 +117,8 @@ when something waits. Account is the monogram in the corner, never a nav item.
 
 ### 4.3 The read model
 
-Three API changes, all of them removals or additions of the same shape:
+Four API changes, all of them removals or additions of the same shape (three when this was written; the fourth is
+below, and was found while building).
 
 - `GET /digest` **stops recording read receipts** and so does `GET /channels/:id/episodes`. Every read route is pure.
   `wasUnread` becomes `read`, which describes the row rather than the request that fetched it.
@@ -125,7 +126,13 @@ Three API changes, all of them removals or additions of the same shape:
   unchanged — an active follower of an approved channel — and a call from anyone else records nothing and answers
   404, exactly as the old implicit rule did. `summary_reads` already holds `episode_id` and `read_at`; no migration.
 - `GET /channels/:channelId/episodes/:episodeId` returns one episode with its summary, related items and read state,
-  so `/read/:episodeId` is a deep link that works on a cold load.
+  for a caller that already knows the channel and wants a mismatch to be a 404.
+- `GET /episodes/:episodeId` returns the same episode by its own id, which is what makes `/read/:episodeId` a deep
+  link that works on a cold load. **Added 2026-09-15, correcting this section.** As written, it claimed the
+  channel-scoped route above did that — but `/read/:episodeId` carries one id and that route needs two, so a reader
+  pasting or reloading the URL had nothing to call. The claim held only for a click from the queue, where the client
+  already holds the episode. `episodes.episode_id` is a primary key across the whole catalog, so the channel segment
+  was never part of the identifier; an episode names itself.
 
 ### 4.4 Queue and History
 
@@ -208,7 +215,8 @@ anything. The calendar is a grid with arrow-key traversal and a full date in eve
 2. Every route in §4.2 deep-links and reloads under `wrangler pages dev`.
 3. `GET /digest` and `GET /channels/:id/episodes` record no receipt; a test asserts a summary stays unread after both.
 4. `POST …/read` records one and `DELETE …/read` removes it; an ineligible caller gets 404 and writes nothing.
-5. `GET /channels/:id/episodes/:episodeId` answers a single episode with summary, related and read state.
+5. `GET /channels/:id/episodes/:episodeId` and `GET /episodes/:episodeId` each answer a single episode with
+   summary, related and read state; the second is the one `/read/:episodeId` calls on a cold load.
 6. `/digest` honours `from`/`to`/`unread`/`channelId`/`cursor`/`compact`, has no clamp, and rejects a range it cannot
    page.
 7. The queue shows no row carrying a receipt; History shows both and undoes one.
