@@ -1,7 +1,8 @@
 import type { Episode } from "@media-digest/shared";
 import { Check } from "lucide-preact";
-import { readingMinutes, runtimeCopy } from "../lib/copy";
+import { readingMinutes, readStateCopy, runtimeCopy } from "../lib/copy";
 import { dayKeyOf } from "../lib/day";
+import { rowAnchorId } from "../lib/reading-origin";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 
@@ -14,17 +15,23 @@ export type Density = "full" | "compact";
  * opening it.
  *
  * Compact trades the excerpt, never the title.
+ *
+ * `onOpen` fires as the title is followed, so the list can record itself as the way back
+ * (lib/reading-origin.ts). The row carries its anchor id for the same reason: it is what the return
+ * scrolls to.
  */
 export function SummaryRow({
   episode,
   density = "full",
   busy = false,
+  onOpen,
   onDone,
   onUndo,
 }: {
   episode: Episode;
   density?: Density;
   busy?: boolean;
+  onOpen?: (episode: Episode) => void;
   onDone?: (episode: Episode) => void;
   onUndo?: (episode: Episode) => void;
 }) {
@@ -42,6 +49,7 @@ export function SummaryRow({
 
   return (
     <article
+      id={rowAnchorId(episode.episodeId)}
       class={`flex gap-3 border-b border-rule ${density === "full" ? "py-[18px]" : "py-[9px]"}`}
     >
       <Avatar
@@ -63,7 +71,12 @@ export function SummaryRow({
               : "truncate text-row-compact"
           }`}
         >
-          <a href={`/read/${episode.episodeId}`}>{episode.title}</a>
+          <a
+            href={`/read/${episode.episodeId}`}
+            onClick={() => onOpen?.(episode)}
+          >
+            {episode.title}
+          </a>
         </h3>
 
         {density === "full" && excerpt !== null && (
@@ -73,7 +86,7 @@ export function SummaryRow({
         )}
 
         <p class="mt-1 flex flex-wrap gap-x-2 text-meta text-ink-3">
-          <span>{episode.read === true ? "Read" : "Unread"}</span>
+          <span>{readStateCopy(episode.read === true)}</span>
           {takeaways > 0 && <span>· {takeaways} takeaways</span>}
           {runtime !== null && <span>· {runtime}</span>}
           <span>· {readingMinutes(summary)} min read</span>

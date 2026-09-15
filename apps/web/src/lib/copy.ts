@@ -16,6 +16,7 @@ import type {
   ProcessingIntent,
 } from "@media-digest/shared";
 import { ApiError } from "../api";
+import type { ReadingOrigin } from "./reading-origin";
 import { absoluteTime, HOUR, MINUTE } from "./time";
 
 export const CHANNEL_STATUS_COPY: Record<ChannelStatus, string> = {
@@ -192,6 +193,24 @@ export function runtimeCopy(durationSec: number | null): string | null {
   const minutes = Math.round(durationSec / 60);
   if (minutes < 60) return `${minutes} m`;
   return `${Math.floor(minutes / 60)} h ${minutes % 60} m`;
+}
+
+/**
+ * Where the reading column's arrow goes, said in words rather than left to a guess. A summary has
+ * one URL and three ways in, so the arrow names the list the reader actually came from; with no
+ * origin — a cold deep link, a pasted URL — the queue is the reader's home and is never wrong.
+ */
+export function backToCopy(origin: ReadingOrigin | null): string {
+  if (origin === null || origin.kind === "queue") return "Back to the queue";
+  if (origin.kind === "history") return "Back to History";
+  return origin.label === null
+    ? "Back to the channel"
+    : `Back to ${origin.label}`;
+}
+
+/** Whether a summary has been dealt with, in the same word the row it came from used. */
+export function readStateCopy(read: boolean): string {
+  return read ? "Read" : "Unread";
 }
 
 /** `h:mm:ss` or `m:ss` for a takeaway's moment, as it hangs in the reading column's margin. */

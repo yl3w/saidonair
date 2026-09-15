@@ -164,6 +164,12 @@ sets as a lede; the takeaways are the body, each with its timestamp hanging in t
 until pressed: type, size, theme), `Watch`, and `Done`. A scroll-progress rule sits at the top. **Nothing on this
 screen writes anything until Done**, which records the receipt and advances to the next unread.
 
+**Amended 2026-09-15** (PRD §9; `docs/design.md` §3): the advance is withdrawn, and this section was silent on the
+back arrow, which shipped hardcoded to `/queue` because the column cannot tell which of the three lists a reader
+opened a summary from. Both now follow one rule — the arrow names that list and returns the reader to it at the row
+they left, and Done writes the receipt and does the same — and Done renders only where there is no receipt yet, a
+read summary saying "Read" in its meta line instead. `lib/reading-origin.ts` holds the origin, per tab.
+
 ### 4.6 Sources, and one source
 
 Sources holds Following, Catalog and Declined as tabs with counts, a search field, and a sort order — most unread,
@@ -221,7 +227,9 @@ anything. The calendar is a grid with arrow-key traversal and a full date in eve
 6. `/digest` honours `from`/`to`/`unread`/`channelId`/`cursor`/`compact`, has no clamp, and rejects a range it cannot
    page.
 7. The queue shows no row carrying a receipt; History shows both and undoes one.
-8. Done on the reading view records the receipt and lands on the next unread; the back arrow records nothing.
+8. Done on the reading view records the receipt and lands back on the list the summary was opened from, at the row;
+   the back arrow goes to the same place and records nothing. (Amended 2026-09-15, §4.5; as approved this read
+   "lands on the next unread".)
 9. Skip renders on failed episodes only; declining an approved channel confirms with the follower count.
 10. No text under 12 px, no text below 4.5:1, no 44 px target missed, and no state communicated by colour alone —
     checked on every screen at both sizes and at 390 px.

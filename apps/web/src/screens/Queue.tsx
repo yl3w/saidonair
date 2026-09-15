@@ -18,6 +18,7 @@ import {
   QUEUE_NO_FOLLOWS_NOTE,
 } from "../lib/copy";
 import { type DayKey, dayLabel, groupByDay, shortDayLabel } from "../lib/day";
+import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { readSettings } from "../lib/settings";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
@@ -100,6 +101,10 @@ function QueueScreen() {
   const nothingFollowed =
     follows.status === "ready" && follows.data.follows.length === 0;
 
+  // Coming back from a summary: the row that was opened has been read and so has left the queue,
+  // which is the point of the queue — so the return lands on the day it sat under.
+  useReturnAnchor(page.status === "ready");
+
   return (
     <Page rail={<DayRail days={days.map((day) => day.key)} />}>
       <header class="flex flex-wrap items-center gap-3">
@@ -170,6 +175,13 @@ function QueueScreen() {
                   episode={episode}
                   density={density}
                   busy={busy.has(episode.episodeId)}
+                  onOpen={() =>
+                    rememberOrigin({
+                      kind: "queue",
+                      episodeId: episode.episodeId,
+                      dayKey: day.key,
+                    })
+                  }
                   onDone={markDone}
                 />
               ))}

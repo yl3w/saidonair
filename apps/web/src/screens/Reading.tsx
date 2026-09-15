@@ -1,6 +1,6 @@
 import type { Episode } from "@media-digest/shared";
 import { ArrowLeft, ExternalLink } from "lucide-preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
 import { Choice } from "../components/Choice";
@@ -8,10 +8,13 @@ import { Icon } from "../components/Icon";
 import { Retry } from "../components/Retry";
 import {
   actionErrorCopy,
+  backToCopy,
   momentCopy,
   readingMinutes,
+  readStateCopy,
   runtimeCopy,
 } from "../lib/copy";
+import { readOrigin } from "../lib/reading-origin";
 import {
   READING_FONTS,
   READING_SIZES,
@@ -37,7 +40,8 @@ export function Reading() {
  * back, the type controls, the video, and Done.
  *
  * **Nothing here writes anything until Done.** Opening this screen, arriving by deep link, and
- * reading to the end all record nothing; Done records the receipt and moves to the next unread.
+ * reading to the end all record nothing; Done records the receipt and hands the reader back to the
+ * list they came from, at the row they left.
  */
 function ReadingScreen() {
   const { params } = useRoute();
@@ -49,6 +53,11 @@ function ReadingScreen() {
   const [error, setError] = useState<string | null>(null);
   const progress = useScrollProgress();
 
+  // Read once, on the way in: a related title moves within this column without changing where the
+  // reader came from, so the way back stays the list they actually opened a summary from.
+  const origin = useMemo(readOrigin, []);
+  const back = { href: origin?.href ?? "/queue", label: backToCopy(origin) };
+
   const [load, reload] = useLoad(
     () => api.getEpisodeById(episodeId),
     [episodeId],
@@ -58,15 +67,17 @@ function ReadingScreen() {
     setSettings(writeSettings(patch));
   }
 
-  /** Done: the receipt, then whatever is next. An empty queue lands back on it, not nowhere. */
+  /**
+   * Done: the receipt, then back to the list, at the row (owner decision 2026-09-15, PRD §9,
+   * withdrawing the advance to the next unread). One rule wherever a summary was opened from, and
+   * the queue getting shorter is the progress an auto-advance never let anyone see.
+   */
   async function done(episode: Episode) {
     setFinishing(true);
     setError(null);
     try {
       await api.markRead(episode.channelId, episode.episodeId);
-      const next = await api.getDigest({ unread: true, limit: 1 });
-      const following = next.episodes[0];
-      route(following ? `/read/${following.episodeId}` : "/queue");
+      route(back.href);
     } catch (caught) {
       setError(actionErrorCopy(caught));
       setFinishing(false);
@@ -87,10 +98,10 @@ function ReadingScreen() {
       <header class="sticky top-0 z-20 border-b border-rule bg-ground">
         <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
           <a
-            href="/queue"
+            href={back.href}
             class="flex size-11 items-center justify-center text-ink-2"
           >
-            <Icon of={ArrowLeft} size={20} label="Back to the queue" />
+            <Icon of={ArrowLeft} size={20} label={back.label} />
           </a>
 
           <div class="relative ml-auto">
@@ -145,18 +156,18 @@ function ReadingScreen() {
             </a>
           )}
 
-          {episode !== null &&
-            summary !== null &&
-            episode.read !== undefined && (
-              <button
-                type="button"
-                class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
-                disabled={finishing}
-                onClick={() => done(episode)}
-              >
-                {finishing ? "…" : "Done"}
-              </button>
-            )}
+          {/* Only on a summary that still needs dealing with. A read one says so in the meta line
+              instead, and its receipt is undone in History, where the row is (docs/design.md §4). */}
+          {episode !== null && summary !== null && episode.read === false && (
+            <button
+              type="button"
+              class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
+              disabled={finishing}
+              onClick={() => done(episode)}
+            >
+              {finishing ? "…" : "Done"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -189,6 +200,9 @@ function ReadingScreen() {
               {episode.title}
             </h1>
             <p class="mt-3 flex flex-wrap gap-x-2 text-meta text-ink-3">
+              {episode.read !== undefined && (
+                <span>{readStateCopy(episode.read)} ·</span>
+              )}
               <span>{longDate(episode.publishedAt)}</span>
               {runtimeCopy(episode.processing.durationSec) !== null && (
                 <span>· {runtimeCopy(episode.processing.durationSec)}</span>

@@ -650,9 +650,13 @@ somewhere extra to go.
   a meta line, the executive summary as a lede set off by a rule, the takeaways as the body with their timestamps
   hanging in the left margin as `youtu.be/<episodeId>?t=<startSec>` links, tags, then related titles filtered to
   eligible channels. Chrome is a back arrow, `Aa` (closed until pressed: type, size, theme), `Watch` exactly once,
-  and **Done**, with a scroll-progress rule at the top. **Nothing on this screen writes anything until Done**,
-  which records the receipt and goes to the next unread, or back to the queue when there is none. A deep link works
-  on a cold load through `GET /episodes/:episodeId`.
+  and **Done**, with a scroll-progress rule at the top. **The arrow names the list the summary was opened from** —
+  the queue, a day in History, or a source — and returns the reader to it at the row they left; a related title
+  moves within the column and leaves that unchanged, and with no origin, as on a cold deep link, it is the queue.
+  **Done renders only on a summary with no receipt**; a read one says "Read" in its meta line instead, and its
+  receipt is undone in History, where the row is. **Nothing on this screen writes anything until Done**, which
+  records the receipt and hands the reader back to that same list (decided 2026-09-15, §9, withdrawing the advance
+  to the next unread). A deep link works on a cold load through `GET /episodes/:episodeId`.
 - **History `/history` and `/history/2026-09-12`:** the library — everything the reader is currently eligible for,
   by the day it became readable, and **the only place a read receipt can be undone**. A day is an address and
   carries its year. Rows say "read" or "unread" in words and offer the write that matters: Undo on a read row, the
@@ -1041,6 +1045,24 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   The cost was a palette: each theme needed its own ground, panel, three inks, two lines, accent, owner amber,
   consequence red and six avatar tints, all measured against the 4.5:1 floor before being applied. Kept per browser,
   never sent to the API: how a page looks is not something the product needs to know.
+- **The reading column gives the reader back to where they came from — decided 2026-09-15**, withdrawing
+  "it advances to the next unread" from the *Reading is a place, and reading is an act* entry above. A summary has
+  one URL and three ways in — the queue, a day in History, a source's own page — and `/read/:episodeId` names the
+  episode and nothing else, so the column could not tell which had been used: its arrow said "Back to the queue"
+  whatever the truth was, and Done threw a reader who was browsing the library into the queue's next item. Both now
+  follow one rule. **The arrow names the list the summary was opened from and returns the reader to it at the row
+  they left; Done writes the receipt and does the same.** A related title moves within the column and leaves the
+  origin alone, so the way out is still the list the reader came from. **Done renders only on a summary with no
+  receipt**, because advancing was the only answer it had left on one already read; a read summary states "Read" in
+  its meta line instead, and the receipt is undone in History, where the row is (`docs/design.md` §4). What the
+  advance was worth is flow, which is the right trade for a twenty-second triage item and the wrong one for a
+  four-minute read; what it cost is the queue visibly getting shorter — the only progress this product shows — and
+  the "You are through everything" ending, which a reader mostly arrived at sideways. The origin is kept per tab in
+  the browser and never reaches the API, like every other view preference (§7). The return anchors on **the row's
+  own id, never a scroll offset**, which the density switch, an unfetched page of "Show more", and the row leaving
+  the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
+  still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
+  reloads, so the return lands on its day, or at the top.
 - **Cron cadence — decided 2026-09-12:** channel discovery runs at `0 */6 * * *` UTC and episode recovery at
   `30 */6 * * *` UTC; both have a six-hour cadence. The triggers exist in production only (2026-09-13, below).
 - **Environments — decided 2026-09-13: three, dev, staging, production.** Local `wrangler dev` runs as dev against

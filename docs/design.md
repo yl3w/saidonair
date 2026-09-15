@@ -224,9 +224,15 @@ three lines of the executive summary as the excerpt; a meta line of takeaway cou
 the publication date when it differs from the day it arrived. A check at the right marks it done without opening it.
 The excerpt is always the executive summary, never a takeaway.
 
-**The reading column.** Channel, title, a meta line, the lede set off by a rule, then the takeaways as the body with
-their timestamps hanging in the left margin as links into the video. Tags, then related titles. Chrome is a back
-arrow, `Aa`, `Watch` once, and `Done`.
+**The reading column.** Channel, title, a meta line opening with "Read" or "Unread", the lede set off by a rule, then
+the takeaways as the body with their timestamps hanging in the left margin as links into the video. Tags, then
+related titles. Chrome is a back arrow, `Aa`, `Watch` once, and `Done`.
+
+The arrow **names the list the summary was opened from** — the queue, a day in History, a source — and returns the
+reader to it at the row they left; with no origin, as on a pasted link, it is the queue. `Done` writes the receipt
+and goes to the same place, and appears only on a summary that still has none: a read one says so in its meta line,
+and its receipt is undone in History, where the row is. A related title moves within the column and leaves the way
+out alone (owner decision 2026-09-15, PRD §9, which withdrew `Done`'s advance to the next unread).
 
 **Tables** (Curate only). 13.5 px cells, primary text at full ink, secondary at `--ink-2`, a sorted column marked in
 its header, status filters above, 25 rows at a time. Actions are text, not buttons, but they carry the padding and
@@ -255,6 +261,10 @@ understand.
   carries its reason on the row — "available in 46 min" — never a dead grey control.
 - **Undo lives where the consequence is visible.** A read receipt can be undone in History, where the row is, and
   nowhere else.
+- **A screen gives the reader back to where they came from.** Anything opened out of a list returns to that list, at
+  the row, and says which list it is returning to. Where the reader was is remembered by the **row's identity**,
+  never by a scroll offset: a density switch, an unfetched page, or the row leaving the list all move the pixels
+  and none of them moves the row.
 - **Filters are never sticky across sessions.** A quiet screen must never be a filter someone forgot they set.
 - **Nothing is written by looking.** Opening a summary, following a deep link, or paging through history records
   nothing. An explicit Done is the only write.
@@ -339,7 +349,9 @@ a calendar cell is a date first; design at two sizes; owner operations desktop o
 and monograms.
 
 **Reversed 2026-09-15:** §2.7's "the reading surface, and only the reading surface" — the reader's theme, type and
-size now apply to every page. The three palettes are in §2.7 and were measured before they were applied.
+size now apply to every page. The three palettes are in §2.7 and were measured before they were applied. And
+`Done`'s advance to the next unread — the reading column now returns the reader to the list they opened the summary
+from, and offers `Done` only where there is no receipt yet (§3, §4; PRD §9).
 
 **Open, and yours to close if you get there first:**
 

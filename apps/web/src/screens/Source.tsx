@@ -15,6 +15,7 @@ import {
   episodePhrase,
   reviewCopy,
 } from "../lib/copy";
+import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { relativeTime } from "../lib/time";
 import { useLoad } from "../lib/use-load";
 import { Guard, useReadySession } from "../session";
@@ -55,6 +56,10 @@ function SourceScreen() {
     () => api.listEpisodes(channelId, EPISODE_LIMIT),
     [channelId],
   );
+
+  // Coming back from a summary: this history is publication-ordered and nothing leaves it, so the
+  // row the reader opened is always still there to return to.
+  useReturnAnchor(episodes.status === "ready");
 
   const act: ChannelAct = async (work) => {
     setBusy(true);
@@ -167,7 +172,17 @@ function SourceScreen() {
             episode.summary === null ? (
               <WaitingRow key={episode.episodeId} episode={episode} />
             ) : (
-              <SummaryRow key={episode.episodeId} episode={episode} />
+              <SummaryRow
+                key={episode.episodeId}
+                episode={episode}
+                onOpen={() =>
+                  rememberOrigin({
+                    kind: "source",
+                    episodeId: episode.episodeId,
+                    ...(record === null ? {} : { label: record.title }),
+                  })
+                }
+              />
             ),
           )}
         </div>

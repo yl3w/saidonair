@@ -26,6 +26,7 @@ import {
   todayKey,
   weekWindow,
 } from "../lib/day";
+import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { readSettings } from "../lib/settings";
 import { Guard } from "../session";
 
@@ -63,6 +64,9 @@ function HistoryScreen() {
 
   const rows = useHistoryRows(validDay);
   const counts = useDayCounts(anchor);
+
+  // Coming back from a summary: the row is still here, now saying "Read" instead of "Unread".
+  useReturnAnchor(rows.status === "ready");
 
   const calendar = (
     <Calendar
@@ -145,7 +149,7 @@ function HistoryScreen() {
       )}
 
       {days.map((group) => (
-        <section key={group.key} class="mt-8">
+        <section key={group.key} class="mt-8" id={`day-${group.key}`}>
           {validDay === null && (
             <h2 class="font-reading text-section font-semibold text-ink">
               <a
@@ -162,6 +166,13 @@ function HistoryScreen() {
                 key={episode.episodeId}
                 episode={episode}
                 busy={rows.busy.has(episode.episodeId)}
+                onOpen={() =>
+                  rememberOrigin({
+                    kind: "history",
+                    episodeId: episode.episodeId,
+                    dayKey: group.key,
+                  })
+                }
                 onDone={episode.read === false ? rows.markRead : undefined}
                 onUndo={episode.read === true ? rows.clearRead : undefined}
               />
