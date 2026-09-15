@@ -29,7 +29,7 @@ export function EpisodeItem({
   return (
     <article class="episode">
       <div>
-        {episode.wasUnread === true && <span class="new">NEW</span>}
+        {episode.read === false && <span class="new">NEW</span>}
         <a href={`https://youtu.be/${episode.videoId}`}>{episode.title}</a>
         {phrase && <span class="tag"> · {phrase}</span>}
       </div>

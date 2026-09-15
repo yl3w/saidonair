@@ -27,6 +27,26 @@ export function markRead(
   return marked;
 }
 
+/**
+ * Removes this user's receipts for the given summaries, so they read as unread again. Returns how
+ * many rows went; a video with no receipt is simply absent. Undo lives in History (docs/PRD.md §4.4).
+ */
+export function clearRead(
+  sql: SqlStorage,
+  videoIds: readonly string[],
+): number {
+  let cleared = 0;
+  for (const videoId of uniqueVideoIds(videoIds)) {
+    cleared += sql
+      .exec(
+        "DELETE FROM summary_reads WHERE video_id = ? RETURNING video_id",
+        videoId,
+      )
+      .toArray().length;
+  }
+  return cleared;
+}
+
 /** The subset of `videoIds` this user has already read. Callers derive unread state. */
 export function readVideoIds(
   sql: SqlStorage,

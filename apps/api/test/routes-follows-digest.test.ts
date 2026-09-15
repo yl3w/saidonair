@@ -19,6 +19,7 @@ import {
   seedApprovedChannel,
   seedEpisode,
   seedSummary,
+  userDO,
   VIDEO_A,
   VIDEO_B,
   VIDEO_C,
@@ -143,8 +144,19 @@ describe("follow routes", () => {
       CHANNEL_A,
     ]);
 
-    // Reading the channel's episodes records receipts, so unread drops to zero for Alice only.
+    // Reading records nothing; marking the three summaries done drops unread to zero for Alice only.
     await call(ALICE, "GET", `/channels/${CHANNEL_A}/episodes`);
+    expect(
+      ((await call(ALICE, "GET", "/follows")).json.follows as Json[])[0]
+        ?.unreadCount,
+    ).toBe(3);
+    for (const videoId of [VIDEO_A, VIDEO_B, VIDEO_OLD]) {
+      await call(
+        ALICE,
+        "POST",
+        `/channels/${CHANNEL_A}/episodes/${videoId}/read`,
+      );
+    }
     expect(
       ((await call(ALICE, "GET", "/follows")).json.follows as Json[])[0]
         ?.unreadCount,
@@ -204,7 +216,7 @@ describe("follow routes", () => {
 });
 
 describe("digest route", () => {
-  it("returns eligible summaries in the window, newest first, marking them read for the caller", async () => {
+  it("returns eligible summaries in the window, newest first, recording nothing", async () => {
     const now = Date.now();
     await seedCatalog(now);
     await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
@@ -220,7 +232,7 @@ describe("digest route", () => {
     expect(episodes[0]).toMatchObject({
       channelTitle: "A",
       summary: { format: "structured" },
-      wasUnread: true,
+      read: false,
       // VIDEO_D is eligible for Alice (she follows B); VIDEO_B is outside the window but still related.
       related: [
         { videoId: VIDEO_D, title: `Episode ${VIDEO_D}` },
@@ -229,11 +241,24 @@ describe("digest route", () => {
     });
     expect(episodes[0]).toHaveProperty("processing");
 
+    // The digest is a pure read (docs/PRD.md §4.4): a second fetch still says unread, and only the
+    // explicit write marks one done.
     const second = await call(ALICE, "GET", "/digest");
-    expect((second.json.episodes as Json[]).map((e) => e.wasUnread)).toEqual([
+    expect((second.json.episodes as Json[]).map((e) => e.read)).toEqual([
       false,
       false,
     ]);
+    expect(await userDO(ALICE).readVideoIds([VIDEO_A, VIDEO_D])).toEqual([]);
+    await call(
+      ALICE,
+      "POST",
+      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+    );
+    expect(
+      ((await call(ALICE, "GET", "/digest")).json.episodes as Json[]).map(
+        (e) => e.read,
+      ),
+    ).toEqual([true, false]);
 
     // Bob's receipts are his own, and he does not follow B.
     const bob = await call(BOB, "GET", "/digest");
@@ -241,7 +266,7 @@ describe("digest route", () => {
       VIDEO_A,
     ]);
     expect((bob.json.episodes as Json[])[0]).toMatchObject({
-      wasUnread: true,
+      read: false,
       related: [{ videoId: VIDEO_B }],
     });
 

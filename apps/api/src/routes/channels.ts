@@ -328,7 +328,7 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["episodes"],
       summary: "List a channel's episodes",
       description:
-        "Newest first, each with its summary, related titles filtered to the caller's eligible channels, `waitReason` on a pending one, and `processing` with the open window (intent, start, deadline, next attempt) and the latest attempt. An eligible caller, an active follower of an approved channel, also receives `wasUnread`, and the summaries returned to them are marked read; nobody else's receipts are touched.",
+        "Newest first, each with its summary, related titles filtered to the caller's eligible channels, `waitReason` on a pending one, and `processing` with the open window (intent, start, deadline, next attempt) and the latest attempt. A pure read: an eligible caller, an active follower of an approved channel, also receives `read` per summary, and no receipt is recorded here or anywhere else a route only reads (docs/PRD.md §4.4).",
       responses: {
         200: jsonResponse(EpisodesResponseSchema, "Episodes, newest first."),
         ...errorResponses({ notFound: true }),
@@ -339,39 +339,112 @@ export const channelRoutes = new Hono<AppEnv>()
     async (c) => {
       const channel = await requireChannel(c, c.req.valid("param").id);
       const { limit } = c.req.valid("query");
-      const eligible = new Set(
-        (await c.var.registry.listEligibleChannels(c.var.identity.email)).map(
-          (row) => row.channelId,
-        ),
-      );
+      const eligible = await eligibleChannelIds(c);
       const records = await c.var.registry.listEpisodes(channel.channelId, {
         limit,
         relatedScope: [...eligible],
       });
 
-      // Read receipts belong to eligible callers only (docs/PRD.md §4.4); everyone else receives
-      // the same summaries with nothing recorded, so a first follow still starts unread.
-      const recordsReceipts = eligible.has(channel.channelId);
-      let alreadyRead = new Set<string>();
-      if (recordsReceipts) {
-        const returned = records
-          .filter((record) => record.summary !== null)
-          .map((record) => record.videoId);
-        if (returned.length > 0) {
-          alreadyRead = new Set(await c.var.user.readVideoIds(returned));
-          await c.var.user.markRead(returned);
-        }
-      }
+      // Read state belongs to eligible callers only (docs/PRD.md §4.4); everyone else receives the
+      // same summaries with no receipt of their own to report.
+      const summaries = eligible.has(channel.channelId)
+        ? records.filter((record) => record.summary !== null)
+        : [];
+      const read = await readSubset(
+        c,
+        summaries.map((record) => record.videoId),
+      );
 
       return c.json<EpisodesResponse>({
         episodes: records.map((record) =>
           toEpisode(record, {
-            wasUnread:
-              recordsReceipts && record.summary !== null
-                ? !alreadyRead.has(record.videoId)
+            read:
+              eligible.has(channel.channelId) && record.summary !== null
+                ? read.has(record.videoId)
                 : undefined,
           }),
         ),
+      });
+    },
+  )
+
+  .get(
+    "/:id/episodes/:videoId",
+    describeRoute({
+      tags: ["episodes"],
+      summary: "Get one episode",
+      description:
+        "One episode of a channel with its summary, related titles filtered to the caller's eligible channels, and `processing` — the reading view's deep link, answering on a cold load. An eligible caller also receives `read`. A pure read: it records nothing.",
+      responses: {
+        200: jsonResponse(EpisodeResponseSchema, "The episode."),
+        ...errorResponses({ notFound: true }),
+      },
+    }),
+    validate("param", EpisodeParamsSchema),
+    async (c) => {
+      const { id, videoId } = c.req.valid("param");
+      await requireChannel(c, id);
+      const eligible = await eligibleChannelIds(c);
+      const record = await c.var.registry.getEpisode(id, videoId, [
+        ...eligible,
+      ]);
+      if (!record) throw new DomainError("NOT_FOUND", "episode not found");
+      const reports = eligible.has(id) && record.summary !== null;
+      const read = reports
+        ? (await readSubset(c, [videoId])).has(videoId)
+        : undefined;
+      return c.json<EpisodeResponse>({ episode: toEpisode(record, { read }) });
+    },
+  )
+
+  .post(
+    "/:id/episodes/:videoId/read",
+    describeRoute({
+      tags: ["episodes"],
+      summary: "Mark a summary read",
+      description:
+        "Records the caller's read receipt, the one write that marks a summary done (docs/PRD.md §4.4). Idempotent: an existing receipt keeps its original time. Only an eligible caller, an active follower of an approved channel, has receipts; anyone else records nothing and gets 404.",
+      responses: {
+        200: jsonResponse(EpisodeResponseSchema, "The episode, now read."),
+        ...errorResponses({
+          notFound: true,
+          conflict: "The episode has no summary to mark read",
+        }),
+      },
+    }),
+    validate("param", EpisodeParamsSchema),
+    async (c) => {
+      const { id, videoId } = c.req.valid("param");
+      const record = await requireReadableSummary(c, id, videoId);
+      await c.var.user.markRead([videoId]);
+      return c.json<EpisodeResponse>({
+        episode: toEpisode(record, { read: true }),
+      });
+    },
+  )
+
+  .delete(
+    "/:id/episodes/:videoId/read",
+    describeRoute({
+      tags: ["episodes"],
+      summary: "Undo a read receipt",
+      description:
+        "Removes the caller's read receipt, so the summary returns to the queue. Idempotent. Only an eligible caller has receipts; anyone else removes nothing and gets 404. The web offers this from History, where the row is visible (docs/design.md §4).",
+      responses: {
+        200: jsonResponse(EpisodeResponseSchema, "The episode, now unread."),
+        ...errorResponses({
+          notFound: true,
+          conflict: "The episode has no summary to mark read",
+        }),
+      },
+    }),
+    validate("param", EpisodeParamsSchema),
+    async (c) => {
+      const { id, videoId } = c.req.valid("param");
+      const record = await requireReadableSummary(c, id, videoId);
+      await c.var.user.clearRead([videoId]);
+      return c.json<EpisodeResponse>({
+        episode: toEpisode(record, { read: false }),
       });
     },
   )
@@ -561,6 +634,51 @@ async function requireChannel(
   const channel = await c.var.registry.getChannel(channelId);
   if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
   return channel;
+}
+
+/** The caller's eligible channels: active follows on approved channels (docs/PRD.md §4.3). */
+async function eligibleChannelIds(c: Ctx): Promise<Set<string>> {
+  return new Set(
+    (await c.var.registry.listEligibleChannels(c.var.identity.email)).map(
+      (channel) => channel.channelId,
+    ),
+  );
+}
+
+/** The caller's receipts among the given summaries; the empty list never crosses to the User DO. */
+async function readSubset(
+  c: Ctx,
+  videoIds: string[],
+): Promise<ReadonlySet<string>> {
+  if (videoIds.length === 0) return new Set<string>();
+  return new Set(await c.var.user.readVideoIds(videoIds));
+}
+
+/**
+ * The summary a receipt can be written for: an episode of this channel, available with a stored
+ * summary, and the caller eligible to read it. An ineligible caller gets 404 and writes nothing,
+ * exactly as the implicit rule did (docs/specs/design-phase.md §4.3).
+ */
+async function requireReadableSummary(
+  c: Ctx,
+  channelId: string,
+  videoId: string,
+) {
+  const eligible = await eligibleChannelIds(c);
+  if (!eligible.has(channelId)) {
+    throw new DomainError("NOT_FOUND", "episode not found");
+  }
+  const record = await c.var.registry.getEpisode(channelId, videoId, [
+    ...eligible,
+  ]);
+  if (!record) throw new DomainError("NOT_FOUND", "episode not found");
+  if (record.summary === null) {
+    throw new DomainError(
+      "INVALID_STATE",
+      `only a summary can be marked read (status: ${record.status})`,
+    );
+  }
+  return record;
 }
 
 async function isFollowing(c: Ctx, channelId: string): Promise<boolean> {

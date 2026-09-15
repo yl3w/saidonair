@@ -57,6 +57,11 @@ export class UserDO extends DurableObject<Env> {
     );
   }
 
+  /** Removes receipts for the given summaries; returns how many rows went. */
+  clearRead(videoIds: string[]): number {
+    return this.#transaction(() => reads.clearRead(this.#sql, videoIds));
+  }
+
   /** The already-read subset of `videoIds`. */
   readVideoIds(videoIds: string[]): string[] {
     return reads.readVideoIds(this.#sql, videoIds);

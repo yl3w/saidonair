@@ -314,7 +314,7 @@ describe("channel and catalog routes", () => {
     ).toBe(400);
   });
 
-  it("serves every caller the same episodes and records receipts for eligible callers only", async () => {
+  it("serves every caller the same episodes, reports read state, and records nothing", async () => {
     await seedCatalog();
     await registry().recordFollow(ALICE, CHANNEL_A);
 
@@ -327,10 +327,10 @@ describe("channel and catalog routes", () => {
       VIDEO_C,
     ]);
     // Bob follows nothing: he still receives the summaries and `processing` (the API enforces no
-    // authorization), related titles filtered to his empty eligible set, and no receipt of his own.
+    // authorization), related titles filtered to his empty eligible set, and no read state at all.
     for (const episode of bobEpisodes) {
       expect(episode.related).toEqual([]);
-      expect(episode).not.toHaveProperty("wasUnread");
+      expect(episode).not.toHaveProperty("read");
       expect(episode).toHaveProperty("processing");
     }
     expect(bobEpisodes[0]?.summary).toMatchObject({ format: "structured" });
@@ -346,24 +346,42 @@ describe("channel and catalog routes", () => {
       videoId: VIDEO_A,
       summary: { format: "structured" },
       related: [{ videoId: VIDEO_B, title: `Episode ${VIDEO_B}` }],
-      wasUnread: true,
+      read: false,
     });
 
+    // Fetching is a pure read (docs/PRD.md §4.4): a second fetch says unread again, and the User DO
+    // holds no receipt. Only POST …/read writes one.
     const second = await call(ALICE, "GET", `/channels/${CHANNEL_A}/episodes`);
     const secondEpisodes = second.json.episodes as Json[];
-    expect(secondEpisodes.map((e) => e.wasUnread)).toEqual([
+    expect(secondEpisodes.map((e) => e.read)).toEqual([
       false,
       false,
       undefined,
     ]);
+    expect(await userDO(ALICE).readVideoIds([VIDEO_A, VIDEO_B])).toEqual([]);
 
-    // Bob's receipts are his own, and his earlier non-follower view recorded none: following now,
-    // everything is still new to him.
+    await call(
+      ALICE,
+      "POST",
+      `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+    );
+    const afterRead = await call(
+      ALICE,
+      "GET",
+      `/channels/${CHANNEL_A}/episodes`,
+    );
+    expect((afterRead.json.episodes as Json[]).map((e) => e.read)).toEqual([
+      true,
+      false,
+      undefined,
+    ]);
+
+    // Bob's receipts are his own, and nobody's reading has touched them.
     await registry().recordFollow(BOB, CHANNEL_A);
     const bobAgain = await call(BOB, "GET", `/channels/${CHANNEL_A}/episodes`);
-    expect((bobAgain.json.episodes as Json[]).map((e) => e.wasUnread)).toEqual([
-      true,
-      true,
+    expect((bobAgain.json.episodes as Json[]).map((e) => e.read)).toEqual([
+      false,
+      false,
       undefined,
     ]);
 
@@ -422,21 +440,102 @@ describe("channel and catalog routes", () => {
     ).toBe(404);
   });
 
-  it("returns a declined channel's summaries to a follower without recording receipts", async () => {
+  it("returns a declined channel's summaries to a follower without read state", async () => {
     const stub = await seedCatalog();
     await registry().recordFollow(ALICE, CHANNEL_A);
     await stub.declineChannel(OWNER, CHANNEL_A, { explanation: "withdrawn" });
 
-    // The web hides these from readers (PRD §7); the API returns them and, since the channel is not
-    // eligible, records nothing, so the summaries are still unread once it is approved again.
+    // The web hides these from readers (PRD §7); the API returns them, and a declined channel is
+    // not eligible, so there is no read state to report and no receipt to write.
     const alice = await call(ALICE, "GET", `/channels/${CHANNEL_A}/episodes`);
     expect(alice.status).toBe(200);
     const episodes = alice.json.episodes as Json[];
     expect(episodes[0]?.summary).toMatchObject({ format: "structured" });
     for (const episode of episodes) {
-      expect(episode).not.toHaveProperty("wasUnread");
+      expect(episode).not.toHaveProperty("read");
     }
+    expect(
+      (
+        await call(
+          ALICE,
+          "POST",
+          `/channels/${CHANNEL_A}/episodes/${VIDEO_A}/read`,
+        )
+      ).status,
+    ).toBe(404);
     expect(await userDO(ALICE).readVideoIds([VIDEO_A, VIDEO_B])).toEqual([]);
+  });
+
+  it("answers one episode, and records or undoes its receipt for an eligible caller only", async () => {
+    await seedCatalog();
+    await registry().recordFollow(ALICE, CHANNEL_A);
+    const path = `/channels/${CHANNEL_A}/episodes/${VIDEO_A}`;
+
+    // The reading view's deep link: one episode with its summary, related titles in the caller's
+    // scope, `processing`, and read state — and it records nothing.
+    const cold = await call(ALICE, "GET", path);
+    expect(cold.status).toBe(200);
+    expectShape(EpisodeResponseSchema, cold.json);
+    expect(cold.json.episode).toMatchObject({
+      videoId: VIDEO_A,
+      summary: { format: "structured" },
+      related: [{ videoId: VIDEO_B, title: `Episode ${VIDEO_B}` }],
+      read: false,
+    });
+    expect(await userDO(ALICE).readVideoIds([VIDEO_A])).toEqual([]);
+
+    const marked = await call(ALICE, "POST", `${path}/read`);
+    expect(marked.status).toBe(200);
+    expectShape(EpisodeResponseSchema, marked.json);
+    expect(marked.json.episode).toMatchObject({ videoId: VIDEO_A, read: true });
+    expect(await userDO(ALICE).readVideoIds([VIDEO_A])).toEqual([VIDEO_A]);
+    // Idempotent, and it keeps the original time.
+    expect((await call(ALICE, "POST", `${path}/read`)).status).toBe(200);
+    expect(((await call(ALICE, "GET", path)).json.episode as Json).read).toBe(
+      true,
+    );
+
+    const undone = await call(ALICE, "DELETE", `${path}/read`);
+    expect(undone.status).toBe(200);
+    expect(undone.json.episode).toMatchObject({ read: false });
+    expect(await userDO(ALICE).readVideoIds([VIDEO_A])).toEqual([]);
+    expect((await call(ALICE, "DELETE", `${path}/read`)).status).toBe(200);
+
+    // Bob follows nothing: he reads the episode like everyone else, with no read state, and his
+    // receipt calls write nothing.
+    const bob = await call(BOB, "GET", path);
+    expect(bob.status).toBe(200);
+    expect(bob.json.episode).not.toHaveProperty("read");
+    expect((await call(BOB, "POST", `${path}/read`)).status).toBe(404);
+    expect((await call(BOB, "DELETE", `${path}/read`)).status).toBe(404);
+    expect(await userDO(BOB).readVideoIds([VIDEO_A])).toEqual([]);
+
+    // A summary is the only thing a receipt can name; VIDEO_C is failed.
+    expect(
+      (
+        await call(
+          ALICE,
+          "POST",
+          `/channels/${CHANNEL_A}/episodes/${VIDEO_C}/read`,
+        )
+      ).status,
+    ).toBe(409);
+    // Unknown video, unknown channel, and a video of another channel are all 404.
+    expect(
+      (await call(ALICE, "GET", `/channels/${CHANNEL_A}/episodes/zzzzzzzzzzz`))
+        .status,
+    ).toBe(404);
+    expect(
+      (await call(ALICE, "GET", `/channels/${CHANNEL_D}/episodes/${VIDEO_A}`))
+        .status,
+    ).toBe(404);
+    expect(
+      (await call(ALICE, "GET", `/channels/${CHANNEL_C}/episodes/${VIDEO_A}`))
+        .status,
+    ).toBe(404);
+    expect(
+      (await call(ALICE, "GET", `/channels/${CHANNEL_A}/episodes/bad`)).status,
+    ).toBe(400);
   });
 
   it("exposes discovery runs as a channel sub-resource", async () => {

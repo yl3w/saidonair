@@ -10,7 +10,7 @@ import { z } from "zod";
  * never re-described where it is used, or the registry would hold two schemas with one id.
  *
  * The API enforces no authorization (PRD §2, §9): every caller receives every shape in full, and only
- * the caller's own relationships (`following`, `unreadCount`, `wasUnread`) vary.
+ * the caller's own relationships (`following`, `unreadCount`, `read`) vary.
  */
 
 /** Unix time in milliseconds, as every timestamp in the API. */
@@ -593,8 +593,9 @@ export type EpisodeProcessing = z.infer<typeof EpisodeProcessingSchema>;
 
 /**
  * An episode of a catalog channel, the same for every caller: summary, related titles (filtered to
- * the caller's eligible channels), and `processing`. `wasUnread` accompanies a summary returned to
- * an eligible caller and reports their receipt state before this response recorded one.
+ * the caller's eligible channels), and `processing`. `read` accompanies a summary returned to an
+ * eligible caller and describes the row, not the request: reading never records a receipt
+ * (docs/PRD.md §4.4), so only `POST …/read` changes it.
  */
 export const EpisodeSchema = z
   .object({
@@ -617,10 +618,10 @@ export const EpisodeSchema = z
     related: z
       .array(RelatedEpisodeSchema)
       .describe("Already filtered to the caller's eligible channels."),
-    wasUnread: z
+    read: z
       .boolean()
       .describe(
-        "For an eligible caller (active follower of an approved channel) with a returned summary: whether they had no read receipt before this response recorded one. Absent for everyone else; their receipts are never touched.",
+        "For an eligible caller (active follower of an approved channel) with a returned summary: whether they have a read receipt for it. Absent for everyone else. No read route writes one; `POST /channels/{id}/episodes/{videoId}/read` does.",
       )
       .optional(),
     processing: EpisodeProcessingSchema,
@@ -628,7 +629,7 @@ export const EpisodeSchema = z
   .meta({
     id: "Episode",
     description:
-      "An episode of a catalog channel, the same for every caller: summary, related titles filtered to the caller's eligible channels, and `processing`. `wasUnread` accompanies a summary returned to an eligible caller.",
+      "An episode of a catalog channel, the same for every caller: summary, related titles filtered to the caller's eligible channels, and `processing`. `read` accompanies a summary returned to an eligible caller.",
   });
 export type Episode = z.infer<typeof EpisodeSchema>;
 
@@ -642,10 +643,11 @@ export const EpisodesResponseSchema = z
   });
 export type EpisodesResponse = z.infer<typeof EpisodesResponseSchema>;
 
-/** `POST /channels/:id/episodes/:videoId/skip`, and Retry until M3 returns the attempt. */
+/** One episode: the single-episode read, the two read-receipt writes, and skip. */
 export const EpisodeResponseSchema = z.object({ episode: EpisodeSchema }).meta({
   id: "EpisodeResponse",
-  description: "`POST /channels/:id/episodes/:videoId/skip`",
+  description:
+    "`GET /channels/:id/episodes/:videoId`, `POST` and `DELETE /channels/:id/episodes/:videoId/read`, `POST /channels/:id/episodes/:videoId/skip`",
 });
 export type EpisodeResponse = z.infer<typeof EpisodeResponseSchema>;
 

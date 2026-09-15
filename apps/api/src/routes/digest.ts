@@ -16,8 +16,8 @@ const MAX_WINDOW_MS = 7 * DAY_MS;
 
 /**
  * The caller's digest: available episodes with summaries from eligible follows, newest first.
- * Returning a summary records the caller's read receipt (docs/PRD.md §4.4);
- * `wasUnread` tells the UI which items were new before this response.
+ * A pure read: it records nothing (docs/PRD.md §4.4, changed 2026-09-14), and `read` reports the
+ * receipt each row already carries.
  */
 export const digestRoutes = new Hono<AppEnv>().get(
   "/",
@@ -25,7 +25,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
     tags: ["digest"],
     summary: "The caller's digest",
     description:
-      "Available episodes with summaries from eligible follows (active follows on approved channels), newest first by publication time until M3 switches the basis to `summaryAvailableAt`. The window defaults to the last 24 hours and is clamped to 7 days. Returning a summary records the caller's read receipt; `wasUnread` says which items were new.",
+      "Available episodes with summaries from eligible follows (active follows on approved channels), newest first by `summaryAvailableAt`. The window defaults to the last 24 hours and is clamped to 7 days. A pure read: no receipt is recorded, and `read` reports the one each row already carries.",
     responses: {
       200: jsonResponse(
         DigestResponseSchema,
@@ -54,19 +54,19 @@ export const digestRoutes = new Hono<AppEnv>().get(
       eligible.map((channel) => channel.channelId),
       since,
     );
-    const returned = records.map((record) => record.videoId);
-    let alreadyRead = new Set<string>();
-    if (returned.length > 0) {
-      alreadyRead = new Set(await c.var.user.readVideoIds(returned));
-      await c.var.user.markRead(returned);
-    }
+    const read =
+      records.length === 0
+        ? new Set<string>()
+        : new Set(
+            await c.var.user.readVideoIds(
+              records.map((record) => record.videoId),
+            ),
+          );
 
     return c.json<DigestResponse>({
       since,
       episodes: records.map((record) =>
-        toEpisode(record, {
-          wasUnread: !alreadyRead.has(record.videoId),
-        }),
+        toEpisode(record, { read: read.has(record.videoId) }),
       ),
     });
   },

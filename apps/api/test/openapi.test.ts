@@ -40,6 +40,9 @@ const OPERATIONS = [
   "post /channels/{id}/resume",
   "get /channels/{id}/followers",
   "get /channels/{id}/episodes",
+  "get /channels/{id}/episodes/{videoId}",
+  "post /channels/{id}/episodes/{videoId}/read",
+  "delete /channels/{id}/episodes/{videoId}/read",
   "post /channels/{id}/episodes/{videoId}/retry",
   "post /channels/{id}/episodes/{videoId}/skip",
   "get /channels/{id}/runs",
@@ -258,9 +261,12 @@ describe("the 2026-09-12 restart", () => {
       expect.arrayContaining([
         "waitReason",
         "summaryAvailableAt",
+        "read",
         "processing",
       ]),
     );
+    // Renamed on 2026-09-15: the field describes the row, not the request that fetched it.
+    expect(properties("Episode")).not.toContain("wasUnread");
     expect(component(doc, "ProcessingIntent")?.enum).toEqual([
       "publish",
       "replace",

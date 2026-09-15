@@ -500,11 +500,16 @@ export function listDue(sql: SqlStorage, now: number): EpisodeRecord[] {
   return complete(sql, rows, []);
 }
 
-/** One episode of one channel, with processing detail but no related titles. */
+/**
+ * One episode of one channel, with processing detail. Related titles are resolved only within
+ * `relatedScope`, the caller's eligible channels; the empty default is the ingestion paths, which
+ * never show them.
+ */
 export function getEpisode(
   sql: SqlStorage,
   channelId: string,
   videoId: string,
+  relatedScope: readonly string[] = [],
 ): EpisodeRecord | null {
   const row = sql
     .exec<EpisodeRow>(
@@ -513,7 +518,7 @@ export function getEpisode(
       videoId,
     )
     .toArray()[0];
-  return row ? (complete(sql, [row], [])[0] ?? null) : null;
+  return row ? (complete(sql, [row], relatedScope)[0] ?? null) : null;
 }
 
 /**

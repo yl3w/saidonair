@@ -263,12 +263,20 @@ export class RegistryDO extends DurableObject<Env> {
     return episodes.listDue(this.#sql, requireTimestamp(now, "now"));
   }
 
-  /** One episode of one channel with processing detail, or null; related titles are not resolved. */
-  getEpisode(channelId: string, videoId: string): EpisodeRecord | null {
+  /**
+   * One episode of one channel with processing detail, or null. Related titles are resolved within
+   * `relatedScope` (the caller's eligible channels) and left out when it is omitted.
+   */
+  getEpisode(
+    channelId: string,
+    videoId: string,
+    relatedScope?: string[],
+  ): EpisodeRecord | null {
     return episodes.getEpisode(
       this.#sql,
       requireChannelId(channelId),
       requireVideoId(videoId),
+      relatedScope === undefined ? [] : requireChannelIds(relatedScope),
     );
   }
 

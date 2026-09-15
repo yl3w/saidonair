@@ -9,10 +9,11 @@ import type { EpisodeRecord } from "../do/registry/types";
 
 export type EpisodeView = {
   /**
-   * The caller's receipt state before this response, when the route recorded one. Receipts exist
-   * only for eligible callers, an active follower of an approved channel (docs/PRD.md §4.4).
+   * Whether the caller has a read receipt for this summary. Receipts exist only for eligible
+   * callers, an active follower of an approved channel, and only an explicit write records one
+   * (docs/PRD.md §4.4); omitted for everyone else.
    */
-  wasUnread?: boolean;
+  read?: boolean;
 };
 
 /**
@@ -38,7 +39,7 @@ export function toEpisode(
     related: record.related,
     processing: record.processing,
   };
-  if (view.wasUnread !== undefined) episode.wasUnread = view.wasUnread;
+  if (view.read !== undefined) episode.read = view.read;
   return episode;
 }
 
