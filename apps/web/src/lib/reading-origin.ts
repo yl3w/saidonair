@@ -7,10 +7,10 @@
 // where a reader was in a list is not something the product needs to know, and two tabs reading as
 // two people must not tread on each other's place.
 //
-// The return anchors on the **row**, never on a pixel offset. An offset is wrong the moment the
-// density switch changes every row's height, wrong when a page of "Show more" has not been
-// re-fetched, and wrong when the row itself has left the queue for having been read. The row's own
-// id survives all three; when the row is genuinely gone, its day heading is still there.
+// The return anchors on the **row**, never on a pixel offset. An offset is wrong when a page of
+// "Show more" has not been re-fetched, and wrong when the row itself has left the queue for having
+// been read. The row's own id survives both; when the row is genuinely gone, its day heading is
+// still there.
 
 import { useEffect, useRef } from "preact/hooks";
 

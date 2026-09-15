@@ -107,7 +107,7 @@ sentences. The split is the fastest way to tell a reader what is content and wha
 | Screen title | 27 px serif 600, `-0.01em` | Queue, Sources, Curate |
 | Section head | 18–19 px serif 600 | day headers, chat titles |
 | Row title, full | 20 px serif 600, 1.25 | 17 px on a phone |
-| Row title, compact | 16 px serif 600, one line, ellipsis | the density switch trades the excerpt, never the title |
+| Row title, compact | 16 px serif 600 | a channel's name in a list — Sources, a feed just verified |
 | Lede | 19 px serif, 1.58, `--ink-2` | the executive summary on the reading view |
 | Body | 17 px serif, 1.55 | takeaways, chat answers |
 | Excerpt | 15 px serif, 1.5, `--ink-2` | three lines maximum in a row |
@@ -122,8 +122,8 @@ so they get the floor, not an exception below it.
 ### 2.3 Space, shape, and line
 
 A 4 px base. Page padding 32 px desktop, 20 px phone. The reading column is 680 px; list columns are 760 px; the
-right rail is 232 px, or 288 px when it holds a calendar. Rows are 18 px of vertical padding at full density and
-9 px compact. Sections are 20–26 px apart.
+right rail is 232 px, or 288 px when it holds a calendar. Rows are 18 px of vertical padding — one height, in
+every list that draws them (§9). Sections are 20–26 px apart.
 
 Radii: 3 px on controls, 4 px on cards and inputs, 6 px on a modal, 50% on avatars. Borders are 1 px `--edge`; row
 rules are 1 px `--rule`. One shadow, and only on things that float: popovers, sheets, modals.
@@ -281,6 +281,11 @@ the executive summary as the excerpt; a meta line of takeaway count and episode 
 **in a mixed list**; and, in a mixed list, the channel closing the row on its own line in the same label. A check at
 the right marks it done without opening it. The excerpt is always the executive summary, never a takeaway.
 
+**One row, in every list that draws one** (2026-09-15, PRD §9). The queue, a day of History and a channel's page
+show the same shape at the same height; there is no second, denser form of it. A long list answers its length by
+paging, not by shrinking its rows — the row is what the reader came for, and the control that shrank it was on one
+screen out of three.
+
 **A heading is when it reached the reader; a row is when it was published.** The first is a fact about the pipeline
 and structures the pile; the second is a fact about the episode and belongs on it (2026-09-15, PRD §9). A row never
 states its date twice, so nothing about publication appears in the meta line.
@@ -408,8 +413,8 @@ understand.
   nowhere else.
 - **A screen gives the reader back to where they came from.** Anything opened out of a list returns to that list, at
   the row, and says which list it is returning to. Where the reader was is remembered by the **row's identity**,
-  never by a scroll offset: a density switch, an unfetched page, or the row leaving the list all move the pixels
-  and none of them moves the row.
+  never by a scroll offset: an unfetched page of "Show more", or the row leaving the list, moves the pixels and
+  neither moves the row.
 - **Filters are never sticky across sessions.** A quiet screen must never be a filter someone forgot they set.
 - **Nothing is written by looking.** Opening a summary, following a deep link, or paging through history records
   nothing. An explicit Done is the only write.
@@ -428,7 +433,7 @@ What changes as the catalog grows. Design the second column before you ship the 
 | The queue | scroll | fifty at a time behind a Show more, to the end of the range |
 | Days | a list of days | a five-week calendar, whose height does not grow |
 | A channel's history | scroll | paging by year |
-| Rows | full, with an excerpt | a density switch that drops the excerpt, never the title |
+| Rows | full, with an excerpt | the same row — length is answered by paging, not by shrinking it (§9) |
 | Chats | a rail | the rail groups by recency and gains search |
 | A table | rows | status filters and a sorted column |
 
@@ -503,7 +508,8 @@ and monograms.
 **Reversed 2026-09-15:** §2.7's "the reading surface, and only the reading surface" — the reader's theme, type and
 size now apply to every page. The three palettes are in §2.7 and were measured before they were applied. And
 `Done`'s advance to the next unread — the reading column now returns the reader to the list they opened the summary
-from, and offers `Done` only where there is no receipt yet (§3, §4; PRD §9).
+from, and offers `Done` only where there is no receipt yet (§3, §4; PRD §9). And the queue's **density switch**,
+which was the only place a summary row had two forms — the row now has one shape everywhere (§3, §5; PRD §9).
 
 **Open, and yours to close if you get there first:**
 

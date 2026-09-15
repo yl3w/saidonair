@@ -644,8 +644,8 @@ somewhere extra to go.
   arrival time, no reading-time estimate, and no row says
   "unread": every row here is, so the word would be a constant rather than the distinction it draws in a mixed list
   (§9, 2026-09-15). A check on the row marks it done without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
-  sticky across sessions; a density switch trades the excerpt, never the title; a rail lists the days still holding
-  something. **It holds everything waiting, however much that is**: pages of fifty with a Show more, to the end of
+  sticky across sessions, and a rail lists the days still holding
+  something; the rows are the one shape every list draws, with no denser form (§9, 2026-09-15). **It holds everything waiting, however much that is**: pages of fifty with a Show more, to the end of
   the range, never a hand-off to History at row fifty (corrected 2026-09-15, §9). It ends by saying what is
   waiting — "That is all 312 unread summaries", over a link reading "Browse all 4,000 in History" — rather than
   fading out; **the count in the line is what is here**, and History's is named only when it is larger (§9,
@@ -917,7 +917,8 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the glyph, what arrived that day is the number beneath it, and a tint marks a day still holding something unread.
   Today, the open day, a day with nothing, and keyboard focus are four distinct treatments; each cell carries its full
   date and counts as its accessible name, and arrow keys walk the grid. A **density switch** trades the excerpt away, never the
-  title, so a heavy day fits one screen. Counts can be switched off entirely, for a reader who would rather the queue
+  title, so a heavy day fits one screen — **withdrawn 2026-09-15** (below), the queue having been the only list that
+  ever had one. Counts can be switched off entirely, for a reader who would rather the queue
   did not keep score. **Every screen is designed at two sizes** — a handful of follows and thirty, a few chats and
   forty — because volume, not layout, is what breaks these screens: the controls that carry a long list (search, a
   sort order, status tabs, pagination, a sheet on a phone) are invisible at the size a mockup flatters. This also retires Archive as a separate idea: with days kept,
@@ -1098,8 +1099,8 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   four-minute read; what it cost is the queue visibly getting shorter — the only progress this product shows — and
   the "You are through everything" ending, which a reader mostly arrived at sideways. The origin is kept per tab in
   the browser and never reaches the API, like every other view preference (§7). The return anchors on **the row's
-  own id, never a scroll offset**, which the density switch, an unfetched page of "Show more", and the row leaving
-  the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
+  own id, never a scroll offset**, which an unfetched page of "Show more" and the row leaving the queue for having
+  been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
 - **Owner actions say what they do, and their form says what kind of act they are — decided 2026-09-15.** Three
@@ -1193,6 +1194,19 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **The summary row has one shape — decided 2026-09-15.** Three lists draw a summary row — the queue, a day of
+  History, a channel's own page — and only the queue offered a second, compact form of it, which dropped the
+  excerpt and halved the row's padding so that more of a heavy day fit one screen. One list in three behaving
+  differently is a difference with nothing behind it, and the trade was the wrong way round: **the excerpt is the
+  row's content**, the three lines that say whether this summary is worth opening, so a compact row is a title, a
+  date and two counts — more rows on the screen, each of them worth less, and a reader who has to open things to
+  find out what they are. What a long list owes is **paging**, which this queue already does fifty at a time to the
+  end of the range, and a way for rows to leave, which the check on the row already is. It cost a second control in
+  the header too, sitting beside the channel filter as though the two were the same kind of thing: one narrows what
+  is in the list, the other was a preference about how it looked. `DensitySwitch` is deleted and the `density` prop
+  with it; the 16 px `--text-row-compact` step stays, because Sources and a just-verified feed name a channel at
+  that size. Unchanged, because it never rested on the switch alone: a return anchors on **the row's own id**, which
+  an unfetched page and a row leaving the list still invalidate on their own.
 - **The secondary ink ramp is darkened — decided 2026-09-15.** The palette put its **palest colour on its smallest
   type**: `--ink-3` carries the 12 px uppercase label and the 12.5 px meta line — the metadata, the Curate metrics,
   the calendar's counts — and measured 5.12:1, while `--owner` at 4.92:1 carried the owner's marks at the same size.

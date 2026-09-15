@@ -2,14 +2,9 @@ import type { Episode } from "@media-digest/shared";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { api } from "../api";
 import { ChannelFilter, type FilterChannel } from "../components/ChannelFilter";
-import { DensitySwitch } from "../components/DensitySwitch";
 import { Page } from "../components/Page";
 import { Retry } from "../components/Retry";
-import {
-  type Density,
-  SummaryRow,
-  SummaryRowSkeleton,
-} from "../components/SummaryRow";
+import { SummaryRow, SummaryRowSkeleton } from "../components/SummaryRow";
 import {
   actionErrorCopy,
   browseHistoryCopy,
@@ -44,7 +39,6 @@ export function Queue() {
  * been dealt with into what has not (owner decision 2026-09-15, docs/PRD.md §9).
  */
 function QueueScreen() {
-  const [density, setDensity] = useState<Density>("full");
   const [channelIds, setChannelIds] = useState<ReadonlySet<string>>(new Set());
   const showCounts = readSettings().showCounts;
 
@@ -98,7 +92,6 @@ function QueueScreen() {
             onChange={setChannelIds}
           />
         )}
-        <DensitySwitch value={density} onChange={setDensity} />
       </header>
 
       {queue.status === "ready" && queue.error !== null && (
@@ -108,7 +101,7 @@ function QueueScreen() {
       {queue.status === "loading" && (
         <div class="mt-6">
           {[0, 1, 2].map((n) => (
-            <SummaryRowSkeleton key={n} density={density} />
+            <SummaryRowSkeleton key={n} />
           ))}
         </div>
       )}
@@ -155,7 +148,6 @@ function QueueScreen() {
                 key={episode.episodeId}
                 episode={episode}
                 list="mixed"
-                density={density}
                 busy={queue.busy.has(episode.episodeId)}
                 state={false}
                 onOpen={() =>

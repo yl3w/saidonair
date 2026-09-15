@@ -5,8 +5,6 @@ import { rowAnchorId } from "../lib/reading-origin";
 import { Icon } from "./Icon";
 import { MetaLine } from "./MetaLine";
 
-export type Density = "full" | "compact";
-
 /**
  * One summary as a list shows it (docs/design.md §3): the title, up to three lines of the executive
  * summary — always the executive summary, never a takeaway — and a meta line. A check at the right
@@ -20,7 +18,12 @@ export type Density = "full" | "compact";
  * survives where it identifies rather than repeats — a Sources row, a channel's header, the
  * reader's own monogram.
  *
- * Compact trades the excerpt, never the title.
+ * **One shape, in all three lists.** The queue used to offer a second, denser form of this row that
+ * dropped the excerpt to fit more of a heavy day on one screen, and it was the only list that did:
+ * History and a channel's page drew the full row whatever their length. One row in three lists and
+ * two in the fourth is a difference with nothing behind it, so the compact form is gone (owner
+ * decision 2026-09-15, docs/PRD.md §9). What a long list owes is paging, which the queue already
+ * does.
  *
  * `onOpen` fires as the title is followed, so the list can record itself as the way back
  * (lib/reading-origin.ts). The row carries its anchor id for the same reason: it is what the return
@@ -46,7 +49,6 @@ export type Density = "full" | "compact";
  */
 export function SummaryRow({
   episode,
-  density = "full",
   busy = false,
   state = true,
   list,
@@ -55,7 +57,6 @@ export function SummaryRow({
   onUndo,
 }: {
   episode: Episode;
-  density?: Density;
   busy?: boolean;
   state?: boolean;
   list: "mixed" | "channel";
@@ -82,20 +83,14 @@ export function SummaryRow({
   return (
     <article
       id={rowAnchorId(episode.episodeId)}
-      class={`flex gap-3 border-b border-rule ${density === "full" ? "py-[18px]" : "py-[9px]"}`}
+      class="flex gap-3 border-b border-rule py-[18px]"
     >
       <div class="min-w-0 flex-1">
         <p class="text-label uppercase text-ink-3">
           {fullDate(episode.publishedAt)}
         </p>
 
-        <h3
-          class={`mt-0.5 font-reading font-semibold text-ink ${
-            density === "full"
-              ? "text-row-sm md:text-row"
-              : "truncate text-row-compact"
-          }`}
-        >
+        <h3 class="mt-0.5 font-reading text-row-sm font-semibold text-ink md:text-row">
           <a
             href={`/read/${episode.episodeId}`}
             onClick={() => onOpen?.(episode)}
@@ -104,7 +99,7 @@ export function SummaryRow({
           </a>
         </h3>
 
-        {density === "full" && excerpt !== null && (
+        {excerpt !== null && (
           <p class="mt-1 line-clamp-3 font-reading text-excerpt text-ink-2">
             {excerpt}
           </p>
@@ -149,19 +144,13 @@ export function SummaryRow({
 }
 
 /** Rows of the real row's shape, so a loading queue does not jump when it arrives. */
-export function SummaryRowSkeleton({
-  density = "full",
-}: {
-  density?: Density;
-}) {
+export function SummaryRowSkeleton() {
   return (
-    <div
-      class={`flex gap-3 border-b border-rule ${density === "full" ? "py-[18px]" : "py-[9px]"}`}
-    >
+    <div class="flex gap-3 border-b border-rule py-[18px]">
       <div class="min-w-0 flex-1">
         <div class="skeleton h-3 w-32" />
         <div class="skeleton mt-2 h-5 w-3/4" />
-        {density === "full" && <div class="skeleton mt-2 h-10 w-full" />}
+        <div class="skeleton mt-2 h-10 w-full" />
         <div class="skeleton mt-2 h-3 w-48" />
       </div>
     </div>

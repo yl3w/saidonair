@@ -144,14 +144,14 @@
   --text-row: calc(
     1.25rem *
     var(--reading-scale)
-  ); /* 20 px, a row title at full density */
+  ); /* 20 px, a summary row's title */
   --text-row--line-height: 1.25;
   --text-row-sm: calc(1.0625rem * var(--reading-scale)); /* 17 px, a phone */
   --text-row-sm--line-height: 1.3;
   --text-row-compact: calc(
     1rem *
     var(--reading-scale)
-  ); /* 16 px; the density switch trades the excerpt, never the title */
+  ); /* 16 px, a channel's name in a list: Sources, a feed just verified */
   --text-row-compact--line-height: 1.35;
 
   --text-lede: calc(

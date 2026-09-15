@@ -157,7 +157,9 @@ One route serves both views. `GET /digest` takes:
 day's *contents* are the reader's current eligible follows, so unfollowing a channel removes its rows from every past
 day and refollowing restores them along with their receipts (PRD §4.4).
 
-**Queue** shows only rows with no receipt, grouped by day, with a channel filter, a density switch and a check on
+**Queue** shows only rows with no receipt, grouped by day, with a channel filter, a density switch (**withdrawn
+2026-09-15**, PRD §9: the queue was the only list with one, and a row that drops its excerpt is more rows each worth
+less — a long list pages instead) and a check on
 each row that marks it done without opening it. It ends with what is waiting, not a fade: *That is everything
 waiting — 312 summaries sit in History.* (**Amended 2026-09-15**, PRD §9: that number counted the rows above it
 too, so the line now counts what is here — *That is all 312 unread summaries* — and History's total is named on
