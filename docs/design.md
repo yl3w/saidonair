@@ -232,6 +232,12 @@ first paint, so dark never starts white.
 
 **The frame.** A 56 px top bar: wordmark, then Queue · Sources (and Curate for the owner, desktop only, with
 a count that renders only when something waits), then the reader's email and monogram on the right.
+**A screen that is *about* one object takes its own bar instead** — a way back on the left, that object's own acts
+on the right, and no wordmark and no destinations (2026-09-15, PRD §9). The reading column has always done this;
+a channel's page does too. A destination a reader *navigates to* keeps the nav; a page they *opened something to
+get to* carries the way back out. Back is the browser's own, because that is what "the page I came from" means —
+a remembered path is wrong the moment someone presses the browser's back button — with a real fallback for a
+reader who arrived by a pasted link and has nowhere to return to.
 **Primary navigation carries only what a reader can use** — Chats joins it when M4 builds the screen, and until then
 it is absent rather than present-and-empty, because one destination leading to a placeholder makes the ones that
 work read as unfinished too (owner decision 2026-09-15, PRD §9). Content is

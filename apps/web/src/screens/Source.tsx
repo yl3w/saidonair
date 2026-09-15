@@ -1,7 +1,7 @@
 import type { Channel, Episode } from "@media-digest/shared";
-import { ExternalLink } from "lucide-preact";
+import { ArrowLeft, ExternalLink } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { useRoute } from "preact-iso";
+import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
 import { Avatar } from "../components/Avatar";
 import {
@@ -16,8 +16,10 @@ import {
   SummaryRow,
   SummaryRowSkeleton,
 } from "../components/SummaryRow";
+import { goBack } from "../lib/back";
 import {
   actionErrorCopy,
+  BACK_COPY,
   channelExceptionCopy,
   episodeCountCopy,
   episodePhrase,
@@ -93,7 +95,7 @@ function SourceScreen() {
 
   if (channel.status === "error") {
     return (
-      <Page>
+      <Page bar={<SourceBar channel={null} />}>
         <p class="text-ui text-consequence">
           Couldn't load this channel: {actionErrorCopy(channel.error)}.{" "}
           <a
@@ -121,7 +123,7 @@ function SourceScreen() {
         );
 
   return (
-    <Page>
+    <Page bar={<SourceBar channel={record} />}>
       {record === null ? (
         <div class="skeleton h-16 w-full" />
       ) : (
@@ -208,6 +210,42 @@ function SourceScreen() {
   );
 }
 
+/**
+ * This screen's own bar, in place of the product's nav (docs/design.md §3): a way back, and the one
+ * act that belongs to the whole channel rather than to any row — the way out to YouTube. It is the
+ * reading column's bar, for the same reason: a page *about* one object carries that object's acts,
+ * not the product's destinations.
+ *
+ * Back is the browser's, which is what "the page I came from" means; a reader who opened this URL
+ * directly has no such page, and goes to Sources, which is this channel's home.
+ */
+function SourceBar({ channel }: { channel: Channel | null }) {
+  const { route } = useLocation();
+  return (
+    <header class="sticky top-0 z-20 border-b border-rule bg-ground">
+      <div class="mx-auto flex h-14 w-full items-center gap-2 px-5 md:px-8">
+        <button
+          type="button"
+          class="flex size-11 items-center justify-center text-ink-2"
+          onClick={() => goBack(() => route("/sources"))}
+        >
+          <Icon of={ArrowLeft} size={20} label={BACK_COPY} />
+        </button>
+
+        {channel !== null && (
+          <a
+            class="ml-auto flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
+            href={channel.canonicalUrl}
+          >
+            On YouTube
+            <Icon of={ExternalLink} size={16} />
+          </a>
+        )}
+      </div>
+    </header>
+  );
+}
+
 function Header({
   channel,
   isOwner,
@@ -249,16 +287,6 @@ function Header({
             ))}
           </p>
         </div>
-
-        {/* The way to the source itself, in the bar rather than buried in the meta line — the shape
-            the reading column uses for `Watch` (docs/design.md §3). */}
-        <a
-          class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
-          href={channel.canonicalUrl}
-        >
-          On YouTube
-          <Icon of={ExternalLink} size={16} />
-        </a>
 
         {channel.status !== "declined" && (
           <FollowButton

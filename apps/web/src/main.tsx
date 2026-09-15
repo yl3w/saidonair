@@ -1,6 +1,7 @@
 import { render } from "preact";
 import { useEffect } from "preact/hooks";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
+import { useTrackNavigation } from "./lib/back";
 import { applyReaderSettings, readSettings } from "./lib/settings";
 import { Account } from "./screens/Account";
 import { Curate } from "./screens/Curate";
@@ -13,6 +14,12 @@ import { Source } from "./screens/Source";
 import { Sources } from "./screens/Sources";
 import { SessionProvider } from "./session";
 import "./styles.css";
+
+/** Renders nothing: it exists so a screen with its own bar knows whether back stays in the app. */
+function TrackNavigation() {
+  useTrackNavigation();
+  return null;
+}
 
 /** Unknown paths go to the queue; the session guard sends anyone without an account to `/`. */
 function NotFound() {
@@ -37,6 +44,7 @@ export function App() {
   return (
     <LocationProvider>
       <SessionProvider>
+        <TrackNavigation />
         <Router>
           <Route path="/" component={Account} />
           <Route path="/queue" component={Queue} />

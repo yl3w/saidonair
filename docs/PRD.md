@@ -684,8 +684,9 @@ somewhere extra to go.
   led by its publication date and carries no mark and no channel name** — summarised or not, one shape for the
   whole history (§9, 2026-09-15). Its header carries the mark, the title, and a meta line of how much the channel
   has published and how much of that can be read — "23 episodes · 5 summaries · last summary 3h ago" — with the
-  channel's state printed **only when it is not approved and running**; the way out to YouTube is a `Watch`-shaped
-  link in the bar, not an item in that line (§9, 2026-09-15).
+  channel's state printed **only when it is not approved and running**. The screen carries **its own bar** rather
+  than the nav — a way back on the left, the `Watch`-shaped way out to YouTube on the right — as the reading column
+  does, because it is a page about one object (§9, 2026-09-15).
 - **Account `/account`:** which email is reading and the only Switch account in the product; the reader's type, size
   and theme, which apply to **every page** (§9, 2026-09-15) and are kept in that browser; and a toggle that turns
   every count off. For the owner below the desktop breakpoint, one line saying how many things wait in Curate and
@@ -1093,6 +1094,18 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the attention list, which has room, spells "Check feed" out. Last, the **follower count now sits beside the
   controls** on a channel page rather than appearing for the first time in the confirmation dialog: a consequence
   should be visible before it is chosen, not explained after.
+- **A page about one object carries its own bar — decided 2026-09-15.** The reading column had one from the start;
+  a channel's page now has the same. No wordmark and no destinations: a **way back** on the left, and on the right
+  the one act that belongs to the whole channel rather than to any row, the way out to YouTube, in the shape
+  `Watch` takes on a summary. The rule it generalises is worth stating because the next screen will meet it: a
+  destination a reader **navigates to** keeps the nav; a page they **opened something to get to** carries the way
+  back out. Back is the **browser's own**, not a remembered path — a breadcrumb that records "the previous page" on
+  every route change is wrong the moment someone presses the browser's back button, because the page they just left
+  becomes the one the app would send them to. What history cannot answer is whether there is anywhere to go, so a
+  reader who opened the URL directly, from a pasted link or a bookmark, lands on Sources instead of being thrown
+  out of the product. The cost, and it is real: **the channel page loses the nav, and on a phone the bottom tab
+  bar with it**, so Queue is reached by going back rather than across. The reading column has accepted that trade
+  since the Design phase; this extends it to the one other screen that is about a single object.
 - **A channel's header says what cannot be inferred — decided 2026-09-15.** It led with "Approved", which every
   channel a reader can reach is, so the word was a constant with a label, the same fault as the reading-time
   estimate. **Silence now means approved and running**, and only the states a reader cannot infer speak: "Awaiting

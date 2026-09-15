@@ -166,6 +166,9 @@ export function episodePhrase(episode: Episode): string | null {
   return EPISODE_STATUS_COPY[episode.status];
 }
 
+/** The way back from a screen that carries its own bar; the browser knows where, so it says no more. */
+export const BACK_COPY = "Back";
+
 export const CHANNEL_ID_HELP =
   "On the channel's page open About, then Share channel, then Copy channel ID.";
 

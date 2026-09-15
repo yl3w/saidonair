@@ -20,6 +20,7 @@ export function Page({
   rail,
   railMeasure = "rail",
   desktopOnly = false,
+  bar,
   children,
 }: {
   measure?: keyof typeof MEASURES;
@@ -27,6 +28,12 @@ export function Page({
   railMeasure?: "rail" | "rail-wide";
   /** Curate: dense, consequential and rare, so it is not designed twice (docs/design.md §6). */
   desktopOnly?: boolean;
+  /**
+   * A bar of this screen's own, instead of the product's nav — a way back and the acts that belong
+   * to the one thing on the page, as the reading column has (docs/design.md §3). A screen that is
+   * *about* one object takes it; a destination a reader navigates to keeps the nav.
+   */
+  bar?: ComponentChildren;
   children: ComponentChildren;
 }) {
   const column = (
@@ -47,7 +54,7 @@ export function Page({
   );
   return (
     <div class="min-h-dvh">
-      <Nav />
+      {bar ?? <Nav />}
       <div class="mx-auto w-full px-5 pt-6 pb-28 md:px-8 md:pt-8 md:pb-16 lg:w-fit">
         {rail === undefined ? (
           <div class={`mx-auto ${MEASURES[measure]}`}>{column}</div>
