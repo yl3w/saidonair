@@ -7,6 +7,7 @@ import type {
   ChannelFeed,
   ChannelStatus,
   Episode,
+  EpisodeIngestionAttempt,
   EpisodeSkipReason,
   EpisodeStatus,
   EpisodeSummary,
@@ -263,3 +264,44 @@ export const SOURCE_SORTS = {
   name: "Name",
   followed: "Longest followed",
 } as const;
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * Why Retry is unavailable, on the row rather than in a tooltip: an unavailable control carries its
+ * reason, never a dead grey button (docs/design.md §4). An attempt under an hour old holds the
+ * episode; after that the route reconciles a lost instance itself (docs/PRD.md §4.2 rule 17).
+ */
+export function retryWaitCopy(
+  attempt: EpisodeIngestionAttempt | null,
+  now = Date.now(),
+): string | null {
+  if (attempt === null || attempt.status !== "running") return null;
+  const left = attempt.startedAt + HOUR_MS - now;
+  if (left <= 0) return null;
+  const minutes = Math.max(1, Math.round(left / 60_000));
+  const who =
+    attempt.trigger === "owner_retry" && attempt.requestedByEmail !== null
+      ? `${attempt.requestedByEmail} started this`
+      : "An attempt is running";
+  return `${who}; Retry is available in ${minutes} min`;
+}
+
+/** The decline confirmation names who loses what, not "are you sure" (docs/design.md §4). */
+export function declineQuestion(channel: Channel): string {
+  if (channel.status !== "approved") {
+    return `Decline ${channel.title}? It will be hidden from the catalog and can be approved or requested again at any time.`;
+  }
+  const count = channel.followerCount;
+  if (count === 0) {
+    return `Withdraw ${channel.title}? Nobody follows it, so nobody loses anything; its episodes and summaries are kept, and approving it again brings them back.`;
+  }
+  return `Withdraw ${channel.title}? ${count} ${count === 1 ? "follower" : "followers"} will stop seeing its summaries — in their queue, in their history, and in what chat can answer from — until it is approved again. Nothing is deleted: their read receipts and its episodes are kept, and approving it again restores all of it.`;
+}
+
+/** When a screen is showing numbers it could not refresh (docs/design.md §3, the stale state). */
+export function staleCopy(loadedAt: number | null, now = Date.now()): string {
+  if (loadedAt === null) return "These numbers could not be refreshed.";
+  const minutes = Math.max(1, Math.round((now - loadedAt) / 60_000));
+  return `These numbers could not be refreshed. They are from ${minutes} min ago.`;
+}

@@ -3,9 +3,9 @@ import { useEffect } from "preact/hooks";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 import { Account } from "./screens/Account";
 import { Chats } from "./screens/Chats";
+import { Curate } from "./screens/Curate";
+import { CurateChannel } from "./screens/CurateChannel";
 import { History } from "./screens/History";
-import { Owner } from "./screens/Owner";
-import { OwnerChannel } from "./screens/OwnerChannel";
 import { Queue } from "./screens/Queue";
 import { Reading } from "./screens/Reading";
 import { Settings } from "./screens/Settings";
@@ -45,8 +45,8 @@ export function App() {
           <Route path="/chats" component={Chats} />
           <Route path="/chats/:id" component={Chats} />
           <Route path="/account" component={Settings} />
-          <Route path="/curate" component={Owner} />
-          <Route path="/curate/:id" component={OwnerChannel} />
+          <Route path="/curate" component={Curate} />
+          <Route path="/curate/:id" component={CurateChannel} />
           <Route default component={NotFound} />
         </Router>
       </SessionProvider>

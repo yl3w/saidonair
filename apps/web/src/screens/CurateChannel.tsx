@@ -1,8 +1,10 @@
 import type { Channel, Episode } from "@media-digest/shared";
+import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import { useRoute } from "preact-iso";
 import { api } from "../api";
 import {
+  Action,
   type ChannelAct,
   ChannelStatusActions,
 } from "../components/ChannelStatusActions";
@@ -16,25 +18,25 @@ import {
   failureDetailCopy,
   intentCopy,
   OUTCOME_CODE_COPY,
+  retryWaitCopy,
   runningForCopy,
   runResultCopy,
   SKIP_REASON_COPY,
   WAIT_REASON_COPY,
 } from "../lib/copy";
-import { HOUR } from "../lib/time";
 import { type Load, useLoad } from "../lib/use-load";
 import { Guard } from "../session";
 
-export function OwnerChannel() {
+export function CurateChannel() {
   return (
     <Guard ownerOnly>
-      <OwnerChannelScreen />
+      <CurateChannelScreen />
     </Guard>
   );
 }
 
 /** One channel for the owner (spec §8; PRD §7): management header, discovery runs, episodes, followers. */
-function OwnerChannelScreen() {
+function CurateChannelScreen() {
   const { params } = useRoute();
   const channelId = params.id ?? "";
   const [channel, reloadChannel] = useLoad(
@@ -80,9 +82,11 @@ function OwnerChannelScreen() {
   };
 
   return (
-    <Page measure="wide">
+    <Page measure="wide" desktopOnly>
       <p>
-        <a href="/curate">← Curate</a>
+        <a class="text-ui text-primary" href="/curate">
+          ← Curate
+        </a>
       </p>
       <Section load={channel} label="the channel" reload={reloadChannel}>
         {({ channel: c }) => (
@@ -90,15 +94,19 @@ function OwnerChannelScreen() {
         )}
       </Section>
 
-      <h2>Discovery runs</h2>
+      <h2 class="mt-8 font-serif text-section font-semibold text-ink">
+        Discovery runs
+      </h2>
       <Section load={runs} label="discovery runs" reload={reloadRuns}>
         {({ runs: list }) =>
           list.length === 0 ? (
-            <p class="muted">No runs yet: Start checks the feed now.</p>
+            <p class="mt-2 font-serif text-excerpt text-ink-2">
+              No runs yet: Start checks the feed now.
+            </p>
           ) : (
-            <ul>
+            <ul class="mt-2 text-cell text-ink-2">
               {list.map((run) => (
-                <li key={run.runId}>
+                <li key={run.runId} class="border-b border-rule py-2">
                   {run.kind} · {runResultCopy(run)} · checked{" "}
                   <Time at={run.finishedAt} />
                   {run.episodeLimit !== null && ` · limit ${run.episodeLimit}`}
@@ -109,18 +117,24 @@ function OwnerChannelScreen() {
         }
       </Section>
 
-      <h2>Episodes</h2>
+      <h2 class="mt-8 font-serif text-section font-semibold text-ink">
+        Episodes
+      </h2>
       <Section load={episodes} label="episodes" reload={reloadEpisodes}>
         {({ episodes: list }) =>
           list.length === 0 ? (
-            <p class="muted">No episodes yet.</p>
+            <p class="mt-2 font-serif text-excerpt text-ink-2">
+              No episodes yet.
+            </p>
           ) : (
             <EpisodesTable episodes={list} busy={busy} act={act} />
           )
         }
       </Section>
 
-      <h2>Followers</h2>
+      <h2 class="mt-8 font-serif text-section font-semibold text-ink">
+        Followers
+      </h2>
       <Section load={channel} label="the channel" reload={reloadChannel}>
         {({ channel: c }) =>
           c.status === "requested" ? (
@@ -131,11 +145,13 @@ function OwnerChannelScreen() {
             >
               {({ followers: list }) =>
                 list.length === 0 ? (
-                  <p class="muted">Nobody is waiting.</p>
+                  <p class="mt-2 font-serif text-excerpt text-ink-2">
+                    Nobody is waiting.
+                  </p>
                 ) : (
-                  <ul>
+                  <ul class="mt-2 text-cell text-ink-2">
                     {list.map((f) => (
-                      <li key={f.email}>
+                      <li key={f.email} class="border-b border-rule py-2">
                         {f.email} · followed <Time at={f.followedAt} />
                       </li>
                     ))}
@@ -144,7 +160,9 @@ function OwnerChannelScreen() {
               }
             </Section>
           ) : (
-            <p>{followerLabel(c.followerCount)}</p>
+            <p class="mt-2 text-cell text-ink-2">
+              {followerLabel(c.followerCount)}
+            </p>
           )
         }
       </Section>
@@ -167,9 +185,14 @@ function Header({
   const m = c.management;
   return (
     <>
-      <h1>{c.title}</h1>
-      <p class="muted">
-        <a href={c.canonicalUrl}>{c.channelId}</a> · {channelStateCopy(c)}
+      <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+        {c.title}
+      </h1>
+      <p class="mt-1 text-meta text-ink-3">
+        <a class="text-primary" href={c.canonicalUrl}>
+          {c.channelId}
+        </a>{" "}
+        · {channelStateCopy(c)}
         {" · approved since "}
         <Time at={c.approvedAt} fallback="never" />
         {c.reviewedAt !== null && (
@@ -199,13 +222,16 @@ function Header({
           </>
         )}
       </p>
-      <ChannelStatusActions
-        channel={c}
-        busy={busy}
-        idPrefix="detail-"
-        act={act}
-      />
-      {error && <p class="error">{error}</p>}
+      <div class="mt-3 flex flex-wrap items-center gap-3 border-t border-rule pt-3">
+        <span class="text-label uppercase text-owner">Owner</span>
+        <ChannelStatusActions
+          channel={c}
+          busy={busy}
+          idPrefix="detail-"
+          act={act}
+        />
+      </div>
+      {error !== null && <p class="mt-2 text-ui text-consequence">{error}</p>}
     </>
   );
 }
@@ -225,34 +251,34 @@ function EpisodesTable({
   act: ChannelAct;
 }) {
   return (
-    <div class="table-wrap">
-      <table>
+    <div class="mt-2 overflow-x-auto">
+      <table class="w-full border-collapse text-cell">
         <thead>
-          <tr>
-            <th>Title</th>
-            <th>Published</th>
-            <th>Status</th>
-            <th>Window</th>
-            <th>Attempts</th>
-            <th>Chunks</th>
-            <th>Summary</th>
-            <th>Available since</th>
-            <th>Actions</th>
+          <tr class="border-b border-edge text-left">
+            <th class="py-2 pr-4 font-semibold text-ink-3">Title</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Published</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Status</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Window</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Attempts</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Chunks</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Summary</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Available since</th>
+            <th class="py-2 pr-4 font-semibold text-ink-3">Actions</th>
           </tr>
         </thead>
         <tbody>
           {list.map((e) => {
             const p = e.processing;
             return (
-              <tr key={e.episodeId}>
-                <td class="wrap">
+              <tr key={e.episodeId} class="border-b border-rule align-top">
+                <td class="py-2 pr-4">
                   <a href={`https://youtu.be/${e.episodeId}`}>{e.title}</a>
                 </td>
-                <td>
+                <td class="py-2 pr-4 text-ink-2">
                   <Time at={e.publishedAt} />
                 </td>
-                <td>{statusCopy(e)}</td>
-                <td>
+                <td class="py-2 pr-4 text-ink-2">{statusCopy(e)}</td>
+                <td class="py-2 pr-4 text-ink-2">
                   {p.intent === null ? (
                     "—"
                   ) : (
@@ -265,16 +291,16 @@ function EpisodesTable({
                     </>
                   )}
                 </td>
-                <td>
+                <td class="py-2 pr-4 text-ink-2">
                   {attemptCountCopy(p.attemptCount)}
                   {p.latestAttempt && ` · ${latestAttemptCopy(e)}`}
                 </td>
-                <td>{p.chunkCount ?? "—"}</td>
-                <td>{e.summary?.format ?? "—"}</td>
-                <td>
+                <td class="py-2 pr-4 text-ink-2">{p.chunkCount ?? "—"}</td>
+                <td class="py-2 pr-4 text-ink-2">{e.summary?.format ?? "—"}</td>
+                <td class="py-2 pr-4 text-ink-2">
                   <Time at={e.summaryAvailableAt} />
                 </td>
-                <td>
+                <td class="py-2 pr-4 text-ink-2">
                   <EpisodeActions episode={e} busy={busy} act={act} />
                 </td>
               </tr>
@@ -287,8 +313,10 @@ function EpisodesTable({
 }
 
 /**
- * Retry on every row, disabled only while the latest attempt has been running under an hour (after
- * that the route reconciles a dead instance itself, PRD §4.2 rule 17); Skip on failed rows.
+ * Retry on every row; **Skip on failed rows only** (docs/PRD.md §7), which is why a pending episode
+ * offers Retry alone. An unavailable Retry carries its reason on the row — who started the attempt
+ * that is holding it and when it frees up — rather than being a dead grey control (docs/design.md §4);
+ * after an hour the route reconciles a lost instance itself (docs/PRD.md §4.2 rule 17).
  */
 function EpisodeActions({
   episode: e,
@@ -299,32 +327,28 @@ function EpisodeActions({
   busy: boolean;
   act: ChannelAct;
 }) {
-  const latest = e.processing.latestAttempt;
-  const runningRecently =
-    latest?.status === "running" && Date.now() - latest.startedAt < HOUR;
+  const wait = retryWaitCopy(e.processing.latestAttempt);
   return (
-    <div class="actions">
-      <button
+    <div class="flex flex-wrap items-center gap-1">
+      <Action
         id={`detail-retry-${e.episodeId}`}
-        type="button"
-        disabled={busy || runningRecently}
-        title={runningRecently ? "An attempt is running" : undefined}
+        busy={busy || wait !== null}
         onClick={() => act(() => api.retryEpisode(e.channelId, e.episodeId))}
       >
         Retry
-      </button>
+      </Action>
       {e.status === "failed" && (
-        <button
+        <Action
           id={`detail-skip-${e.episodeId}`}
-          type="button"
-          disabled={busy}
+          busy={busy}
+          tone="consequence"
           onClick={() => act(() => api.skipEpisode(e.channelId, e.episodeId))}
         >
           Skip
-        </button>
+        </Action>
       )}
-      {runningRecently && latest && (
-        <span class="muted">{runningForCopy(latest.startedAt)}</span>
+      {wait !== null && (
+        <span class="block w-full text-meta text-owner">{wait}</span>
       )}
     </div>
   );
@@ -371,14 +395,15 @@ function Section<T>({
   load: Load<T>;
   label: string;
   reload: () => void;
-  children: (data: T) => preact.JSX.Element;
+  children: (data: T) => JSX.Element;
 }) {
-  if (load.status === "loading") return <p>Loading…</p>;
+  if (load.status === "loading")
+    return <div class="skeleton mt-2 h-8 w-full" />;
   if (load.status === "error") {
     return (
-      <p class="error">
+      <p class="mt-2 text-ui text-consequence">
         Couldn't load {label}: {load.error.message}.{" "}
-        <button type="button" onClick={reload}>
+        <button type="button" class="link text-primary" onClick={reload}>
           Retry
         </button>
       </p>

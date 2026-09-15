@@ -96,6 +96,9 @@
  * its `primary` (see the theme block). Use `text-primary` / `bg-primary`, or `var(--accent)`.
  */
 @theme inline {
+  /* 6 px, the one radius a card does not use (docs/design.md §2.3). */
+  --radius-modal: var(--radius-modal);
+
   --color-ground: var(--ground);
   --color-panel: var(--panel);
   --color-ink: var(--ink);

@@ -19,15 +19,31 @@ export function Page({
   measure = "list",
   rail,
   railMeasure = "rail",
+  desktopOnly = false,
   children,
 }: {
   measure?: keyof typeof MEASURES;
   rail?: ComponentChildren;
   railMeasure?: "rail" | "rail-wide";
+  /** Curate: dense, consequential and rare, so it is not designed twice (docs/design.md §6). */
+  desktopOnly?: boolean;
   children: ComponentChildren;
 }) {
   const column = (
-    <main class={`w-full min-w-0 ${MEASURES[measure]}`}>{children}</main>
+    <main class={`w-full min-w-0 ${MEASURES[measure]}`}>
+      {desktopOnly && (
+        <p class="font-serif text-body text-ink-2 lg:hidden">
+          Curate needs a wider screen than this one. What is waiting is on your
+          Account screen, and the decisions that take five seconds are beside
+          each channel on{" "}
+          <a class="text-primary" href="/sources">
+            Sources
+          </a>
+          .
+        </p>
+      )}
+      <div class={desktopOnly ? "hidden lg:block" : undefined}>{children}</div>
+    </main>
   );
   return (
     <div class="min-h-dvh">

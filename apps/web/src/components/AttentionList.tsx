@@ -1,8 +1,14 @@
-import type { Channel } from "@media-digest/shared";
+import type { Channel, Episode } from "@media-digest/shared";
+import type { ComponentChildren } from "preact";
 import { api } from "../api";
-import { attemptCountCopy, failureDetailCopy } from "../lib/copy";
+import {
+  attemptCountCopy,
+  failureDetailCopy,
+  retryWaitCopy,
+} from "../lib/copy";
+import { relativeTime } from "../lib/time";
 import { useLoad } from "../lib/use-load";
-import { Time } from "./Time";
+import { Action } from "./ChannelStatusActions";
 
 export type Act = (
   channelId: string,
@@ -10,9 +16,10 @@ export type Act = (
 ) => Promise<void>;
 
 /**
- * **Needs attention** (spec §7; PRD §7): publications that exhausted their 48 hours, grouped by
- * channel with the last reason, launched attempts, Retry, and Skip; then approved channels with no
- * discovery run at all, each with Start.
+ * The part of **Needs you** that is episodes rather than channels: publications that exhausted
+ * their 48 hours, grouped by channel with the last reason, and approved channels that never started
+ * a discovery run at all. Neither paginates — a list of what needs a person is not a list you page
+ * through (docs/specs/design-phase.md §4.8).
  */
 export function AttentionList({
   channels,
@@ -35,53 +42,93 @@ export function AttentionList({
   );
 
   return (
-    <section id="attention">
-      <h2>Needs attention</h2>
-      <h3>Failed episodes</h3>
-      {failedChannels.length === 0 && <p class="muted">No failed episodes.</p>}
-      {failedChannels.map((c) => (
-        <FailedEpisodes
-          key={c.channelId}
-          channel={c}
-          busy={disabled || (busy[c.channelId] ?? false)}
-          actionError={errors[c.channelId]}
-          act={act}
-        />
-      ))}
+    <>
+      <Group
+        title="Failed episodes"
+        empty="No episode has run out of its window."
+        count={failedChannels.length}
+      >
+        {failedChannels.map((c) => (
+          <FailedEpisodes
+            key={c.channelId}
+            channel={c}
+            busy={disabled || (busy[c.channelId] ?? false)}
+            actionError={errors[c.channelId]}
+            act={act}
+          />
+        ))}
+      </Group>
 
-      <h3>Approved, never started</h3>
-      {neverStarted.length === 0 && (
-        <p class="muted">Nothing approved is waiting to start.</p>
-      )}
-      {neverStarted.map((c) => (
-        <div class="row" key={c.channelId}>
-          <div class="grow">
-            <a href={`/curate/${c.channelId}`}>{c.title}</a>
-            <div class="meta">
-              approved <Time at={c.approvedAt} />, never started
+      <Group
+        title="Approved, never started"
+        empty="Nothing approved is waiting to start."
+        count={neverStarted.length}
+      >
+        {neverStarted.map((c) => (
+          <div
+            key={c.channelId}
+            class="flex flex-wrap items-center gap-3 border-b border-rule py-3"
+          >
+            <div class="min-w-0 flex-1">
+              <a
+                class="text-ui font-semibold text-ink"
+                href={`/curate/${c.channelId}`}
+              >
+                {c.title}
+              </a>
+              <p class="text-meta text-ink-3">
+                approved{" "}
+                {c.approvedAt === null ? "—" : relativeTime(c.approvedAt)}, no
+                run yet
+              </p>
+              {errors[c.channelId] && (
+                <p class="text-meta text-consequence">{errors[c.channelId]}</p>
+              )}
             </div>
-            {errors[c.channelId] && <p class="error">{errors[c.channelId]}</p>}
-          </div>
-          <div class="actions">
-            <button
+            <Action
               id={`attention-start-${c.channelId}`}
-              type="button"
-              disabled={disabled || (busy[c.channelId] ?? false)}
+              busy={disabled || (busy[c.channelId] ?? false)}
               onClick={() => act(c.channelId, () => api.startRun(c.channelId))}
             >
               Start
-            </button>
+            </Action>
           </div>
-        </div>
-      ))}
+        ))}
+      </Group>
+    </>
+  );
+}
+
+function Group({
+  title,
+  empty,
+  count,
+  children,
+}: {
+  title: string;
+  empty: string;
+  count: number;
+  children: ComponentChildren;
+}) {
+  return (
+    <section class="mt-6">
+      <h3 class="flex items-baseline gap-2 text-label uppercase text-ink-3">
+        {title}
+        <span>{count}</span>
+      </h3>
+      {count === 0 ? (
+        <p class="mt-1 font-serif text-excerpt text-ink-2">{empty}</p>
+      ) : (
+        <div class="mt-1 border-t border-rule">{children}</div>
+      )}
     </section>
   );
 }
 
 /**
- * One channel's failed episodes, loaded on their own so a failure here reaches no other channel
- * and can be retried in place (spec §11). The load is keyed on the channel's failed count, so a
- * Retry or Skip that changes it refetches the list instead of leaving the acted-on episode shown.
+ * One channel's failed episodes, loaded on their own so a failure here reaches no other channel and
+ * can be retried in place. The load is keyed on the channel's failed count, so a Retry or Skip that
+ * changes it refetches instead of leaving the acted-on episode on screen.
  */
 function FailedEpisodes({
   channel: c,
@@ -103,66 +150,87 @@ function FailedEpisodes({
     [c.channelId, failedCount],
   );
   return (
-    <div>
-      <p>
-        <a href={`/curate/${c.channelId}`}>{c.title}</a>
-      </p>
-      {load.status === "loading" && <p class="muted">Loading…</p>}
+    <div class="border-b border-rule py-3">
+      <a class="text-ui font-semibold text-ink" href={`/curate/${c.channelId}`}>
+        {c.title}
+      </a>
+
+      {load.status === "loading" && <div class="skeleton mt-2 h-8 w-full" />}
       {load.status === "error" && (
-        <p class="error">
-          Couldn't load failed episodes: {load.error.message}.{" "}
+        <p class="mt-1 text-meta text-consequence">
+          Couldn't load its failed episodes: {load.error.message}.{" "}
           <button
             id={`attention-reload-${c.channelId}`}
             type="button"
+            class="link text-primary"
             onClick={reload}
           >
             Retry
           </button>
         </p>
       )}
+
       {load.status === "ready" &&
         load.data.map((e) => (
-          <div class="row" key={e.episodeId}>
-            <div class="grow">
-              <a href={`https://youtu.be/${e.episodeId}`}>{e.title}</a>
-              <div class="meta">
-                {e.processing.failureCode ?? "unknown failure"}
-                {e.processing.failureDetail &&
-                  ` · ${failureDetailCopy(e.processing.failureDetail)}`}
-                {" · "}
-                {attemptCountCopy(e.processing.attemptCount)} · failed{" "}
-                <Time at={e.processing.updatedAt} />
-              </div>
-            </div>
-            <div class="actions">
-              <button
-                id={`retry-${e.episodeId}`}
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  act(c.channelId, () =>
-                    api.retryEpisode(c.channelId, e.episodeId),
-                  )
-                }
-              >
-                Retry
-              </button>
-              <button
-                id={`skip-${e.episodeId}`}
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  act(c.channelId, () =>
-                    api.skipEpisode(c.channelId, e.episodeId),
-                  )
-                }
-              >
-                Skip
-              </button>
-            </div>
-          </div>
+          <EpisodeRow
+            key={e.episodeId}
+            episode={e}
+            busy={busy}
+            act={(work) => act(c.channelId, work)}
+          />
         ))}
-      {actionError && <p class="error">{actionError}</p>}
+
+      {actionError && (
+        <p class="mt-1 text-meta text-consequence">{actionError}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A failed episode with the two things that can be done to it. **Skip renders on failed episodes
+ * only** (docs/PRD.md §7), which is what this list holds; Retry says on the row when it is not
+ * available yet and who started the attempt that is holding it, rather than greying out silently.
+ */
+function EpisodeRow({
+  episode: e,
+  busy,
+  act,
+}: {
+  episode: Episode;
+  busy: boolean;
+  act: (work: () => Promise<unknown>) => Promise<void>;
+}) {
+  const wait = retryWaitCopy(e.processing.latestAttempt);
+  return (
+    <div class="mt-2 flex flex-wrap items-center gap-3 pl-3">
+      <div class="min-w-0 flex-1">
+        <a class="text-cell text-ink" href={`https://youtu.be/${e.episodeId}`}>
+          {e.title}
+        </a>
+        <p class="text-meta text-ink-3">
+          {e.processing.failureCode ?? "unknown failure"}
+          {e.processing.failureDetail &&
+            ` · ${failureDetailCopy(e.processing.failureDetail)}`}
+          {` · ${attemptCountCopy(e.processing.attemptCount)} · failed ${relativeTime(e.processing.updatedAt)}`}
+        </p>
+        {wait !== null && <p class="text-meta text-owner">{wait}</p>}
+      </div>
+      <Action
+        id={`retry-${e.episodeId}`}
+        busy={busy || wait !== null}
+        onClick={() => act(() => api.retryEpisode(e.channelId, e.episodeId))}
+      >
+        Retry
+      </Action>
+      <Action
+        id={`skip-${e.episodeId}`}
+        busy={busy}
+        tone="consequence"
+        onClick={() => act(() => api.skipEpisode(e.channelId, e.episodeId))}
+      >
+        Skip
+      </Action>
     </div>
   );
 }
