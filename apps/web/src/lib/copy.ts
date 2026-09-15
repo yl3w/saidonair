@@ -148,23 +148,6 @@ export function isDeclinedResponse(
   return body?.status === "declined" && typeof body.channelId === "string";
 }
 
-/**
- * What each screen the Design phase has not built yet says while its URL still works. Every one but
- * Chats is deleted by the step that builds the screen (docs/specs/design-phase-plan.md).
- */
-export const UNBUILT_COPY = {
-  queue: "What is waiting for you will be here, grouped by the day it arrived.",
-  reading: "A summary reads here, in one column, with its timestamps.",
-  history:
-    "Everything you have been eligible for, by day, with a calendar to move through it.",
-  sources:
-    "The channels you follow, the catalog to browse, and the three steps that add one.",
-  source:
-    "One channel's episodes, newest published first, with the phrase on the ones without a summary.",
-  chats:
-    "Ask a question and get an answer from what your channels said, with the moments it came from. Built in M4.",
-} as const;
-
 /** The owner's line on Account when Curate cannot fit on this screen (docs/design.md §6). */
 export function curateWaitingCopy(waiting: number | null): string {
   if (waiting === null || waiting === 0) {

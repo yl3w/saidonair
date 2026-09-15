@@ -675,12 +675,16 @@ somewhere extra to go.
   and its episodes newest **published** with the ones lacking a summary carrying their phrase, paged by year, with
   the owner's controls beside the channel they govern.
 - **Account `/account`:** which email is reading and the only Switch account in the product; the reader's type, size
-  and theme, which apply to **every page** (§9, 2026-09-15) and are kept in that browser; `system_rules` through `GET`/`PUT /preferences`, labelled as reaching
-  chat answers alone; and a toggle that turns every count off. For the owner below the desktop breakpoint, one line
-  saying how many things wait in Curate and that it needs a wider screen.
+  and theme, which apply to **every page** (§9, 2026-09-15) and are kept in that browser; and a toggle that turns
+  every count off. For the owner below the desktop breakpoint, one line saying how many things wait in Curate and
+  that it needs a wider screen. The `system_rules` field returns with chats in M4 (§9, 2026-09-15): it shapes
+  answers from a feature that cannot answer yet, and `GET`/`PUT /preferences` stay registered meanwhile, so nothing
+  already stored is lost.
 - **Chats `/chats` and `/chats/:id`:** designed in the Design phase and built in M4. Independent conversations, each
   preserving its messages and source links. Chat controls are never disabled for lack of follows; the fixed
-  follow-required response of §4.5 applies instead.
+  follow-required response of §4.5 applies instead. **Until M4 builds it there is no Chats destination and no
+  `/chats` route** (§9, 2026-09-15): primary navigation is Queue and Sources, and a stale `/chats` link falls to the
+  redirect every unknown path takes, to `/queue`.
 - **Curate `/curate` and `/curate/:id`:** the owner's one extra destination, **desktop only** — approving,
   declining, retrying and the catalog table are dense, consequential and rare, so they are not designed twice.
   Below the breakpoint the nav item is absent and the screen says where to go instead. Users who reach it are sent
@@ -762,7 +766,7 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats |
 | `GET /chats/:id/messages?limit=50` | anyone (own) | Selected chat history with citation snapshots |
 | `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources using current eligible follows |
-| `GET /preferences` / `PUT /preferences` | anyone (own) | Chat preference rules — `systemRules`, trimmed, at most 4000 characters, empty to clear. Listed here since the 2026-09-12 restart but only registered on 2026-09-15 |
+| `GET /preferences` / `PUT /preferences` | anyone (own) | Chat preference rules — `systemRules`, trimmed, at most 4000 characters, empty to clear. Listed here since the 2026-09-12 restart but only registered on 2026-09-15; no screen calls them between then and M4, when the Account field returns with chats (§9) |
 
 Routes that deliberately do not exist: `/channel-requests/*` (requests are channels), `DELETE /channels/:id` and
 `POST /channels/:id/restore` (channels are never deleted), `POST /channels/:id/retry` (retry is per episode), chat
@@ -1063,6 +1067,19 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the queue for having been read each invalidate; when the row is genuinely gone, the day heading it sat under is
   still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
   reloads, so the return lands on its day, or at the top.
+- **Nothing unfinished in primary navigation — decided 2026-09-15.** Chats had equal billing with Queue and
+  Sources in both the top bar and the phone's tab bar, and led to a placeholder whose body named a milestone —
+  "Built in M4" — which is our word, not a reader's. Account meanwhile offered **Chat rules**, a field that saved to
+  the server and reported it saved, shaping answers from a feature that cannot answer anything. A control that
+  accepts input it cannot honour is worse than a missing one, and a third of the navigation leading nowhere makes
+  the two destinations that do work read as unfinished too. So until M4 builds the screen there is **no Chats item,
+  no `/chats` route, and no chat-rules field**; `/chats` falls to the redirect every unknown path takes, to
+  `/queue`, so a stale bookmark lands somewhere real. The alternative — a deliberate "coming soon" treatment
+  outside primary navigation — was considered and declined: the honest version of "not yet" is absence, and the
+  wireframes are where the promise lives. Nothing is lost: `GET`/`PUT /preferences` stay registered, tested and
+  documented, so rules already stored come back with the field, and the chat artboards
+  (`docs/specs/design-phase.md` §4.9) are unchanged. The placeholder screen and the generic `Unbuilt` component it
+  used are deleted rather than commented out; M4 builds from the design, not from a stub.
 - **Cron cadence — decided 2026-09-12:** channel discovery runs at `0 */6 * * *` UTC and episode recovery at
   `30 */6 * * *` UTC; both have a six-hour cadence. The triggers exist in production only (2026-09-13, below).
 - **Environments — decided 2026-09-13: three, dev, staging, production.** Local `wrangler dev` runs as dev against

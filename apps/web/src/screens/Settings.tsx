@@ -6,8 +6,7 @@ import { Avatar } from "../components/Avatar";
 import { attentionCount } from "../components/CatalogHealth";
 import { Choice } from "../components/Choice";
 import { Page } from "../components/Page";
-import { Retry } from "../components/Retry";
-import { actionErrorCopy, curateWaitingCopy } from "../lib/copy";
+import { curateWaitingCopy } from "../lib/copy";
 import {
   READING_FONTS,
   READING_SIZES,
@@ -21,9 +20,14 @@ import { Guard, useReadySession, useSession } from "../session";
 
 /**
  * Account (`docs/specs/design-phase.md` §4.7): which email is reading and the only Switch account in
- * the product, how this browser sets the reading column, the rules that reach chat answers, and the
- * counts toggle. Everything here is either a fact about this browser or a fact about this reader —
- * nothing on this screen changes anything anyone else sees.
+ * the product, how this browser sets the reading column, and the counts toggle. Everything here is
+ * either a fact about this browser or a fact about this reader — nothing on this screen changes
+ * anything anyone else sees.
+ *
+ * The chat rules field is not here. It shapes answers from a feature that cannot answer anything
+ * yet, and a control that accepts input and reports it saved is worse than a missing one; it
+ * returns with the screen in M4 (owner decision 2026-09-15, `docs/PRD.md` §9). `GET`/`PUT
+ * /preferences` stay registered and anything already stored is untouched.
  */
 export function Settings() {
   return (
@@ -120,13 +124,6 @@ function SettingsScreen() {
         </p>
       </Section>
 
-      <Section
-        title="Chat rules"
-        note="Applied to chat answers alone, never to a summary — those are shared, and yours to read, not to shape."
-      >
-        <ChatRules />
-      </Section>
-
       <Section title="Counts">
         <label class="flex min-h-11 items-center gap-3 text-ui text-ink">
           <input
@@ -151,71 +148,6 @@ function SettingsScreen() {
         </Section>
       )}
     </Page>
-  );
-}
-
-/** `system_rules`, the one thing on this screen the API keeps. Saved on submit, never as you type. */
-function ChatRules() {
-  const [preferences, reload] = useLoad(() => api.getPreferences(), []);
-  const [draft, setDraft] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  if (preferences.status === "loading") {
-    return <div class="skeleton h-24 w-full" />;
-  }
-  if (preferences.status === "error") {
-    return (
-      <p class="text-ui text-consequence">
-        Couldn't load your rules: {actionErrorCopy(preferences.error)}.{" "}
-        <Retry onClick={reload} />
-      </p>
-    );
-  }
-
-  const saved = preferences.data.preferences.systemRules;
-  const value = draft ?? saved;
-  const dirty = value.trim() !== saved;
-
-  async function save(event: Event) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await api.putPreferences({ systemRules: value.trim() });
-      setDraft(null);
-      reload();
-    } catch (caught) {
-      setError(actionErrorCopy(caught));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={save}>
-      <textarea
-        class="textarea min-h-24 w-full border-edge bg-panel text-ui text-ink"
-        value={value}
-        rows={4}
-        placeholder="Answer in British English. Never speculate beyond the transcript."
-        aria-label="Rules for chat answers"
-        onInput={(event) => setDraft(event.currentTarget.value)}
-      />
-      <div class="mt-2 flex items-center gap-3">
-        <button
-          type="submit"
-          class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
-          disabled={!dirty || saving}
-        >
-          {saving ? "Saving…" : "Save rules"}
-        </button>
-        <span class="text-meta text-ink-3">
-          {dirty ? "Not saved yet." : "Saved."}
-        </span>
-      </div>
-      {error !== null && <p class="mt-2 text-meta text-consequence">{error}</p>}
-    </form>
   );
 }
 

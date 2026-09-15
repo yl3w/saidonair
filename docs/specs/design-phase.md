@@ -111,10 +111,16 @@ used: `badge`, `status`, `stat`, `table`, `collapse`, `skeleton`, `avatar`, `mod
 | `/sources` · `/sources/:id` | Sources, one source | `/channel/:id` is gone |
 | `/account` | Account | new; carries what was scattered in the header |
 | `/curate` · `/curate/:id` | Curate, channel review | `/owner` and `/owner/channels/:id` are gone; desktop only |
-| `/chats` · `/chats/:id` | Chats | designed here, built in M4 |
+| `/chats` · `/chats/:id` | Chats | designed here, built in M4 — **no route until then**, amended 2026-09-15 |
 
 Nav is Queue, Sources, Chats, and — for the owner, on a viewport wide enough — Curate with a count that renders only
 when something waits. Account is the monogram in the corner, never a nav item.
+
+**Amended 2026-09-15** (PRD §9): Chats leaves the nav and `/chats` stops being a route until M4 builds the screen.
+As shipped, a third of primary navigation led to a placeholder naming a milestone, and Account carried a chat-rules
+field that saved to the server for a feature that cannot answer anything. Both are absent rather than
+present-and-empty; `/chats` falls to the unknown-path redirect, and `GET`/`PUT /preferences` stay registered, so
+stored rules return with the field.
 
 ### 4.3 The read model
 
@@ -182,7 +188,8 @@ with their phrases, paging by year on a long history.
 ### 4.7 Account
 
 Which email is reading, and the only Switch account in the product. Reading preferences — type, size, theme — kept
-per browser. `system_rules` as one free-text field, labelled as applying to chat answers alone. A toggle that turns
+per browser. `system_rules` as one free-text field, labelled as applying to chat answers alone (**removed
+2026-09-15 until M4**, §4.2). A toggle that turns
 every count off for a reader who would rather not be kept score of. And, for the owner on a phone, one line saying
 how many things wait in Curate and that they need a larger screen.
 

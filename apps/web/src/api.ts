@@ -223,7 +223,7 @@ export const api = {
       `/digest${digestQuery({ ...range, compact: true })}`,
     ),
 
-  // preferences
+  // preferences — no screen calls these until M4 brings the chat rules field back (PRD §9)
   getPreferences: () => request<PreferencesResponse>("GET", "/preferences"),
   putPreferences: (body: UpdatePreferencesBody) =>
     request<PreferencesResponse>("PUT", "/preferences", body),

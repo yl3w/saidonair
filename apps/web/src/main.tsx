@@ -3,7 +3,6 @@ import { useEffect } from "preact/hooks";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 import { applyReaderSettings, readSettings } from "./lib/settings";
 import { Account } from "./screens/Account";
-import { Chats } from "./screens/Chats";
 import { Curate } from "./screens/Curate";
 import { CurateChannel } from "./screens/CurateChannel";
 import { History } from "./screens/History";
@@ -24,9 +23,12 @@ function NotFound() {
 
 /**
  * The reader's spine (docs/specs/design-phase.md §4.2): sign in, then the queue, one summary at a
- * time, history, sources, chats, account — and Curate for the owner, one extra destination rather
- * than a mode. The paths M2 and M3 used are gone rather than redirected: `/home`, `/channel/:id`,
+ * time, history, sources, account — and Curate for the owner, one extra destination rather than a
+ * mode. The paths M2 and M3 used are gone rather than redirected: `/home`, `/channel/:id`,
  * `/owner` and `/owner/channels/:id` named a shape the product no longer has.
+ *
+ * `/chats` is not a route until M4 builds the screen, so it falls to the redirect above like any
+ * other unknown path and a stale bookmark lands on the queue (owner decision 2026-09-15, PRD §9).
  *
  * History-mode routing: Pages serves index.html for unknown paths, so deep links and reloads work.
  * Verify both under `wrangler pages dev` when a route is added.
@@ -43,8 +45,6 @@ export function App() {
           <Route path="/history/:day" component={History} />
           <Route path="/sources" component={Sources} />
           <Route path="/sources/:id" component={Source} />
-          <Route path="/chats" component={Chats} />
-          <Route path="/chats/:id" component={Chats} />
           <Route path="/account" component={Settings} />
           <Route path="/curate" component={Curate} />
           <Route path="/curate/:id" component={CurateChannel} />

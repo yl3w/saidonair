@@ -1,4 +1,4 @@
-import { List, MessageSquare, Rss, Table } from "lucide-preact";
+import { List, Rss, Table } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
@@ -15,13 +15,16 @@ import { Icon } from "./Icon";
  * enough for what it holds (docs/design.md §6); below that, Account says what is waiting and why it
  * is not here.
  *
- * On a phone the three reader destinations move to a bottom tab bar, where a thumb can reach them.
+ * On a phone the reader destinations move to a bottom tab bar, where a thumb can reach them.
+ *
+ * Chats is not here. Primary navigation is for what a reader can use, and an entry leading to a
+ * placeholder makes the whole product read as unfinished; it returns when M4 builds the screen
+ * (owner decision 2026-09-15, docs/PRD.md §9).
  */
 
 const DESTINATIONS = [
   { href: "/queue", label: "Queue", icon: List },
   { href: "/sources", label: "Sources", icon: Rss },
-  { href: "/chats", label: "Chats", icon: MessageSquare },
 ] as const;
 
 export function Nav() {
@@ -81,7 +84,7 @@ export function Nav() {
       </header>
 
       <nav
-        class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-rule bg-panel pb-[env(safe-area-inset-bottom)] md:hidden"
+        class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-2 border-t border-rule bg-panel pb-[env(safe-area-inset-bottom)] md:hidden"
         aria-label="Primary"
       >
         {DESTINATIONS.map(({ href, label, icon }) => {

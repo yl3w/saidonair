@@ -214,8 +214,11 @@ first paint, so dark never starts white.
 
 ## 3. Layout patterns
 
-**The frame.** A 56 px top bar: wordmark, then Queue · Sources · Chats (and Curate for the owner, desktop only, with
-a count that renders only when something waits), then the reader's email and monogram on the right. Content is
+**The frame.** A 56 px top bar: wordmark, then Queue · Sources (and Curate for the owner, desktop only, with
+a count that renders only when something waits), then the reader's email and monogram on the right.
+**Primary navigation carries only what a reader can use** — Chats joins it when M4 builds the screen, and until then
+it is absent rather than present-and-empty, because one destination leading to a placeholder makes the ones that
+work read as unfinished too (owner decision 2026-09-15, PRD §9). Content is
 centred. A right rail carries navigation *about* the list — days still waiting, the calendar, a sort order — never
 content.
 
@@ -298,9 +301,9 @@ nothing-waiting state, and both pickers as sheets. **Owner operations are deskto
 a phone, and Account tells the owner how many things wait and that they need a larger screen. Approving, declining,
 retrying and the catalog table are dense, consequential and rare; designing them twice costs more than it returns.
 
-Three rules: a bottom tab bar of three items with 44 px targets; no fake status bar and no fake keyboard in a
-mockup — the real ones render on top of your layout; and nothing scrolls horizontally except a table, a diagram, or a
-code block inside its own container.
+Three rules: a bottom tab bar of the reader's destinations with 44 px targets — two today, three once Chats is built
+(§3); no fake status bar and no fake keyboard in a mockup — the real ones render on top of your layout; and nothing
+scrolls horizontally except a table, a diagram, or a code block inside its own container.
 
 ---
 
