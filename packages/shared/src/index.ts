@@ -677,6 +677,50 @@ export const EpisodeRetryResponseSchema = z
 export type EpisodeRetryResponse = z.infer<typeof EpisodeRetryResponseSchema>;
 
 /**
+ * What YouTube's two feeds say about a channel id, read on demand and stored nowhere: the middle of
+ * the three steps that add a channel (docs/specs/design-phase.md §4.6). The counts are what tell a
+ * reader whether this channel will actually produce episodes — discovery reads the long-form feed
+ * alone, so a channel whose newest fifteen are all Shorts makes none.
+ */
+export const ChannelFeedSchema = z
+  .object({
+    channelId: Id.describe(
+      "Canonical `UC…` id, extracted from what was pasted.",
+    ),
+    title: z.string().describe("The channel's name, as its feed gives it."),
+    entryCount: Count.describe(
+      "How many uploads the channel feed carried, at most fifteen.",
+    ),
+    longFormCount: Count.describe(
+      "How many of those are long-form, and so could become episodes. Shorts and live streams are the rest.",
+    ),
+    newestLongFormAt: UnixMs.nullable().describe(
+      "When the newest long-form upload was published; null when there are none.",
+    ),
+  })
+  .meta({
+    id: "ChannelFeed",
+    description:
+      "What YouTube's channel and long-form feeds say about an id right now. Read on demand; nothing is stored.",
+  });
+export type ChannelFeed = z.infer<typeof ChannelFeedSchema>;
+
+/** `GET /channels/feed?channelId=` — the reading, and whatever the catalog already holds for it. */
+export const ChannelFeedResponseSchema = z
+  .object({
+    feed: ChannelFeedSchema,
+    channel: ChannelSchema.nullable().describe(
+      "The catalog's channel when it already holds this id, so the last step knows whether it is adding, following, or looking at a declined one; null otherwise.",
+    ),
+  })
+  .meta({
+    id: "ChannelFeedResponse",
+    description:
+      "`GET /channels/feed?channelId=` — what the feeds say, and what the catalog already holds.",
+  });
+export type ChannelFeedResponse = z.infer<typeof ChannelFeedResponseSchema>;
+
+/**
  * One row of a compact digest: what the calendar needs to count a day and the channel filter needs
  * to attribute it, and nothing else. `summaryAvailableAt` is the day the summary belongs to, which
  * never moves (docs/PRD.md §4.4).
@@ -1007,6 +1051,16 @@ export const ScopeQuerySchema = z.object({
     .optional(),
 });
 export type ScopeQuery = z.infer<typeof ScopeQuerySchema>;
+
+/** `?channelId=` — whatever was pasted: a bare `UC…` id or a URL containing `/channel/UC…`. */
+export const ChannelFeedQuerySchema = z.object({
+  channelId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("A `UC…` id, or a URL containing `/channel/UC…`."),
+});
+export type ChannelFeedQuery = z.infer<typeof ChannelFeedQuerySchema>;
 
 /** `?limit=` — a positive integer; the default and the ceiling belong to the callee. */
 export const LimitQuerySchema = z.object({

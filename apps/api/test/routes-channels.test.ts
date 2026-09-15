@@ -2,6 +2,7 @@ import { SELF } from "cloudflare:test";
 import {
   CatalogResponseSchema,
   ChannelDeclinedResponseSchema,
+  ChannelFeedResponseSchema,
   ChannelResponseSchema,
   ChannelsResponseSchema,
   EpisodeResponseSchema,
@@ -11,7 +12,7 @@ import {
   IngestionRunsResponseSchema,
 } from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
-import { CHANNEL_G } from "./fixtures/feeds";
+import { CHANNEL_G, CHANNEL_H, FEED_H_LONG_FORM } from "./fixtures/feeds";
 import {
   ALICE,
   BOB,
@@ -312,6 +313,71 @@ describe("channel and catalog routes", () => {
         })
       ).status,
     ).toBe(400);
+  });
+
+  it("reads a channel id's feeds without creating anything, and says what the catalog holds", async () => {
+    await seedCatalog();
+
+    // H publishes six, two of them long-form: the number that matters, because discovery reads the
+    // long-form feed alone.
+    const fresh = await call(
+      ALICE,
+      "GET",
+      `/channels/feed?channelId=${CHANNEL_H}`,
+    );
+    expect(fresh.status).toBe(200);
+    expectShape(ChannelFeedResponseSchema, fresh.json);
+    expect(fresh.json).toEqual({
+      feed: {
+        channelId: CHANNEL_H,
+        title: "Feed H",
+        entryCount: 6,
+        longFormCount: 2,
+        newestLongFormAt: FEED_H_LONG_FORM[0]?.publishedAt,
+      },
+      channel: null,
+    });
+    // Nothing was created: the catalog is where it was.
+    expect((await call(ALICE, "GET", `/channels/${CHANNEL_H}`)).status).toBe(
+      404,
+    );
+
+    // A channel the catalog already holds comes back with it, so the last step knows what it is doing.
+    const known = await call(
+      ALICE,
+      "GET",
+      `/channels/feed?channelId=${CHANNEL_A}`,
+    );
+    expect(known.json.feed).toMatchObject({ title: "Feed A", entryCount: 0 });
+    expect(known.json.channel).toMatchObject({
+      channelId: CHANNEL_A,
+      status: "approved",
+    });
+
+    // G's long-form feed 404s: it publishes, but nothing discovery would read.
+    expect(
+      (await call(ALICE, "GET", `/channels/feed?channelId=${CHANNEL_G}`)).json
+        .feed,
+    ).toMatchObject({ longFormCount: 0, newestLongFormAt: null });
+
+    // A URL is accepted; a handle and an id with no feed are not.
+    expect(
+      (
+        await call(
+          ALICE,
+          "GET",
+          `/channels/feed?channelId=${encodeURIComponent(`https://www.youtube.com/channel/${CHANNEL_H}/videos`)}`,
+        )
+      ).json.feed,
+    ).toMatchObject({ channelId: CHANNEL_H });
+    expect(
+      (await call(ALICE, "GET", "/channels/feed?channelId=@handle")).status,
+    ).toBe(400);
+    expect(
+      (await call(ALICE, "GET", `/channels/feed?channelId=${CHANNEL_E}`))
+        .status,
+    ).toBe(400);
+    expect((await call(ALICE, "GET", "/channels/feed")).status).toBe(400);
   });
 
   it("serves every caller the same episodes, reports read state, and records nothing", async () => {

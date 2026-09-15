@@ -42,6 +42,23 @@ export const FEED_F_ENTRIES: FakeFeedEntry[] = Array.from(
 /** Its channel feed verifies at add time; its long-form feed 404s, so discovery is unavailable. */
 export const CHANNEL_G = "UCGGGGGGGGGGGGGGGGGGGGGG";
 
+/**
+ * A channel whose newest uploads are mostly Shorts: six in the channel feed, two of them long-form.
+ * The long-form feed is an exact subset of the channel feed, which is what `GET /channels/feed`
+ * counts the overlap of.
+ */
+export const CHANNEL_H = "UCHHHHHHHHHHHHHHHHHHHHHH";
+
+const FEED_H_ENTRIES: FakeFeedEntry[] = Array.from({ length: 6 }, (_, i) => ({
+  videoId: `feedH${String(i).padStart(6, "0")}`,
+  title: `Feed H upload ${i}`,
+  publishedAt: FEED_F_NEWEST_AT - i * DAY,
+}));
+/** The two long-form ones: the newest, and the fourth. */
+export const FEED_H_LONG_FORM = [FEED_H_ENTRIES[0], FEED_H_ENTRIES[3]].filter(
+  (entry): entry is FakeFeedEntry => entry !== undefined,
+);
+
 export const FAKE_FEEDS: Record<string, FakeFeed> = {
   UCAAAAAAAAAAAAAAAAAAAAAA: "Feed A",
   UCBBBBBBBBBBBBBBBBBBBBBB: "Feed B",
@@ -54,4 +71,6 @@ export const FAKE_FEEDS: Record<string, FakeFeed> = {
   [longFormKey(CHANNEL_F)]: { title: "Feed F", entries: FEED_F_ENTRIES },
   [CHANNEL_G]: "Feed G",
   [longFormKey(CHANNEL_G)]: null,
+  [CHANNEL_H]: { title: "Feed H", entries: FEED_H_ENTRIES },
+  [longFormKey(CHANNEL_H)]: { title: "Feed H", entries: FEED_H_LONG_FORM },
 };

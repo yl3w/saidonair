@@ -1,7 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
-import { AddChannel } from "../components/AddChannel";
 import { type CatalogFilter, CatalogHealth } from "../components/CatalogHealth";
 import { CatalogTable } from "../components/CatalogTable";
 import { Page } from "../components/Page";
@@ -105,7 +104,6 @@ function OwnerScreen() {
             onChanged={reloadAll}
           />
         )}
-        <AddChannel onChanged={reloadAll} />
       </section>
     </Page>
   );

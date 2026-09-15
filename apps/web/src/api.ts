@@ -5,6 +5,7 @@
 import type {
   ApproveChannelBody,
   CatalogResponse,
+  ChannelFeedResponse,
   ChannelResponse,
   ChannelsResponse,
   CreateChannelBody,
@@ -119,6 +120,15 @@ export const api = {
     request<ChannelsResponse>(
       "GET",
       options.scope === "all" ? "/channels?scope=all" : "/channels",
+    ),
+  /**
+   * Step two of adding a channel: what YouTube's feeds say about an id, and what the catalog already
+   * holds for it. Creates nothing — the decision is step three.
+   */
+  readChannelFeed: (channelId: string) =>
+    request<ChannelFeedResponse>(
+      "GET",
+      `/channels/feed?channelId=${enc(channelId)}`,
     ),
   /** `created` is true for a 201 (new channel) and false for a 200 (an existing one, now followed). */
   addChannel: async (

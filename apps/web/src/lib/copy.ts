@@ -4,6 +4,7 @@ import type {
   AttemptOutcomeCode,
   Channel,
   ChannelDeclinedResponse,
+  ChannelFeed,
   ChannelStatus,
   Episode,
   EpisodeSkipReason,
@@ -228,3 +229,37 @@ export const HISTORY_NOT_A_DAY_NOTE =
 /** What a day's contents depend on — worth saying once, where a reader can be surprised by it. */
 export const HISTORY_SCOPE_NOTE =
   "A day shows the channels you follow now, so following or unfollowing one changes what a past day holds. Your receipts are kept either way.";
+
+/** What a feed reading means for a reader deciding whether to follow (docs/specs/design-phase.md §4.6). */
+export function feedVerdict(feed: ChannelFeed): string {
+  if (feed.entryCount === 0) {
+    return "Its feed carried no uploads at all. It may be new, or it may have stopped.";
+  }
+  if (feed.longFormCount === 0) {
+    return `None of its newest ${feed.entryCount} uploads are long-form, so nothing here would be summarised. Only long-form uploads become episodes — Shorts and live streams do not.`;
+  }
+  return `${feed.longFormCount} of its newest ${feed.entryCount} uploads are long-form, and those are the ones that become episodes.`;
+}
+
+/** When the newest long-form upload landed, or that there is none. */
+export function newestUploadCopy(at: number | null): string {
+  if (at === null) return "No long-form upload to date.";
+  const days = Math.floor((Date.now() - at) / 86_400_000);
+  if (days <= 0) return "Newest long-form upload: today.";
+  if (days === 1) return "Newest long-form upload: yesterday.";
+  if (days < 60) return `Newest long-form upload: ${days} days ago.`;
+  return `Newest long-form upload: ${Math.floor(days / 30)} months ago.`;
+}
+
+export const SOURCES_TABS = {
+  following: "Following",
+  catalog: "Catalog",
+  declined: "Declined",
+} as const;
+
+export const SOURCE_SORTS = {
+  unread: "Most unread",
+  active: "Recently active",
+  name: "Name",
+  followed: "Longest followed",
+} as const;

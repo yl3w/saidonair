@@ -3,6 +3,9 @@ import {
   type Channel,
   type ChannelDeclinedResponse,
   ChannelDeclinedResponseSchema,
+  ChannelFeedQuerySchema,
+  type ChannelFeedResponse,
+  ChannelFeedResponseSchema,
   ChannelParamsSchema,
   type ChannelResponse,
   ChannelResponseSchema,
@@ -45,7 +48,11 @@ import { transcriptProviderHealth } from "../lib/transcripts/status";
 import { validate } from "../lib/validation";
 import { ingestLauncher } from "../lib/workflows";
 import { extractChannelId } from "../lib/youtube/ids";
-import { feedFetcher, fetchChannelFeed } from "../lib/youtube/rss";
+import {
+  feedFetcher,
+  fetchChannelFeed,
+  fetchLongFormFeed,
+} from "../lib/youtube/rss";
 
 type Ctx = Context<AppEnv>;
 
@@ -150,6 +157,64 @@ export const channelRoutes = new Hono<AppEnv>()
         return followAndView(c, channelId, false);
       }
       return followAndView(c, channelId, true);
+    },
+  )
+
+  .get(
+    "/feed",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Read a channel id's feeds",
+      description:
+        "What YouTube's two public feeds say about an id right now, and whatever the catalog already holds for it. Nothing is created and nothing is stored: this is the middle of the three steps that add a channel, so a reader can see the title and how much long-form the channel actually publishes before deciding. Discovery reads the long-form feed alone, so `longFormCount` is the number that matters — a channel whose newest fifteen are all Shorts makes no episodes. A handle or an id with no feed is 400. Registered before `/{id}`, and `feed` is not a shape a channel id can take.",
+      responses: {
+        200: jsonResponse(
+          ChannelFeedResponseSchema,
+          "What the feeds say, and what the catalog holds.",
+        ),
+        ...errorResponses({ upstream: true }),
+      },
+    }),
+    validate("query", ChannelFeedQuerySchema),
+    async (c) => {
+      const channelId = extractChannelId(c.req.valid("query").channelId);
+      const fetcher = feedFetcher(c.env);
+      const [channelFeed, longForm] = await Promise.all([
+        fetchChannelFeed(channelId, fetcher),
+        fetchLongFormFeed(channelId, fetcher),
+      ]);
+      if (!channelFeed) {
+        throw new DomainError(
+          "INVALID_INPUT",
+          "no YouTube channel has that id",
+        );
+      }
+      // The long-form feed is an exact subset of the channel feed (docs/specs/
+      // discovery-long-form-feed.md), so "how many of the newest fifteen are long-form" is the
+      // overlap; a 404 on that feed means none at all.
+      const longFormIds = new Set(
+        (longForm?.entries ?? []).map((entry) => entry.videoId),
+      );
+      const existing = await c.var.registry.getChannel(channelId);
+      return c.json<ChannelFeedResponse>({
+        feed: {
+          channelId,
+          title: channelFeed.title,
+          entryCount: channelFeed.entries.length,
+          longFormCount: channelFeed.entries.filter((entry) =>
+            longFormIds.has(entry.videoId),
+          ).length,
+          newestLongFormAt:
+            longForm?.entries.reduce<number | null>(
+              (newest, entry) =>
+                newest === null || entry.publishedAt > newest
+                  ? entry.publishedAt
+                  : newest,
+              null,
+            ) ?? null,
+        },
+        channel: existing === null ? null : await fullChannel(c, channelId),
+      });
     },
   )
 
