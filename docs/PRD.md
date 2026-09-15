@@ -1193,6 +1193,20 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
   a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
   drops its avatar circle there too, a skeleton being the real row's shape or nothing.
+- **The secondary ink ramp is darkened — decided 2026-09-15.** The palette put its **palest colour on its smallest
+  type**: `--ink-3` carries the 12 px uppercase label and the 12.5 px meta line — the metadata, the Curate metrics,
+  the calendar's counts — and measured 5.12:1, while `--owner` at 4.92:1 carried the owner's marks at the same size.
+  Both cleared the 4.5:1 floor, and that is the point worth recording: **WCAG's threshold does not scale with size**
+  below 18.66 px, so a 12 px label and a 17 px paragraph are held to the same number, which is how a palette can be
+  compliant everywhere and still be work to read at the small end. `--ink-3` is now 6.5:1 and `--owner` 6.0:1 in
+  every theme. **`--ink-2` moved with it** rather than staying put: darkened alone, `--ink-3` would have come within
+  1.15:1 of `--ink-2` and the two levels would have collapsed into one colour with two names, so both shifted and
+  the step between them is unchanged in all three themes — 1.47, 1.37, 1.46. Only the floor rose; the hierarchy did
+  not move. The palest text anywhere is now 6.01:1, up from 4.92:1. **Sizes were left alone**: 12 px is the floor
+  because uppercase labels are hardest to read small and it was chosen rather than drifted into, raising it moves
+  every row height and the table's density, and the contrast lift answers the same perceptual complaint far more
+  cheaply. `docs/design.md` §2.1 and §2.7 carry the nine values and their measurements, taken from the stylesheet
+  after the change rather than from the plan before it.
 - **The queue's ending counts what is here — corrected 2026-09-15.** It read "That is everything waiting — 5
   summaries sit in History", where 5 was every summary the reader is eligible for, the four above it included. Read
   at speed that is five *more*, somewhere else, which is the opposite of what it meant. The line now states what is

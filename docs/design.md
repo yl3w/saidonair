@@ -80,12 +80,12 @@ decision. A state without a sentence is not finished.
 | `--ground` | `#fdfcfa` | — | the page |
 | `--panel` | `#ffffff` | — | cards, tables, sheets, popovers |
 | `--ink` | `#1b1917` | 16:1 | titles, primary text, active nav |
-| `--ink-2` | `#57524c` | 8:1 | body, excerpts, secondary text |
-| `--ink-3` | `#726b63` | 5.3:1 | metadata, labels, captions |
+| `--ink-2` | `#47433e` | 9.6:1 | body, excerpts, secondary text |
+| `--ink-3` | `#615b55` | 6.5:1 | metadata, labels, captions |
 | `--rule` | `#e6e1d9` | — | rules between rows |
 | `--edge` | `#ddd8d0` | — | borders on controls, cards, inputs |
 | `--accent` | `#35618f` | 6.4:1 | links, interactive text, unread emphasis |
-| `--owner` | `#8a6a1f` | 5.0:1 | owner-only affordances, and nothing else |
+| `--owner` | `#7a5d1b` | 6.0:1 | owner-only affordances, and nothing else |
 | `--consequence` | `#8f3a34` | 7.5:1 | Decline and Skip, and nothing else |
 
 `#a29c93` and anything paler is **non-text**: dots, hatching, an inactive swatch. The colour that carried most
@@ -218,18 +218,26 @@ component knows which one is on. daisyUI's own slots are redefined with them, or
 | `--ground` | `#fdfcfa` | `#f3ead7` | `#16181b` |
 | `--panel` | `#ffffff` | `#faf3e3` | `#1e2127` |
 | `--ink` | `#1b1917` | `#241f18` | `#e9e7e3` |
-| `--ink-2` | `#57524c` | `#55493a` | `#b9b4ad` |
-| `--ink-3` | `#726b63` | `#6b5d49` | `#9a948c` |
+| `--ink-2` | `#47433e` | `#463c30` | `#cac6c1` |
+| `--ink-3` | `#615b55` | `#5c503f` | `#a9a49d` |
 | `--rule` | `#e6e1d9` | `#ded0b4` | `#2e3136` |
 | `--edge` | `#ddd8d0` | `#d2c3a4` | `#3c4149` |
 | `--accent` | `#35618f` | `#2d567f` | `#8fb6e3` |
-| `--owner` | `#8a6a1f` | `#7a5c15` | `#d7b262` |
+| `--owner` | `#7a5d1b` | `#6f5313` | `#d7b262` |
 | `--consequence` | `#8f3a34` | `#8a2f28` | `#ee9d95` |
 
 Every value was derived and measured, not picked: each theme's six text colours against both its grounds, the
 inverted calendar cell, and all six avatar monograms on their own tints (§2.5 lists the light six; sepia and dark
-have their own). The palest across all three is 4.92:1 and nothing is below the 4.5:1 floor. **Add a colour and you
-owe three values and their measurements**, or the product has a theme it was never checked in.
+have their own). **The palest across all three is 6.01:1** and nothing is below the 4.5:1 floor. **Add a colour and
+you owe three values and their measurements**, or the product has a theme it was never checked in.
+
+**The secondary ramp was darkened on 2026-09-15** (PRD §9), because the palette had been putting its palest colour
+on its smallest type: `--ink-3` carries the 12 px label and the 12.5 px meta line and sat at 5.12:1, and `--owner`
+at 4.92:1 carried the owner's marks. Both passed the floor — WCAG's 4.5:1 does not scale with size below 18.66 px,
+so a 12 px label and a 17 px paragraph are held to the same number, which is how a compliant palette ends up hard
+work at the small end. `--ink-2` moved with `--ink-3` rather than staying put: at 6.5:1 alone, `--ink-3` would have
+come within 1.15:1 of it and the two levels would have collapsed into one colour with two names. **The step between
+them is unchanged in every theme** — 1.47, 1.37, 1.46 — so only the floor rose.
 
 **Type is the reader's too.** `--font-reading` is the family everything written to be read uses — the serif by
 default, the sans when they ask for it — and `--reading-scale` multiplies the content type roles alone, so the

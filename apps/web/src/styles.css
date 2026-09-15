@@ -49,12 +49,12 @@
   --ground: #fdfcfa;
   --panel: #ffffff;
   --ink: #1b1917;
-  --ink-2: #57524c;
-  --ink-3: #726b63;
+  --ink-2: #47433e;
+  --ink-3: #615b55;
   --rule: #e6e1d9;
   --edge: #ddd8d0;
   --accent: #35618f;
-  --owner: #8a6a1f;
+  --owner: #7a5d1b;
   --consequence: #8f3a34;
 
   /* A modal is the one 6 px radius; daisyUI's --radius-box carries the 4 px of cards and inputs. */
@@ -211,9 +211,9 @@
 
   --color-primary: #35618f;
   --color-primary-content: #ffffff;
-  --color-secondary: #57524c;
+  --color-secondary: #47433e;
   --color-secondary-content: #ffffff;
-  --color-accent: #8a6a1f;
+  --color-accent: #7a5d1b;
   --color-accent-content: #ffffff;
   --color-neutral: #1b1917;
   --color-neutral-content: #fdfcfa;
@@ -222,7 +222,7 @@
   --color-info-content: #ffffff;
   --color-success: #35618f;
   --color-success-content: #ffffff;
-  --color-warning: #8a6a1f;
+  --color-warning: #7a5d1b;
   --color-warning-content: #ffffff;
   --color-error: #8f3a34;
   --color-error-content: #ffffff;
@@ -286,12 +286,12 @@
   --ground: #f3ead7;
   --panel: #faf3e3;
   --ink: #241f18;
-  --ink-2: #55493a;
-  --ink-3: #6b5d49;
+  --ink-2: #463c30;
+  --ink-3: #5c503f;
   --rule: #ded0b4;
   --edge: #d2c3a4;
   --accent: #2d567f;
-  --owner: #7a5c15;
+  --owner: #6f5313;
   --consequence: #8a2f28;
 
   --tint-1-bg: #e6dcc4;
@@ -313,9 +313,9 @@
   --color-base-content: #241f18;
   --color-primary: #2d567f;
   --color-primary-content: #faf3e3;
-  --color-secondary: #55493a;
+  --color-secondary: #463c30;
   --color-secondary-content: #faf3e3;
-  --color-accent: #7a5c15;
+  --color-accent: #6f5313;
   --color-accent-content: #faf3e3;
   --color-neutral: #241f18;
   --color-neutral-content: #f3ead7;
@@ -323,7 +323,7 @@
   --color-info-content: #faf3e3;
   --color-success: #2d567f;
   --color-success-content: #faf3e3;
-  --color-warning: #7a5c15;
+  --color-warning: #6f5313;
   --color-warning-content: #faf3e3;
   --color-error: #8a2f28;
   --color-error-content: #faf3e3;
@@ -335,8 +335,8 @@
   --ground: #16181b;
   --panel: #1e2127;
   --ink: #e9e7e3;
-  --ink-2: #b9b4ad;
-  --ink-3: #9a948c;
+  --ink-2: #cac6c1;
+  --ink-3: #a9a49d;
   --rule: #2e3136;
   --edge: #3c4149;
   --accent: #8fb6e3;
@@ -362,7 +362,7 @@
   --color-base-content: #e9e7e3;
   --color-primary: #8fb6e3;
   --color-primary-content: #16181b;
-  --color-secondary: #b9b4ad;
+  --color-secondary: #cac6c1;
   --color-secondary-content: #16181b;
   --color-accent: #d7b262;
   --color-accent-content: #16181b;

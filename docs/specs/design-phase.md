@@ -68,12 +68,12 @@ Eleven decisions, all recorded in PRD §9 on 2026-09-14 and all reflected in the
 | `--ground` | `#fdfcfa` | the page |
 | `--panel` | `#ffffff` | cards, tables, sheets |
 | `--ink` | `#1b1917` | primary text, 16:1 |
-| `--ink-2` | `#57524c` | body and secondary text, 8:1 |
-| `--ink-3` | `#726b63` | metadata and labels, 5.3:1 |
+| `--ink-2` | `#47433e` | body and secondary text, 9.6:1 (darkened 2026-09-15, PRD §9) |
+| `--ink-3` | `#615b55` | metadata and labels, 6.5:1 (darkened 2026-09-15, PRD §9) |
 | `--rule` | `#e6e1d9` | row rules |
 | `--edge` | `#ddd8d0` | borders and controls |
 | `--accent` | `#35618f` | links and interactive text, 6.4:1 |
-| `--owner` | `#8a6a1f` | owner-only affordances, 5.0:1 |
+| `--owner` | `#7a5d1b` | owner-only affordances, 6.0:1 (darkened 2026-09-15, PRD §9) |
 | `--consequence` | `#8f3a34` | Decline and Skip only, 7.5:1 |
 
 `#a29c93` and paler are **non-text only** — dots, hatches, disabled swatches. The tertiary grey that carried most
