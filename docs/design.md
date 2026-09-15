@@ -344,6 +344,14 @@ be acted on, and leave its opposite in the diagnostics.
 tooltip saying what it would do. Hiding it would cost the owner a capability; leaving it blue would spend the
 meaning of blue, which is "you can act on this".
 
+**A row's cells share a centre line.** Top-aligning them looks right only while every cell is text; put one 44 px
+control in the row and the words sit at the top while the control sits in the middle of its own target, and the row
+reads as broken. Middle-align the body rows — the control keeps its target and the text meets it (2026-09-15).
+
+**A date is spelled by this product, never by the machine's default.** `toLocaleDateString()` with no options
+answered `8/18/2026` beside `14d ago` in the same column, in an order that changes with the reader's locale. Every
+date names its month.
+
 **Sheets** (phone). Anything that would be a popover on a desktop is a bottom sheet on a phone: the channel picker,
 the date picker, the reading column's `Aa`. A handle, a title, a search field where the list is long, and a footer
 whose primary action names what it will do — "Show these two", "Go to 12 September".

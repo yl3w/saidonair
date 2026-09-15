@@ -8,7 +8,20 @@ export function relativeTime(at: number, now = Date.now()): string {
   if (elapsed < -MINUTE) return `in ${span(-elapsed)}`;
   if (elapsed < MINUTE) return "just now";
   if (elapsed < 28 * DAY) return `${span(elapsed)} ago`;
-  return new Date(at).toLocaleDateString();
+  return datedTime(at);
+}
+
+/**
+ * The date a relative time gives up and states, spelled the way this product spells dates
+ * everywhere else. `toLocaleDateString()` alone answered "8/18/2026" beside "14d ago" in the same
+ * column — the machine's default, and a different order in every other locale.
+ */
+function datedTime(at: number): string {
+  return new Date(at).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function span(ms: number): string {

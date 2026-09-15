@@ -205,7 +205,7 @@ function Header({
         </a>{" "}
         · {channelStateCopy(c)} · {followerLabel(c.followerCount)}
       </p>
-      <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-cell lg:grid-cols-[auto_1fr_auto_1fr]">
+      <dl class="mt-3 grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1 text-cell lg:grid-cols-[auto_1fr_auto_1fr]">
         <Fact label="Approved">
           <Time at={c.approvedAt} fallback="never" />
         </Fact>
@@ -295,7 +295,7 @@ function EpisodesTable({
             const panel = `diagnostics-${e.episodeId}`;
             return (
               <Fragment key={e.episodeId}>
-                <tr class="border-b border-rule align-top">
+                <tr class="border-b border-rule align-middle">
                   <td class="py-2 pr-2">
                     <button
                       type="button"
@@ -340,7 +340,7 @@ function EpisodesTable({
 function Diagnostics({ episode: e }: { episode: Episode }) {
   const p = e.processing;
   return (
-    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+    <dl class="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1">
       <Fact label="Window">
         {p.intent === null ? (
           "none open"

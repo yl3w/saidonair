@@ -107,7 +107,7 @@ export function CatalogTable({
           </thead>
           <tbody>
             {page.map((c) => (
-              <tr key={c.channelId} class="border-b border-rule align-top">
+              <tr key={c.channelId} class="border-b border-rule align-middle">
                 <td class="py-2 pr-4">
                   <a
                     class="font-semibold text-ink"
