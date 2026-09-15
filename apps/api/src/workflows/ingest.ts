@@ -221,15 +221,60 @@ export type IngestResult =
       replaced: boolean;
     };
 
+/**
+ * Every failed try of a step, named. Cloudflare's own upstream errors read `internal error;
+ * reference = …` and carry no context at all, and a step that fails once and then succeeds on retry
+ * leaves nothing behind in the attempt ledger — so without this line the message in the log belongs
+ * to nothing, and there is no way to tell a blip from the start of a real failure.
+ *
+ * **`ingest.step_error` is one line per try; `ingest.step_failed` below is one line per attempt**,
+ * written when the attempt ends with a classified outcome. Three of the first and none of the
+ * second is a service having a bad minute; one of each is a real failure.
+ *
+ * The wrapping goes *inside* the step body rather than around `step.do`, which only rejects once the
+ * engine has exhausted its retries — one line per try is the whole point, and the number of lines is
+ * the number of tries.
+ *
+ * What is logged is the upstream service's own message, bounded. Transcript text, prompts and chat
+ * content are never passed to an error, so none of them can arrive here (`AGENTS.md` → Code style).
+ */
+function named(step: StepLike, params: IngestParams): StepLike {
+  return {
+    sleep: (name, seconds) => step.sleep(name, seconds),
+    do: (name, config, fn) =>
+      step.do(name, config, async () => {
+        try {
+          return await fn();
+        } catch (error) {
+          console.log({
+            event: "ingest.step_error",
+            attemptId: params.attemptId,
+            episodeId: params.episodeId,
+            step: name,
+            error: boundedMessage(error),
+          });
+          throw error;
+        }
+      }),
+  };
+}
+
+/** Enough of the message to act on, never enough to be a payload. */
+function boundedMessage(error: unknown): string {
+  const message = messageOf(error);
+  return message.length > 300 ? `${message.slice(0, 300)}…` : message;
+}
+
 /** Which stage an error escaped from, so an unclassified error still gets the right code. */
 type Stage = "transcript" | "embed" | "verify" | "summarize" | "publish";
 
 export async function ingestAttempt(
-  step: StepLike,
+  rawStep: StepLike,
   env: Env,
   params: IngestParams,
 ): Promise<IngestResult> {
   const { attemptId, episodeId } = params;
+  const step = named(rawStep, params);
   const registry = getRegistry(env);
 
   if (params.startDelaySec > 0)

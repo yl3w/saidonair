@@ -361,6 +361,48 @@ describe("ingestAttempt", () => {
     expect(episode?.processing.nextAttemptAt).toEqual(expect.any(Number));
   });
 
+  it("names every failed try of a step, so an upstream error belongs to something", async () => {
+    await seedApprovedChannel(CHANNEL_A, "A");
+    await pendingNow(EPISODE_ENGLISH);
+    env.VECTORIZE_FAKE = JSON.stringify({ throwOn: ["upsert"] });
+
+    // Cloudflare's own errors read `internal error; reference = …` and carry no context; this line
+    // is the only thing that says which attempt, which episode and which step they belonged to.
+    const lines: Record<string, unknown>[] = [];
+    const log = console.log;
+    console.log = (entry: unknown) => {
+      if (typeof entry === "object" && entry !== null) {
+        lines.push(entry as Record<string, unknown>);
+      }
+    };
+    const attemptId = await begin(EPISODE_ENGLISH);
+    try {
+      await run(EPISODE_ENGLISH, attemptId);
+    } finally {
+      console.log = log;
+    }
+
+    // One line per try, and `UPSERT_STEP` allows three retries, so a step that never succeeds
+    // writes four of them — the count is the evidence that a retried blip looks different from a
+    // real failure.
+    const tries = lines.filter((entry) => entry.event === "ingest.step_error");
+    expect(tries).toHaveLength(4);
+    expect(tries[0]).toMatchObject({
+      event: "ingest.step_error",
+      attemptId,
+      episodeId: EPISODE_ENGLISH,
+      step: "stage:0",
+    });
+    expect(String(tries[0]?.error)).toContain("VECTORIZE_INCOMPLETE");
+
+    // And exactly one line for the attempt itself, which is the other event and a different shape.
+    expect(
+      lines.filter((entry) => entry.event === "ingest.step_failed"),
+    ).toMatchObject([
+      { attemptId, episodeId: EPISODE_ENGLISH, stage: "embed" },
+    ]);
+  });
+
   it("finishes VECTORIZE_INCOMPLETE when an upsert fails, and when the generation never becomes readable", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
     await pendingNow(EPISODE_ENGLISH);

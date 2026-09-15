@@ -561,7 +561,13 @@ Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`; bind
   through `lib/validation.ts` and the shared schemas; RSS XML and AI JSON by hand.
 - Errors: throw typed errors in `lib/`, convert to HTTP responses only in routes/middleware.
 - Comments explain *why*, not *what*. Keep them short.
-- Logging: `console.log` with a JSON object `{ event, email?, episodeId?, ... }`. Never log transcript text or chat content.
+- Logging: `console.log` with a JSON object `{ event, email?, episodeId?, ... }`. Never log transcript text or chat
+  content. The ingest pipeline's two failure events are a pair and are easy to confuse: **`ingest.step_error` is one
+  line per failed try** of a step, carrying the step name and the upstream message, and **`ingest.step_failed` is
+  one line per attempt**, carrying the stage and the classified outcome code. Several of the first and none of the
+  second is a service having a bad minute; one of each is a real failure. Cloudflare's own upstream errors read
+  `internal error; reference = …` and carry no context, so without the first of those a message in the log belongs
+  to nothing.
 
 ## Git
 
