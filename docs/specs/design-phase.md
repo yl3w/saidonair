@@ -5,8 +5,9 @@
 decisions this phase rests on.
 **Wireframes:** `https://claude.ai/code/artifact/61ac5352-ede9-49ba-a5e2-792dbeb76557` — twenty-six artboards over
 four pages (Architecture, Reader, Owner, Chats), each screen drawn at two sizes and at 390 px.
-**Status:** written 2026-09-14, awaiting owner approval. Plan: `docs/specs/design-phase-plan.md`. Two dependency
-questions inside (§4.1) need an answer before Step 0.
+**Status:** APPROVED 2026-09-15. Both §4.1 dependency questions are answered: fonts are self-hosted, and icons ship
+as `lucide-preact` rather than inlined path data. Plan: `docs/specs/design-phase-plan.md`, whose steps were reordered
+the same day so the two API steps run before the Tailwind install. Nothing implemented.
 
 ## 1. Summary
 
@@ -43,9 +44,11 @@ Eleven decisions, all recorded in PRD §9 on 2026-09-14 and all reflected in the
 
 - **The visual system lives in one file.** `apps/web/src/styles.css` holds the Tailwind import, the daisyUI plugin,
   one custom theme, and the token block. No second stylesheet, no CSS-in-JS, no per-component `<style>`.
-- **Icons are ours, not a dependency.** The roughly twenty Lucide glyphs the design uses are copied as path data into
-  one `components/Icon.tsx`, rather than adding `lucide-preact`. Hard rule 1 asks for approval to add a dependency;
-  this buys nothing that twenty paths do not, and it keeps the bundle honest. If the set grows past thirty, revisit.
+- **Icons are a dependency: `lucide-preact`** (owner decision 2026-09-15, which is the approval hard rule 1 asks
+  for). I had recommended copying the twenty glyphs in use as path data; the owner took the library, and it is the
+  better call for a UI still being designed — a glyph the next feature needs is an import rather than a trip to a
+  website, the set stays internally consistent, and tree-shaking keeps only what is imported. `Icon.tsx` shrinks to
+  the defaults the design fixes: sizes 16 / 20 / 24, stroke-width 2, `currentColor`.
 - **The three reading themes are not daisyUI themes.** Light, sepia and dark apply to the reading surface through a
   `data-reading-theme` attribute and its own token block, so the one-custom-theme rule stands untouched.
 - **The web keeps typecheck and lint only.** Component behaviour is verified by hand under `pnpm dev`, as
@@ -76,15 +79,17 @@ Eleven decisions, all recorded in PRD §9 on 2026-09-14 and all reflected in the
 secondary labels in the first drafts sat at 2.8:1; it is gone from text.
 
 **Type.** IBM Plex Sans for chrome; Source Serif 4 for everything a reader reads — titles, excerpts, summaries, chat
-answers. Both self-hosted as woff2 under `apps/web/public/fonts` with `@font-face` and `font-display: swap`, because
-a Google Fonts stylesheet is a third-party request from every reader's browser and this product does not make those
-(PRD §1). **TODO(owner):** self-hosted OFL files, or system stacks (`ui-sans-serif` / `ui-serif`) and no font files at
-all? The design holds either way; the second is smaller and duller.
+answers. Both **self-hosted** (owner decision 2026-09-15) as woff2 under `apps/web/public/fonts` with `@font-face` and
+`font-display: swap`, latin subset, with their OFL licence files: Plex Sans at 400 and 600, Source Serif 4 as its
+variable face. A Google Fonts stylesheet would tell a third party when each reader sat down to read, and this product
+does not make those requests (PRD §1). The alternative considered and rejected was system stacks — free, and duller
+where it matters most, since the system serif on Windows is Times New Roman and the reading column is the product.
 
-**Icons.** Lucide geometry at stroke-width 2, round caps and joins, 24-unit grid, rendered at 16, 20 or 24 px:
-`chevron-left/right/up/down`, `plus`, `check`, `search`, `calendar`, `list`, `list-filter`, `message-square`,
-`circle-plus`, `circle-alert`, `table`, `external-link`, `rotate-cw`, `x`. One `Icon.tsx` exporting a named component
-per glyph; no emoji anywhere, per the design.
+**Icons.** `lucide-preact`, imported by name at the point of use, at stroke-width 2 with round caps and joins,
+rendered at 16, 20 or 24 px. The set the wireframes use: `chevron-left/right/up/down`, `plus`, `check`, `search`,
+`calendar`, `list`, `list-filter`, `message-square`, `circle-plus`, `circle-alert`, `table`, `external-link`,
+`rotate-cw`, `x`. Reach for another Lucide glyph when a new feature needs one; never draw your own, and no emoji
+anywhere. `Icon.tsx` holds the size and stroke defaults so no screen sets them by hand.
 
 **Avatars.** A deterministic monogram: one or two letters from the channel title, on a tint chosen by hashing the
 channel id into a fixed six-entry palette drawn from the tokens. No network request, no stored artwork, no layout

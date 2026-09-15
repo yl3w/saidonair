@@ -814,8 +814,10 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
-- **Lucide icons, and monograms where artwork is missing — decided 2026-09-14.** The icon set is Lucide: one stroke
-  weight, one grid, and a name for every glyph, so a screen never invents its own. Channel avatars are **deterministic
+- **Lucide icons, and monograms where artwork is missing — decided 2026-09-14.** The icon set is Lucide, shipped as
+  `lucide-preact` (the dependency approved 2026-09-15): one stroke weight, one grid, and a name for every glyph, so a
+  screen never invents its own. The two type families are self-hosted rather than fetched from a font CDN, which would
+  tell a third party when each reader sat down to read. Channel avatars are **deterministic
   monograms** — two letters on a tint derived from the channel id — because nothing in the product stores channel
   artwork and no permitted source for it exists; if one is ever added, the monogram becomes the fallback rather than
   the design. Adding a channel is three steps rather than one field: paste an id, verify it against the long-form feed

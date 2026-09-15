@@ -466,7 +466,8 @@ screen is for and what it must show is `docs/PRD.md` §7 "Screens"; the current 
 acceptance criteria are `docs/specs/design-phase.md`. In code:
 
 - Approved dependencies: `preact`, `preact-iso`, `vite`, `@preact/preset-vite`, `tailwindcss`, `@tailwindcss/vite`,
-  `daisyui`. Anything else requires approval. daisyUI 5 is the component library and Tailwind 4 the styling system
+  `daisyui`, `lucide-preact` (icons, approved 2026-09-15). Anything else requires approval. The two type families are
+  self-hosted woff2 under `public/fonts`, never a font CDN. daisyUI 5 is the component library and Tailwind 4 the styling system
   (decided 2026-09-14, PRD §9, which withdrew the no-component-library and no-CSS-framework rules). No state
   library; `useState`/`useReducer` for state. `src/styles.css` stays the single stylesheet: it imports Tailwind,
   loads the daisyUI plugin, and declares one custom theme.

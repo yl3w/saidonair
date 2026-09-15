@@ -88,7 +88,8 @@ you are the owner". Red is "someone else feels this" — it appears on exactly t
 
 ### 2.2 Type
 
-Two families. **IBM Plex Sans** for chrome — navigation, controls, tables, metadata, labels. **Source Serif 4** for
+Two families, self-hosted as woff2 — never from a font CDN, which would tell a third party when each reader sat down
+to read. **IBM Plex Sans** for chrome — navigation, controls, tables, metadata, labels. **Source Serif 4** for
 everything a person reads for its meaning — titles, excerpts, summaries, takeaways, chat answers, empty-state
 sentences. The split is the fastest way to tell a reader what is content and what is furniture.
 
@@ -121,10 +122,11 @@ rules are 1 px `--rule`. One shadow, and only on things that float: popovers, sh
 
 ### 2.4 Icons
 
-**Lucide**, at stroke-width 2, round caps and joins, on the 24-unit grid, rendered at 16, 20 or 24 px. The set in use
-is small and deliberate: `chevron-*`, `plus`, `check`, `search`, `calendar`, `list`, `list-filter`, `message-square`,
-`circle-plus`, `circle-alert`, `table`, `external-link`, `rotate-cw`, `x`. Add one by name from Lucide; do not draw
-your own, and do not use emoji anywhere in the product.
+**Lucide**, through `lucide-preact`, at stroke-width 2 with round caps and joins, rendered at 16, 20 or 24 px —
+`Icon.tsx` fixes those defaults so no screen sets them by hand. The set in use is small and deliberate: `chevron-*`,
+`plus`, `check`, `search`, `calendar`, `list`, `list-filter`, `message-square`, `circle-plus`, `circle-alert`,
+`table`, `external-link`, `rotate-cw`, `x`. When a feature needs another, take it from Lucide by name; never draw your
+own, and never use emoji anywhere in the product.
 
 ### 2.5 Avatars
 
@@ -281,7 +283,7 @@ and monograms.
   the column.
 - Chat search, which the rail's search box needs and no route provides.
 - Chat deletion: nothing deletes a chat, and the rail only grows.
-- Fonts: self-hosted files or system stacks.
+- ~~Fonts: self-hosted files or system stacks.~~ Settled 2026-09-15: self-hosted.
 
 ---
 

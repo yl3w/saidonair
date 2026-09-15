@@ -2,9 +2,9 @@
 
 **Implements:** `docs/specs/design-phase.md` under `AGENTS.md`; PRD §7, §4.4, §9, §10.
 **Written:** 2026-09-14, against `main` at `f86ebfb`.
-**Status:** draft, awaiting the owner's approval of the spec. Two dependency questions (spec §4.1) block Step 0:
-the font decision, and confirmation that copying twenty Lucide paths is preferred to adding `lucide-preact`.
-**Shape:** nine steps. Steps 1 and 2 are API and carry tests; Steps 0 and 3 to 8 are web and carry a hand
+**Status:** APPROVED 2026-09-15 with both dependency questions answered — fonts are self-hosted, and `lucide-preact`
+is the icon dependency (owner decision, hard rule 1 satisfied). Nothing implemented.
+**Shape:** nine steps, reordered 2026-09-15 so the two API steps come first. Steps 1 and 2 are API and carry tests; Steps 3 to 9 are web and carry a hand
 walkthrough, because `apps/web` is typecheck and lint only (`AGENTS.md` → Testing). One commit per step, `pnpm check`
 green before the next begins. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 
@@ -14,29 +14,16 @@ Spec §5, all eleven criteria.
 
 ## Order, and why
 
-The API moves first, because every screen after Step 3 reads from it and rewriting a screen twice is the one waste
-this plan can avoid. The shell lands before any screen, so each screen arrives into a finished frame. Curate comes
-last: it is the least changed and the only one with no phone breakpoint to hold it up.
+**The two API steps come first, and the install comes after them** (reordered 2026-09-15). The first draft opened
+with the Tailwind install, because every screen needs the primitives — but Tailwind's preflight makes all five
+existing screens look broken the moment it lands, and Steps 1 and 2 do nothing to fix that. Since neither API step
+needs a single token, moving them first means a session can end after Step 2 with the API ready, the tests green and
+the app visually untouched. Everything from Step 3 on is one continuous run: install, shell, then the screens, so the
+ugly middle stays inside one sitting.
 
-### Step 0 — Tailwind, daisyUI, the theme, and the primitives  (size: M)
-
-**Files:** `apps/web/package.json`, `apps/web/vite.config.ts`, `apps/web/src/styles.css`,
-`apps/web/src/components/Icon.tsx`, `apps/web/src/components/Avatar.tsx`, `apps/web/public/fonts/*`.
-
-- 0.1 Install `tailwindcss`, `@tailwindcss/vite` and `daisyui` — the three already approved in `AGENTS.md` → Web UI
-  code, so this adds nothing new. Wire the Vite plugin.
-- 0.2 `styles.css`: the Tailwind import, the daisyUI plugin with all 35 built-ins excluded and one theme named
-  `digest`, the token block of spec §4.1, and the `data-reading-theme` block for light, sepia and dark.
-- 0.3 `Icon.tsx`: one named export per glyph of spec §4.1, Lucide path data, stroke-width 2, `size` prop of 16, 20 or
-  24. `Avatar.tsx`: monogram from the title, tint from a hash of the channel id, four sizes.
-- 0.4 Fonts per the owner's answer to the §4.1 TODO — woff2 under `public/fonts` with `@font-face`, or system stacks
-  and no files.
-
-**Plan decision:** Tailwind's preflight lands here, which restyles the five existing screens to unstyled-looking
-before they are rebuilt. That is expected and lasts until Step 8; it is why this phase is one branch of commits
-rather than a single release.
-
-**Done when:** `pnpm check` green, `pnpm build` clean, no Zod in `dist`, the theme is the only theme in the CSS.
+After that the order is the old one. The shell lands before any screen, so each screen arrives into a finished frame;
+the screens a reader uses daily come before the rest; and Curate is last, being the least changed and the only one
+with no phone breakpoint to hold it up.
 
 ### Step 1 — The read model becomes explicit  (size: M)
 
@@ -70,97 +57,118 @@ read-receipt module it delegates to), `packages/shared/src/index.ts`, `apps/api/
 
 **Done when:** `pnpm check` green, and the route document has no `since`.
 
-### Step 3 — The shell: routes, nav, Account  (size: M)
+### Step 3 — Tailwind, daisyUI, the theme, and the primitives  (size: M)
+
+**Files:** `apps/web/package.json`, `apps/web/vite.config.ts`, `apps/web/src/styles.css`,
+`apps/web/src/components/Icon.tsx`, `apps/web/src/components/Avatar.tsx`, `apps/web/public/fonts/*`.
+
+- 3.1 Install `tailwindcss`, `@tailwindcss/vite`, `daisyui` and `lucide-preact` — the first three already approved
+  in `AGENTS.md` → Web UI code, the fourth approved by the owner on 2026-09-15. Wire the Vite plugin.
+- 3.2 `styles.css`: the Tailwind import, the daisyUI plugin with all 35 built-ins excluded and one theme named
+  `digest`, the token block of spec §4.1, and the `data-reading-theme` block for light, sepia and dark.
+- 3.3 Icons come from `lucide-preact`, imported by name at the point of use; `Icon.tsx` holds only the size and
+  stroke defaults the design fixes (16 / 20 / 24, stroke-width 2, `currentColor`), so no screen sets them by hand.
+  `Avatar.tsx`: monogram from the title, tint from a hash of the channel id, four sizes.
+- 3.4 Fonts: IBM Plex Sans 400 and 600 and the Source Serif 4 variable face, latin subset, as woff2 under
+  `public/fonts` with `@font-face` and `font-display: swap`, plus their OFL licence files. No third-party request.
+
+**Plan decision:** Tailwind's preflight lands here, which restyles the five existing screens to unstyled-looking
+before they are rebuilt. That is expected and lasts until Step 9; it is why Steps 3 to 9 want to run together.
+
+**Done when:** `pnpm check` green, `pnpm build` clean, no Zod in `dist`, the theme is the only theme in the CSS.
+
+### Step 4 — The shell: routes, nav, Account  (size: M)
 
 **Files:** `apps/web/src/main.tsx`, `apps/web/src/components/Nav.tsx`, `apps/web/src/screens/Account.tsx` (sign in),
 new `apps/web/src/screens/Settings.tsx`, `apps/web/src/api.ts`.
 
-- 3.1 The routes of spec §4.2. The old paths are deleted, not redirected.
-- 3.2 Nav: Queue, Sources, Chats; Curate for the owner above the desktop breakpoint only, with a count that renders
+- 4.1 The routes of spec §4.2. The old paths are deleted, not redirected.
+- 4.2 Nav: Queue, Sources, Chats; Curate for the owner above the desktop breakpoint only, with a count that renders
   only when non-zero. The monogram in the corner goes to `/account`.
-- 3.3 Account: reading as and Switch account, reading preferences in `localStorage`, `system_rules` through the
+- 4.3 Account: reading as and Switch account, reading preferences in `localStorage`, `system_rules` through the
   existing preferences routes, the counts toggle, and the owner's desktop-only line.
-- 3.4 `api.ts` gains the Step 1 and 2 calls.
+- 4.4 `api.ts` gains the Step 1 and 2 calls.
 
 **Done when:** `pnpm check` green; every route deep-links and reloads under `wrangler pages dev`.
 
-### Step 4 — Queue and the reading view  (size: L)
+### Step 5 — Queue and the reading view  (size: L)
 
 **Files:** new `apps/web/src/screens/Queue.tsx` and `Reading.tsx`, new `components/SummaryRow.tsx`,
 `components/ChannelFilter.tsx`, `components/DensitySwitch.tsx`; `components/Digest.tsx` and `EpisodeItem.tsx` are
 deleted; `lib/copy.ts`, `lib/day.ts` (new, local day boundaries).
 
-- 4.1 Queue: unread only, grouped by local day, channel filter as a searchable menu, density switch, the check on
+- 5.1 Queue: unread only, grouped by local day, channel filter as a searchable menu, density switch, the check on
   each row, and the end-of-queue line pointing at History.
-- 4.2 Reading view: the 680 px column of spec §4.5, the `Aa` panel closed by default, `Watch` once, `Done` recording
+- 5.2 Reading view: the 680 px column of spec §4.5, the `Aa` panel closed by default, `Watch` once, `Done` recording
   the receipt and advancing to the next unread.
-- 4.3 The phone breakpoints for both.
+- 5.3 The phone breakpoints for both.
 
 **Done when:** `pnpm check` green; a hand walkthrough of open → Done → next, and of the row check.
 
-### Step 5 — History and the calendar  (size: M)
+### Step 6 — History and the calendar  (size: M)
 
 **Files:** new `apps/web/src/screens/History.tsx`, `components/Calendar.tsx`, `lib/day.ts`.
 
-- 5.1 History by day with `/history/2026-09-12` addresses; done rows shown with their state in words; undo.
-- 5.2 The calendar: five weeks, dated cells, four states, arrow-key traversal, a full date and counts in each cell's
+- 6.1 History by day with `/history/2026-09-12` addresses; done rows shown with their state in words; undo.
+- 6.2 The calendar: five weeks, dated cells, four states, arrow-key traversal, a full date and counts in each cell's
   accessible name, month stepper, fed by one `compact` request.
-- 5.3 The phone sheet.
+- 6.3 The phone sheet.
 
 **Done when:** `pnpm check` green; a walkthrough that undoes a receipt and sees the row return to the queue.
 
-### Step 6 — Sources, and one source  (size: L)
+### Step 7 — Sources, and one source  (size: L)
 
 **Files:** `apps/web/src/screens/Sources.tsx` (was `Home.tsx`'s channel half), `screens/Source.tsx` (was
 `Channel.tsx`), `components/AddChannel.tsx` rewritten, `components/ChannelList.tsx` deleted.
 
-- 6.1 Tabs, search, sort, paging at 25.
-- 6.2 The three-step add: paste, verify against the long-form feed, decide — the owner's title, import count and note
+- 7.1 Tabs, search, sort, paging at 25.
+- 7.2 The three-step add: paste, verify against the long-form feed, decide — the owner's title, import count and note
   in the third step, a reader's request instead.
-- 6.3 One source: episodes newest-published with their phrases, paging by year, and the owner strip.
+- 7.3 One source: episodes newest-published with their phrases, paging by year, and the owner strip.
 
 **Done when:** `pnpm check` green; a walkthrough that adds a real channel as the owner and as a reader.
 
-### Step 7 — Curate and channel review  (size: M)
+### Step 8 — Curate and channel review  (size: M)
 
 **Files:** `apps/web/src/screens/Curate.tsx` (was `Owner.tsx`), `screens/CurateChannel.tsx` (was `OwnerChannel.tsx`),
 `components/CatalogTable.tsx`, `AttentionList.tsx`, `RequestQueue.tsx`, `CatalogHealth.tsx`,
 `ChannelStatusActions.tsx`, `lib/copy.ts`.
 
-- 7.1 Restyle at the spec's density: 13.5 px cells, full-ink primaries, structure carrying the density.
-- 7.2 Status filters, a sorted column, 25 rows at a time; Needs you never paginates.
-- 7.3 **Skip renders on failed episodes only** — the current screen offers it on a pending row, which §7 forbids.
-- 7.4 The decline confirmation with the follower count, in a native `<dialog>`; busy and unavailable states with
+- 8.1 Restyle at the spec's density: 13.5 px cells, full-ink primaries, structure carrying the density.
+- 8.2 Status filters, a sorted column, 25 rows at a time; Needs you never paginates.
+- 8.3 **Skip renders on failed episodes only** — the current screen offers it on a pending row, which §7 forbids.
+- 8.4 The decline confirmation with the follower count, in a native `<dialog>`; busy and unavailable states with
   their reasons; the failed-refresh banner naming the time the numbers are from.
-- 7.5 Below the desktop breakpoint, Curate is not reachable and the nav item is absent.
+- 8.5 Below the desktop breakpoint, Curate is not reachable and the nav item is absent.
 
 **Done when:** `pnpm check` green; a walkthrough of approve, decline-with-confirm, pause, start, retry and skip.
 
-### Step 8 — The floor, and the documents  (size: M)
+### Step 9 — The floor, and the documents  (size: M)
 
 **Files:** every screen touched above; `AGENTS.md`; `docs/PRD.md` §7 and its route table;
 `docs/specs/home-read-experience.md`, `docs/specs/channel-simplification.md`; this file.
 
-- 8.1 The accessibility pass of spec §4.10 across every screen at both sizes and at 390 px: contrast, the 12 px
+- 9.1 The accessibility pass of spec §4.10 across every screen at both sizes and at 390 px: contrast, the 12 px
   floor, 44 px targets, and state in words rather than colour.
-- 8.2 PRD §7 Screens rewritten to the built design; the route table takes the Step 1 and 2 changes; the
+- 9.2 PRD §7 Screens rewritten to the built design; the route table takes the Step 1 and 2 changes; the
   implementation-status note loses "the Design phase … has its architecture approved and nothing built".
-- 8.3 `AGENTS.md` → Web UI code gains the icon, avatar and reading-theme rules and repoints its screen reference.
-- 8.4 The two superseded specs get a dated line.
+- 9.3 `AGENTS.md` → Web UI code gains the icon, avatar and reading-theme rules and repoints its screen reference.
+- 9.4 The two superseded specs get a dated line.
 
 **Done when:** `pnpm check` green, `git diff --check` clean, and the record below filled in.
 
 ## Risks
 
-- **Preflight makes the middle of this plan ugly.** Between Step 0 and Step 8 the not-yet-rebuilt screens look
-  unstyled. Mitigation is order: the shell first, then the screens a reader uses daily, Curate last.
+- **Preflight makes the middle of this plan ugly.** From the moment Step 3 lands until Step 9, the not-yet-rebuilt
+  screens look unstyled. Two mitigations: the API steps are in front of it, so a natural stopping point exists before
+  any of it starts; and inside it, the shell comes first, then the screens a reader uses daily, Curate last.
 - **`/digest` is the one route with a real behaviour change.** Steps 1 and 2 split it in two so a receipt regression
   and a paging regression cannot arrive in the same commit.
 - **The channel filter needs a list the queue does not fetch.** It comes from `GET /follows`, which the shell
   already loads; if that proves awkward the alternative is a `channels` block on the digest response, which is worse
   and is not the first move.
-- **Fonts.** Self-hosted files are two more artefacts to keep; system stacks are duller. The TODO is the owner's, and
-  nothing else in the plan depends on the answer.
+- **Fonts.** Three woff2 files and two licence files are now artefacts the repo keeps current. Small, but real: a
+  face that is never updated is a face that quietly diverges from the foundry's.
 - **A long history makes the calendar's range query the widest read in the product.** `compact` is the mitigation;
   if five weeks of a heavy catalog is still slow, the next move is a per-day count aggregate, not pagination.
 
