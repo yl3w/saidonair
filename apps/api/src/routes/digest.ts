@@ -6,6 +6,7 @@ import {
 } from "@media-digest/shared";
 import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
+import { MAX_EPISODE_LIMIT } from "../do/registry/episodes";
 import type { DigestPosition, DigestSelection } from "../do/registry/types";
 import type { AppEnv } from "../env";
 import { toEpisode } from "../lib/episode-view";
@@ -16,6 +17,12 @@ import { validate } from "../lib/validation";
 type Ctx = Context<AppEnv>;
 
 const DEFAULT_LIMIT = 50;
+/**
+ * The Registry's own ceiling, and the one the query schema advertises. A page asks for one row more
+ * than it needs so the end of the range is visible without a second request — except at the ceiling,
+ * where there is no room for the extra row and a full batch simply stays ambiguous.
+ */
+const MAX_LIMIT = MAX_EPISODE_LIMIT;
 /**
  * Read receipts live in the User DO, so `unread` is filtered outside the Registry: a page may need
  * several passes over the range before it fills. This bounds the work one request may do; a page
@@ -72,16 +79,17 @@ export const digestRoutes = new Hono<AppEnv>().get(
       );
     }
 
+    const size = Math.min(limit + 1, MAX_LIMIT);
     const select = (after: DigestPosition | null): DigestSelection => ({
       ...range,
       after,
-      limit: limit + 1,
+      limit: size,
     });
     if (compact) {
       const page = await pageThrough(
         c,
         (after) => c.var.registry.listDigestRows(channelIds, select(after)),
-        { limit, unread, start },
+        { limit, size, unread, start },
       );
       const read = await readState(c, page.items, unread);
       return c.json<DigestResponse>({
@@ -97,7 +105,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
     const page = await pageThrough(
       c,
       (after) => c.var.registry.listDigest(channelIds, select(after)),
-      { limit, unread, start },
+      { limit, size, unread, start },
     );
     const read = await readState(c, page.items, unread);
     return c.json<DigestResponse>({
@@ -122,7 +130,13 @@ type Positioned = { episodeId: string; summaryAvailableAt: number | null };
 async function pageThrough<T extends Positioned>(
   c: Ctx,
   fetch: (after: DigestPosition | null) => Promise<T[]>,
-  options: { limit: number; unread: boolean; start: DigestPosition | null },
+  options: {
+    limit: number;
+    /** What each pass asks the Registry for; `limit + 1`, or the ceiling when that would exceed it. */
+    size: number;
+    unread: boolean;
+    start: DigestPosition | null;
+  },
 ): Promise<{ items: T[]; nextCursor: string | null }> {
   const items: T[] = [];
   let after = options.start;
@@ -146,8 +160,10 @@ async function pageThrough<T extends Positioned>(
       after = positionOf(row);
       if (read === null || !read.has(row.episodeId)) items.push(row);
     }
-    // The Registry was asked for one more than the page needs, so a short batch is the end.
-    if (consumed === batch.length && batch.length <= options.limit) {
+    // A batch shorter than what was asked for is the end of the range. At the ceiling, where the
+    // extra row does not fit, a full batch is ambiguous and costs one empty page rather than a
+    // wrong answer.
+    if (consumed === batch.length && batch.length < options.size) {
       exhausted = true;
     }
   }

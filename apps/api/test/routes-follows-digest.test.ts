@@ -406,6 +406,34 @@ describe("digest route", () => {
     ]);
     expect(compact.json.nextCursor).toEqual(expect.any(String));
 
+    // Both ends of the page size have to be servable. A page asks the Registry for one row more
+    // than it needs so the end of the range is visible without a second request — and at the
+    // documented ceiling there is no room for that extra row, which is what made `limit=200`
+    // answer 400 for a day (fixed 2026-09-15).
+    for (const size of [1, 199, 200]) {
+      const page = await call(ALICE, "GET", `/digest?limit=${size}`);
+      expect(page.status, `limit=${size}`).toBe(200);
+      expect(
+        (await call(ALICE, "GET", `/digest?compact=true&limit=${size}`)).status,
+        `compact limit=${size}`,
+      ).toBe(200);
+    }
+    // At the ceiling, a range that fits inside one page still says it is finished.
+    const ceiling = await call(ALICE, "GET", "/digest?limit=200");
+    expect(ceiling.json.nextCursor).toBeNull();
+    expect((ceiling.json.episodes as Json[]).length).toBe(4);
+    // A page of one walks the whole range and stops, rather than looping on its own cursor.
+    const single: unknown[] = [];
+    let step: string | null = null;
+    for (let read = 0; read < 6; read++) {
+      const query: string = `?limit=1${step === null ? "" : `&cursor=${encodeURIComponent(step)}`}`;
+      const answer = await call(ALICE, "GET", `/digest${query}`);
+      single.push(...(answer.json.episodes as Json[]).map((e) => e.episodeId));
+      step = answer.json.nextCursor as string | null;
+      if (step === null) break;
+    }
+    expect(single).toEqual([EPISODE_A, EPISODE_D, EPISODE_B, EPISODE_OLD]);
+
     // Input the route cannot page or bound is refused rather than silently widened.
     for (const query of [
       "?from=yesterday",
