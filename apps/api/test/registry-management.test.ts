@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  ALICE,
   CHANNEL_A,
   CHANNEL_B,
   CHANNEL_C,
