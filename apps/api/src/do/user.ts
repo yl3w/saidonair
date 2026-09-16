@@ -110,6 +110,8 @@ export class UserDO extends DurableObject<Env> {
     messageId: string,
     content: string,
     sources: ChatMessageSourceInput[],
+    promptVersion: string,
+    truncated: boolean,
   ): ChatMessage {
     return this.#transaction(() =>
       chats.completeAssistantMessage(
@@ -118,6 +120,8 @@ export class UserDO extends DurableObject<Env> {
         content,
         sources,
         Date.now(),
+        promptVersion,
+        truncated,
       ),
     );
   }

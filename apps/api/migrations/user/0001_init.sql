@@ -38,6 +38,11 @@ CREATE TABLE chat_messages (
   -- Written on the user message, null on the reply and null for a global question. No CHECK and no
   -- foreign key: episode ids are cross-DO references validated through Registry methods.
   about_episode_id TEXT,
+  -- The chat prompt that produced a reply, and whether it hit the model's output cap
+  -- (docs/specs/m4-2-chat-answering.md §3.5). Both null on the question. A reply that hit the cap
+  -- is stored completed with its text cut at the last sentence, never failed (docs/PRD.md §9).
+  prompt_version TEXT,
+  truncated INTEGER,
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
   UNIQUE (chat_id, sequence_number),

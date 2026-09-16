@@ -4,7 +4,7 @@
 roadmap `docs/specs/chat-origin-scope-plan.md`.
 **Written:** 2026-09-16, against `main` at `dda864b`.
 **Status:** in progress. **Step 1 complete 2026-09-16 (`21860eb`)**, 348 tests. **Step 2 complete 2026-09-16**, 352
-tests. **Step 3 complete 2026-09-16**, 355 tests. Steps 4 and 5 not started.
+tests. **Step 3 complete 2026-09-16**, 355 tests. **Step 4 complete 2026-09-16**, 367 tests. Step 5 not started.
 **Shape:** five code steps, each ending with `pnpm check` green and one commit when the owner asks. Steps 1–3 are
 independent of each other and all feed Step 4; Step 5 needs Step 4. Nothing here touches the web or the Registry's
 write paths. Decisions this plan makes are marked **plan decision** and stand unless vetoed.

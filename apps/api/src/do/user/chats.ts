@@ -28,6 +28,8 @@ type MessageRow = {
   reply_to_message_id: string | null;
   channel_id: string | null;
   about_episode_id: string | null;
+  prompt_version: string | null;
+  truncated: number | null;
   created_at: number;
   updated_at: number;
 };
@@ -45,7 +47,8 @@ type SourceRow = {
 
 const CHAT_COLUMNS = "chat_id, title, created_at, updated_at";
 const MESSAGE_COLUMNS = `message_id, chat_id, sequence_number, role, content, status, failure_code,
-  reply_to_message_id, channel_id, about_episode_id, created_at, updated_at`;
+  reply_to_message_id, channel_id, about_episode_id, prompt_version, truncated, created_at,
+  updated_at`;
 const SOURCE_COLUMNS = `source_id, message_id, position, episode_id, channel_id, episode_title,
   channel_title, start_sec`;
 
@@ -187,6 +190,8 @@ export function completeAssistantMessage(
   content: string,
   sources: readonly ChatMessageSourceInput[],
   now: number,
+  promptVersion: string,
+  truncated: boolean,
 ): ChatMessage {
   const message = requirePendingAssistant(sql, messageId);
   const text = requireContent(content);
@@ -210,9 +215,12 @@ export function completeAssistantMessage(
     );
   });
   sql.exec(
-    `UPDATE chat_messages SET status = 'completed', content = ?, updated_at = ?
+    `UPDATE chat_messages SET status = 'completed', content = ?, prompt_version = ?,
+       truncated = ?, updated_at = ?
      WHERE message_id = ?`,
     text,
+    promptVersion,
+    truncated ? 1 : 0,
     now,
     message.messageId,
   );
@@ -363,6 +371,8 @@ function toMessage(row: MessageRow, sources: ChatMessageSource[]): ChatMessage {
     replyToMessageId: row.reply_to_message_id,
     channelId: row.channel_id,
     aboutEpisodeId: row.about_episode_id,
+    promptVersion: row.prompt_version,
+    truncated: row.truncated === null ? null : row.truncated === 1,
     sources,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

@@ -150,6 +150,8 @@ describe("user chats", () => {
       assistantMessage.messageId,
       "Two videos covered it.",
       [SOURCE_A, SOURCE_B],
+      "2026-09-16",
+      false,
     );
     expect(completed).toMatchObject({
       status: "completed",
@@ -166,11 +168,23 @@ describe("user chats", () => {
     expect(history.map((m) => m.sources.length)).toEqual([0, 2]);
 
     await expectDomainError(
-      stub.completeAssistantMessage(assistantMessage.messageId, "again", []),
+      stub.completeAssistantMessage(
+        assistantMessage.messageId,
+        "again",
+        [],
+        "2026-09-16",
+        false,
+      ),
       "INVALID_STATE",
     );
     await expectDomainError(
-      stub.completeAssistantMessage(userMessage.messageId, "not a reply", []),
+      stub.completeAssistantMessage(
+        userMessage.messageId,
+        "not a reply",
+        [],
+        "2026-09-16",
+        false,
+      ),
       "INVALID_STATE",
     );
     await expectDomainError(
@@ -198,7 +212,13 @@ describe("user chats", () => {
       "failed",
     ]);
     await expectDomainError(
-      stub.completeAssistantMessage(assistantMessage.messageId, "late", []),
+      stub.completeAssistantMessage(
+        assistantMessage.messageId,
+        "late",
+        [],
+        "2026-09-16",
+        false,
+      ),
       "INVALID_STATE",
     );
   });
@@ -209,10 +229,13 @@ describe("user chats", () => {
     const { assistantMessage } = await stub.appendExchange(chat.chatId, "q");
 
     await expectDomainError(
-      stub.completeAssistantMessage(assistantMessage.messageId, "answer", [
-        SOURCE_A,
-        { ...SOURCE_B, startSec: -1 },
-      ]),
+      stub.completeAssistantMessage(
+        assistantMessage.messageId,
+        "answer",
+        [SOURCE_A, { ...SOURCE_B, startSec: -1 }],
+        "2026-09-16",
+        false,
+      ),
       "INVALID_INPUT",
     );
 

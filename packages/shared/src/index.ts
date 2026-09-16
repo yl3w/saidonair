@@ -950,6 +950,18 @@ export const ChatMessageSchema = z
     aboutEpisodeId: Id.nullable().describe(
       "The episode this question was scoped to, or null for a global one. Set on the question, never on the reply.",
     ),
+    promptVersion: z
+      .string()
+      .nullable()
+      .describe(
+        "The chat prompt that produced this reply; null on a question.",
+      ),
+    truncated: z
+      .boolean()
+      .nullable()
+      .describe(
+        "Whether this reply hit the model's output cap and was trimmed to its last complete sentence; null on a question.",
+      ),
     sources: z.array(ChatSourceSchema),
     createdAt: UnixMs,
     updatedAt: UnixMs,

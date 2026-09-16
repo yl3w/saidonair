@@ -36,6 +36,10 @@ export type ChatMessage = {
   channelId: string | null;
   /** The episode this question was scoped to, or null for a global one (docs/PRD.md §4.5). */
   aboutEpisodeId: string | null;
+  /** The chat prompt that produced this reply; null on a question and on a failed reply. */
+  promptVersion: string | null;
+  /** Whether this reply hit the model's output cap and was trimmed; null on a question. */
+  truncated: boolean | null;
   sources: ChatMessageSource[];
   createdAt: number;
   updatedAt: number;
