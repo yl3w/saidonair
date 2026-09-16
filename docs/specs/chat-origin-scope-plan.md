@@ -3,7 +3,8 @@
 **Implements:** `docs/specs/chat-origin-scope.md` under `AGENTS.md`; product contract `docs/PRD.md` §4.5, §5.2, §6,
 §7, §8, §9.
 **Written:** 2026-09-15, against `main` at `455c9e8`.
-**Status:** M4.1 complete 2026-09-16 (`97247d5`, decision record `24f2902`). M4.2 and M4.3 not started.
+**Status:** M4.1 complete 2026-09-16 (`97247d5`, decision record `24f2902`). M4.2 complete 2026-09-16. M4.3 spec
+and plan written 2026-09-16, artboards drawn, not started.
 **Shape:** three chunks, each with its own spec and plan, in the shape M3 used. Origin and scope are **not** a chunk:
 they are woven through all three, so chat is never built global and then amended.
 
@@ -30,7 +31,7 @@ and no web screen — the Design phase deleted the placeholder rather than stubb
 |---|---|---|---|---|---|---|
 | M4.1 | `m4-1-chat-routes.md`, `-plan.md` | `routes/chats.ts` (three routes), `about_episode_id` and its plumbing, `getChat` on the DO, the OpenAPI entry | M | nothing | no: no screen calls them yet | complete 2026-09-16 (`97247d5`) |
 | M4.2 | `m4-2-chat-answering.md`, `-plan.md` | `lib/chat.ts`, the widened `lib/vectorize.ts` filter union and its fake, `POST /chats/:id/messages` with `aboutEpisodeId` and **five** outcomes, the chat prompt, `prompt_version`, staleness reconciliation, `lib/eligibility.ts` | L | M4.1 | no: still no screen | spec and plan written 2026-09-16, not started |
-| M4.3 | `m4-3-chat-web.md`, `-plan.md` | `/chats` as a history, `/chats/:id` with the sticky chip, `Ask` on the reading screen, per-message scope, `Try again`, Account's chat-rules field | L | M4.2, **and three artboards** | yes: the whole feature | not started |
+| M4.3 | `m4-3-chat-web.md`, `-plan.md` | `/chats` as a history, `/chats/:id` with the sticky chip, `Ask` on the reading screen, per-message scope, source grouping and ascending timestamps, `Try again`, Account's chat-rules field | L | M4.2; its six artboards were drawn 2026-09-16 | yes: the whole feature | spec and plan written 2026-09-16 |
 
 ## Decisions the split made (2026-09-15)
 
@@ -45,9 +46,10 @@ These are the split's, not the spec's, and the owner may reverse any of them.
    than upgraded — a `/clean-local` is owed before the next `pnpm dev`.
 3. **Origin and scope are woven, not chunked.** M4.1 carries the column, M4.2 the retrieval branch, M4.3 the chip and
    the `Ask` entry. No chunk builds a global chat that a later one corrects.
-4. **M4.3 is gated on design work.** `chat-origin-scope.md` §4.7 names three artboards that do not exist — the chip
-   in both states, the per-message scope mark, and `/chats` without a create control. M4.3 cannot start without them,
-   and that gate is the reason it is last rather than merely large.
+4. **M4.3 was gated on design work, and no longer is.** `chat-origin-scope.md` §4.7 grew from three artboards to
+   six as the decisions of 2026-09-16 landed; all six were drawn that day
+   (https://claude.ai/code/artifact/2ac197c6-36ab-45e0-9a30-3deb23e9cbc4). The gate is why M4.3 was last rather
+   than merely large.
 5. **Unread receipts are audited, not built.** M4's line in PRD §10 carries them, but the Design phase delivered
    reading as an act with `POST`/`DELETE …/read`. M4.1 opens with a read of that surface; if it is complete, the
    milestone line is the only thing to correct. **Audited 2026-09-16: complete.** `POST`/`DELETE
