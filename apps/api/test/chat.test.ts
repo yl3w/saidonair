@@ -310,6 +310,42 @@ describe("answering a chat question", () => {
     expect(assistantMessage.sources).toHaveLength(1);
   });
 
+  it("fails the reply with its own code when the embedding or the query does", async () => {
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_A);
+
+    // The embedding throws before any query is sent.
+    const embed = await deps([CHANNEL_A]);
+    embed.ai = ai({ AI_FAKE: '{"embedThrows":true}' });
+    const chatA = await embed.user.createChat();
+    const failedEmbed = await answer(embed, {
+      chatId: chatA.chatId,
+      message: "a question",
+    });
+    expect(failedEmbed.assistantMessage).toMatchObject({
+      status: "failed",
+      failureCode: "EMBEDDING_FAILED",
+    });
+    expect(failedEmbed.userMessage.status).toBe("completed");
+    expect(embed.queries).toEqual([]);
+
+    // The query throws after a successful embedding.
+    const query = await deps([CHANNEL_A]);
+    query.vectors = vectorStore({
+      VECTORIZE_FAKE: JSON.stringify({ throwOn: ["query"] }),
+    });
+    const chatB = await query.user.createChat();
+    const failedQuery = await answer(query, {
+      chatId: chatB.chatId,
+      message: "a question",
+    });
+    expect(failedQuery.assistantMessage).toMatchObject({
+      status: "failed",
+      failureCode: "RETRIEVAL_FAILED",
+    });
+    expect(failedQuery.userMessage.status).toBe("completed");
+  });
+
   it("fails the reply when the model does, leaving the question completed", async () => {
     await seedApprovedChannel(CHANNEL_A, OWNER);
     await seedEpisode(EPISODE_A, CHANNEL_A);
