@@ -1648,10 +1648,16 @@ M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunki
                  generations · shared summaries · one Workflow instance per episode attempt · two six-hour crons ·
                  Start route · Retry/Skip · availability-ordered digest
    Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
-M4 Intelligence  unread receipts · chats begun at a summary · per-message scope · filtered retrieval/citations
+M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations
 M5 UI            conversations
 M6 Hardening     isolation/lifecycle tests · wrangler verification · docs
 ```
+
+**M4 no longer lists unread receipts — audited 2026-09-16.** The line carried them from the original plan, but the
+Design phase delivered them: `POST`/`DELETE /channels/{id}/episodes/{episodeId}/read`, `read` on an eligible
+caller's episode, `unread=true` on `/digest` and `unreadCount` on `/follows`, over a tested `do/user/reads.ts`. The
+audit that found this opened M4.2's plan, which is why a milestone's first step is now a read of what it claims to
+owe.
 
 The Design phase sits between M3 and M4 and carries no number on purpose (decided 2026-09-14, §9): forty-three `M4`,
 `M5`, and `M6` references across `docs/specs/` and this document keep their meaning, and none has to be rewritten.

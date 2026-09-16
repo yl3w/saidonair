@@ -202,7 +202,13 @@ same day: **a shortened answer**, which reads as an ordinary reply with one line
 first live scoped answer: **a source card carrying several timestamps**. Sources are stored one per retrieved chunk
 and grouped by episode at render time, so a scoped reply is one card with up to eight moments in it — ascending,
 never the score order they arrive in (PRD §7). This is the card the depth of PRD §6 exists to deliver, and drawing
-it is what makes a scoped answer worth more than an unscoped one. The states already drawn (pending, failed, the fixed no-follows reply, an answer with a linkified
+it is what makes a scoped answer worth more than an unscoped one.
+
+**All six are drawn, 2026-09-16:** https://claude.ai/code/artifact/2ac197c6-36ab-45e0-9a30-3deb23e9cbc4 — seven artboards on one canvas (a scoped conversation carrying the chip,
+the mark and the timestamp card together, then `/chats`, the chip's two states, scope per message, the timestamp
+card, many source cards, and a shortened answer). Tokens, type and spacing are `docs/design.md` §2 exactly. The
+core anatomy of `design-phase.md` §4.9 — rail, roles in the gutter, no bubbles, pending, failed, first run, phone —
+is unchanged and not redrawn. The states already drawn (pending, failed, the fixed no-follows reply, an answer with a linkified
 URL, unfollow's effect on an old answer, the first run, the phone) are unchanged.
 
 ### 4.8 Answering, citations, and delivery

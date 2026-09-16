@@ -230,6 +230,11 @@ its first question; nothing generates a title. `Try again` resends the same ques
 failed reply above it. Three gaps M4 must close, all recorded here: no route sets `chats.title`, no route searches
 chats, and no chat can be deleted.
 
+**Six additions, drawn 2026-09-16** for the decisions of 2026-09-15 and 2026-09-16 (`docs/PRD.md` §9;
+`docs/specs/chat-origin-scope.md` §4.7): https://claude.ai/code/artifact/2ac197c6-36ab-45e0-9a30-3deb23e9cbc4. The scope chip in both states, scope per message, `/chats` as a
+history with nothing on it that makes a chat, a reply carrying more than three source cards, a shortened answer, and
+one card holding several ascending timestamps. This section's own artboards are unchanged.
+
 ### 4.10 The accessibility floor
 
 Text meets 4.5:1. Nothing bearing meaning is under 12 px, uppercase labels included. Every control a finger reaches
