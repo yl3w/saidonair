@@ -3,7 +3,7 @@
 **Implements:** part of `docs/specs/chat-origin-scope.md` §4.8; roadmap `docs/specs/chat-origin-scope-plan.md`.
 **Product contract:** `docs/PRD.md` §4.5, §5.2, §7 (route table).
 **Written:** 2026-09-15.
-**Status:** implemented 2026-09-16, awaiting commit. All fourteen criteria met.
+**Status:** complete 2026-09-16 on `main` (committed as `97247d5`). All fourteen criteria met.
 
 ## 1. Summary
 

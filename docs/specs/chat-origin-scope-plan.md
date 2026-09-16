@@ -3,7 +3,7 @@
 **Implements:** `docs/specs/chat-origin-scope.md` under `AGENTS.md`; product contract `docs/PRD.md` §4.5, §5.2, §6,
 §7, §8, §9.
 **Written:** 2026-09-15, against `main` at `455c9e8`.
-**Status:** M4.1 implemented 2026-09-16, awaiting commit. M4.2 and M4.3 not started.
+**Status:** M4.1 complete 2026-09-16 (`97247d5`, decision record `24f2902`). M4.2 and M4.3 not started.
 **Shape:** three chunks, each with its own spec and plan, in the shape M3 used. Origin and scope are **not** a chunk:
 they are woven through all three, so chat is never built global and then amended.
 
@@ -28,7 +28,7 @@ and no web screen — the Design phase deleted the placeholder rather than stubb
 
 | # | Spec and plan | Carries | Size | Depends on | Product-visible | Status |
 |---|---|---|---|---|---|---|
-| M4.1 | `m4-1-chat-routes.md`, `-plan.md` | `routes/chats.ts` (three routes), `about_episode_id` and its plumbing, `getChat` on the DO, the OpenAPI entry | M | nothing | no: no screen calls them yet | implemented 2026-09-16, awaiting commit |
+| M4.1 | `m4-1-chat-routes.md`, `-plan.md` | `routes/chats.ts` (three routes), `about_episode_id` and its plumbing, `getChat` on the DO, the OpenAPI entry | M | nothing | no: no screen calls them yet | complete 2026-09-16 (`97247d5`) |
 | M4.2 | `m4-2-chat-answering.md`, `-plan.md` | `lib/chat.ts`, the widened `lib/vectorize.ts` filter union and its fake, `POST /chats/:id/messages` with `aboutEpisodeId` and the four branches, the chat prompt, staleness reconciliation | L | M4.1 | no: still no screen | not started |
 | M4.3 | `m4-3-chat-web.md`, `-plan.md` | `/chats` as a history, `/chats/:id` with the sticky chip, `Ask` on the reading screen, per-message scope, `Try again`, Account's chat-rules field | L | M4.2, **and three artboards** | yes: the whole feature | not started |
 

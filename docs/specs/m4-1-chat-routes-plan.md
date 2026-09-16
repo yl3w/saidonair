@@ -3,7 +3,7 @@
 **Implements:** `docs/specs/m4-1-chat-routes.md` under `AGENTS.md`; parent `docs/specs/chat-origin-scope.md`; roadmap
 `docs/specs/chat-origin-scope-plan.md`.
 **Written:** 2026-09-15, against `main` at `455c9e8`.
-**Status:** implemented 2026-09-16, awaiting commit. All four steps landed, `pnpm check` green, 39 test files and
+**Status:** complete 2026-09-16 on `main` (committed as `97247d5`). All four steps landed, `pnpm check` green, 39 test files and
 343 tests (38 and 334 before). No new dependencies. Step 3.3 ran under `wrangler dev --env dev`: the three operations
 serve, and a create/list/messages round trip answered 201/200/200 with an unknown chat 404.
 **Amended 2026-09-16**, after the owner reversed spec decision 1: one migration file, not two. Step 1 was rebuilt
