@@ -21,7 +21,7 @@ After this chunk chat works end to end over HTTP. No screen calls it; that is M4
 |---|---|---|
 | 1 | One over-fetch at `topK: 12`, take the first three that validate | PRD §6 requires fetching more candidates when validation rejects. A loop has no natural bound and costs a round trip per pass; one over-fetch satisfies the rule with a ceiling. `QUERY_TOP_K_MAX` is 50 |
 | 2 | One to three valid chunks still answer; zero is a stored reply | A thin answer beats no answer, and the source cards show exactly how thin. Zero never reaches the model, so it can never answer from its weights under the product's citation framing (owner decision 2026-09-16) |
-| 3 | A new Registry method `getEpisodesByIds` | Only `getEpisodeById` exists. Twelve singular RPCs to one Durable Object to answer one question is the wrong shape |
+| 3 | A batched **state** lookup, `listEpisodeStates`, not a record one | Corrected 2026-09-16 after reading the code. `episodes.listByEpisodeIds` already batches `EpisodeRecord`s, but `EpisodeRecord.processing` deliberately omits `activeVectorGeneration` so it never crosses to the wire — and that is the field validation turns on. `EpisodeState` carries it, alongside `status` and `channelId`, so validation needs `listStatesByIds` beside the existing `listByEpisodeIds`, exposed on the facade. Twelve singular RPCs would be the wrong shape regardless |
 | 4 | `AiClient` gains `answer`, with its own `CHAT_MODEL` and `CHAT_MAX_TOKENS` | Both existing methods hardcode `response_format: json_schema` (`lib/ai.ts:50`) and chat needs prose. A separate constant means tuning chat cannot silently move summarisation, even while both name the same model today |
 | 5 | The last ten exchanges go into the prompt | Owner decision 2026-09-16. Chats now begin at a summary with a sticky chip, so an extended conversation about one episode is the common case. §5's successor is history sized by context budget |
 | 6 | `prompt_version` on the reply, `CHECK` on `failure_code` deferred to the end of M4 | Owner decision 2026-09-16: the column is added while the wipe is already paid. The deferred `CHECK` follows M3's `outcome_code`, which was constrained only once every value had been produced for real |
@@ -75,9 +75,14 @@ Embed the question with the existing `EMBEDDING_MODEL`. Then one query, namespac
 
 `topK: RETRIEVAL_CANDIDATES = 12`. Validate matches in score order and keep the first `RETRIEVAL_KEEP = 3` that pass
 all three tests: the episode is available, its channel is still eligible, and the generation `parseVectorId`
-(`lib/vectorize.ts:85`) reads out of the match's id equals that episode's `active_vector_generation` — the vector
+(`lib/vectorize.ts:85`) reads out of the match's id equals that episode's `activeVectorGeneration` — the vector
 id is where the generation lives, and there is no generation metadata index to filter on (PRD §6). Episode facts
-come from `getEpisodesByIds` in one call.
+come from `listEpisodeStates` in one call.
+
+**A citation is the vector's own metadata, not a second lookup.** `ChunkMetadata` already carries `episodeId`,
+`channelId`, `channelTitle`, `title` and `startSec` — exactly the five fields `chat_message_sources` stores — so the
+Registry is consulted for *validity* and never for the snapshot. That is also why a later catalog change cannot
+rewrite a stored source.
 
 Never send an unfiltered query, and never drop the channel filter to fit a limit.
 
