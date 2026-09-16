@@ -45,6 +45,15 @@ export type QueryOptions = {
 };
 
 /**
+ * Every metadata property chat filters on, and therefore every one that must carry a Vectorize
+ * metadata index. Filtering on an unindexed property is not an error — it answers zero matches — so
+ * a mismatch between this list and the live index is silent (docs/PRD.md §9, 2026-09-16).
+ * `pnpm verify:vectorize` compares the two; `apps/api/test/vectorize.test.ts` keeps that script's
+ * copy of this list honest.
+ */
+export const FILTERABLE_PROPERTIES = ["channelId", "episodeId"] as const;
+
+/**
  * The channel-set form of an unscoped question, or the single-episode form of a scoped one (PRD §6).
  * A union rather than an open record so that a filter naming neither field cannot be written, which
  * is the rule that matters: chat must never send an unfiltered query. It does **not** exclude a

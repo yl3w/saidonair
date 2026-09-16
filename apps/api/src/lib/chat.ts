@@ -120,6 +120,19 @@ export async function answer(
 
   // Outcome 4: nothing survived validation. Vectorize was called; the model is not.
   if (kept.length === 0) {
+    // The reader sees one sentence either way, so these two are logged apart. A filter that matches
+    // nothing is the signature of a metadata index that does not cover the property being filtered
+    // on — Vectorize answers that with zero matches and no error (docs/PRD.md §9, 2026-09-16) — and
+    // a run of them against a scoped filter while unscoped questions still answer is the shape of
+    // infrastructure drift, not of an empty catalog. Counts and shapes only: no question text and
+    // no transcript ever reaches a log (docs/PRD.md §1).
+    console.log({
+      event: matches.length === 0 ? "chat.no_matches" : "chat.none_validated",
+      filter: scope === null ? "channelId" : "episodeId",
+      candidates,
+      matched: matches.length,
+      eligibleChannels: eligible.size,
+    });
     return settle(deps, exchange, NOTHING_FOUND_REPLY, []);
   }
 

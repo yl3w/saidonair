@@ -12,7 +12,10 @@
     "node": "22.23.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "workerd"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
   },
   "scripts": {
     "build": "turbo run build",
@@ -22,7 +25,8 @@
     "skills:install": "sh scripts/skills.sh install",
     "skills:remove": "sh scripts/skills.sh remove",
     "test": "turbo run test",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "verify:vectorize": "sh scripts/verify-vectorize.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.12",

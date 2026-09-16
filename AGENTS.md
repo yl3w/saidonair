@@ -233,6 +233,21 @@ wrangler secret put DOWNSUB_API_KEY --env production
 The metadata indexes **must exist before the first upsert** — vectors inserted earlier are not filterable on those
 fields and would have to be re-upserted (`docs/PRD.md` §6).
 
+**Verify them after creating one, and after renaming any filter property:**
+
+```
+pnpm verify:vectorize                 # the dev index
+pnpm verify:vectorize media-rag       # or any index by name
+```
+
+Nothing in `pnpm check` can do this: the index is remote, and filtering on a property with no metadata index is
+**not an error** — Vectorize answers zero matches, the API stores its honest "Nothing in what you follow covers
+that.", and a reader cannot tell a broken retrieval from an empty catalog. That is what the 2026-09-15 `episodeId`
+rename caused, with every file updated correctly and only the live index left naming `videoId` (`docs/PRD.md` §9,
+2026-09-16). The script reads `FILTERABLE_PROPERTIES` out of `apps/api/src/lib/vectorize.ts`, so there is one
+declaration and nothing to keep in step. In operation the same failure shows as `chat.no_matches` in the logs,
+which is why that event is logged apart from `chat.none_validated`.
+
 ## Commands
 
 Run everything from the repo root through Turborepo. Workspace-level `pnpm --filter` is for ad-hoc debugging only.

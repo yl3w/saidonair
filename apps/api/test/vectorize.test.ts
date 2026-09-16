@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   type ChunkMetadata,
+  FILTERABLE_PROPERTIES,
   fakeVectorIds,
   GET_BY_IDS_BATCH,
   generationIds,
   parseVectorId,
   QUERY_TOP_K_MAX,
+  type QueryFilter,
   realStore,
   resetVectorFake,
   SHARED_NAMESPACE,
@@ -310,5 +312,24 @@ describe("the scoped filter a chat question uses", () => {
       // @ts-expect-error a filter naming neither field is not one of the two shapes
       filter: {},
     });
+  });
+});
+
+describe("the properties that must carry a metadata index", () => {
+  // scripts/verify-vectorize.sh derives its list from FILTERABLE_PROPERTIES by reading this file,
+  // so there is one declaration and nothing to keep in sync. A workerd test cannot read the script
+  // to check that, which is the reason the script parses the source rather than holding a copy.
+  it("names every property a query filter can carry", () => {
+    // If a third filter shape is ever added to QueryFilter, its property belongs here too.
+    const channel: QueryFilter = {
+      channelId: { $in: ["UCAAAAAAAAAAAAAAAAAAAAAA"] },
+    };
+    const episode: QueryFilter = { episodeId: { $eq: VIDEO } };
+
+    for (const filter of [channel, episode]) {
+      for (const property of Object.keys(filter)) {
+        expect(FILTERABLE_PROPERTIES).toContain(property);
+      }
+    }
   });
 });
