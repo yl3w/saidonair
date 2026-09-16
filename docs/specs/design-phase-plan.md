@@ -3,7 +3,9 @@
 **Implements:** `docs/specs/design-phase.md` under `AGENTS.md`; PRD §7, §4.4, §9, §10.
 **Written:** 2026-09-14, against `main` at `f86ebfb`.
 **Status:** APPROVED 2026-09-15 with both dependency questions answered — fonts are self-hosted, and `lucide-preact`
-is the icon dependency (owner decision, hard rule 1 satisfied). **All nine steps implemented 2026-09-15.** What is still owed is the owner's own walkthrough; see the record. What each step actually landed, and what it owes, is in the record at the end of this file.
+is the icon dependency (owner decision, hard rule 1 satisfied). **All nine steps implemented 2026-09-15, and the
+phase declared complete by the owner the same day**, the click-through done and its findings landed. What each step
+actually landed, and what the walkthrough then changed, is in the record at the end of this file.
 **Shape:** nine steps, reordered 2026-09-15 so the two API steps come first. Steps 1 and 2 are API and carry tests; Steps 3 to 9 are web and carry a hand
 walkthrough, because `apps/web` is typecheck and lint only (`AGENTS.md` → Testing). One commit per step, `pnpm check`
 green before the next begins. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
@@ -222,13 +224,45 @@ turned out to be wrong about the world, the correction is here rather than rewri
 
 | 9 | — | The floor was walked with a scanner rather than by eye: every type size, every colour pairing, and every interactive element. Three findings — a 10 px count in a calendar cell, ten standalone links and one search input under 44 px, and the inline retries, which became one `Retry` control. Nothing failed contrast. **The 44 px rule needed a scope**, so `docs/design.md` §7 now says what it applies to: every button, form control and standalone link, but not a link inside a sentence or the title of a row or heading, which are text sized by the type scale. The documents took the phase's four new routes, the rewritten §7 Screens, the Web UI rules for icons, avatars, reading themes, per-browser settings and day boundaries, and a dated supersession line on the two older specs. |
 
-**Owed: the owner's click-through** (spec §5, criterion 11) — open → Done → next, the row check, the undo in History,
-the three-step add as owner and as reader, and approve / decline-with-confirm / pause / start / retry / skip in
-Curate. It needs a dev catalog with summaries in it, and the local Durable Objects were wiped on 2026-09-15 for the
-`episodeId` rename, so it waits on the next ingestion. Everything checkable without one has been checked: `pnpm check`
-green at every step, `pnpm build` clean with no Zod and one theme in `dist`, every route deep-linking and reloading
-under `wrangler pages dev`, every `class=` token in the app resolving in the built CSS, `lib/day.ts` verified against
-the two days a year that are not 24 hours long, and the API exercised under `wrangler dev` on throwaway state.
+**Criterion 11 is met: the owner's click-through ran on 2026-09-15**, against a live dev catalog rather than seed
+data, and **the phase was declared complete the same day**. Everything checkable without a catalog had been checked
+before it — `pnpm check` green at every step, `pnpm build` clean with no Zod and one theme in `dist`, every route
+deep-linking and reloading under `wrangler pages dev`, every `class=` token resolving in the built CSS, `lib/day.ts`
+verified against the two days a year that are not 24 hours long, and the API exercised under `wrangler dev` on
+throwaway state.
+
+**What the walkthrough was worth: thirty-three commits after Step 9** — more change than any single step of the
+plan, and the reason criterion 11 is a criterion rather than a courtesy. Every one of them is a decision in PRD §9,
+and none was visible from a green `pnpm check`. By theme:
+
+- **The reading column** gained the way back to the list it was opened from (`bb670aa`, withdrawing `Done`'s advance),
+  named sections (`11ce09f`), an `Aa` that is a sheet on a phone and closes everywhere (`1fee573`), and a meta line
+  about the episode rather than the reader's standing with it (`d48cf6d`). Reading preferences became product-wide
+  (`7ea2690`).
+- **The queue** stopped stopping at fifty (`db0bc95`), stopped printing constants — "Unread" on every row (`6b40636`),
+  a reading time that only ever said two minutes (`62cf0e2`) — learned to count what is in front of the reader
+  rather than what is elsewhere (`70a5fa2`), and its row was rebuilt twice: led by the title rather than a monogram
+  (`cb6a569`), opened by the episode's own date (`af5a0d4`), and finally given one shape everywhere (`1f67fd2`).
+- **A channel's page** took its own bar (`a047cb4`), a header that says only what cannot be inferred (`51f1288`), one
+  line of controls in one order (`b74d47f`), adjustments beside the object with decisions left to Curate
+  (`d56c4f8`), follow as a glyph and its word (`52cea85`, `ba1d2e7`), and a history led by publication date
+  (`9cd40d5`).
+- **Curate** got owner actions named for what they do (`51bc8db`), a channel review showing what a decision needs and
+  opening the rest (`60a3a74`), rows aligned on a centre line (`aad2f69`), one sentence instead of three zeroes
+  (`b40da67`), the worklist marked in the inventory (`916fd81`), and the catalog rendered twice rather than three
+  times (`7fe26c0`).
+- **The frame** lost a destination leading nowhere (`374a36a`) and then the screen names the frame already carries
+  (`90681ff`), which is also where `document.title` turned out to have been static since the first commit.
+- **The palette** moved: the ramp carrying the smallest type was the palest, and both secondary inks were darkened
+  together so the step between them survived (`9613c66`).
+- **Three API defects surfaced from the screens, not from the tests**: a digest that served a different page size
+  from the one it advertised (`dda6414`), ingest steps whose every failed try was unnamed (`f35b82a`), and an
+  attention count that counted failures in channels no longer in the catalog (`669bbcb`).
+
+The pattern worth keeping: almost every finding is a **constant rendered as though it were information** — "Unread"
+on a list where everything is, a reading time that cannot vary, `structured` on every working row, three zeroes
+under three headings, a page naming itself under a bar that names it. A build that passes every check can still say
+nothing, on every screen, and only a person looking at it will say so.
 
 **Why both gaps got through review.** A spec is reviewed against the PRD, and in both cases the PRD is where the
 mistake already was: it listed a route nothing had registered, and it described a single-episode read in prose that

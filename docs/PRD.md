@@ -1492,3 +1492,7 @@ It is a milestone in every other respect, with its own spec, plan, and owner app
 rebuilds the Account, Home, Channel, Owner, and Owner channel detail screens against the new design, which is why M5
 now holds conversations alone: every other screen it once listed is built, and the Design phase is where it is
 rebuilt. Its first step is the daisyUI and Tailwind install (§3, §9), which no screen can be rebuilt without.
+
+**The Design phase is complete — declared by the owner 2026-09-15.** Its nine steps landed that day, and the owner's
+click-through against a live catalog then produced thirty-three further commits, every one of them a decision in §9;
+`docs/specs/design-phase-plan.md` → Record carries them by theme. **M4 is next.**
