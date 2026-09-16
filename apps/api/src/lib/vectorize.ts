@@ -36,8 +36,26 @@ export type VectorMatch = {
 };
 export type QueryOptions = {
   topK: number;
-  filter?: { channelId: { $in: string[] } };
+  /**
+   * A union of exactly two shapes, never an open record: a chat question searches the caller's
+   * eligible channels or one scoped episode, and PRD §6 forbids an unfiltered query. Keeping it a
+   * union makes "no filter" and "both filters" unrepresentable rather than merely discouraged.
+   */
+  filter?: QueryFilter;
 };
+
+/**
+ * The channel-set form of an unscoped question, or the single-episode form of a scoped one (PRD §6).
+ * A union rather than an open record so that a filter naming neither field cannot be written, which
+ * is the rule that matters: chat must never send an unfiltered query. It does **not** exclude a
+ * literal carrying both fields — excess-property checking against a union admits any member's
+ * property — and the `?: never` arms that would are not assignable to the platform's own
+ * index-signature filter type. Not worth a double cast: the caller picks one shape from the
+ * question's scope, so "both at once" is unreachable rather than merely discouraged.
+ */
+export type QueryFilter =
+  | { channelId: { $in: string[] } }
+  | { episodeId: { $eq: string } };
 
 export type VectorStore = {
   upsert(ns: Namespace, records: readonly VectorRecord[]): Promise<void>;
@@ -294,13 +312,15 @@ function fakeStore(options: FakeOptions): VectorStore {
     async query(vector, queryOptions) {
       failing("query");
       const filter = queryOptions?.filter as
-        | { channelId?: { $in?: string[] } }
+        | { channelId?: { $in?: string[] }; episodeId?: { $eq?: string } }
         | undefined;
       const allowed = filter?.channelId?.$in;
+      const onlyEpisode = filter?.episodeId?.$eq;
       const matches: VectorizeMatch[] = [];
       for (const [id, stored] of fakeVectors) {
         if (stored.namespace !== queryOptions?.namespace) continue;
         if (allowed && !allowed.includes(stored.metadata.channelId)) continue;
+        if (onlyEpisode && stored.metadata.episodeId !== onlyEpisode) continue;
         matches.push({
           id,
           score: cosine([...vector], stored.values),

@@ -4,7 +4,7 @@
 roadmap `docs/specs/chat-origin-scope-plan.md`.
 **Written:** 2026-09-16, against `main` at `dda864b`.
 **Status:** in progress. **Step 1 complete 2026-09-16 (`21860eb`)**, 348 tests. **Step 2 complete 2026-09-16**, 352
-tests. Steps 3–5 not started.
+tests. **Step 3 complete 2026-09-16**, 355 tests. Steps 4 and 5 not started.
 **Shape:** five code steps, each ending with `pnpm check` green and one commit when the owner asks. Steps 1–3 are
 independent of each other and all feed Step 4; Step 5 needs Step 4. Nothing here touches the web or the Registry's
 write paths. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
@@ -76,8 +76,12 @@ for the detection pair: a `finish_reason: "length"` payload, a payload with no `
   it and its four call sites are untouched. **Plan decision:** a move, not a rewrite — a behaviour change here would
   silently change what four existing routes return.
 - 3.2 `lib/vectorize.ts`: widen `QueryOptions.filter` from `{ channelId: { $in: string[] } }` to a union with
-  `{ episodeId: { $eq: string } }`. Keep it a union of the two shapes, not an open record: a query with no filter,
-  or with both, must stay unrepresentable (PRD §6 forbids an unfiltered query).
+  `{ episodeId: { $eq: string } }`. Keep it a union of the two shapes, not an open record, so a query with **no**
+  filter cannot be written (PRD §6 forbids an unfiltered query). **Found while building it:** the union does not
+  also exclude a literal carrying *both* fields — excess-property checking against a union admits any member's
+  property — and the `?: never` arms that would exclude it are not assignable to the platform's index-signature
+  filter type, needing a double cast through `unknown`. Not taken: the caller picks one shape from the question's
+  scope, so both-at-once is unreachable rather than merely discouraged.
 - 3.3 The in-file fake at line 294 filters on `channelId` alone; teach it the episode form too. Without this, every
   scoped-retrieval test would pass against a fake that ignores the filter.
 

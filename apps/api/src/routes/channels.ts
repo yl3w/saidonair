@@ -34,6 +34,7 @@ import { describeRoute } from "hono-openapi";
 import type { CatalogChannel } from "../do/registry/types";
 import type { AppEnv } from "../env";
 import { toChannel } from "../lib/channel-view";
+import { eligibleChannelIds } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
 import { DomainError, domainErrorCode } from "../lib/errors";
 import {
@@ -699,15 +700,6 @@ async function requireChannel(
   const channel = await c.var.registry.getChannel(channelId);
   if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
   return channel;
-}
-
-/** The caller's eligible channels: active follows on approved channels (docs/PRD.md §4.3). */
-async function eligibleChannelIds(c: Ctx): Promise<Set<string>> {
-  return new Set(
-    (await c.var.registry.listEligibleChannels(c.var.identity.email)).map(
-      (channel) => channel.channelId,
-    ),
-  );
 }
 
 /** The caller's receipts among the given summaries; the empty list never crosses to the User DO. */

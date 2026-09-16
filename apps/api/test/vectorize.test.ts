@@ -267,3 +267,48 @@ describe("the vector store", () => {
     expect(() => vectorStore({})).toThrow(/VECTORS binding/);
   });
 });
+
+describe("the scoped filter a chat question uses", () => {
+  it("keeps only the named episode, across channels the caller also follows", async () => {
+    const store = fake();
+    await store.upsert(SHARED_NAMESPACE, records(VIDEO, 3));
+    await store.upsert(
+      SHARED_NAMESPACE,
+      records(OTHER, 2, "UCBBBBBBBBBBBBBBBBBBBBBB"),
+    );
+
+    const scoped = await store.query(SHARED_NAMESPACE, axis(0), {
+      topK: 10,
+      filter: { episodeId: { $eq: OTHER } },
+    });
+
+    expect(scoped.map((m) => m.metadata.episodeId)).toEqual([OTHER, OTHER]);
+    // The unscoped query over the same store sees both, so the filter is doing the work.
+    const all = await store.query(SHARED_NAMESPACE, axis(0), { topK: 10 });
+    expect(new Set(all.map((m) => m.metadata.episodeId))).toEqual(
+      new Set([VIDEO, OTHER]),
+    );
+  });
+
+  it("answers nothing for an episode the store does not hold", async () => {
+    const store = fake();
+    await store.upsert(SHARED_NAMESPACE, records(VIDEO, 3));
+
+    expect(
+      await store.query(SHARED_NAMESPACE, axis(0), {
+        topK: 10,
+        filter: { episodeId: { $eq: OTHER } },
+      }),
+    ).toEqual([]);
+  });
+
+  it("makes a filter naming neither field unrepresentable", async () => {
+    // PRD §6's rule is that chat never sends an unfiltered query; the union is what enforces it.
+    const store = fake();
+    await store.query(SHARED_NAMESPACE, axis(0), {
+      topK: 1,
+      // @ts-expect-error a filter naming neither field is not one of the two shapes
+      filter: {},
+    });
+  });
+});
