@@ -12,16 +12,17 @@ next `pnpm dev`** — free if dev has not run since M4.1's wipe.
 
 ## Definition of complete
 
-Spec §4, all eighteen criteria.
+Spec §4, all nineteen criteria.
 
 ### Step 1 — The prose seam in `lib/ai.ts`  (size: S)
 
 **Files:** `apps/api/src/lib/ai.ts`, `apps/api/test/ai.test.ts`.
 
 - 1.1 `export const CHAT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";` and
-  `export const CHAT_MAX_TOKENS = 768;` beside the summary constants. **Plan decision:** a separate constant naming
-  the same model today, so tuning chat cannot silently move summarisation. 768 because a chat answer is a few
-  paragraphs where a summary is a document, and the reader is waiting.
+  `export const CHAT_MAX_TOKENS = 1024;` beside the summary constants. **Plan decision:** a separate constant naming
+  the same model today, so tuning chat cannot silently move summarisation. 1024 because a scoped answer draws on up
+  to eight chunks — roughly 3,200 tokens of source — and a ceiling below the evidence is the wrong constraint.
+  Reaching it truncates silently (spec §3.4); detecting that is deferred in spec §5, so do not add a guard here.
 - 1.2 `Answerer` type with `answer(prompt: string): Promise<string>`, added to the `AiClient` intersection beside
   `Embedder` and `Summarizer`. Do not widen `Summarizer`: its two methods are the JSON-mode pair and stay that way.
 - 1.3 `realClient`: `answer` runs `CHAT_MODEL` with `max_tokens: CHAT_MAX_TOKENS` and **no** `response_format`, and
@@ -95,19 +96,29 @@ chunks; the union rejects a malformed filter at the type level (a `// @ts-expect
 - 4.4 `lib/chat.ts`: `answer(deps, input)` per spec §3.1, as a flat sequence of the five outcomes of spec §3.2 in
   order, each returning early. **Plan decision:** one function, no strategy objects — five branches read better as
   five `if`s than as a dispatch table, and the order is the contract.
-- 4.5 The retrieval half: `RETRIEVAL_CANDIDATES = 12`, `RETRIEVAL_KEEP = 3`, `HISTORY_EXCHANGES = 10` as exported
-  constants. Embed, query, then validate matches in score order against `listEpisodeStates` — available, channel
+- 4.5 The retrieval half: `SCOPED_KEEP = 8`, `SCOPED_CANDIDATES = 16`, `UNSCOPED_KEEP = 6`,
+  `UNSCOPED_CANDIDATES = 24`, `HISTORY_EXCHANGES = 10` as exported constants, chosen by whether the message carries
+  a hint (PRD §6, 2026-09-16). **Plan decision:** pick the pair once at the top of the retrieval half and pass it
+  down, rather than branching on `aboutEpisodeId` in three places. Assert at module load that neither candidate
+  count exceeds `QUERY_TOP_K_MAX` — 50 is Vectorize's ceiling with metadata, and a future edit that raises one past
+  it should fail loudly rather than at the first real question.
+  Embed, query, then validate matches in score order against `listEpisodeStates` — available, channel
   still in the eligible set, and the generation matches. `parseVectorId` returns `{ episodeId, generationId, index }
   **or null** (`lib/vectorize.ts:85`), so an id that does not parse is a rejection like any other, never a throw and
   never a non-null assertion — the check is `parsed !== null && parsed.generationId === state.activeVectorGeneration`.
-  Keep the first three that pass. Sources come from `match.metadata`, never a second lookup (spec §3.3).
+  Keep the first `KEEP` that pass. Sources come from `match.metadata`, never a second lookup (spec §3.3), and are
+  then **deduplicated by episode**: several chunks from one episode become one source at the best-scoring chunk's
+  `startSec`. Deduplicate after validation and before storing, so the count the reader sees is episodes, not
+  passages — without it, eight scoped chunks would render as eight cards for a single episode.
 - 4.6 Failures: wrap the embed, the query and the model call so each becomes `failAssistantMessage` with
   `EMBEDDING_FAILED`, `RETRIEVAL_FAILED` or `MODEL_FAILED`. The question stays `completed` in every case. No `CHECK`
   on `failure_code` yet — spec decision 6 puts it at the end of M4.
 
-**Tests:** spec §4.1–§4.15 in `chat.test.ts`, driving the AI and Vectorize fakes. The ones that matter most assert a
+**Tests:** spec §4.1–§4.16 in `chat.test.ts`, driving the AI and Vectorize fakes. The ones that matter most assert a
 negative: outcomes 2 and 3 record **zero** AI and **zero** Vectorize calls, outcome 4 zero AI and exactly one
-Vectorize call. Also the generation rejection promoting a deeper candidate, and that no query is ever sent unfiltered.
+Vectorize call. Also the generation rejection promoting a deeper candidate, the scoped and unscoped pairs reaching
+the fake as 16 and 24, eight chunks from one episode collapsing to one source, and that no query is ever sent
+unfiltered.
 
 **Done when:** `pnpm check` green.
 
@@ -128,7 +139,7 @@ Vectorize call. Also the generation rejection promoting a deeper candidate, and 
   is still a write, and the existing wrapper is why that is cheap to get right.
 - 5.4 `openapi.test.ts`: add `"post /chats/{chatId}/messages"` to `OPERATIONS`. The `chats` tag already exists.
 
-**Tests:** spec §4.16–§4.18. A round trip answering `201` with chat, question and reply; a blank message `400`; an
+**Tests:** spec §4.17–§4.19. A round trip answering `201` with chat, question and reply; a blank message `400`; an
 unknown episode hint `400` with nothing stored; another caller's chat `404`. For staleness, insert a pending reply
 with an old `updated_at` and assert `getMessages` returns it `failed`, and that a fresh one stays `pending`.
 

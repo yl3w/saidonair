@@ -19,7 +19,8 @@ After this chunk chat works end to end over HTTP. No screen calls it; that is M4
 
 | # | Decision | Why not the alternative |
 |---|---|---|
-| 1 | One over-fetch at `topK: 12`, take the first three that validate | PRD §6 requires fetching more candidates when validation rejects. A loop has no natural bound and costs a round trip per pass; one over-fetch satisfies the rule with a ceiling. `QUERY_TOP_K_MAX` is 50 |
+| 1 | One over-fetch, sized by scope: keep 8 of 16 scoped, 6 of 24 unscoped | PRD §6, revised 2026-09-16. A loop has no natural bound and costs a round trip per pass; one over-fetch satisfies "fetch additional candidates" with a ceiling. Scoped is **deeper** because one episode is one voice, and over-fetches **less** because its rejections are correlated — the episode is available with an active generation or it is not. Both counts stay under `QUERY_TOP_K_MAX = 50`, the most Vectorize returns with metadata |
+| 1b | Sources are deduplicated by episode | Several chunks from one episode are one citation, at its best-scoring start time. A reply cites sources, not passages — and without this, eight scoped chunks would render as eight cards for one episode |
 | 2 | One to three valid chunks still answer; zero is a stored reply | A thin answer beats no answer, and the source cards show exactly how thin. Zero never reaches the model, so it can never answer from its weights under the product's citation framing (owner decision 2026-09-16) |
 | 3 | A batched **state** lookup, `listEpisodeStates`, not a record one | Corrected 2026-09-16 after reading the code. `episodes.listByEpisodeIds` already batches `EpisodeRecord`s, but `EpisodeRecord.processing` deliberately omits `activeVectorGeneration` so it never crosses to the wire — and that is the field validation turns on. `EpisodeState` carries it, alongside `status` and `channelId`, so validation needs `listStatesByIds` beside the existing `listByEpisodeIds`, exposed on the facade. Twelve singular RPCs would be the wrong shape regardless |
 | 4 | `AiClient` gains `answer`, with its own `CHAT_MODEL` and `CHAT_MAX_TOKENS` | Both existing methods hardcode `response_format: json_schema` (`lib/ai.ts:50`) and chat needs prose. A separate constant means tuning chat cannot silently move summarisation, even while both name the same model today |
@@ -73,7 +74,8 @@ Embed the question with the existing `EMBEDDING_MODEL`. Then one query, namespac
 - **Scoped:** `filter: { episodeId: { $eq: aboutEpisodeId } }`, only after confirming that episode's channel is in
   the same eligible set — the hint narrows and never widens (`chat-origin-scope.md` §4.2)
 
-`topK: RETRIEVAL_CANDIDATES = 12`. Validate matches in score order and keep the first `RETRIEVAL_KEEP = 3` that pass
+`topK` is `SCOPED_CANDIDATES = 16` or `UNSCOPED_CANDIDATES = 24`. Validate matches in score order and keep the first
+`SCOPED_KEEP = 8` or `UNSCOPED_KEEP = 6` that pass
 all three tests: the episode is available, its channel is still eligible, and the generation `parseVectorId`
 (`lib/vectorize.ts:85`) reads out of the match's id equals that episode's `activeVectorGeneration` — the vector
 id is where the generation lives, and there is no generation metadata index to filter on (PRD §6). Episode facts
@@ -94,11 +96,14 @@ Never send an unfiltered query, and never drop the channel filter to fit a limit
 answer(prompt: string): Promise<string>
 ```
 
-running `CHAT_MODEL` with `CHAT_MAX_TOKENS` and **no** `response_format`. `fakeClient` gains a matching `answer`
+running `CHAT_MODEL` with `CHAT_MAX_TOKENS = 1024` and **no** `response_format`. 1024 rather than the 768 first
+proposed, because eight chunks is roughly 3,200 tokens of source and an answer ceiling below its evidence is the
+wrong constraint. **Hitting the ceiling truncates silently** — the model stops mid-sentence and the reply stores as
+completed — which is unhandled here and named in §5. `fakeClient` gains a matching `answer`
 honouring the existing `[[throw]]` marker so the failure path is drivable.
 
 `prompts/chat.ts` holds the prompt and `CHAT_PROMPT_VERSION`: the caller's `systemRules`, the last
-`HISTORY_EXCHANGES = 10` exchanges oldest first, the one to three chunks each labelled with episode title, channel
+`HISTORY_EXCHANGES = 10` exchanges oldest first, the surviving chunks each labelled with episode title, channel
 title and start time, then the question. **It never mentions citations and never asks for a marker** — code attaches
 the sources from the chunks that survived §3.3, so a reply cannot cite an episode that did not feed it.
 
@@ -140,26 +145,33 @@ never killed. Nothing polls; nothing sweeps.
 5. A caller with no eligible follows stores PRD §4.5's sentence, with zero AI and zero Vectorize calls.
 6. Retrieval that validates nothing stores the §3.2 empty reply, with zero AI calls and **one** Vectorize call.
 7. One valid chunk answers, with exactly that one source.
-8. Three valid chunks answer with three sources, in score order.
-9. A match whose generation differs from the episode's `active_vector_generation` is skipped, and a deeper candidate
-   takes its place.
-10. A match whose episode is unavailable, or whose channel has become ineligible, is skipped the same way.
-11. No query is ever sent without a filter, asserted on the fake across every branch.
-12. A reply's sources are exactly its validated chunks; its text carries no citation marker; the prompt contains no
-    citation instruction.
-13. A completed reply records `CHAT_PROMPT_VERSION`; the question's `prompt_version` is null.
-14. Ten exchanges of history reach the prompt, oldest first; an eleventh does not.
-15. An embedding failure, a retrieval failure and a model failure each fail the reply with their own code and leave
+8. A scoped question queries 16 candidates and keeps at most 8; an unscoped one queries 24 and keeps at most 6.
+9. Chunks from one episode collapse to one source, at the best-scoring chunk's start time, so sources never outnumber
+   the distinct episodes retrieved.
+10. A match whose generation differs from the episode's `activeVectorGeneration` is skipped, and a deeper candidate
+    takes its place.
+11. A match whose episode is unavailable, or whose channel has become ineligible, is skipped the same way.
+12. No query is ever sent without a filter, and none with a `topK` above 50, asserted on the fake across every branch.
+13. A reply's sources are exactly its validated chunks after deduplication; its text carries no citation marker; the
+    prompt contains no citation instruction.
+14. A completed reply records `CHAT_PROMPT_VERSION`; the question's `prompt_version` is null.
+15. Ten exchanges of history reach the prompt, oldest first; an eleventh does not.
+16. An embedding failure, a retrieval failure and a model failure each fail the reply with their own code and leave
     the question stored `completed`.
-16. A `pending` reply older than `CHAT_ANSWER_BUDGET_MS` reads as `failed` with `ANSWER_TIMEOUT`; a younger one
+17. A `pending` reply older than `CHAT_ANSWER_BUDGET_MS` reads as `failed` with `ANSWER_TIMEOUT`; a younger one
     still reads `pending`.
-17. `POST /chats/:chatId/messages` answers `201` with chat, question and reply; a blank message is `400`; another
+18. `POST /chats/:chatId/messages` answers `201` with chat, question and reply; a blank message is `400`; another
     caller's chat is `404`.
-18. The OpenAPI document gains exactly this one operation under the existing `chats` tag.
+19. The OpenAPI document gains exactly this one operation under the existing `chats` tag.
 
 ## 5. Out of scope
 
-**Two deferrals, both deliberate and both owed later:**
+**Three deferrals, all deliberate and all owed later:**
+
+- **Truncation detection.** An answer reaching `CHAT_MAX_TOKENS` stops mid-sentence and stores as completed — the
+  same class of silent failure `summary-json-mode` found in JSON mode. Whether the Workers AI binding surfaces a
+  finish reason is unverified; if it does, a truncated answer should fail with a code rather than be stored. 1024
+  makes it rarer, not impossible.
 
 - **The 2048-byte filter split** of PRD §6. Thirty `UC…` ids are roughly 720 bytes; the limit binds past about
   eighty follows. Until then a single filter is correct, and splitting untested would be worse than not splitting.

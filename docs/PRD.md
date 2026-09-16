@@ -472,7 +472,7 @@ episode's row, phrased from its latest attempt.
   exist, store the assistant response "Chat requires following at least one approved channel." with no sources;
   do not call AI or Vectorize for that response. Since a chat can only begin at an eligible summary, this is reached
   in an existing chat whose follows have since dropped to zero, never as a first message.
-- Otherwise embed the question and retrieve the best three chunks (§6) — from the scoped episode alone when the
+- Otherwise embed the question and retrieve the best chunks (§6) — from the scoped episode alone when the
   message carries a hint, from every eligible channel otherwise — then combine their exact text with the user's
   preferences and this chat's recent history, and ask Workers AI for **prose alone**.
 - **A reply's citations are the retrieval's, not the model's (decided 2026-09-15, §9).** Code stores the chunks that
@@ -634,7 +634,16 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
   embedding model truncates silently at 512. Handle overlong individual segments without exceeding the cap.
 - Every Vectorize helper requires explicit namespace scope. For ID-based methods, enforce that scope in the helper
   even if the underlying API does not accept a namespace parameter. No user-specific private text goes into this index.
-- Chat uses `filter: { channelId: { $in: eligibleChannelIds } }`, `topK: 3`, and all metadata. A message carrying an
+- **Retrieval depth follows the question's scope (decided 2026-09-16, §9).** A scoped message keeps **8** chunks
+  from **16** candidates; an unscoped one keeps **6** from **24**. The scoped half is deeper because one episode is
+  one voice, so extra chunks add evidence without adding anyone to conflate; the unscoped half over-fetches harder
+  because its rejections are independent per episode, where a scoped query's are correlated — one episode is
+  available with an active generation or it is not, and all its candidates stand or fall together. Neither candidate
+  count may exceed **50**, the most Vectorize returns when metadata is requested, and chat always requests metadata
+  because the metadata is the citation.
+- **Sources are deduplicated by episode before they are stored.** Several chunks from one episode are one citation,
+  at its best-scoring chunk's start time — a reply cites sources, not passages.
+- Chat uses `filter: { channelId: { $in: eligibleChannelIds } }` and all metadata. A message carrying an
   episode scope hint (§4.5) uses `filter: { episodeId: { $eq: aboutEpisodeId } }` instead, after confirming that
   episode's channel is in the same eligible set — the hint replaces the channel filter only because it is strictly
   narrower than it, and a hint whose channel is not eligible is refused rather than dropped. The `episodeId` metadata
@@ -1483,6 +1492,27 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   and chat volume is bounded by reading volume, since reading is the only on-ramp. The fixed no-follows response of
   §4.5 survives but moves, reachable now only in an existing chat whose follows have since dropped to zero. Spec:
   `docs/specs/chat-origin-scope.md`.
+- **Retrieval depth follows scope, and sources are deduplicated by episode — decided 2026-09-16.** Chat was
+  specified at `topK: 3` for every question. That is a reasonable drill-down into one episode and the thinnest
+  possible basis for the question a global chat exists to answer: three fragments, possibly from three unrelated
+  shows, asked to become a synthesis. The fix is not a longer answer — output length was never the constraint, and
+  raising it without raising the evidence buys words from the model rather than from the transcripts. It is more
+  evidence, sized to the question: **8 chunks from 16 candidates when scoped, 6 from 24 when not.** The depths run
+  opposite to intuition on purpose. One episode is **one voice**, so extra chunks there add evidence without adding
+  anyone to conflate, and `docs/specs/summary-quality.md` §4.3 is the measured reason to fear voices — this model
+  would not name a speaker with the name in its prompt. Unscoped, every extra chunk is another speaker, so depth is
+  bought more carefully. The **over-fetch ratios run opposite too**, for an unrelated reason: a scoped query's
+  rejections are correlated, since one episode is available with an active generation or it is not and all its
+  candidates stand or fall together, so a large over-fetch is wasted there and earns its keep only where rejections
+  are independent. **Neither count may exceed 50**, the most Vectorize returns when metadata is requested, which is
+  not negotiable because the metadata is the citation. Considered and declined: 24 kept chunks for an unscoped
+  question, which is about 9,600 tokens of source — enough that the middle of the context stops being read, enough
+  distinct voices to make conflation the normal case rather than the edge, and more source cards than
+  `docs/specs/design-phase.md` §4.9 ever drew. **Sources are therefore deduplicated by episode**, several chunks from
+  one episode becoming one citation at its best-scoring start time, because a reply cites sources and not passages —
+  which also keeps the common reply within the three cards the artboards show. Costs accepted: a reply may still
+  exceed three cards, so M4.3 owes that state a drawing; and these numbers are guesses too, cheaper ones, which the
+  click-through measure of `docs/specs/chat-origin-scope.md` §2.4 is what would actually settle.
 - **Chat answers inside the request, and code owns the citations — decided 2026-09-15.** Two questions the chat
   contract had left to implementation, settled together because the same evidence decides both. **Answering is
   inline**: one embed, one or two Vectorize queries and one model call is seconds of mostly-waiting, which fits a

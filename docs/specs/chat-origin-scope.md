@@ -145,7 +145,7 @@ scoped chat linkable. Dismissing it strips the parameter and leaves `/chats/:id`
 
 ### 4.4 Retrieval
 
-Unscoped is unchanged: `filter: { channelId: { $in: eligibleChannelIds } }`, `topK: 3`, namespace `shared-catalog`,
+Unscoped keeps its filter: `filter: { channelId: { $in: eligibleChannelIds } }`, namespace `shared-catalog`,
 with the 2048-byte filter split and score merge of PRD §6.
 
 Scoped replaces the channel filter with `filter: { episodeId: { $eq: aboutEpisodeId } }` **after** confirming that
@@ -188,10 +188,11 @@ upgraded, which is the governance PRD §5.4 already describes. **A `/clean-local
 
 ### 4.7 What the artboards do not yet have
 
-`design-phase.md` §4.9 drew the conversation for a global chat. Three things in this spec are not in those
+`design-phase.md` §4.9 drew the conversation for a global chat. Four things in this spec are not in those
 artboards and need drawing before the web is built: **the chip** in both its states, **the per-message scope mark**
-in the transcript, and the **absence** of a new-chat control on `/chats` — which changes that screen from an entry
-to a history. The states already drawn (pending, failed, the fixed no-follows reply, an answer with a linkified
+in the transcript, the **absence** of a new-chat control on `/chats` — which changes that screen from an entry to a
+history — and **a reply carrying more than three source cards**, which the retrieval depths of PRD §6 (2026-09-16)
+made reachable even after sources are deduplicated by episode. The states already drawn (pending, failed, the fixed no-follows reply, an answer with a linkified
 URL, unfollow's effect on an old answer, the first run, the phone) are unchanged.
 
 ### 4.8 Answering, citations, and delivery
