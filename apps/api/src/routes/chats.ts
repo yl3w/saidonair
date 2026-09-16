@@ -1,4 +1,6 @@
 import {
+  type ChatExchangeResponse,
+  ChatExchangeResponseSchema,
   type ChatMessage,
   type ChatMessagesResponse,
   ChatMessagesResponseSchema,
@@ -8,13 +10,18 @@ import {
   ChatsResponseSchema,
   CreateChatBodySchema,
   LimitQuerySchema,
+  SendMessageBodySchema,
 } from "@media-digest/shared";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import type { ChatMessage as StoredMessage } from "../do/user/types";
 import type { AppEnv } from "../env";
+import { ai } from "../lib/ai";
+import { answer } from "../lib/chat";
+import { eligibleChannelIds } from "../lib/eligibility";
 import { errorResponses, jsonResponse } from "../lib/openapi";
 import { validate } from "../lib/validation";
+import { vectorStore } from "../lib/vectorize";
 
 /**
  * The caller's own conversations (docs/PRD.md §4.5). Every chat resolves inside the caller's User
@@ -86,6 +93,47 @@ export const chatRoutes = new Hono<AppEnv>()
         chat,
         messages: messages.map(toMessage),
       });
+    },
+  )
+
+  .post(
+    "/:chatId/messages",
+    describeRoute({
+      tags: ["chats"],
+      summary: "Ask a question",
+      description:
+        "The reply is complete in this response: answering runs inside this request, so nothing polls. Three questions are answered without a model call and carry no sources — one from a caller following nothing, one whose `aboutEpisodeId` names a channel they no longer follow, and one whose retrieval survives nothing. An answer that reaches the model's output cap is stored complete with its text cut at the last sentence and `truncated` set, never failed.",
+      responses: {
+        201: jsonResponse(
+          ChatExchangeResponseSchema,
+          "The stored question and its reply.",
+        ),
+        ...errorResponses({ notFound: true }),
+      },
+    }),
+    validate("json", SendMessageBodySchema),
+    async (c) => {
+      const { chatId } = c.req.param();
+      const { message, aboutEpisodeId } = c.req.valid("json");
+      const chat = await c.var.user.getChat(chatId);
+      const exchange = await answer(
+        {
+          user: c.var.user,
+          registry: c.var.registry,
+          ai: ai(c.env),
+          vectors: vectorStore(c.env),
+          eligible: await eligibleChannelIds(c),
+        },
+        { chatId: chat.chatId, message, aboutEpisodeId },
+      );
+      return c.json<ChatExchangeResponse>(
+        {
+          chat,
+          userMessage: toMessage(exchange.userMessage),
+          assistantMessage: toMessage(exchange.assistantMessage),
+        },
+        201,
+      );
     },
   );
 

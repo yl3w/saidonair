@@ -1,6 +1,10 @@
 import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { appendExchange, createChat } from "../src/do/user/chats";
+import {
+  appendExchange,
+  CHAT_ANSWER_BUDGET_MS,
+  createChat,
+} from "../src/do/user/chats";
 import {
   ALICE,
   BOB,
@@ -282,5 +286,38 @@ describe("user chats", () => {
       "NOT_FOUND",
     );
     expect(await userDO(BOB).listChats()).toEqual([]);
+  });
+});
+
+describe("a reply that outlived its request", () => {
+  it("reads as failed once past the budget, and stays pending before it", async () => {
+    const stub = userDO(ALICE);
+    const chat = await stub.createChat();
+    const fresh = await stub.appendExchange(chat.chatId, "just asked");
+
+    // Nothing polls, so a reply is only noticed on the next read.
+    expect((await stub.getMessages(chat.chatId)).map((m) => m.status)).toEqual([
+      "completed",
+      "pending",
+    ]);
+
+    const stale = await stub.appendExchange(chat.chatId, "asked long ago");
+    await runInDurableObject(stub, (_, state) => {
+      state.storage.sql.exec(
+        "UPDATE chat_messages SET created_at = ? WHERE message_id = ?",
+        Date.now() - CHAT_ANSWER_BUDGET_MS - 1,
+        stale.assistantMessage.messageId,
+      );
+    });
+
+    const messages = await stub.getMessages(chat.chatId);
+    const byId = new Map(messages.map((m) => [m.messageId, m]));
+    expect(byId.get(stale.assistantMessage.messageId)).toMatchObject({
+      status: "failed",
+      failureCode: "ANSWER_TIMEOUT",
+    });
+    // The question it answered is untouched, and the younger reply is still waiting.
+    expect(byId.get(stale.userMessage.messageId)?.status).toBe("completed");
+    expect(byId.get(fresh.assistantMessage.messageId)?.status).toBe("pending");
   });
 });

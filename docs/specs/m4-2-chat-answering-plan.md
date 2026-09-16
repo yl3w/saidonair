@@ -4,7 +4,7 @@
 roadmap `docs/specs/chat-origin-scope-plan.md`.
 **Written:** 2026-09-16, against `main` at `dda864b`.
 **Status:** in progress. **Step 1 complete 2026-09-16 (`21860eb`)**, 348 tests. **Step 2 complete 2026-09-16**, 352
-tests. **Step 3 complete 2026-09-16**, 355 tests. **Step 4 complete 2026-09-16**, 367 tests. Step 5 not started.
+tests. **Step 3 complete 2026-09-16**, 355 tests. **Step 4 complete 2026-09-16**, 367 tests. **Step 5 complete 2026-09-16**, 371 tests.
 **Shape:** five code steps, each ending with `pnpm check` green and one commit when the owner asks. Steps 1–3 are
 independent of each other and all feed Step 4; Step 5 needs Step 4. Nothing here touches the web or the Registry's
 write paths. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
@@ -169,5 +169,12 @@ with an old `updated_at` and assert `getMessages` returns it `failed`, and that 
 
 No screen calls any of this, so there is no browser walkthrough. The `wrangler dev` equivalent is a live
 `POST /chats/:id/messages` against a real followed channel with a real summary: it must answer with sources whose
-`youtu.be` links land on the right timestamps. Run it before declaring the chunk complete, as M4.1's `/docs` check
-was run.
+`youtu.be` links land on the right timestamps.
+
+**Run 2026-09-16, partially.** Under `wrangler dev --env dev` the route answered `201` with the stored question and
+a finished reply in one response, `promptVersion` set on the reply and null on the question, `truncated` false — so
+the route, the inline answering, the two new columns and the response shape are verified against workerd. **The
+answer-with-sources path was not exercised**: the dev Registry holds no follows for the owner, so every question
+takes the no-follows branch. Completing it needs a channel added, approved and ingested in dev — minutes of work
+that spends a DownSub credit and real neurons — and is owed before M4 is declared complete, not before this chunk
+is.

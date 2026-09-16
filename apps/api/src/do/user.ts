@@ -81,8 +81,12 @@ export class UserDO extends DurableObject<Env> {
     return chats.getChat(this.#sql, chatId);
   }
 
+  /**
+   * Reconciles a reply that outlived its request before reading (docs/specs/m4-2-chat-answering.md
+   * §3.7), so this is a write and takes the transaction the other writers take.
+   */
   getMessages(chatId: string, limit?: number): ChatMessage[] {
-    return chats.getMessages(this.#sql, chatId, limit);
+    return this.#transaction(() => chats.getMessages(this.#sql, chatId, limit));
   }
 
   /**

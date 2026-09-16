@@ -1021,6 +1021,9 @@ export const SendMessageBodySchema = z
       .trim()
       .min(1, "must be non-blank")
       .describe("The question, answered from the caller's eligible follows."),
+    aboutEpisodeId: Id.nullish().describe(
+      "Scope this one question to a single episode. It narrows and never widens: the episode's channel must be one the caller follows, or the reply says so rather than answering across everything.",
+    ),
   })
   .meta({ id: "SendMessageBody", description: "`POST /chats/:id/messages`" });
 export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;

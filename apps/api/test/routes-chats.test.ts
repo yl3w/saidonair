@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import {
+  ChatExchangeResponseSchema,
   ChatMessagesResponseSchema,
   ChatResponseSchema,
   ChatsResponseSchema,
@@ -119,5 +120,65 @@ describe("chat routes", () => {
       ),
     ).not.toContain(alices.chatId);
     expect((await call(ALICE, "GET", "/chats/nope/messages")).status).toBe(404);
+  });
+});
+
+describe("asking a question", () => {
+  it("answers 201 with the question and a finished reply", async () => {
+    const chat = (await call(ALICE, "POST", "/chats")).json.chat as Json;
+
+    const sent = await call(ALICE, "POST", `/chats/${chat.chatId}/messages`, {
+      message: "what is covered?",
+    });
+
+    expect(sent.status).toBe(201);
+    expectShape(ChatExchangeResponseSchema, sent.json);
+    expect(sent.json.userMessage).toMatchObject({
+      role: "user",
+      content: "what is covered?",
+      status: "completed",
+      promptVersion: null,
+    });
+    // No follows, so the fixed reply of PRD §4.5 — complete in this one response, nothing to poll.
+    const reply = sent.json.assistantMessage as Json;
+    expect(reply.role).toBe("assistant");
+    expect(reply.status).toBe("completed");
+    expect(reply.content).toBe(
+      "Chat requires following at least one approved channel.",
+    );
+    expect(reply.sources).toEqual([]);
+  });
+
+  it("rejects a blank question and an episode the catalog does not hold", async () => {
+    const chat = (await call(ALICE, "POST", "/chats")).json.chat as Json;
+    const path = `/chats/${chat.chatId}/messages`;
+
+    expect((await call(ALICE, "POST", path, { message: "   " })).status).toBe(
+      400,
+    );
+    expect((await call(ALICE, "POST", path, {})).status).toBe(400);
+    expect(
+      (
+        await call(ALICE, "POST", path, {
+          message: "scoped to nothing",
+          aboutEpisodeId: "ccccccccccc",
+        })
+      ).status,
+    ).toBe(400);
+
+    // The refused question stored nothing: no orphan awaiting a reply.
+    expect((await call(ALICE, "GET", `${path}`)).json.messages).toEqual([]);
+  });
+
+  it("is 404 for a chat that is not the caller's", async () => {
+    const alices = (await call(ALICE, "POST", "/chats")).json.chat as Json;
+
+    expect(
+      (
+        await call(BOB, "POST", `/chats/${alices.chatId}/messages`, {
+          message: "let me in",
+        })
+      ).status,
+    ).toBe(404);
   });
 });

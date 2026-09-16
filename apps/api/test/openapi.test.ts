@@ -56,6 +56,7 @@ const OPERATIONS = [
   "post /chats",
   "get /chats",
   "get /chats/{chatId}/messages",
+  "post /chats/{chatId}/messages",
   "get /preferences",
   "put /preferences",
 ].sort();

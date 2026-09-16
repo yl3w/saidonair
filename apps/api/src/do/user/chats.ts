@@ -55,6 +55,12 @@ const SOURCE_COLUMNS = `source_id, message_id, position, episode_id, channel_id,
 const MAX_TITLE_LENGTH = 200;
 const MAX_CONTENT_LENGTH = 8000;
 const MAX_FAILURE_CODE_LENGTH = 64;
+/**
+ * A reply is answered inside the request that asked for it, so one still pending after this long
+ * belongs to a request that died (docs/PRD.md §4.5). Generous on purpose: an embed, a query and a
+ * model call is seconds, and a slow but living call must never be killed.
+ */
+export const CHAT_ANSWER_BUDGET_MS = 120_000;
 const DEFAULT_MESSAGE_LIMIT = 50;
 const MAX_MESSAGE_LIMIT = 200;
 
@@ -101,6 +107,7 @@ export function getMessages(
   limit: number = DEFAULT_MESSAGE_LIMIT,
 ): ChatMessage[] {
   const chat = requireChat(sql, chatId);
+  reconcileStale(sql, chat.chatId, Date.now());
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_MESSAGE_LIMIT) {
     throw new DomainError(
       "INVALID_INPUT",
@@ -254,6 +261,21 @@ export function failAssistantMessage(
 /** One chat of this user's, for a caller that needs the chat beside its messages. */
 export function getChat(sql: SqlStorage, chatId: string): Chat {
   return requireChat(sql, chatId);
+}
+
+/**
+ * Fails any reply that outlived the request meant to answer it. A read that writes, which is what
+ * PRD §4.2 rule 17 already does for a dead Workflow instance: nothing polls and nothing sweeps, so
+ * the next read is the only place a dead request can be noticed.
+ */
+function reconcileStale(sql: SqlStorage, chatId: string, now: number): void {
+  sql.exec(
+    `UPDATE chat_messages SET status = 'failed', failure_code = 'ANSWER_TIMEOUT', updated_at = ?
+     WHERE chat_id = ? AND role = 'assistant' AND status = 'pending' AND created_at < ?`,
+    now,
+    chatId,
+    now - CHAT_ANSWER_BUDGET_MS,
+  );
 }
 
 /** A chat id from another user is simply absent in this object, hence NOT_FOUND. */
