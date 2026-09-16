@@ -10,8 +10,9 @@ design reasoning, wireframes, acceptance criteria, and implementation plans behi
 `home-read-experience` for the Home and Owner screens (decided 2026-09-07), `channel-simplification` for channel
 statuses, follows, and episode states (decided 2026-09-10), `m3-ingestion` for discovery, recovery, and transcripts
 (revised 2026-09-12), `api-reference` for the generated API document (decided 2026-09-07, contract restated and approved 2026-09-12), and
-`follows-single-owner` for follows living only in the Registry (decided 2026-09-13), and `design-phase` for the
-visual system and the screens this phase rebuilds (written 2026-09-14). `docs/design.md` is the standing design
+`follows-single-owner` for follows living only in the Registry (decided 2026-09-13), `design-phase` for the
+visual system and the screens this phase rebuilds (written 2026-09-14), and `chat-origin-scope` for where a chat
+begins and where its scope lives (written 2026-09-15). `docs/design.md` is the standing design
 guide — principles, tokens, patterns, the scale playbook and the accessibility floor — and governs how a screen looks
 and behaves the way this document governs what it does. Where a spec and this
 document disagree, this document governs and the spec is due for revision.
@@ -447,16 +448,42 @@ episode's row, phrased from its latest attempt.
 - A user can have zero or more independent chats. Each chat has an optional title and its own ordered messages.
   Retain all chats/messages; no chat deletion or archive functionality is required now, and there are no per-channel
   chats.
-- Every message searches all channels the user currently follows that are approved, paused or not. There is no
-  fixed channel selection at chat creation and no chat-to-channel membership table.
+- **A chat begins at a summary and nowhere else (decided 2026-09-15, §9).** The only entry is `Ask` on the reading
+  screen, and it renders only where the episode can answer: a published summary, an active vector generation, and a
+  channel eligible for that caller. There is no new-chat control anywhere else, `/chats` is the history of
+  conversations rather than a way into one, and primary navigation stays Queue and Sources.
+- Every message searches all channels the user currently follows that are approved, paused or not, **unless it
+  carries an episode scope hint**. There is no fixed channel selection at chat creation and no chat-to-channel
+  membership table.
+- **Scope is a property of a message, never of a chat (decided 2026-09-15, §9).** A message may carry one
+  `aboutEpisodeId`; two consecutive messages in one chat may carry different hints or none, and `chats` holds no
+  scope column. A hint **narrows and never widens** — the episode's channel must be in the caller's eligible set, so
+  it is a filter applied inside eligibility and never a way around it. The reader's chip is **sticky until
+  dismissed**: it persists across messages until cleared, a second `Ask` replaces it rather than stacking, and
+  dismissing it returns the chat to every eligible channel.
+- **An ineligible scope is said out loud (decided 2026-09-15, §9).** When a scoped episode's channel stops being
+  eligible between one message and the next, the reply says so rather than silently answering across everything.
+  A silent widening is the failure this rule exists to prevent.
 - Following a new channel expands retrieval for existing chats; unfollow or a decline excludes future retrieval, and
   re-approval restores it. Previous messages/citations remain visible and may still be used as conversation context.
-  Do not scrub history.
+  Do not scrub history. **A message renders with the scope it was sent under**, so scrollback tells a scoped answer
+  from a global one (2026-09-15, §9).
 - Chat creation, message submission, and history are never disabled for lack of follows. When no eligible channels
   exist, store the assistant response "Chat requires following at least one approved channel." with no sources;
-  do not call AI or Vectorize for that response.
-- Otherwise embed the question, retrieve the best three eligible chunks (§6), combine their exact text with the user's
-  preferences and this chat's recent history, and ask Workers AI to answer with video/timestamp citations.
+  do not call AI or Vectorize for that response. Since a chat can only begin at an eligible summary, this is reached
+  in an existing chat whose follows have since dropped to zero, never as a first message.
+- Otherwise embed the question and retrieve the best three chunks (§6) — from the scoped episode alone when the
+  message carries a hint, from every eligible channel otherwise — then combine their exact text with the user's
+  preferences and this chat's recent history, and ask Workers AI for **prose alone**.
+- **A reply's citations are the retrieval's, not the model's (decided 2026-09-15, §9).** Code stores the chunks that
+  fed an answer as that reply's sources; the model is never asked to cite, and a reply carries no citation markers.
+  Attribution is therefore structural and cannot be hallucinated, which is the only form of it this model has been
+  shown to manage (§9, and `docs/specs/summary-quality.md` §4.3).
+- **A reply is answered inside the request that asked for it (decided 2026-09-15, §9).** The two-phase write stands —
+  the question is stored completed and the reply pending before any model call — so a crash leaves a visible pending
+  reply rather than a lost question. A pending reply older than the answering budget is reconciled to `failed` inline
+  when a read notices it, as a dead Workflow instance is (§4.2 rule 17), and `Try again` resends the question as a
+  new attempt.
 - Store citation snapshots (video/channel IDs, titles, start time) with each reply. Link to
   `https://youtu.be/<episodeId>?t=<startSec>`; later catalog changes must not erase historical sources.
 
@@ -496,7 +523,7 @@ is set when embedding starts so the next attempt can delete an abandoned generat
 |---|---|---|
 | `summary_reads` | `episode_id`, `read_at` | PK `episode_id`; no row means unread |
 | `chats` | `chat_id`, `title?`, `updated_at` | PK `chat_id` |
-| `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
+| `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `about_episode_id?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
 | `chat_message_sources` | `source_id`, `message_id`, `position`, `episode_id`, `channel_id`, `episode_title`, `channel_title`, `start_sec` | PK `source_id`; FK to message; unique `(message_id, position)` |
 | `user_preferences` | `id`, `system_rules`, `updated_at` | Singleton PK constrained to `id = 'default'` |
 
@@ -504,7 +531,11 @@ Email is implicit in the owning User DO, not repeated in each row. The User DO h
 rows (§5.1, decided 2026-09-13). Shared channel and video IDs are cross-DO references validated through Registry
 methods, not SQLite foreign keys. A reply must belong to the same chat as its
 referenced message. The nullable `chat_messages.channel_id` is retained for a possible future scoped view and stays
-null for current global chats; it does not define retrieval scope. Sources capture the actual per-reply channel IDs.
+null for current global chats; it does not define retrieval scope. The nullable `chat_messages.about_episode_id` is
+the episode scope hint of §4.5 and **does** define that message's retrieval scope; it is episode-grained, which is
+why `channel_id` cannot carry it, and it is written on the user message, not the reply. A chat's origin is the first
+message's hint rather than a column on `chats` (decided 2026-09-15, §9): scope lives on messages, and a chat whose
+chip was dismissed before the first send honestly has no origin. Sources capture the actual per-reply channel IDs.
 Message content may be empty while an assistant reply is pending. Update chat ordering when messages are added.
 
 ### 5.3 Constraints and indexes
@@ -600,8 +631,11 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
   embedding model truncates silently at 512. Handle overlong individual segments without exceeding the cap.
 - Every Vectorize helper requires explicit namespace scope. For ID-based methods, enforce that scope in the helper
   even if the underlying API does not accept a namespace parameter. No user-specific private text goes into this index.
-- Chat uses `filter: { channelId: { $in: eligibleChannelIds } }`, `topK: 3`, and all metadata. Never send an empty or
-  unfiltered fallback query. Split channel lists into filters below Vectorize's 2048-byte limit and merge by score;
+- Chat uses `filter: { channelId: { $in: eligibleChannelIds } }`, `topK: 3`, and all metadata. A message carrying an
+  episode scope hint (§4.5) uses `filter: { episodeId: { $eq: aboutEpisodeId } }` instead, after confirming that
+  episode's channel is in the same eligible set — the hint replaces the channel filter only because it is strictly
+  narrower than it, and a hint whose channel is not eligible is refused rather than dropped. The `episodeId` metadata
+  index exists for exactly this and predates the feature. Never send an empty or unfiltered fallback query. Split channel lists into filters below Vectorize's 2048-byte limit and merge by score;
   never drop the channel filter to accommodate limits.
 - Validate returned episodes are available, channels remain eligible, and the vector generation equals the episode's
   `active_vector_generation` before using retrieved text. Fetch additional candidates as necessary when rejecting
@@ -670,7 +704,10 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   line is the episode's own facts and says neither "Read" nor "Unread" (§9, 2026-09-15), the receipt being undone
   in History, where the row is. **Nothing on this screen writes anything until Done**, which
   records the receipt and hands the reader back to that same list (decided 2026-09-15, §9, withdrawing the advance
-  to the next unread). A deep link works on a cold load through `GET /episodes/:episodeId`.
+  to the next unread). A deep link works on a cold load through `GET /episodes/:episodeId`. **`Ask` joins that chrome and is the
+  only way into a chat** (decided 2026-09-15, §9): it renders where the episode can answer — a published summary, an
+  active vector generation, and a channel eligible for this caller — and opens a chat scoped to this episode. It
+  writes nothing until a question is sent, so an abandoned Ask leaves no empty chat behind.
 - **History `/history` and `/history/2026-09-12`:** the library — everything the reader is currently eligible for,
   by the day it became readable, and **the only place a read receipt can be undone**. A day is an address and
   carries its year. Rows say "read" or "unread" in words and offer the write that matters: Undo on a read row, the
@@ -709,7 +746,13 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   preserving its messages and source links. Chat controls are never disabled for lack of follows; the fixed
   follow-required response of §4.5 applies instead. **Until M4 builds it there is no Chats destination and no
   `/chats` route** (§9, 2026-09-15): primary navigation is Queue and Sources, and a stale `/chats` link falls to the
-  redirect every unknown path takes, to `/queue`.
+  redirect every unknown path takes, to `/queue`. **When M4 builds it, `/chats` is a history and not an entry**
+  (decided 2026-09-15, §9): conversations are started by `Ask` on a summary and nowhere else, so the route lists what
+  exists and offers no way to make a new one, and primary navigation still does not carry it. A chat is named by its
+  first question, and the rail shows the episode that chat began at beside the name, because a chat born at a
+  summary reads as being about it. `/chats/:id` carries the sticky scope chip in its URL as `?about=<episodeId>` — a
+  query parameter, since scope modifies a chat rather than naming a different one, and dismissing the chip must
+  leave a valid URL behind. Each message in the transcript shows the scope it was sent under.
 - **Curate `/curate` and `/curate/:id`:** the owner's one extra destination, **desktop only** — approving,
   declining, retrying and the catalog table are dense, consequential and rare, so they are not designed twice.
   Below the breakpoint the nav item is absent and the screen says where to go instead. Users who reach it are sent
@@ -802,9 +845,9 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | `GET /follows` | anyone (own) | Own active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
 | `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for a declined one) / retain an unfollow tombstone on a channel in any status; the Registry's follower record is the follow |
 | `GET /digest` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt`, newest first. `from` (inclusive) and `to` (exclusive) bound the range and **there is no default window and no clamp — every day is kept** (§4.4); `unread=true` is the queue and omitting it is History; `channelId` repeats; `cursor` and `limit` page it (default 50, max 200); `compact=true` answers rows of `{ episodeId, channelId, summaryAvailableAt, read }` rather than episodes, which is how a calendar costs one small read. A pure read: it records nothing. The body is discriminated on `compact` and carries `nextCursor`. Day grouping is the client's, from its own local boundaries: the route takes instants and never a timezone |
-| `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats |
+| `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats. Unchanged by the 2026-09-15 origin rule: the API stays open and the web is the only gate (§2, §9), so the web simply never offers creation except from a summary |
 | `GET /chats/:id/messages?limit=50` | anyone (own) | Selected chat history with citation snapshots |
-| `POST /chats/:id/messages` `{ message }` | anyone (own) | Reply and sources using current eligible follows |
+| `POST /chats/:id/messages` `{ message, aboutEpisodeId? }` | anyone (own) | Reply and sources using current eligible follows, or that one episode when `aboutEpisodeId` is given and its channel is eligible (§4.5, §6). An `aboutEpisodeId` whose channel is not eligible is refused with a reply that says so, never silently widened; an unknown episode id is 400. The hint is stored on the user message and returned with it, so history renders the scope each message was sent under |
 | `GET /preferences` / `PUT /preferences` | anyone (own) | Chat preference rules — `systemRules`, trimmed, at most 4000 characters, empty to clear. Listed here since the 2026-09-12 restart but only registered on 2026-09-15; no screen calls them between then and M4, when the Account field returns with chats (§9) |
 
 Routes that deliberately do not exist: `/channel-requests/*` (requests are channels), `DELETE /channels/:id` and
@@ -851,6 +894,9 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the generation is atomically activated. Inactive generations never enter retrieval, a replacement leaves only the new
   generation in the store, and a failed cleanup leaves publication standing. A related-lookup failure still publishes
   the summary.
+- A scoped message retrieves only from its episode, and only while that episode's channel stays eligible; an
+  ineligible hint produces the explicit reply of §4.5 and never a global answer. Dismissing the chip returns the next
+  message to every eligible channel. A stored hint is never rewritten by later follow changes.
 - Existing chats include newly followed channels and exclude unfollowed or declined ones from new retrieval.
   Historical messages and sources remain intact. Approving a declined channel again restores access for its remaining
   active followers, not for explicit unfollows. Every Vectorize call uses `shared-catalog`, and chat queries carry only
@@ -1406,6 +1452,52 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the cursor is null, and claims the reader is through only on the second. Cost: a reader with hundreds waiting
   presses Show more rather than scrolling forever; an explicit control was chosen over loading on scroll because it
   is reachable from a keyboard and because History already uses exactly this one.
+- **Chats begin at a summary, and scope belongs to a message — decided 2026-09-15.** Chat was specified as a global
+  surface: an empty chat, a blank box, and every message searching everything the reader follows. Two faults follow
+  from that. A blank box has no cold start — the reader meets an empty input, tests it with the question it is worst
+  at ("summarise everything"), and judges the feature on its weakest answer. And `topK: 3` over an unguided pool is
+  the retrieval this product can least afford: three chunks drawn from thirty channels may be three unrelated shows,
+  and nothing in the question says which one was meant. Both are fixed by where a chat begins. **The only way into a
+  chat is `Ask` on a summary**, so every conversation is born in context and its first answer is retrieved from one
+  episode; `/chats` becomes the history of conversations rather than a way into one. The scope that entry creates is
+  **a property of each message, never of the chat**: one optional `aboutEpisodeId` on `POST /chats/:id/messages`, one
+  nullable `chat_messages.about_episode_id`, and no column on `chats`. That is the whole difference between this and
+  the per-channel chats §7 still refuses — a stored scope would owe the reader a policy for every unfollow, decline
+  and re-approval, per chat, and a per-message hint owes nothing: a past message keeps its hint as a record of what
+  happened, exactly as it keeps its citation snapshots. The hint **narrows and never widens**, since eligibility
+  still gates the query, so it can never reach a channel the caller does not follow. The chip is **sticky until
+  dismissed** rather than clearing after one message, which turns it into a standing disclosure of what is being
+  searched — the one thing a global chat could never tell a reader, whether a thin answer means nothing was said or
+  nothing was found. It rides in the web URL as `?about=<episodeId>`: a query parameter because scope modifies a chat
+  rather than identifying a different one, because a dismissable chip must leave a valid URL behind, and because a
+  path segment would need two route patterns for one screen. The API keeps it in the message body, where it belongs
+  to the message being created — a web-route decision and an API-resource decision are different questions and need
+  not match. **Dismissing the chip widens the chat to every eligible channel**, which is the ruling here the owner is
+  most likely to want back: it makes "no way to start a global chat" a speed bump rather than a rule. It stands
+  because cross-source synthesis is the one thing chat does that a transcript search cannot, and forbidding it would
+  cut the feature's ceiling to buy very little. Costs accepted: a genuinely global question — "what has anyone said
+  about X lately" — now begins by opening some episode and dismissing its chip, which is backwards for that question;
+  and chat volume is bounded by reading volume, since reading is the only on-ramp. The fixed no-follows response of
+  §4.5 survives but moves, reachable now only in an existing chat whose follows have since dropped to zero. Spec:
+  `docs/specs/chat-origin-scope.md`.
+- **Chat answers inside the request, and code owns the citations — decided 2026-09-15.** Two questions the chat
+  contract had left to implementation, settled together because the same evidence decides both. **Answering is
+  inline**: one embed, one or two Vectorize queries and one model call is seconds of mostly-waiting, which fits a
+  request, where episode ingestion is minutes and needs a Workflow. `ctx.waitUntil` and a Workflow per message were
+  both considered and declined — the first buys a polling loop and a tail that can be cut short, the second pays
+  Workflow startup on every question, in the one place the reader is watching the clock. The two-phase write in the
+  User DO is kept for what it is actually good for: a crash leaves the question stored and the reply pending rather
+  than losing both, which is also what `Try again` reads. The cost is a pending reply that can outlive its request,
+  so one is reconciled to `failed` inline when a read notices it, the way a dead Workflow instance already is.
+  **Citations are attached by code**, from the chunks that fed the answer, and the model is asked for prose with no
+  markers to emit. Markers resolved from model output, and a JSON schema pairing claims to sources, were both
+  declined on measured grounds: `summary-quality.md` §4.3 shows this model ignoring an explicit ban on "the speaker"
+  and returning 0% named with the names in its prompt, so it is not a model to trust with index discipline; and the
+  JSON probe behind `summary-json-mode` found an unmeetable schema truncates rather than erroring, which in a reply
+  means a silently cut-off answer. Attribution that cannot be hallucinated is worth more here than per-sentence
+  provenance, and §7's source cards already carry channel and episode. Cost accepted: three cards attach to a reply
+  as a whole, and the reader cannot tell which sentence came from which. Per-sentence provenance is the v2 if the
+  click-through data of `docs/specs/chat-origin-scope.md` §2.4 ever asks for it.
 - **Nothing unfinished in primary navigation — decided 2026-09-15.** Chats had equal billing with Queue and
   Sources in both the top bar and the phone's tab bar, and led to a placeholder whose body named a milestone —
   "Built in M4" — which is our word, not a reader's. Account meanwhile offered **Chat rules**, a field that saved to
@@ -1418,7 +1510,9 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   wireframes are where the promise lives. Nothing is lost: `GET`/`PUT /preferences` stay registered, tested and
   documented, so rules already stored come back with the field, and the chat artboards
   (`docs/specs/design-phase.md` §4.9) are unchanged. The placeholder screen and the generic `Unbuilt` component it
-  used are deleted rather than commented out; M4 builds from the design, not from a stub.
+  used are deleted rather than commented out; M4 builds from the design, not from a stub. **Made permanent the same
+  day by the chat-origin decision above:** with chats beginning only at a summary, `/chats` never becomes a primary
+  destination, and the navigation stays two items after M4 rather than three.
 - **Cron cadence — decided 2026-09-12:** channel discovery runs at `0 */6 * * *` UTC and episode recovery at
   `30 */6 * * *` UTC; both have a six-hour cadence. The triggers exist in production only (2026-09-13, below).
 - **Environments — decided 2026-09-13: three, dev, staging, production.** Local `wrangler dev` runs as dev against
@@ -1481,7 +1575,7 @@ M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunki
                  generations · shared summaries · one Workflow instance per episode attempt · two six-hour crons ·
                  Start route · Retry/Skip · availability-ordered digest
    Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
-M4 Intelligence  unread receipts · multiple chats · filtered retrieval/citations
+M4 Intelligence  unread receipts · chats begun at a summary · per-message scope · filtered retrieval/citations
 M5 UI            conversations
 M6 Hardening     isolation/lifecycle tests · wrangler verification · docs
 ```

@@ -76,6 +76,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 ├── docs/specs/               # design reasoning and plans behind the PRD, each with its -plan.md: design-phase,
 │                             # home-read-experience,
 │                             # api-reference, channel-simplification, follows-single-owner, summary-json-mode,
+│                             # chat-origin-scope,
 │                             # summary-quality, summary-coverage, and M3 as the decision record m3-ingestion (its
 │                             # -plan.md is the roadmap) plus seven child chunks m3-1-transcripts-chunking, m3-2-attempt-ledger,
 │                             # m3-3-ai-vectorize, m3-4-discovery, m3-5-episode-workflow, m3-6-recovery, m3-7-owner-ux
@@ -385,7 +386,9 @@ Discovery runs, episode attempts, recovery, transcripts, and generation-safe pub
   Atom so the parser path is production's (`test/fixtures/feeds.ts`; channel F carries the entries). Its keys are
   `UC…` ids, serving both URL shapes, or a full `UULF…` id overriding just the long-form read.
 - `lib/chunk.ts` implements the PRD §6 chunking contract as a pure function. `lib/vectorize.ts` owns namespaced
-  upsert, query, `getByIds`, and delete; hard rule 3 is enforced there.
+  upsert, query, `getByIds`, and delete; hard rule 3 is enforced there. Its query filter is a union — the channel-set
+  form and the single-episode form of a scoped chat message (PRD §6, `docs/specs/chat-origin-scope.md` §4.4) — and
+  the in-file fake honours both, so a query with no filter at all remains unrepresentable.
 
 ### Transcript seam (`lib/transcripts/`)
 
