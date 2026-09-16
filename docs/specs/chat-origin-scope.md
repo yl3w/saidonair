@@ -156,9 +156,14 @@ availability and eligibility revalidation, fetching more candidates when rejecti
 
 Two code facts this depends on:
 
-- The `episodeId` metadata index **already exists** on the Vectorize index and predates this feature; it is guarded
-  by `apps/api/test/wrangler-config.test.ts:175`. No index rebuild, which would otherwise be the blocker, since
-  vectors written before an index exists are not filterable on that field.
+- The `episodeId` metadata index. **This was asserted wrongly and corrected 2026-09-16.** The claim that it
+  "already exists, guarded by `apps/api/test/wrangler-config.test.ts:175`" read a *comment* — in a test that only
+  checks the clean-local script never calls `wrangler vectorize delete` — as evidence about live infrastructure.
+  `media-rag-dev` was in fact created 2026-09-13 with indexes on `channelId` and **`videoId`**, and the 2026-09-15
+  rename moved the code's metadata key to `episodeId` without anyone recreating it. Scoped retrieval therefore
+  matched nothing, silently, because Vectorize filters only on indexed properties. The owner created the
+  `episodeId` index and dropped the dead `videoId` one on 2026-09-16; the vectors written before it existed are not
+  retroactively filterable and must be re-upserted, which is exactly what PRD §6 warned.
 - `QueryOptions.filter` in `apps/api/src/lib/vectorize.ts:39` is typed `{ channelId: { $in: string[] } }` and must be
   widened to a union with the episode form. The in-repo fake filters on `channelId` alone
   (`apps/api/src/lib/vectorize.ts:299`) and must be widened with it, or scoped retrieval is untestable.

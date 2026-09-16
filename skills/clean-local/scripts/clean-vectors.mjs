@@ -10,7 +10,7 @@
  *
  * Why enumerate-and-delete rather than `wrangler vectorize delete`:
  *   - AGENTS.md hard rule 4 forbids `wrangler vectorize delete`, and this keeps that ban intact.
- *   - Deleting the index would drop the `channelId` and `videoId` metadata indexes with it. AGENTS.md
+ *   - Deleting the index would drop the `channelId` and `episodeId` metadata indexes with it. AGENTS.md
  *     requires those to exist BEFORE the first upsert, and a vector inserted without them is silently
  *     unfilterable forever. Deleting vectors by id leaves the index and both metadata indexes alone.
  *
