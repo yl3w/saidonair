@@ -149,7 +149,7 @@ export async function answer(
     deps,
     exchange,
     truncated ? trimToSentence(text) : text,
-    dedupeByEpisode(kept),
+    kept.map(toSource),
     truncated,
   );
 }
@@ -168,22 +168,21 @@ export function trimToSentence(text: string): string {
   return end === -1 ? text : text.slice(0, end + 1);
 }
 
-/** Several chunks from one episode are one citation, at its best-scoring start time. */
-function dedupeByEpisode(matches: VectorMatch[]): ChatMessageSourceInput[] {
-  const seen = new Set<string>();
-  const sources: ChatMessageSourceInput[] = [];
-  for (const match of matches) {
-    if (seen.has(match.metadata.episodeId)) continue;
-    seen.add(match.metadata.episodeId);
-    sources.push({
-      episodeId: match.metadata.episodeId,
-      channelId: match.metadata.channelId,
-      episodeTitle: match.metadata.title,
-      channelTitle: match.metadata.channelTitle,
-      startSec: match.metadata.startSec,
-    });
-  }
-  return sources;
+/**
+ * Every validated chunk is its own source, in score order, including several from one episode.
+ * **Grouping is the reader's view, not the record** (decided 2026-09-16): unscoped, the unit of
+ * citation is the episode; scoped, every chunk is that same episode and the only thing a citation
+ * can carry is *when*. Collapsing here would throw the timestamps away before the web could choose,
+ * and a scoped answer would show one jump point for evidence drawn from eight.
+ */
+function toSource(match: VectorMatch): ChatMessageSourceInput {
+  return {
+    episodeId: match.metadata.episodeId,
+    channelId: match.metadata.channelId,
+    episodeTitle: match.metadata.title,
+    channelTitle: match.metadata.channelTitle,
+    startSec: match.metadata.startSec,
+  };
 }
 
 /**

@@ -643,8 +643,10 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
   available with an active generation or it is not, and all its candidates stand or fall together. Neither candidate
   count may exceed **50**, the most Vectorize returns when metadata is requested, and chat always requests metadata
   because the metadata is the citation.
-- **Sources are deduplicated by episode before they are stored.** Several chunks from one episode are one citation,
-  at its best-scoring chunk's start time — a reply cites sources, not passages.
+- **Every validated chunk is stored as its own source, in score order** (revised 2026-09-16, §9). Grouping several
+  chunks of one episode into one citation is the reader's view and belongs to the web, not to the record: unscoped,
+  the unit of citation is the episode; scoped, every chunk is that same episode and the only thing a citation can
+  carry is *when*. Collapsing before storage would throw those timestamps away before any screen could choose.
 - Chat uses `filter: { channelId: { $in: eligibleChannelIds } }` and all metadata. A message carrying an
   episode scope hint (§4.5) uses `filter: { episodeId: { $eq: aboutEpisodeId } }` instead, after confirming that
   episode's channel is in the same eligible set — the hint replaces the channel filter only because it is strictly
@@ -1532,6 +1534,16 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   which also keeps the common reply within the three cards the artboards show. Costs accepted: a reply may still
   exceed three cards, so M4.3 owes that state a drawing; and these numbers are guesses too, cheaper ones, which the
   click-through measure of `docs/specs/chat-origin-scope.md` §2.4 is what would actually settle.
+  **Amended 2026-09-16, after the first live scoped answer.** Deduplicating *before storage* was wrong, and the
+  fault only showed against real data: a scoped question's chunks are all one episode by construction, so the rule
+  collapsed evidence drawn from up to eight moments into a single jump point — in the one mode whose reader is
+  already inside the episode and whose only remaining question is *where*. It also inverted the depth the scoped
+  path had just paid for, retrieving more and showing less. Storage now keeps every validated chunk as its own
+  source and **the web groups by episode at render time**, which serves both modes under one rule: unscoped, one
+  card per episode; scoped, one card carrying several timestamps. `chat_message_sources` already allowed it — its
+  unique constraint is `(message_id, position)`, never `(message_id, episode_id)` — so the collapse was presentation
+  work done in the wrong layer, and no schema change was needed to undo it. Grouping also *reduces* the artboard
+  problem rather than adding to it: a scoped reply becomes one card where the unscoped path can already reach six.
 - **Chat answers inside the request, and code owns the citations — decided 2026-09-15.** Two questions the chat
   contract had left to implementation, settled together because the same evidence decides both. **Answering is
   inline**: one embed, one or two Vectorize queries and one model call is seconds of mostly-waiting, which fits a

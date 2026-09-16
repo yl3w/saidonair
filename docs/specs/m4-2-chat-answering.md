@@ -21,7 +21,7 @@ After this chunk chat works end to end over HTTP. No screen calls it; that is M4
 |---|---|---|
 | 1 | One over-fetch, sized by scope: keep 8 of 16 scoped, 6 of 24 unscoped | PRD §6, revised 2026-09-16. A loop has no natural bound and costs a round trip per pass; one over-fetch satisfies "fetch additional candidates" with a ceiling. Scoped is **deeper** because one episode is one voice, and over-fetches **less** because its rejections are correlated — the episode is available with an active generation or it is not. Both counts stay under `QUERY_TOP_K_MAX = 50`, the most Vectorize returns with metadata |
 | 1c | A truncated answer is trimmed and kept, never failed | Verified 2026-09-16: the runtime returns `choices[0].finish_reason`, so truncation is detectable. Failing would discard the text — `failAssistantMessage` leaves the reply empty — and a retrieval-grounded answer front-loads, so the tail that gets cut is elaboration, not the answer. `Try again` resends the same question and would truncate in the same place, making an error a reproducible dead end. The dangling fragment is the real damage, and trimming removes it |
-| 1b | Sources are deduplicated by episode | Several chunks from one episode are one citation, at its best-scoring start time. A reply cites sources, not passages — and without this, eight scoped chunks would render as eight cards for one episode |
+| 1b | Every validated chunk is its own source; grouping is the web's | **Revised 2026-09-16 after the first live scoped answer.** Deduplicating before storage collapsed a scoped reply — whose chunks are one episode by construction — to a single timestamp, discarding the other seven in the mode whose reader only wants *where*. `chat_message_sources` permits repeats (`UNIQUE (message_id, position)`), so grouping belongs at render time: unscoped one card per episode, scoped one card with several timestamps |
 | 2 | One to three valid chunks still answer; zero is a stored reply | A thin answer beats no answer, and the source cards show exactly how thin. Zero never reaches the model, so it can never answer from its weights under the product's citation framing (owner decision 2026-09-16) |
 | 3 | A batched **state** lookup, `listEpisodeStates`, not a record one | Corrected 2026-09-16 after reading the code. `episodes.listByEpisodeIds` already batches `EpisodeRecord`s, but `EpisodeRecord.processing` deliberately omits `activeVectorGeneration` so it never crosses to the wire — and that is the field validation turns on. `EpisodeState` carries it, alongside `status` and `channelId`, so validation needs `listStatesByIds` beside the existing `listByEpisodeIds`, exposed on the facade. Twelve singular RPCs would be the wrong shape regardless |
 | 4 | `AiClient` gains `answer`, with its own `CHAT_MODEL` and `CHAT_MAX_TOKENS` | Both existing methods hardcode `response_format: json_schema` (`lib/ai.ts:50`) and chat needs prose. A separate constant means tuning chat cannot silently move summarisation, even while both name the same model today |
@@ -81,6 +81,8 @@ all three tests: the episode is available, its channel is still eligible, and th
 (`lib/vectorize.ts:85`) reads out of the match's id equals that episode's `activeVectorGeneration` — the vector
 id is where the generation lives, and there is no generation metadata index to filter on (PRD §6). Episode facts
 come from `listEpisodeStates` in one call.
+
+**A citation is one chunk, not one episode** (revised 2026-09-16): the web groups them, storage does not.
 
 **A citation is the vector's own metadata, not a second lookup.** `ChunkMetadata` already carries `episodeId`,
 `channelId`, `channelTitle`, `title` and `startSec` — exactly the five fields `chat_message_sources` stores — so the
@@ -167,8 +169,8 @@ never killed. Nothing polls; nothing sweeps.
 6. Retrieval that validates nothing stores the §3.2 empty reply, with zero AI calls and **one** Vectorize call.
 7. One valid chunk answers, with exactly that one source.
 8. A scoped question queries 16 candidates and keeps at most 8; an unscoped one queries 24 and keeps at most 6.
-9. Chunks from one episode collapse to one source, at the best-scoring chunk's start time, so sources never outnumber
-   the distinct episodes retrieved.
+9. Every validated chunk is stored as its own source in score order, including several from one episode, so a
+   scoped reply carries one timestamp per kept chunk rather than one for the episode.
 10. A match whose generation differs from the episode's `activeVectorGeneration` is skipped, and a deeper candidate
     takes its place.
 11. A match whose episode is unavailable, or whose channel has become ineligible, is skipped the same way.

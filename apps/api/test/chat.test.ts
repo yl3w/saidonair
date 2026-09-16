@@ -182,7 +182,7 @@ describe("answering a chat question", () => {
     expect(d.aiCalls).toEqual(["embed"]);
   });
 
-  it("answers from what survives, deduplicating several chunks of one episode", async () => {
+  it("answers from what survives, one source per chunk in score order", async () => {
     await seedApprovedChannel(CHANNEL_A, OWNER);
     await seedEpisode(EPISODE_A, CHANNEL_A);
     const d = await deps([CHANNEL_A], async (store) => {
@@ -202,13 +202,18 @@ describe("answering a chat question", () => {
     expect(assistantMessage.status).toBe("completed");
     expect(assistantMessage.promptVersion).toBe(CHAT_PROMPT_VERSION);
     expect(assistantMessage.truncated).toBe(false);
-    // Three chunks, one episode, one citation at the best-scoring start.
-    expect(assistantMessage.sources).toHaveLength(1);
-    expect(assistantMessage.sources[0]).toMatchObject({
-      episodeId: EPISODE_A,
-      channelId: CHANNEL_A,
-      startSec: 0,
-    });
+    // Three chunks of one episode are three citations: scoped, the only thing a source can carry
+    // is *when*, and grouping them into one card is the reader's view, not the record.
+    expect(assistantMessage.sources).toHaveLength(3);
+    expect(assistantMessage.sources.map((s) => s.startSec)).toEqual([
+      0, 60, 120,
+    ]);
+    for (const source of assistantMessage.sources) {
+      expect(source).toMatchObject({
+        episodeId: EPISODE_A,
+        channelId: CHANNEL_A,
+      });
+    }
     // The prompt carries the transcript and never asks for a citation.
     const prompt = d.aiCalls.at(-1) ?? "";
     expect(prompt).toContain("transcript text 0");
@@ -266,7 +271,7 @@ describe("answering a chat question", () => {
     ]);
   });
 
-  it("keeps at most the unscoped depth, one source per episode", async () => {
+  it("keeps at most the unscoped depth, counting chunks and not episodes", async () => {
     await seedApprovedChannel(CHANNEL_A, OWNER);
     const ids = [EPISODE_A, EPISODE_B, EPISODE_C];
     for (const id of ids) await seedEpisode(id, CHANNEL_A);
@@ -286,8 +291,11 @@ describe("answering a chat question", () => {
       message: "everything",
     });
 
-    expect(assistantMessage.sources.length).toBeLessThanOrEqual(UNSCOPED_KEEP);
-    expect(assistantMessage.sources).toHaveLength(ids.length);
+    // Six chunks across three episodes: the cap counts chunks, and every one is its own source.
+    expect(assistantMessage.sources).toHaveLength(UNSCOPED_KEEP);
+    expect(new Set(assistantMessage.sources.map((s) => s.episodeId)).size).toBe(
+      ids.length,
+    );
   });
 
   it("stores a truncated answer completed and trimmed, never failed", async () => {
