@@ -17,6 +17,14 @@ export const EMBEDDING_BATCH = 20;
 export const SUMMARY_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 /** Room for eight takeaways with timestamps, a three-sentence summary, and eight tags, several times over. */
 export const SUMMARY_MAX_TOKENS = 1024;
+/**
+ * Chat names the same model as summarisation today, through its own constant so tuning one cannot
+ * silently move the other. Both are aliases rather than identities: asking for `-fp8-fast` is served
+ * `-sd`, a speculative-decoding variant (probed 2026-09-16).
+ */
+export const CHAT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+/** A scoped answer draws on up to eight chunks, so a ceiling below its evidence is the wrong constraint. */
+export const CHAT_MAX_TOKENS = 1024;
 
 export type Embedder = {
   /** One vector per text, each `EMBEDDING_DIMENSIONS` wide; at most `EMBEDDING_BATCH` texts. */
@@ -33,7 +41,21 @@ export type Summarizer = {
   synthesise(prompt: string): Promise<string>;
 };
 
-export type AiClient = Embedder & Summarizer;
+export type Answer = {
+  text: string;
+  /**
+   * The model stopped because it hit `CHAT_MAX_TOKENS`, so the text ends mid-sentence. The caller
+   * trims and keeps it rather than failing the reply (docs/PRD.md §9, 2026-09-16).
+   */
+  truncated: boolean;
+};
+
+export type Answerer = {
+  /** The model's prose for a chat question. No JSON mode: there is nothing to parse. */
+  answer(prompt: string): Promise<Answer>;
+};
+
+export type AiClient = Embedder & Summarizer & Answerer;
 
 export function ai(env: { AI?: Ai; AI_FAKE?: string }): AiClient {
   if (env.AI_FAKE !== undefined)
@@ -72,7 +94,41 @@ export function realClient(binding: Ai): AiClient {
     },
     summarizeSection: complete(SUMMARY_RESPONSE_SCHEMA),
     synthesise: complete(SYNTHESIS_RESPONSE_SCHEMA),
+    async answer(prompt) {
+      const result = await binding.run(CHAT_MODEL, {
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: CHAT_MAX_TOKENS,
+      });
+      const raw = result as ChatCompletion;
+      if (typeof raw?.response !== "string") {
+        throw new Error("ANSWER_FAILED: the model returned no response");
+      }
+      return { text: raw.response, truncated: isTruncated(raw) };
+    },
   };
+}
+
+/**
+ * What `run()` actually answers, which is more than the platform's declared output type admits: a
+ * full OpenAI `chat.completion` (probed 2026-09-16). Narrow and local on purpose — widening the
+ * platform types would claim a contract Cloudflare has not published.
+ */
+type ChatCompletion = {
+  response?: unknown;
+  choices?: { finish_reason?: unknown }[];
+  usage?: { completion_tokens?: unknown };
+};
+
+/**
+ * Both checks, never one. `finish_reason` is explicit but undeclared, so a runtime that stopped
+ * sending it would fail open and report every answer complete with no compile error; the token count
+ * is declared but only a proxy, true of an answer that happens to end exactly at the cap.
+ */
+function isTruncated(raw: ChatCompletion): boolean {
+  const reason = raw.choices?.[0]?.finish_reason;
+  if (typeof reason === "string") return reason === "length";
+  const used = raw.usage?.completion_tokens;
+  return typeof used === "number" && used >= CHAT_MAX_TOKENS;
 }
 
 function requireBatch(texts: readonly string[]): void {
@@ -110,6 +166,8 @@ function requireVectors(data: unknown, expected: number): number[][] {
 
 /** Markers a test puts in a prompt to drive the summarizer's failure paths. */
 export const FAKE_INVALID_ONCE = "[[invalid-once]]";
+/** Drives `answer` to a reply that stops mid-sentence, for the trim path. */
+export const FAKE_TRUNCATE = "[[truncate]]";
 export const FAKE_INVALID = "[[invalid]]";
 export const FAKE_THROW = "[[throw]]";
 
@@ -167,7 +225,25 @@ function fakeClient(options: FakeOptions): AiClient {
         ? () => "I am sorry, I cannot produce that JSON."
         : cannedSynthesis,
     ),
+    async answer(prompt) {
+      if (prompt.includes(FAKE_THROW))
+        throw new Error("ANSWER_FAILED: canned failure");
+      // Not FAKE_INVALID: those markers mean unparseable JSON, and prose has nothing to parse.
+      if (prompt.includes(FAKE_TRUNCATE)) {
+        return {
+          text: "The hosts spend most of the segment on this. Their first point is that the",
+          truncated: true,
+        };
+      }
+      return { text: cannedAnswer(prompt), truncated: false };
+    },
   };
+}
+
+/** Echoes the question back so a test can assert what reached the model. */
+function cannedAnswer(prompt: string): string {
+  const question = prompt.split("\n").filter(Boolean).at(-1) ?? "";
+  return `Answering from the transcripts. ${question}`;
 }
 
 /** The synthesis answer's two fields; the takeaways are not its to produce. */

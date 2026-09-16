@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   ai,
+  CHAT_MAX_TOKENS,
+  CHAT_MODEL,
   EMBEDDING_BATCH,
   EMBEDDING_DIMENSIONS,
   EMBEDDING_MODEL,
   FAKE_INVALID,
   FAKE_INVALID_ONCE,
   FAKE_THROW,
+  FAKE_TRUNCATE,
   realClient,
   resetAiFake,
   SUMMARY_MODEL,
@@ -206,3 +209,92 @@ describe("the prompts", () => {
 function fill(value: number, length = EMBEDDING_DIMENSIONS): number[] {
   return Array.from({ length }, () => value);
 }
+
+describe("chat answers", () => {
+  it("answers prose, echoes the question, and reports nothing truncated", async () => {
+    const { text, truncated } = await fake().answer(
+      "context\nWhat did they say?",
+    );
+    expect(text).toContain("What did they say?");
+    expect(truncated).toBe(false);
+  });
+
+  it("drives the truncation and failure paths from prompt markers", async () => {
+    const cut = await fake().answer(`a question ${FAKE_TRUNCATE}`);
+    expect(cut.truncated).toBe(true);
+    expect(cut.text).not.toMatch(/[.!?]$/);
+
+    await expect(fake().answer(`a question ${FAKE_THROW}`)).rejects.toThrow(
+      /ANSWER_FAILED/,
+    );
+
+    // The JSON-mode markers mean "unparseable JSON"; prose has nothing to parse.
+    const invalid = await fake().answer(`a question ${FAKE_INVALID}`);
+    expect(invalid.truncated).toBe(false);
+  });
+
+  it("asks the chat model with no response_format", async () => {
+    const s = stub(() => ({ response: "An answer." }));
+    const { text, truncated } = await realClient(s.binding).answer("ask");
+
+    expect(text).toBe("An answer.");
+    expect(truncated).toBe(false);
+    expect(s.calls[0]?.model).toBe(CHAT_MODEL);
+    expect(s.calls[0]?.inputs).toEqual({
+      messages: [{ role: "user", content: "ask" }],
+      max_tokens: CHAT_MAX_TOKENS,
+    });
+    expect(s.calls[0]?.inputs).not.toHaveProperty("response_format");
+  });
+
+  it("reads truncation from finish_reason, and from the token count when it is absent", async () => {
+    // What the runtime actually answers: a full chat.completion (probed 2026-09-16).
+    const length = stub(() => ({
+      response: "Cut off mid",
+      choices: [{ finish_reason: "length" }],
+      usage: { completion_tokens: CHAT_MAX_TOKENS },
+    }));
+    expect((await realClient(length.binding).answer("ask")).truncated).toBe(
+      true,
+    );
+
+    const stop = stub(() => ({
+      response: "Complete.",
+      choices: [{ finish_reason: "stop" }],
+      usage: { completion_tokens: 12 },
+    }));
+    expect((await realClient(stop.binding).answer("ask")).truncated).toBe(
+      false,
+    );
+
+    // The fallback that keeps a dropped finish_reason from reporting every answer complete.
+    const noReason = stub(() => ({
+      response: "Cut off mid",
+      usage: { completion_tokens: CHAT_MAX_TOKENS },
+    }));
+    expect((await realClient(noReason.binding).answer("ask")).truncated).toBe(
+      true,
+    );
+
+    const declaredOnly = stub(() => ({
+      response: "Complete.",
+      usage: { completion_tokens: 12 },
+    }));
+    expect(
+      (await realClient(declaredOnly.binding).answer("ask")).truncated,
+    ).toBe(false);
+
+    // Neither signal present: nothing is claimed.
+    const bare = stub(() => ({ response: "Complete." }));
+    expect((await realClient(bare.binding).answer("ask")).truncated).toBe(
+      false,
+    );
+  });
+
+  it("fails when the model returns no response", async () => {
+    const empty = stub(() => ({ choices: [{ finish_reason: "stop" }] }));
+    await expect(realClient(empty.binding).answer("ask")).rejects.toThrow(
+      /ANSWER_FAILED/,
+    );
+  });
+});
