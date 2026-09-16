@@ -198,7 +198,11 @@ artboards and need drawing before the web is built: **the chip** in both its sta
 in the transcript, the **absence** of a new-chat control on `/chats` — which changes that screen from an entry to a
 history — and **a reply carrying more than three source cards**, which the retrieval depths of PRD §6 (2026-09-16)
 made reachable even after sources are deduplicated by episode. A fifth arrived with the truncation decision of the
-same day: **a shortened answer**, which reads as an ordinary reply with one line beneath it. The states already drawn (pending, failed, the fixed no-follows reply, an answer with a linkified
+same day: **a shortened answer**, which reads as an ordinary reply with one line beneath it. A sixth followed the
+first live scoped answer: **a source card carrying several timestamps**. Sources are stored one per retrieved chunk
+and grouped by episode at render time, so a scoped reply is one card with up to eight moments in it — ascending,
+never the score order they arrive in (PRD §7). This is the card the depth of PRD §6 exists to deliver, and drawing
+it is what makes a scoped answer worth more than an unscoped one. The states already drawn (pending, failed, the fixed no-follows reply, an answer with a linkified
 URL, unfollow's effect on an old answer, the first run, the phone) are unchanged.
 
 ### 4.8 Answering, citations, and delivery

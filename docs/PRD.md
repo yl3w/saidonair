@@ -769,6 +769,10 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   summary reads as being about it. `/chats/:id` carries the sticky scope chip in its URL as `?about=<episodeId>` — a
   query parameter, since scope modifies a chat rather than naming a different one, and dismissing the chip must
   leave a valid URL behind. Each message in the transcript shows the scope it was sent under.
+  **A reply's sources are grouped by episode and its timestamps ascend within each group** (decided 2026-09-16).
+  Storage keeps them in score order, which is real information and stays recoverable from `position`; a reader
+  scanning one episode's moments reads them in the order they were said, not the order they matched. So an unscoped
+  reply is one card per episode, and a scoped one is a single card carrying every kept moment — up to eight.
 - **Curate `/curate` and `/curate/:id`:** the owner's one extra destination, **desktop only** — approving,
   declining, retrying and the catalog table are dense, consequential and rare, so they are not designed twice.
   Below the breakpoint the nav item is absent and the screen says where to go instead. Users who reach it are sent

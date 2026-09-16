@@ -117,6 +117,15 @@ list adds a hallucination risk for no gain. `llama-3.3-70b` has a stylistic prio
 that prompt instructions do not shift. Shorter sections did make the fault worse (5/65 anonymous before the
 regeneration, 8/87 after), and it is accepted at v1.
 
+**Observed 2026-09-16, unmeasured, and it does not overturn any of the above.** The first live chat answers named
+people freely — "Brad Jacobs", "Kaz Nejatian", "the Roblox CEO" — from the same model, under a prompt that asks for
+prose and never mentions attribution. That is the opposite of what this section measured, and the likeliest reason
+is the input rather than the model: a chat excerpt is raw transcript where a name is spoken, while a map prompt sees
+a section that often contains no introduction, so the summary model frequently has no name to use and reaches for
+"The guest". If attribution is ever reopened, **this is the thread to pull** — the fault may be one of context, not
+of instruction-following, which would make the untried idea below the wrong experiment. Two runs are an anecdote;
+measure before believing it.
+
 **Do not retry these three.** The untried idea, if this is ever reopened: stop asking for attribution at all. The best
 takeaways in the corpus have no subject, the reader already sees the episode title above the summary, and the fault
 may be self-inflicted by asking. One rule change, cheap to test. A different map model is the other option and a much
