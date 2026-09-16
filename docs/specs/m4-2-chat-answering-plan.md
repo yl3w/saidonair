@@ -3,8 +3,8 @@
 **Implements:** `docs/specs/m4-2-chat-answering.md` under `AGENTS.md`; parent `docs/specs/chat-origin-scope.md`;
 roadmap `docs/specs/chat-origin-scope-plan.md`.
 **Written:** 2026-09-16, against `main` at `dda864b`.
-**Status:** in progress. **Step 1 complete 2026-09-16 (`21860eb`)**, 348 tests. Steps 2–5 not started; 2 and 3 are
-independent of each other and either may be taken next.
+**Status:** in progress. **Step 1 complete 2026-09-16 (`21860eb`)**, 348 tests. **Step 2 complete 2026-09-16**, 352
+tests. Steps 3–5 not started.
 **Shape:** five code steps, each ending with `pnpm check` green and one commit when the owner asks. Steps 1–3 are
 independent of each other and all feed Step 4; Step 5 needs Step 4. Nothing here touches the web or the Registry's
 write paths. Decisions this plan makes are marked **plan decision** and stand unless vetoed.

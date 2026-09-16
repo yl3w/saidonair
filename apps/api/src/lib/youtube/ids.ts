@@ -43,6 +43,11 @@ export function requireChannelIds(raw: readonly string[]): string[] {
   return [...new Set(raw.map(requireChannelId))];
 }
 
+/** Validates every id and drops duplicates; the DO never trusts caller-supplied lists. */
+export function requireEpisodeIds(raw: readonly string[]): string[] {
+  return [...new Set(raw.map(requireEpisodeId))];
+}
+
 export function requireEpisodeId(raw: string): string {
   const episodeId = raw.trim();
   if (!VIDEO_ID_SHAPE.test(episodeId)) {

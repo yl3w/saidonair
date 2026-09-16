@@ -12,12 +12,14 @@ import {
   requireChannelId,
   requireChannelIds,
   requireEpisodeId,
+  requireEpisodeIds,
 } from "../lib/youtube/ids";
 import type { ChannelFeed } from "../lib/youtube/rss";
 import { applyMigrations } from "./migrations";
 import * as attempts from "./registry/attempts";
 import * as catalog from "./registry/catalog";
 import * as channels from "./registry/channels";
+import type { EpisodeState } from "./registry/episodes";
 import * as episodes from "./registry/episodes";
 import * as followers from "./registry/followers";
 import * as processing from "./registry/processing";
@@ -297,6 +299,16 @@ export class RegistryDO extends DurableObject<Env> {
       requireEpisodeId(episodeId),
       relatedScope === undefined ? [] : requireChannelIds(relatedScope),
     );
+  }
+
+  /**
+   * The processing state of each given episode, in the order asked, skipping any the catalog does
+   * not hold. Chat validates retrieved chunks against `activeVectorGeneration` and `status`
+   * (docs/PRD.md §6); `EpisodeRecord` cannot serve because its `processing` block deliberately omits
+   * the active generation, which never crosses to the wire.
+   */
+  listEpisodeStates(episodeIds: string[]): EpisodeState[] {
+    return episodes.listStatesByIds(this.#sql, requireEpisodeIds(episodeIds));
   }
 
   /**

@@ -410,3 +410,60 @@ describe("registry episodes", () => {
     );
   });
 });
+
+describe("episode states by id", () => {
+  it("answers each state in the order asked, skipping ids the catalog does not hold", async () => {
+    const reg = registry();
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_A);
+    await seedEpisode(EPISODE_B, CHANNEL_A, { status: "pending" });
+
+    // Asked out of storage order, with an id that is not in the catalog between them.
+    const states = await reg.listEpisodeStates([
+      EPISODE_B,
+      EPISODE_C,
+      EPISODE_A,
+    ]);
+
+    expect(states.map((state) => state.episodeId)).toEqual([
+      EPISODE_B,
+      EPISODE_A,
+    ]);
+    expect(states[0]).toMatchObject({
+      status: "pending",
+      channelId: CHANNEL_A,
+    });
+    expect(states[1]).toMatchObject({
+      status: "available",
+      channelId: CHANNEL_A,
+    });
+  });
+
+  it("carries the active vector generation chat validates against", async () => {
+    const reg = registry();
+    await seedApprovedChannel(CHANNEL_B, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_B);
+    await seedSummary(EPISODE_A);
+
+    const [state] = await reg.listEpisodeStates([EPISODE_A]);
+    expect(state?.activeVectorGeneration).toEqual(expect.any(String));
+  });
+
+  it("holds together past the bound-parameter ceiling", async () => {
+    const reg = registry();
+    const ids = episodeIds(150);
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    for (const id of ids.slice(0, 120)) await seedEpisode(id, CHANNEL_A);
+
+    const states = await reg.listEpisodeStates(ids);
+    expect(states).toHaveLength(120);
+    expect(states.map((state) => state.episodeId)).toEqual(ids.slice(0, 120));
+  });
+
+  it("rejects a malformed id rather than skipping it", async () => {
+    await expectDomainError(
+      registry().listEpisodeStates(["not-an-episode"]),
+      "INVALID_INPUT",
+    );
+  });
+});

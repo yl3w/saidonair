@@ -90,32 +90,26 @@ export type EpisodeState = {
   processedAt: number | null;
 };
 
-export function getState(
-  sql: SqlStorage,
-  episodeId: string,
-): EpisodeState | null {
-  const row = sql
-    .exec<{
-      episode_id: string;
-      channel_id: string;
-      status: string;
-      intent: string | null;
-      window_started_at: number | null;
-      window_deadline_at: number | null;
-      next_attempt_at: number | null;
-      attempt_count: number;
-      staged_vector_generation: string | null;
-      active_vector_generation: string | null;
-      chunk_count: number | null;
-      processed_at: number | null;
-    }>(
-      `SELECT episode_id, channel_id, status, intent, window_started_at, window_deadline_at, next_attempt_at,
-         attempt_count, staged_vector_generation, active_vector_generation, chunk_count, processed_at
-       FROM episodes WHERE episode_id = ?`,
-      episodeId,
-    )
-    .toArray()[0];
-  if (!row) return null;
+type StateRow = {
+  episode_id: string;
+  channel_id: string;
+  status: string;
+  intent: string | null;
+  window_started_at: number | null;
+  window_deadline_at: number | null;
+  next_attempt_at: number | null;
+  attempt_count: number;
+  staged_vector_generation: string | null;
+  active_vector_generation: string | null;
+  chunk_count: number | null;
+  processed_at: number | null;
+};
+
+const STATE_COLUMNS = `episode_id, channel_id, status, intent, window_started_at, window_deadline_at,
+  next_attempt_at, attempt_count, staged_vector_generation, active_vector_generation, chunk_count,
+  processed_at`;
+
+function toState(row: StateRow): EpisodeState {
   return {
     episodeId: row.episode_id,
     channelId: row.channel_id,
@@ -130,6 +124,47 @@ export function getState(
     chunkCount: row.chunk_count,
     processedAt: row.processed_at,
   };
+}
+
+export function getState(
+  sql: SqlStorage,
+  episodeId: string,
+): EpisodeState | null {
+  const row = sql
+    .exec<StateRow>(
+      `SELECT ${STATE_COLUMNS} FROM episodes WHERE episode_id = ?`,
+      episodeId,
+    )
+    .toArray()[0];
+  return row ? toState(row) : null;
+}
+
+/**
+ * The processing state of each given episode, in the order asked. Chat validates retrieved chunks
+ * against `activeVectorGeneration` and `status` (docs/PRD.md §6), so it needs a batch rather than a
+ * call per candidate. **An id the catalog does not hold is simply absent** from the result: the
+ * caller is validating candidates, and a vector whose episode has gone is a rejection, not an error.
+ */
+export function listStatesByIds(
+  sql: SqlStorage,
+  episodeIds: readonly string[],
+): EpisodeState[] {
+  const rows: StateRow[] = [];
+  for (const batch of chunk(episodeIds)) {
+    rows.push(
+      ...sql
+        .exec<StateRow>(
+          `SELECT ${STATE_COLUMNS} FROM episodes WHERE episode_id IN (${placeholders(batch.length)})`,
+          ...batch,
+        )
+        .toArray(),
+    );
+  }
+  const order = new Map(episodeIds.map((id, index) => [id, index]));
+  rows.sort(
+    (a, b) => (order.get(a.episode_id) ?? 0) - (order.get(b.episode_id) ?? 0),
+  );
+  return rows.map(toState);
 }
 
 export function requireState(sql: SqlStorage, episodeId: string): EpisodeState {
