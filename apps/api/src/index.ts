@@ -12,6 +12,7 @@ import { onError } from "./middleware/errors";
 import { requireIdentity } from "./middleware/user";
 import { catalogRoutes } from "./routes/catalog";
 import { channelRoutes } from "./routes/channels";
+import { chatRoutes } from "./routes/chats";
 import { digestRoutes } from "./routes/digest";
 import { docsPage } from "./routes/docs";
 import { episodeRoutes } from "./routes/episodes";
@@ -67,6 +68,7 @@ app.route("/channels", channelRoutes);
 app.route("/episodes", episodeRoutes);
 app.route("/follows", followRoutes);
 app.route("/digest", digestRoutes);
+app.route("/chats", chatRoutes);
 app.route("/preferences", preferenceRoutes);
 
 /**

@@ -27,6 +27,7 @@ type MessageRow = {
   failure_code: string | null;
   reply_to_message_id: string | null;
   channel_id: string | null;
+  about_episode_id: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -44,7 +45,7 @@ type SourceRow = {
 
 const CHAT_COLUMNS = "chat_id, title, created_at, updated_at";
 const MESSAGE_COLUMNS = `message_id, chat_id, sequence_number, role, content, status, failure_code,
-  reply_to_message_id, channel_id, created_at, updated_at`;
+  reply_to_message_id, channel_id, about_episode_id, created_at, updated_at`;
 const SOURCE_COLUMNS = `source_id, message_id, position, episode_id, channel_id, episode_title,
   channel_title, start_sec`;
 
@@ -117,7 +118,9 @@ export function getMessages(
 
 /**
  * First phase of an exchange: store the question as completed and its reply as pending,
- * in consecutive sequence numbers. The caller runs retrieval/generation and then calls
+ * in consecutive sequence numbers. `aboutEpisodeId` is the question's episode scope
+ * (docs/PRD.md §4.5) and belongs to the question, so it is stored on the user message
+ * and left null on the reply. The caller runs retrieval/generation and then calls
  * `completeAssistantMessage` or `failAssistantMessage`. Run inside a transaction.
  */
 export function appendExchange(
@@ -125,9 +128,12 @@ export function appendExchange(
   chatId: string,
   content: string,
   now: number,
+  aboutEpisodeId?: string | null,
 ): Exchange {
   const chat = requireChat(sql, chatId);
   const text = requireContent(content);
+  const scope =
+    aboutEpisodeId == null ? null : requireEpisodeId(aboutEpisodeId);
   const next = sql
     .exec<{ next: number }>(
       `SELECT COALESCE(MAX(sequence_number), -1) + 1 AS next FROM chat_messages
@@ -141,20 +147,21 @@ export function appendExchange(
   sql.exec(
     `INSERT INTO chat_messages
        (message_id, chat_id, sequence_number, role, content, status, failure_code,
-        reply_to_message_id, channel_id, created_at, updated_at)
-     VALUES (?, ?, ?, 'user', ?, 'completed', NULL, NULL, NULL, ?, ?)`,
+        reply_to_message_id, channel_id, about_episode_id, created_at, updated_at)
+     VALUES (?, ?, ?, 'user', ?, 'completed', NULL, NULL, NULL, ?, ?, ?)`,
     userMessageId,
     chat.chatId,
     next,
     text,
+    scope,
     now,
     now,
   );
   sql.exec(
     `INSERT INTO chat_messages
        (message_id, chat_id, sequence_number, role, content, status, failure_code,
-        reply_to_message_id, channel_id, created_at, updated_at)
-     VALUES (?, ?, ?, 'assistant', '', 'pending', NULL, ?, NULL, ?, ?)`,
+        reply_to_message_id, channel_id, about_episode_id, created_at, updated_at)
+     VALUES (?, ?, ?, 'assistant', '', 'pending', NULL, ?, NULL, NULL, ?, ?)`,
     assistantMessageId,
     chat.chatId,
     next + 1,
@@ -234,6 +241,11 @@ export function failAssistantMessage(
   );
   touchChat(sql, message.chatId, now);
   return requireMessage(sql, message.messageId);
+}
+
+/** One chat of this user's, for a caller that needs the chat beside its messages. */
+export function getChat(sql: SqlStorage, chatId: string): Chat {
+  return requireChat(sql, chatId);
 }
 
 /** A chat id from another user is simply absent in this object, hence NOT_FOUND. */
@@ -350,6 +362,7 @@ function toMessage(row: MessageRow, sources: ChatMessageSource[]): ChatMessage {
     failureCode: row.failure_code,
     replyToMessageId: row.reply_to_message_id,
     channelId: row.channel_id,
+    aboutEpisodeId: row.about_episode_id,
     sources,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

@@ -53,6 +53,9 @@ const OPERATIONS = [
   "put /follows/{channelId}",
   "delete /follows/{channelId}",
   "get /digest",
+  "post /chats",
+  "get /chats",
+  "get /chats/{chatId}/messages",
   "get /preferences",
   "put /preferences",
 ].sort();

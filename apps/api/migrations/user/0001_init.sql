@@ -34,6 +34,10 @@ CREATE TABLE chat_messages (
   failure_code TEXT,
   reply_to_message_id TEXT,
   channel_id TEXT,
+  -- The episode a question was scoped to (docs/PRD.md §4.5; docs/specs/chat-origin-scope.md).
+  -- Written on the user message, null on the reply and null for a global question. No CHECK and no
+  -- foreign key: episode ids are cross-DO references validated through Registry methods.
+  about_episode_id TEXT,
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
   UNIQUE (chat_id, sequence_number),

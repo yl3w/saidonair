@@ -36,6 +36,59 @@ describe("user chats", () => {
     expect(await stub.getMessages(untitled.chatId)).toEqual([]);
   });
 
+  // Criteria 3-6: the episode scope hint belongs to the question, never to the reply
+  // (docs/PRD.md §4.5; docs/specs/chat-origin-scope.md §4.2).
+  it("stores an episode scope hint on the question and never on the reply", async () => {
+    const stub = userDO(ALICE);
+    const chat = await stub.createChat();
+    const scoped = await stub.appendExchange(
+      chat.chatId,
+      "what did they say?",
+      EPISODE_A,
+    );
+
+    expect(scoped.userMessage.aboutEpisodeId).toBe(EPISODE_A);
+    expect(scoped.assistantMessage.aboutEpisodeId).toBeNull();
+
+    const messages = await stub.getMessages(chat.chatId);
+    expect(messages.map((message) => message.aboutEpisodeId)).toEqual([
+      EPISODE_A,
+      null,
+    ]);
+  });
+
+  it("leaves both messages unscoped when no hint is given", async () => {
+    const stub = userDO(ALICE);
+    const chat = await stub.createChat();
+    const global = await stub.appendExchange(chat.chatId, "anything at all");
+
+    expect(global.userMessage.aboutEpisodeId).toBeNull();
+    expect(global.assistantMessage.aboutEpisodeId).toBeNull();
+  });
+
+  // Criterion 5: a malformed hint is rejected before anything is written, so a bad
+  // aboutEpisodeId cannot leave a half-written exchange behind.
+  it("rejects a malformed episode hint and writes nothing", async () => {
+    const stub = userDO(ALICE);
+    const chat = await stub.createChat();
+
+    await expectDomainError(
+      stub.appendExchange(chat.chatId, "scoped to junk", "not-an-episode"),
+      "INVALID_INPUT",
+    );
+
+    expect(await stub.getMessages(chat.chatId)).toEqual([]);
+  });
+
+  // Criterion 7: a chat from another user is simply absent in this object.
+  it("returns one chat by id, and NOT_FOUND for anyone else's", async () => {
+    const stub = userDO(ALICE);
+    const chat = await stub.createChat("Alice's chat");
+
+    expect(await stub.getChat(chat.chatId)).toEqual(chat);
+    await expectDomainError(userDO(BOB).getChat(chat.chatId), "NOT_FOUND");
+  });
+
   it("orders chats by most recent activity", async () => {
     const stub = userDO(ALICE);
     const ids = await runInDurableObject(stub, (_, state) => {

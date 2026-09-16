@@ -947,6 +947,9 @@ export const ChatMessageSchema = z
     status: ChatMessageStatusSchema,
     failureCode: z.string().nullable(),
     replyToMessageId: Id.nullable().describe("Set on every assistant message."),
+    aboutEpisodeId: Id.nullable().describe(
+      "The episode this question was scoped to, or null for a global one. Set on the question, never on the reply.",
+    ),
     sources: z.array(ChatSourceSchema),
     createdAt: UnixMs,
     updatedAt: UnixMs,

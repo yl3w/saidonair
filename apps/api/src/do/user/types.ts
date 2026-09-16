@@ -34,6 +34,8 @@ export type ChatMessage = {
   replyToMessageId: string | null;
   /** Always null for today's global chats; reserved for a future scoped view. */
   channelId: string | null;
+  /** The episode this question was scoped to, or null for a global one (docs/PRD.md §4.5). */
+  aboutEpisodeId: string | null;
   sources: ChatMessageSource[];
   createdAt: number;
   updatedAt: number;

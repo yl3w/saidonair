@@ -77,14 +77,31 @@ export class UserDO extends DurableObject<Env> {
     return chats.listChats(this.#sql);
   }
 
+  getChat(chatId: string): Chat {
+    return chats.getChat(this.#sql, chatId);
+  }
+
   getMessages(chatId: string, limit?: number): ChatMessage[] {
     return chats.getMessages(this.#sql, chatId, limit);
   }
 
-  /** Phase one of an exchange: completed question plus pending reply. */
-  appendExchange(chatId: string, content: string): Exchange {
+  /**
+   * Phase one of an exchange: completed question plus pending reply. `aboutEpisodeId`
+   * scopes the question to one episode (docs/PRD.md §4.5).
+   */
+  appendExchange(
+    chatId: string,
+    content: string,
+    aboutEpisodeId?: string | null,
+  ): Exchange {
     return this.#transaction(() =>
-      chats.appendExchange(this.#sql, chatId, content, Date.now()),
+      chats.appendExchange(
+        this.#sql,
+        chatId,
+        content,
+        Date.now(),
+        aboutEpisodeId,
+      ),
     );
   }
 

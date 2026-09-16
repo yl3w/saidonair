@@ -115,6 +115,11 @@ const documentation: GenerateSpecOptions["documentation"] = {
         "The caller's digest of new summaries from eligible follows.",
     },
     {
+      name: "chats",
+      description:
+        "The caller's own conversations. Every question searches the channels they currently follow, or the one episode it was scoped to.",
+    },
+    {
       name: "preferences",
       description: "The caller's own rules for chat answers.",
     },
