@@ -198,6 +198,21 @@ export const CURATE_LINK_COPY = "Open in Curate";
  * place in the same bar, so they are named the same way. Where they go is the external-link glyph's
  * job, and the tooltip's.
  */
+/** Chats are started from a summary, so the empty state points there rather than at a button. */
+export const CHATS_EMPTY_COPY =
+  "Chats begin on a summary. Open something from your queue and ask about it.";
+
+/** Where a chat began, or that it never had a scope (docs/specs/m4-3-chat-web.md §3.1). */
+export function chatOriginCopy(episodeTitle: string | null): string {
+  return episodeTitle === null
+    ? "Across everything you follow"
+    : `Began at ${episodeTitle}`;
+}
+
+/** The only way into a chat: a chat begins at a summary and nowhere else (docs/PRD.md §9). */
+export const ASK_COPY = "Ask";
+export const ASK_HINT_COPY = "Ask a question about this episode";
+
 export const EXTERNAL_EPISODE_COPY = "Episode";
 export const EXTERNAL_CHANNEL_COPY = "Channel";
 export const EXTERNAL_HINT_COPY = "Opens on YouTube";

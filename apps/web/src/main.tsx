@@ -4,6 +4,8 @@ import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 import { useTrackNavigation } from "./lib/back";
 import { applyReaderSettings, readSettings } from "./lib/settings";
 import { Account } from "./screens/Account";
+import { Chat } from "./screens/Chat";
+import { Chats } from "./screens/Chats";
 import { Curate } from "./screens/Curate";
 import { CurateChannel } from "./screens/CurateChannel";
 import { History } from "./screens/History";
@@ -51,6 +53,12 @@ export function App() {
           <Route path="/read/:episodeId" component={Reading} />
           <Route path="/history" component={History} />
           <Route path="/history/:day" component={History} />
+          {/* `/chats/new` is declared before the parameterised route, or preact-iso matches "new"
+              as a chat id. It is the composer before a chat exists: Ask lands here with its scope in
+              `?about=`, and the first question mints the id (docs/specs/m4-3-chat-web.md §2). */}
+          <Route path="/chats" component={Chats} />
+          <Route path="/chats/new" component={Chat} />
+          <Route path="/chats/:chatId" component={Chat} />
           <Route path="/sources" component={Sources} />
           <Route path="/sources/:id" component={Source} />
           <Route path="/account" component={Settings} />

@@ -1,4 +1,4 @@
-import { List, Rss, Table } from "lucide-preact";
+import { List, MessageSquare, Rss, Table } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
@@ -17,14 +17,16 @@ import { Icon } from "./Icon";
  *
  * On a phone the reader destinations move to a bottom tab bar, where a thumb can reach them.
  *
- * Chats is not here. Primary navigation is for what a reader can use, and an entry leading to a
- * placeholder makes the whole product read as unfinished; it returns when M4 builds the screen
- * (owner decision 2026-09-15, docs/PRD.md §9).
+ * Chats joined it on 2026-09-16, when M4.3 built the screen. It was held out until then because
+ * primary navigation is for what a reader can use, and an entry leading to a placeholder makes the
+ * whole product read as unfinished (owner decision 2026-09-15, docs/PRD.md §9). The phone's tab bar
+ * is three destinations from here, each still 44 px.
  */
 
 const DESTINATIONS = [
   { href: "/queue", label: "Queue", icon: List },
   { href: "/sources", label: "Sources", icon: Rss },
+  { href: "/chats", label: "Chats", icon: MessageSquare },
 ] as const;
 
 export function Nav() {

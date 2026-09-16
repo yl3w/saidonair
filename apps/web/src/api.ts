@@ -8,6 +8,10 @@ import type {
   ChannelFeedResponse,
   ChannelResponse,
   ChannelsResponse,
+  ChatExchangeResponse,
+  ChatMessagesResponse,
+  ChatResponse,
+  ChatsResponse,
   CreateChannelBody,
   DeclineChannelBody,
   DigestEpisodesResponse,
@@ -22,6 +26,7 @@ import type {
   IngestionRunsResponse,
   MeResponse,
   PreferencesResponse,
+  SendMessageBody,
   UpdatePreferencesBody,
 } from "@media-digest/shared";
 
@@ -223,7 +228,34 @@ export const api = {
       `/digest${digestQuery({ ...range, compact: true })}`,
     ),
 
-  // preferences — no screen calls these until M4 brings the chat rules field back (PRD §9)
+  // chats (docs/PRD.md §4.5). A chat begins at a summary and nowhere else, which is the web's rule
+  // and not the API's: `createChat` is open and this client simply never calls it from anywhere but
+  // the composer `Ask` opens (docs/specs/chat-origin-scope.md §4.1).
+  listChats: () => request<ChatsResponse>("GET", "/chats"),
+  createChat: (title?: string) =>
+    request<ChatResponse>(
+      "POST",
+      "/chats",
+      title === undefined ? {} : { title },
+    ),
+  getChatMessages: (chatId: string, limit?: number) =>
+    request<ChatMessagesResponse>(
+      "GET",
+      `/chats/${enc(chatId)}/messages${limit === undefined ? "" : `?limit=${limit}`}`,
+    ),
+  /**
+   * Ask a question. The reply is complete in the response — answering runs inside the request, so
+   * there is nothing to poll. `aboutEpisodeId` scopes the question to one episode and narrows only:
+   * an episode whose channel the caller does not follow is refused in words, never widened.
+   */
+  sendMessage: (chatId: string, body: SendMessageBody) =>
+    request<ChatExchangeResponse>(
+      "POST",
+      `/chats/${enc(chatId)}/messages`,
+      body,
+    ),
+
+  // preferences — the chat rules field returns with the chat screens (PRD §9)
   getPreferences: () => request<PreferencesResponse>("GET", "/preferences"),
   putPreferences: (body: UpdatePreferencesBody) =>
     request<PreferencesResponse>("PUT", "/preferences", body),

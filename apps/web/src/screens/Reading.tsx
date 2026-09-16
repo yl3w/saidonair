@@ -1,5 +1,5 @@
 import type { Episode } from "@media-digest/shared";
-import { ArrowLeft, ExternalLink } from "lucide-preact";
+import { ArrowLeft, ExternalLink, MessageSquare } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
@@ -9,6 +9,8 @@ import { MetaLine } from "../components/MetaLine";
 import { Retry } from "../components/Retry";
 import { Sheet } from "../components/Sheet";
 import {
+  ASK_COPY,
+  ASK_HINT_COPY,
   actionErrorCopy,
   backToCopy,
   EXTERNAL_EPISODE_COPY,
@@ -202,6 +204,25 @@ function ReadingScreen() {
               <Icon of={ExternalLink} size={16} />
             </a>
           )}
+
+          {/* The only way into a chat (docs/specs/chat-origin-scope.md §4.1). It renders where the
+              episode can answer — a published summary, vectors to search, and a caller eligible to
+              read it, which `read` reports by being present at all — and is absent otherwise rather
+              than disabled. It writes nothing: the chat is minted by the first question, so an
+              abandoned Ask leaves no empty chat behind. */}
+          {episode !== null &&
+            summary !== null &&
+            episode.processing.vectorizedAt !== null &&
+            episode.read !== undefined && (
+              <a
+                class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
+                href={`/chats/new?about=${encodeURIComponent(episode.episodeId)}`}
+                title={ASK_HINT_COPY}
+              >
+                {ASK_COPY}
+                <Icon of={MessageSquare} size={16} />
+              </a>
+            )}
 
           {/* Only on a summary that still needs dealing with. A read one carries no receipt control
               at all: undo lives in History, where the row is and where it says "Read"
