@@ -29,7 +29,7 @@ and no web screen — the Design phase deleted the placeholder rather than stubb
 | # | Spec and plan | Carries | Size | Depends on | Product-visible | Status |
 |---|---|---|---|---|---|---|
 | M4.1 | `m4-1-chat-routes.md`, `-plan.md` | `routes/chats.ts` (three routes), `about_episode_id` and its plumbing, `getChat` on the DO, the OpenAPI entry | M | nothing | no: no screen calls them yet | complete 2026-09-16 (`97247d5`) |
-| M4.2 | `m4-2-chat-answering.md`, `-plan.md` | `lib/chat.ts`, the widened `lib/vectorize.ts` filter union and its fake, `POST /chats/:id/messages` with `aboutEpisodeId` and the four branches, the chat prompt, staleness reconciliation | L | M4.1 | no: still no screen | not started |
+| M4.2 | `m4-2-chat-answering.md`, `-plan.md` | `lib/chat.ts`, the widened `lib/vectorize.ts` filter union and its fake, `POST /chats/:id/messages` with `aboutEpisodeId` and **five** outcomes, the chat prompt, `prompt_version`, staleness reconciliation, `lib/eligibility.ts` | L | M4.1 | no: still no screen | spec written 2026-09-16, plan owed |
 | M4.3 | `m4-3-chat-web.md`, `-plan.md` | `/chats` as a history, `/chats/:id` with the sticky chip, `Ask` on the reading screen, per-message scope, `Try again`, Account's chat-rules field | L | M4.2, **and three artboards** | yes: the whole feature | not started |
 
 ## Decisions the split made (2026-09-15)

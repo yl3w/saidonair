@@ -523,7 +523,7 @@ is set when embedding starts so the next attempt can delete an abandoned generat
 |---|---|---|
 | `summary_reads` | `episode_id`, `read_at` | PK `episode_id`; no row means unread |
 | `chats` | `chat_id`, `title?`, `updated_at` | PK `chat_id` |
-| `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `about_episode_id?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
+| `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `about_episode_id?`, `prompt_version?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
 | `chat_message_sources` | `source_id`, `message_id`, `position`, `episode_id`, `channel_id`, `episode_title`, `channel_title`, `start_sec` | PK `source_id`; FK to message; unique `(message_id, position)` |
 | `user_preferences` | `id`, `system_rules`, `updated_at` | Singleton PK constrained to `id = 'default'` |
 
@@ -535,7 +535,10 @@ null for current global chats; it does not define retrieval scope. The nullable 
 the episode scope hint of §4.5 and **does** define that message's retrieval scope; it is episode-grained, which is
 why `channel_id` cannot carry it, and it is written on the user message, not the reply. A chat's origin is the first
 message's hint rather than a column on `chats` (decided 2026-09-15, §9): scope lives on messages, and a chat whose
-chip was dismissed before the first send honestly has no origin. Sources capture the actual per-reply channel IDs.
+chip was dismissed before the first send honestly has no origin. `chat_messages.prompt_version` records the chat
+prompt that produced a reply and is null on the question (2026-09-16); `failure_code` takes `EMBEDDING_FAILED`,
+`RETRIEVAL_FAILED`, `MODEL_FAILED` or `ANSWER_TIMEOUT`, and its `CHECK` is added at the end of M4 once every value
+has been produced, as `outcome_code`'s was. Sources capture the actual per-reply channel IDs.
 Message content may be empty while an assistant reply is pending. Update chat ordering when messages are added.
 
 ### 5.3 Constraints and indexes
@@ -1563,6 +1566,11 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   caller and starts nothing; approval is always `POST /channels/:id/approve`, so the API reads the role nowhere. The
   web keeps the owner's one-step experience by following the add with an approve carrying the title and import
   count the owner entered.
+- **Chat history in the prompt should be sized by context budget, not counted (owner 2026-09-16).** M4.2 ships a
+  constant — the last ten exchanges — where the right answer is a calculation: fill the tokens left after the
+  retrieved chunks, the caller's preferences and the prompt scaffolding with as much recent history as fits. Ten is
+  a guess that is wrong in both directions, truncating a long conversation about a short episode and crowding the
+  chunks on a dense one. Spec: `docs/specs/m4-2-chat-answering.md` §5.
 - Retain all chats and all shared/user records for now. A future retention policy needs an owner decision.
 - Whether Home's chat input should be pinned to the bottom when the digest is long remains a UI decision.
 
