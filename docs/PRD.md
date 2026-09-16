@@ -523,7 +523,7 @@ is set when embedding starts so the next attempt can delete an abandoned generat
 |---|---|---|
 | `summary_reads` | `episode_id`, `read_at` | PK `episode_id`; no row means unread |
 | `chats` | `chat_id`, `title?`, `updated_at` | PK `chat_id` |
-| `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `about_episode_id?`, `prompt_version?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
+| `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `about_episode_id?`, `prompt_version?`, `truncated?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
 | `chat_message_sources` | `source_id`, `message_id`, `position`, `episode_id`, `channel_id`, `episode_title`, `channel_title`, `start_sec` | PK `source_id`; FK to message; unique `(message_id, position)` |
 | `user_preferences` | `id`, `system_rules`, `updated_at` | Singleton PK constrained to `id = 'default'` |
 
@@ -536,7 +536,9 @@ the episode scope hint of §4.5 and **does** define that message's retrieval sco
 why `channel_id` cannot carry it, and it is written on the user message, not the reply. A chat's origin is the first
 message's hint rather than a column on `chats` (decided 2026-09-15, §9): scope lives on messages, and a chat whose
 chip was dismissed before the first send honestly has no origin. `chat_messages.prompt_version` records the chat
-prompt that produced a reply and is null on the question (2026-09-16); `failure_code` takes `EMBEDDING_FAILED`,
+prompt that produced a reply and is null on the question (2026-09-16), and `truncated` records whether that reply
+hit the model's output cap — a reply that did is stored `completed` with its text cut at the last sentence, never
+failed (§9). `failure_code` takes `EMBEDDING_FAILED`,
 `RETRIEVAL_FAILED`, `MODEL_FAILED` or `ANSWER_TIMEOUT`, and its `CHECK` is added at the end of M4 once every value
 has been produced, as `outcome_code`'s was. Sources capture the actual per-reply channel IDs.
 Message content may be empty while an assistant reply is pending. Update chat ordering when messages are added.
@@ -1492,6 +1494,23 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   and chat volume is bounded by reading volume, since reading is the only on-ramp. The fixed no-follows response of
   §4.5 survives but moves, reachable now only in an existing chat whose follows have since dropped to zero. Spec:
   `docs/specs/chat-origin-scope.md`.
+- **A cut-off answer is trimmed and kept, not failed — decided 2026-09-16.** An answer that reaches the model's
+  output cap stops mid-sentence. A probe that day settled the open question: the runtime returns a full
+  `chat.completion` including `choices[0].finish_reason`, so truncation is detectable, though that field is absent
+  from the platform's own declared output type and the token count is kept as a fallback for the day it vanishes.
+  The first instinct was to fail such a reply. That is wrong twice. It **discards the text** — failing a reply
+  leaves it empty by design — and a retrieval-grounded answer front-loads, so what gets cut is elaboration and what
+  gets thrown away is the answer. And `Try again` resends the same question, so an error is a **reproducible dead
+  end**: the only recovery the product offers is the one that cannot work. The reader is not deceived by truncation
+  either — a sentence ending mid-phrase is glaring; it is the system that was blind to it. So the reply is **trimmed
+  to its last complete sentence and stored `completed`** with its citations, marked `truncated`, and the web says
+  *"Answer shortened."* — rendered state, so it lives in the web under §7, unlike §4.5's three stored replies, which
+  are content. A reply with no sentence boundary at all is stored whole: a fragment beats nothing. Recovery is the
+  product's own mechanism — it is a chat, so the reader asks. Considered and declined: **auto-continuation**, which
+  doubles the latency of a call the reader is already waiting through, doubles its cost, needs a loop bound, and
+  seams visibly on this model class; and **instructing brevity**, which `docs/specs/summary-quality.md` §4.3 shows
+  this model ignoring. The mark is also the measurement: `CHAT_MAX_TOKENS` is a guess like the retrieval depths, and
+  a week of real questions says whether the cap binds on one answer in a hundred or one in three.
 - **Retrieval depth follows scope, and sources are deduplicated by episode — decided 2026-09-16.** Chat was
   specified at `topK: 3` for every question. That is a reasonable drill-down into one episode and the thinnest
   possible basis for the question a global chat exists to answer: three fragments, possibly from three unrelated

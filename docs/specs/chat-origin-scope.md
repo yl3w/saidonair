@@ -192,7 +192,8 @@ upgraded, which is the governance PRD §5.4 already describes. **A `/clean-local
 artboards and need drawing before the web is built: **the chip** in both its states, **the per-message scope mark**
 in the transcript, the **absence** of a new-chat control on `/chats` — which changes that screen from an entry to a
 history — and **a reply carrying more than three source cards**, which the retrieval depths of PRD §6 (2026-09-16)
-made reachable even after sources are deduplicated by episode. The states already drawn (pending, failed, the fixed no-follows reply, an answer with a linkified
+made reachable even after sources are deduplicated by episode. A fifth arrived with the truncation decision of the
+same day: **a shortened answer**, which reads as an ordinary reply with one line beneath it. The states already drawn (pending, failed, the fixed no-follows reply, an answer with a linkified
 URL, unfollow's effect on an old answer, the first run, the phone) are unchanged.
 
 ### 4.8 Answering, citations, and delivery

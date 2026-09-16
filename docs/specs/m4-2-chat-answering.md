@@ -20,6 +20,7 @@ After this chunk chat works end to end over HTTP. No screen calls it; that is M4
 | # | Decision | Why not the alternative |
 |---|---|---|
 | 1 | One over-fetch, sized by scope: keep 8 of 16 scoped, 6 of 24 unscoped | PRD §6, revised 2026-09-16. A loop has no natural bound and costs a round trip per pass; one over-fetch satisfies "fetch additional candidates" with a ceiling. Scoped is **deeper** because one episode is one voice, and over-fetches **less** because its rejections are correlated — the episode is available with an active generation or it is not. Both counts stay under `QUERY_TOP_K_MAX = 50`, the most Vectorize returns with metadata |
+| 1c | A truncated answer is trimmed and kept, never failed | Verified 2026-09-16: the runtime returns `choices[0].finish_reason`, so truncation is detectable. Failing would discard the text — `failAssistantMessage` leaves the reply empty — and a retrieval-grounded answer front-loads, so the tail that gets cut is elaboration, not the answer. `Try again` resends the same question and would truncate in the same place, making an error a reproducible dead end. The dangling fragment is the real damage, and trimming removes it |
 | 1b | Sources are deduplicated by episode | Several chunks from one episode are one citation, at its best-scoring start time. A reply cites sources, not passages — and without this, eight scoped chunks would render as eight cards for one episode |
 | 2 | One to three valid chunks still answer; zero is a stored reply | A thin answer beats no answer, and the source cards show exactly how thin. Zero never reaches the model, so it can never answer from its weights under the product's citation framing (owner decision 2026-09-16) |
 | 3 | A batched **state** lookup, `listEpisodeStates`, not a record one | Corrected 2026-09-16 after reading the code. `episodes.listByEpisodeIds` already batches `EpisodeRecord`s, but `EpisodeRecord.processing` deliberately omits `activeVectorGeneration` so it never crosses to the wire — and that is the field validation turns on. `EpisodeState` carries it, alongside `status` and `channelId`, so validation needs `listStatesByIds` beside the existing `listByEpisodeIds`, exposed on the facade. Twelve singular RPCs would be the wrong shape regardless |
@@ -93,13 +94,22 @@ Never send an unfiltered query, and never drop the channel filter to fit a limit
 `lib/ai.ts` gains, beside the two JSON-mode methods and leaving them untouched:
 
 ```ts
-answer(prompt: string): Promise<string>
+answer(prompt: string): Promise<{ text: string; truncated: boolean }>
 ```
 
 running `CHAT_MODEL` with `CHAT_MAX_TOKENS = 1024` and **no** `response_format`. 1024 rather than the 768 first
 proposed, because eight chunks is roughly 3,200 tokens of source and an answer ceiling below its evidence is the
-wrong constraint. **Hitting the ceiling truncates silently** — the model stops mid-sentence and the reply stores as
-completed — which is unhandled here and named in §5. `fakeClient` gains a matching `answer`
+wrong constraint.
+
+**Truncation is detected, not guessed (probed 2026-09-16).** The runtime answers a full OpenAI-shaped
+`chat.completion` — far more than `Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Output` declares — including
+`choices[0].finish_reason`, which reads `"length"` when the cap was hit, and `usage.completion_tokens`. `answer`
+reports `truncated` from `finish_reason === "length"` where present, falling back to
+`completion_tokens >= CHAT_MAX_TOKENS`. **`finish_reason` is absent from the type definitions**, so it needs a
+narrow cast and the fallback is not optional: a runtime that stopped sending it would otherwise report every answer
+complete, with no compile error to warn anyone.
+
+`lib/chat.ts`, not `lib/ai.ts`, decides what to do about it: the seam reports, the product decides. `fakeClient` gains a matching `answer`
 honouring the existing `[[throw]]` marker so the failure path is drivable.
 
 `prompts/chat.ts` holds the prompt and `CHAT_PROMPT_VERSION`: the caller's `systemRules`, the last
@@ -113,9 +123,18 @@ the sources from the chunks that survived §3.3, so a reply cannot cite an episo
 
 ```sql
 prompt_version TEXT,
+truncated INTEGER,
 ```
 
-Written on the assistant reply when it completes, null on the question — the mirror of `about_episode_id`.
+Both written on the assistant reply and null on the question, the mirror of `about_episode_id`. `truncated` is
+`0` or `1` rather than a token count, so it stays meaningful when `CHAT_MAX_TOKENS` changes — and it is what turns
+that constant from an argument into a measurement: a week of real questions says whether the cap binds on 1% of
+answers or 30%.
+
+**A truncated reply is stored `completed`, not `failed`**, with its sources and its text trimmed to the last
+complete sentence. If the text contains no sentence boundary at all, it is stored whole — a fragment beats nothing.
+The web renders one line, *"Answer shortened."*, which is rendered state and so lives in the web under PRD §7,
+unlike §3.2's three stored replies, which are content.
 
 `failure_code` takes a closed set: `EMBEDDING_FAILED`, `RETRIEVAL_FAILED`, `MODEL_FAILED`, `ANSWER_TIMEOUT`. The
 matching `CHECK` is added at the end of M4, not here (decision 6).
@@ -158,6 +177,9 @@ never killed. Nothing polls; nothing sweeps.
 15. Ten exchanges of history reach the prompt, oldest first; an eleventh does not.
 16. An embedding failure, a retrieval failure and a model failure each fail the reply with their own code and leave
     the question stored `completed`.
+16b. A truncated answer stores `completed` with `truncated = 1`, its sources intact, and its text cut at the last
+    sentence boundary with no dangling fragment; text with no sentence boundary is stored whole. Truncation is never
+    a `failure_code`.
 17. A `pending` reply older than `CHAT_ANSWER_BUDGET_MS` reads as `failed` with `ANSWER_TIMEOUT`; a younger one
     still reads `pending`.
 18. `POST /chats/:chatId/messages` answers `201` with chat, question and reply; a blank message is `400`; another
@@ -166,12 +188,8 @@ never killed. Nothing polls; nothing sweeps.
 
 ## 5. Out of scope
 
-**Three deferrals, all deliberate and all owed later:**
-
-- **Truncation detection.** An answer reaching `CHAT_MAX_TOKENS` stops mid-sentence and stores as completed — the
-  same class of silent failure `summary-json-mode` found in JSON mode. Whether the Workers AI binding surfaces a
-  finish reason is unverified; if it does, a truncated answer should fail with a code rather than be stored. 1024
-  makes it rarer, not impossible.
+**Two deferrals, both deliberate and both owed later:** (truncation was the third until it was probed on
+2026-09-16 and handled in §3.4 and §3.5)
 
 - **The 2048-byte filter split** of PRD §6. Thirty `UC…` ids are roughly 720 bytes; the limit binds past about
   eighty follows. Until then a single filter is correct, and splitting untested would be worse than not splitting.

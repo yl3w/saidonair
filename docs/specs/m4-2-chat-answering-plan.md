@@ -22,19 +22,28 @@ Spec §4, all nineteen criteria.
   `export const CHAT_MAX_TOKENS = 1024;` beside the summary constants. **Plan decision:** a separate constant naming
   the same model today, so tuning chat cannot silently move summarisation. 1024 because a scoped answer draws on up
   to eight chunks — roughly 3,200 tokens of source — and a ceiling below the evidence is the wrong constraint.
-  Reaching it truncates silently (spec §3.4); detecting that is deferred in spec §5, so do not add a guard here.
-- 1.2 `Answerer` type with `answer(prompt: string): Promise<string>`, added to the `AiClient` intersection beside
-  `Embedder` and `Summarizer`. Do not widen `Summarizer`: its two methods are the JSON-mode pair and stay that way.
+  Reaching it is detectable, so 1.5 detects it.
+- 1.2 `Answerer` type with `answer(prompt: string): Promise<{ text: string; truncated: boolean }>`, added to the
+  `AiClient` intersection beside `Embedder` and `Summarizer`. Do not widen `Summarizer`: its two methods are the JSON-mode pair and stay that way.
 - 1.3 `realClient`: `answer` runs `CHAT_MODEL` with `max_tokens: CHAT_MAX_TOKENS` and **no** `response_format`, and
   returns `result.response` when it is a string. A non-string answer is `throw new Error("ANSWER_FAILED: the model
   returned no response")` — the existing `complete` helper cannot be reused, because it exists to pass a schema.
 - 1.4 `fakeClient`: `answer` honours `FAKE_THROW` (`throw new Error("ANSWER_FAILED: canned failure")`) and otherwise
   returns a canned prose paragraph that echoes a distinctive slice of the prompt, so a test can assert what reached
   the model. It must **not** honour `FAKE_INVALID`/`FAKE_INVALID_ONCE`: those markers mean "unparseable JSON", and
-  prose has nothing to parse.
+  prose has nothing to parse. Add `FAKE_TRUNCATE = "[[truncate]]"`, which answers a paragraph ending mid-sentence
+  with `truncated: true`, so Step 4's trim is drivable without a real model.
+- 1.5 Truncation detection in `realClient`, from the 2026-09-16 probe recorded in spec §3.4. The runtime answers a
+  full `chat.completion`, so read `choices[0].finish_reason === "length"` through a **narrow local type** — it is
+  absent from `Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Output`, so do not widen the platform types — and fall
+  back to `usage.completion_tokens >= CHAT_MAX_TOKENS` when `finish_reason` is missing. **Plan decision:** both
+  checks, not one. The declared field alone is a proxy; the undeclared one alone fails open, reporting every answer
+  complete if a runtime change drops it, with no compile error to catch that.
 
-**Tests:** `answer` returns the canned prose; `FAKE_THROW` in the prompt raises; the two JSON-mode methods are
-unchanged by all of it.
+**Tests:** `answer` returns the canned prose with `truncated: false`; `FAKE_TRUNCATE` returns `truncated: true`;
+`FAKE_THROW` raises; the two JSON-mode methods are unchanged by all of it. Drive `realClient` with a stub binding
+for the detection pair: a `finish_reason: "length"` payload, a payload with no `finish_reason` but
+`completion_tokens` at the cap, and a clean `stop` payload.
 
 **Done when:** `pnpm check` green.
 
@@ -82,12 +91,17 @@ chunks; the union rejects a malformed filter at the type level (a `// @ts-expect
 `apps/api/migrations/user/0001_init.sql`, `apps/api/src/do/user/chats.ts`, `apps/api/src/do/user/types.ts`,
 `apps/api/src/do/user.ts`, `packages/shared/src/index.ts`, `apps/api/test/chat.test.ts` (new).
 
-- 4.1 `0001_init.sql`: add `prompt_version TEXT,` to `chat_messages` after `about_episode_id`, with a comment naming
-  spec §3.5. Plumb it exactly as M4.1 plumbed `about_episode_id`: `MessageRow`, `MESSAGE_COLUMNS`, the `toMessage`
-  mapper, the DO `ChatMessage` type, and `ChatMessageSchema` in `packages/shared` (`Id` is wrong here — it is a
-  version string, so `z.string().nullable()`).
-- 4.2 `completeAssistantMessage` takes `promptVersion: string` and writes it; `failAssistantMessage` leaves it null.
-  Both already exist and are tested; extend rather than replace.
+- 4.1 `0001_init.sql`: add `prompt_version TEXT,` and `truncated INTEGER,` to `chat_messages` after
+  `about_episode_id`, with a comment naming spec §3.5. Plumb both exactly as M4.1 plumbed `about_episode_id`:
+  `MessageRow`, `MESSAGE_COLUMNS`, the `toMessage` mapper, the DO `ChatMessage` type, and `ChatMessageSchema` in
+  `packages/shared` (`Id` is wrong for either — `z.string().nullable()` for the version, `z.boolean().nullable()`
+  for `truncated`, mapped from `0`/`1`/null since SQLite has no boolean).
+- 4.2 `completeAssistantMessage` takes `promptVersion: string` and `truncated: boolean` and writes both;
+  `failAssistantMessage` leaves both null. Both already exist and are tested; extend rather than replace.
+- 4.2b `trimToSentence(text: string): string` as a pure local function in `lib/chat.ts`: cut at the last `.`, `?`
+  or `!` that ends a sentence, dropping the dangling fragment. **If there is no boundary, return the text
+  unchanged** — a fragment beats an empty reply, and this is the case that would otherwise blank an answer. Applied
+  only when `truncated` is true; a clean answer is never rewritten.
 - 4.3 `prompts/chat.ts`: `export const CHAT_PROMPT_VERSION = "2026-09-16";` and
   `chatPrompt({ systemRules, history, chunks, question }): string`. Order: the caller's rules if any, then the last
   ten exchanges oldest first, then the chunks each headed by episode title, channel title and a `mm:ss` start, then
@@ -111,8 +125,9 @@ chunks; the union rejects a malformed filter at the type level (a `// @ts-expect
   `startSec`. Deduplicate after validation and before storing, so the count the reader sees is episodes, not
   passages — without it, eight scoped chunks would render as eight cards for a single episode.
 - 4.6 Failures: wrap the embed, the query and the model call so each becomes `failAssistantMessage` with
-  `EMBEDDING_FAILED`, `RETRIEVAL_FAILED` or `MODEL_FAILED`. The question stays `completed` in every case. No `CHECK`
-  on `failure_code` yet — spec decision 6 puts it at the end of M4.
+  `EMBEDDING_FAILED`, `RETRIEVAL_FAILED` or `MODEL_FAILED`. The question stays `completed` in every case. **A
+  truncated answer is not one of these** — it completes with `truncated = 1` and its trimmed text (spec decision
+  1c). No `CHECK` on `failure_code` yet — spec decision 6 puts it at the end of M4.
 
 **Tests:** spec §4.1–§4.16 in `chat.test.ts`, driving the AI and Vectorize fakes. The ones that matter most assert a
 negative: outcomes 2 and 3 record **zero** AI and **zero** Vectorize calls, outcome 4 zero AI and exactly one
