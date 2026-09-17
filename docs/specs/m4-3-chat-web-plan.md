@@ -137,7 +137,16 @@ has one followed channel and five scoped-searchable episodes.
   hardcoded hex shows up here as a light card in a dark page.
 - 5.3 The accessibility floor (§4.10): tab to every control, 44 px targets, nothing meaningful under 12 px, and no
   state carried by colour alone.
-- 5.4 Report what the click-through found. The Design phase's produced thirty-three commits; expect to find things.
+- 5.4 **Two known defects to fix in this step, both found by reading the code on 2026-09-16:**
+  - `titleFor` in `Chat.tsx` resolves a question's episode title from whichever reply cited it, and degrades to
+    "Asked about one episode" when none did — which is exactly the refusal, nothing-found and failed cases, so the
+    mark is least informative where the reader most needs it. `Chats.tsx` already falls back to
+    `api.getEpisodeById` for the same problem; carry that fallback across. The alternative — naming the episode in
+    the refusal text — is wrong: those sentences are stored content a reader sees again next week.
+  - Dismissing the chip is a `route(…, true)` on the same route, and **whether a half-typed question survives it is
+    unverified**. If the draft is lost, a reader who types a question, decides to widen, and clears the chip loses
+    what they wrote. Check it before anything else in this step.
+- 5.5 Report what the click-through found. The Design phase's produced thirty-three commits; expect to find things.
 
 **Done when:** the owner has walked through it and M4 is declared complete.
 
