@@ -223,7 +223,8 @@ Safe actions stay `--accent`; Decline and Skip wear `--consequence`. **Skip rend
 
 ### 4.9 Chats — designed, built in M4
 
-The artboards define the conversation (a rail of chats beside one transcript, roles in the left gutter, no bubbles,
+The artboards define the conversation (~~a rail of chats beside one transcript~~ — **the rail was dropped
+2026-09-17**, and a conversation takes its own bar as the reading column does; roles in the left gutter, no bubbles,
 up to three source cards per reply), the states (pending, failed, the fixed no-follows reply, an answer with a
 linkified YouTube URL, and what unfollowing does to an old answer), the first run, and the phone. A chat is named by
 its first question; nothing generates a title. `Try again` resends the same question as a new attempt and keeps the

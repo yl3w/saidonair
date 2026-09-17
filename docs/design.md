@@ -445,7 +445,7 @@ What changes as the catalog grows. Design the second column before you ship the 
 | Days | a list of days | a five-week calendar, whose height does not grow |
 | A channel's history | scroll | paging by year |
 | Rows | full, with an excerpt | the same row — length is answered by paging, not by shrinking it (§9) |
-| Chats | a rail | the rail groups by recency and gains search |
+| Chats | a list at `/chats` | grouped by recency, and it gains search — **the rail was dropped 2026-09-17**: a rail carries navigation *about* what is on the page (§3), and a list of other conversations is the only one in the product that would navigate away from it |
 | A table | rows | status filters and a sorted column |
 
 The rule underneath: **a control whose size grows with the data is not a control.** That is why the calendar replaced

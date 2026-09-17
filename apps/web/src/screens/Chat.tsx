@@ -1,14 +1,15 @@
 import type { ChatMessage as Message } from "@media-digest/shared";
+import { ArrowLeft } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
 import { ChatMessage } from "../components/ChatMessage";
+import { Icon } from "../components/Icon";
 import { Page } from "../components/Page";
 import { ScopeChip, ScopeLine } from "../components/ScopeChip";
 import { takeAskScope } from "../lib/ask-scope";
-import { chatRow, episodeTitle } from "../lib/chat-rows";
+import { episodeTitle } from "../lib/chat-rows";
 import { ASK_PLACEHOLDER_COPY } from "../lib/copy";
-import { relativeTime } from "../lib/time";
 import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
@@ -24,11 +25,12 @@ export function Chat() {
 /**
  * One conversation (docs/specs/m4-3-chat-web.md §3.3), and the composer before a chat exists.
  *
- * **The rail is the product's right rail, not a left sidebar.** The artboards drew it on the left,
- * which is the conventional chat shape and the wrong one here: `docs/design.md` §2.3 puts a rail on
- * the right at 232 px, `Page` already implements that and its `lg` breakpoint, and a second layout
- * model for one screen is a worse cost than an unconventional side. Below `lg` the rail is absent
- * entirely and the screen is the transcript, reached back through `/chats`.
+ * **There is no rail of other chats** (owner decision 2026-09-17, reversing `docs/design.md` §5 and
+ * `docs/specs/design-phase.md` §4.9, which had both drawn one). §3 says a rail carries navigation
+ * *about* the list — days still waiting, a calendar, a sort order — and a list of *different*
+ * conversations is the only rail in the product that would navigate away from the thing being
+ * looked at. `/chats` is one click away in the nav, and chats here are not a workspace a reader
+ * lives in: one begins at a summary, serves a few questions, and is left.
  */
 function ChatScreen() {
   const { params } = useRoute();
@@ -84,12 +86,6 @@ function ChatScreen() {
     { retainDataOnReload: true },
   );
 
-  // The rail names chats the way `/chats` does — by their first question, because `chats.title` is
-  // never set and reading it would render every chat as "Untitled chat".
-  const [rail] = useLoad(
-    async () => Promise.all((await api.listChats()).chats.map(chatRow)),
-    [],
-  );
   const messages = load.status === "ready" ? load.data.messages : [];
   const scopeTitles = useScopeTitles(messages);
 
@@ -135,32 +131,22 @@ function ChatScreen() {
   return (
     <Page
       measure="reading"
-      rail={
-        <nav aria-label="Your chats">
-          <div class="border-t border-rule">
-            {(rail.status === "ready" ? rail.data : []).map((row) => (
-              <a
-                key={row.chat.chatId}
-                href={`/chats/${row.chat.chatId}`}
-                class="block border-b border-rule py-3"
-                aria-current={row.chat.chatId === chatId ? "page" : undefined}
-              >
-                <span
-                  class={`block font-reading text-ui leading-tight ${
-                    row.chat.chatId === chatId
-                      ? "font-semibold text-ink"
-                      : "text-ink-2"
-                  }`}
-                >
-                  {row.name}
-                </span>
-                <span class="mt-1 block text-meta text-ink-3">
-                  {relativeTime(row.chat.updatedAt)}
-                </span>
-              </a>
-            ))}
+      bar={
+        /* A screen *about* one object takes its own bar (docs/design.md §3): a way back on the
+           left, that object's own acts on the right, and no wordmark and no destinations. A chat
+           has no acts — nothing renames or deletes one — so the bar is a way out and nothing else.
+           Back is the browser's own; this is the fallback for a reader who arrived by a pasted
+           link and has nowhere to return to. */
+        <header class="sticky top-0 z-20 border-b border-rule bg-ground">
+          <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
+            <a
+              href="/chats"
+              class="flex size-11 items-center justify-center text-ink-2"
+            >
+              <Icon of={ArrowLeft} size={20} label="Chats" />
+            </a>
           </div>
-        </nav>
+        </header>
       }
     >
       {load.status === "loading" && (

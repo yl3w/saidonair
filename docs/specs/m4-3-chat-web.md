@@ -38,7 +38,7 @@ After it, M4 is complete and chat works for a person rather than for `curl`.
 |---|---|---|
 | `/chats` | `Chats.tsx` | The history. No create control, no search, no delete |
 | `/chats/new` | `Chat.tsx` | The composer before a chat exists; `lib/ask-scope.ts` carries the scope across the navigation |
-| `/chats/:chatId` | `Chat.tsx` | The conversation; the chip is state, recovered from the last question on load |
+| `/chats/:chatId` | `Chat.tsx` | The conversation; the chip is state, recovered from the last question on load. **Its own bar, no rail** (2026-09-17): a screen about one object takes a way back and no destinations (`docs/design.md` §3), and a chat has no acts to put on the right |
 
 `/chats` joins primary navigation for the first time (`docs/design.md` §3 anticipated it). The phone's tab bar goes
 from two destinations to three, each still 44 px.
@@ -50,6 +50,11 @@ vector generation, and a channel eligible for this caller (`chat-origin-scope.md
 disabled**. `GET /episodes/:episodeId` already answers everything the condition needs.
 
 ### 3.3 The conversation
+
+**No rail of other chats, and the screen takes its own bar** (owner decision 2026-09-17). §3 reserves a rail for
+navigation *about* what is on the page; a list of different conversations navigates away from it, `/chats` is one
+click away in the nav, and a chat here is not a workspace — it begins at a summary, serves a few questions, and is
+left. The bar carries a way back to `/chats` and nothing else, because nothing renames or deletes a chat.
 
 Roles in the left gutter, no bubbles. A question shows the scope it was sent under — "Asked about *<title>*", or
 nothing at all when it was global. An answer renders as plain text with newlines preserved; only `youtube.com` URLs
