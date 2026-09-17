@@ -22,7 +22,7 @@ export function ScopeChip({
   return (
     <div class="mb-2.5 flex w-fit max-w-full items-center gap-2 rounded-selector border border-edge bg-panel py-1 pl-2.5 pr-1">
       <span class="shrink-0 text-label uppercase text-ink-3">About</span>
-      <span class="min-w-0 truncate font-serif text-ui text-ink">
+      <span class="min-w-0 truncate font-reading text-ui text-ink">
         {episodeTitle}
       </span>
       <button

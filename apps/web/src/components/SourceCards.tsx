@@ -23,7 +23,7 @@ export function SourceCards({ sources }: { sources: readonly ChatSource[] }) {
           key={card.episodeId}
           class="rounded-box border border-edge bg-panel px-4 py-3.5"
         >
-          <span class="block font-serif text-row-compact font-semibold leading-tight text-ink">
+          <span class="block font-reading text-row-compact font-semibold leading-tight text-ink">
             {card.episodeTitle}
           </span>
           <span class="mt-0.5 block text-meta text-ink-3">

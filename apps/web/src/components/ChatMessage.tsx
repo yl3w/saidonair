@@ -52,7 +52,7 @@ export function ChatMessage({
 
         {message.status === "failed" && (
           <>
-            <p class="font-serif text-body text-ink-2">
+            <p class="font-reading text-body text-ink-2">
               {chatFailureCopy(message.failureCode)}
             </p>
             {onRetry !== undefined && (
@@ -70,7 +70,7 @@ export function ChatMessage({
 
         {message.status === "completed" && (
           <>
-            <p class="whitespace-pre-wrap font-serif text-body text-ink">
+            <p class="whitespace-pre-wrap font-reading text-body text-ink">
               {linkify(message.content)}
             </p>
             {message.truncated === true && (

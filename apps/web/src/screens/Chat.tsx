@@ -146,7 +146,7 @@ function ChatScreen() {
                 aria-current={row.chat.chatId === chatId ? "page" : undefined}
               >
                 <span
-                  class={`block font-serif text-ui leading-tight ${
+                  class={`block font-reading text-ui leading-tight ${
                     row.chat.chatId === chatId
                       ? "font-semibold text-ink"
                       : "text-ink-2"
@@ -193,7 +193,7 @@ function ChatScreen() {
 
       {messages.length === 0 && load.status === "ready" && (
         <div class="mb-8">
-          <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
+          <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
             {scopedTitle === null
               ? "Ask across everything you follow"
               : `Ask about ${scopedTitle}`}
@@ -212,7 +212,7 @@ function ChatScreen() {
           onDismiss={() => setScope(null)}
         />
         <textarea
-          class="textarea w-full resize-none rounded-box border-edge bg-panel font-serif text-body text-ink"
+          class="textarea w-full resize-none rounded-box border-edge bg-panel font-reading text-body text-ink"
           rows={3}
           placeholder={ASK_PLACEHOLDER_COPY}
           value={draft}

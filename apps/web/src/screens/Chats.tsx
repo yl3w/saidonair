@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { MetaLine } from "../components/MetaLine";
 import { Page } from "../components/Page";
 import type { ChatRow } from "../lib/chat-rows";
 import { chatRow } from "../lib/chat-rows";
@@ -53,7 +54,7 @@ function ChatsScreen() {
       )}
 
       {load.status === "ready" && load.data.length === 0 && (
-        <p class="max-w-prose font-serif text-body text-ink-2">
+        <p class="max-w-prose font-reading text-body text-ink-2">
           {CHATS_EMPTY_COPY}
         </p>
       )}
@@ -81,19 +82,33 @@ function groups(rows: readonly ChatRow[]) {
       <h2 class="mb-2 text-label uppercase text-ink-3">{dayLabel(key)}</h2>
       <div class="border-t border-rule">
         {(byDay.get(key) ?? []).map((row) => (
-          <a
+          <div
             key={row.chat.chatId}
-            href={`/chats/${row.chat.chatId}`}
-            class="block border-b border-rule py-[18px]"
+            class="flex gap-3 border-b border-rule py-[18px]"
           >
-            <span class="block font-serif text-row-compact font-semibold leading-tight text-ink">
-              {row.name}
-            </span>
-            <span class="mt-1.5 block text-meta text-ink-3">
-              {chatOriginCopy(row.origin)} · {row.messages} messages ·{" "}
-              {relativeTime(row.chat.updatedAt)}
-            </span>
-          </a>
+            <div class="min-w-0 flex-1">
+              <h3 class="font-reading text-row-sm font-semibold text-ink md:text-row">
+                <a href={`/chats/${row.chat.chatId}`}>{row.name}</a>
+              </h3>
+
+              {/* The reply, as a summary row shows its excerpt: three lines of what is inside,
+                  so the list is scannable by what was answered and not only by what was asked. */}
+              {row.excerpt !== null && (
+                <p class="mt-1 line-clamp-3 font-reading text-excerpt text-ink-2">
+                  {row.excerpt}
+                </p>
+              )}
+
+              <MetaLine
+                class="mt-1"
+                items={[
+                  chatOriginCopy(row.origin),
+                  `${row.messages} messages`,
+                  relativeTime(row.chat.updatedAt),
+                ]}
+              />
+            </div>
+          </div>
         ))}
       </div>
     </section>
