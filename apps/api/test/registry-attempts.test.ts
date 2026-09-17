@@ -151,7 +151,7 @@ describe("the attempt ledger", () => {
         EPISODE_B, // duplicate: dropped
       ],
     );
-    expect(done.previousGeneration).toBeNull();
+    expect(done.supersededGenerations).toEqual([]);
     expect(done.attempt).toMatchObject({
       status: "available",
       outcomeCode: null,
@@ -666,12 +666,21 @@ describe("the attempt ledger", () => {
   it("replaces content atomically, preserving first availability and handing back the previous generation", async () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(EPISODE_A, CHANNEL_A, {
-      status: "available",
-      chunkCount: 3,
-      processedAt: 1,
-    });
-    await seedSummary(EPISODE_A);
+    // The first publication is run rather than seeded. `seedEpisode` writes an available episode with
+    // an active generation and no attempt row, which is a state the product cannot produce — every
+    // generation is minted by `beginAttempt`, which inserts its row in the same call — and the
+    // superseded set is read from that ledger.
+    await pendingNow(EPISODE_A, CHANNEL_A);
+    const first = await started(EPISODE_A);
+    const firstGeneration = (await generations(EPISODE_A)).staged;
+    await stub.markStaged(first.attempt.attemptId, 3, null);
+    const published = await stub.completeAttempt(
+      first.attempt.attemptId,
+      3,
+      STRUCTURED,
+      [],
+    );
+
     await stub.retryEpisode(CHANNEL_A, EPISODE_A);
     const start = await stub.beginAttempt(EPISODE_A, "owner_retry", OWNER);
     if (start.kind !== "started") throw new Error("expected started");
@@ -689,13 +698,13 @@ describe("the attempt ledger", () => {
       },
       [],
     );
-    expect(done.previousGeneration).toEqual({
-      generationId: `gen-${EPISODE_A}`,
-      chunkCount: 3,
-    });
+    expect(done.supersededGenerations).toEqual([
+      { generationId: firstGeneration, chunkCount: 3 },
+    ]);
     expect(done.episode).toMatchObject({
       status: "available",
-      summaryAvailableAt: 1,
+      // Preserved from the first publication, which is now a real one to preserve it from.
+      summaryAvailableAt: published.episode.summaryAvailableAt,
       summary: { format: "raw_fallback", rawText: "the new text" },
       processing: { chunkCount: 7, intent: null, attemptCount: 1 },
     });
@@ -704,6 +713,93 @@ describe("the attempt ledger", () => {
       staged: null,
     });
     expect(await storedRelated(EPISODE_A)).toBe("[]");
+  });
+
+  it("hands back every generation a past cleanup failed to remove, oldest first", async () => {
+    const stub = registry();
+    await seedApprovedChannel(CHANNEL_A, "A");
+    await pendingNow(EPISODE_A, CHANNEL_A);
+
+    // Three publications. Nothing here deletes anything — the Workflow does that, and this test is
+    // the answer it is given — so by the third, two generations are owed.
+    const owed: string[] = [];
+    for (const count of [3, 5, 7]) {
+      const start =
+        owed.length === 0
+          ? await started(EPISODE_A)
+          : await (async () => {
+              await stub.retryEpisode(CHANNEL_A, EPISODE_A);
+              const s = await stub.beginAttempt(
+                EPISODE_A,
+                "owner_retry",
+                OWNER,
+              );
+              if (s.kind !== "started") throw new Error("expected started");
+              return s;
+            })();
+      owed.push((await generations(EPISODE_A)).staged ?? "");
+      await stub.markStaged(start.attempt.attemptId, count, null);
+      const done = await stub.completeAttempt(
+        start.attempt.attemptId,
+        count,
+        STRUCTURED,
+        [],
+      );
+      if (count === 7) {
+        // The two earlier generations, oldest first, with their own recorded counts — not the
+        // episode's current one, which is 7.
+        expect(done.supersededGenerations).toEqual([
+          { generationId: owed[0], chunkCount: 3 },
+          { generationId: owed[1], chunkCount: 5 },
+        ]);
+        // The generation that is now serving is never in the set.
+        expect(
+          done.supersededGenerations.map((g) => g.generationId),
+        ).not.toContain(owed[2]);
+      }
+    }
+  });
+
+  it("leaves out a generation that never staged, and one a running attempt owns", async () => {
+    const stub = registry();
+    await seedApprovedChannel(CHANNEL_A, "A");
+    await pendingNow(EPISODE_A, CHANNEL_A);
+
+    // An attempt that begins and fails before embedding has a generation but no staged count, so it
+    // wrote no vectors and is not an orphan at all.
+    const unstaged = await started(EPISODE_A);
+    await stub.finishAttempt(unstaged.attempt.attemptId, {
+      status: "failed",
+      code: "PROVIDER_HTTP",
+      detail: "no transcript",
+    });
+
+    const start = await stub.beginAttempt(EPISODE_A, "owner_retry", OWNER);
+    if (start.kind !== "started") throw new Error("expected started");
+    await stub.markStaged(start.attempt.attemptId, 4, null);
+
+    // A second running attempt with vectors of its own. `beginAttempt` admits only one running
+    // attempt per episode, so this state is unreachable through the API and has to be written
+    // directly — which is the point: the exclusion is a guard, and a guard is worth a test only
+    // against the state it guards against.
+    await inRegistry((sql) =>
+      sql.exec(
+        `INSERT INTO episode_ingestion_attempts
+           (attempt_id, episode_id, trigger, intent, generation_id, staged_chunk_count,
+            status, started_at, created_at)
+         VALUES ('impossible', ?, 'channel_ingestion', 'publish', 'gen-running', 9, 'running', 1, 1)`,
+        EPISODE_A,
+      ),
+    );
+
+    const done = await stub.completeAttempt(
+      start.attempt.attemptId,
+      4,
+      STRUCTURED,
+      [],
+    );
+
+    expect(done.supersededGenerations).toEqual([]);
   });
 
   it("stores at most five available related episodes, in the attempt's order", async () => {

@@ -347,27 +347,33 @@ export async function ingestAttempt(
       () =>
         registry.completeAttempt(attemptId, chunks.length, summary, related),
     );
+    const superseded = published.supersededGenerations;
     console.log({
       event: "ingest.published",
       attemptId,
       episodeId,
       chunkCount: chunks.length,
-      replaced: published.previousGeneration !== null,
+      replaced: superseded.length > 0,
+      superseded: superseded.length,
     });
-    if (published.previousGeneration) {
+    // Every generation this episode has left behind, not only the one that was active a moment ago
+    // (docs/specs/vector-generation-cleanup.md): a cleanup that missed is retried here rather than
+    // never. Each takes its own step name — `step.do` names a step for replay, so a loop reusing one
+    // name would collide — and that name says which generation a failure belonged to.
+    for (const generation of superseded) {
       await discard(
         step,
         env,
-        "cleanup",
+        `cleanup:${generation.generationId}`,
         episodeId,
-        published.previousGeneration,
+        generation,
       );
     }
     return {
       attemptId,
       ended: "published",
       chunkCount: chunks.length,
-      replaced: published.previousGeneration !== null,
+      replaced: superseded.length > 0,
     };
   } catch (error) {
     // A refused Registry write means another actor finished or superseded this attempt: stop quietly.
@@ -685,11 +691,15 @@ async function relatedCandidates(
   }
 }
 
-/** Deletes a whole generation by count; a failure is logged and never changes the attempt's outcome. */
+/**
+ * Deletes a whole generation by count; a failure is logged and never changes the attempt's outcome.
+ * `name` is the Workflow step name, so it must be unique within an instance: the abandoned-staged
+ * discard and the publication cleanups can all run in one attempt.
+ */
 async function discard(
   step: StepLike,
   env: Env,
-  name: "discard" | "cleanup",
+  name: string,
   episodeId: string,
   generation: StagedGeneration,
 ): Promise<void> {
@@ -707,7 +717,9 @@ async function discard(
     });
   } catch (error) {
     console.log({
-      event: `ingest.${name}_failed`,
+      event: name.startsWith("cleanup")
+        ? "ingest.cleanup_failed"
+        : "ingest.discard_failed",
       episodeId,
       generationId: generation.generationId,
       detail: messageOf(error),

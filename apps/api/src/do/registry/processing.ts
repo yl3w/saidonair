@@ -194,8 +194,8 @@ export function recordBlockedAttempt(
 
 /**
  * Publication (rules 25–26), one transaction: the summary row, the episode's content columns, the
- * staged generation made active, the window closed, the attempt `available`. Returns the
- * generation that was active before so the instance can delete it.
+ * staged generation made active, the window closed, the attempt `available`. Returns every
+ * superseded generation so the instance can delete them.
  */
 export function completeAttempt(
   sql: SqlStorage,
@@ -213,12 +213,6 @@ export function completeAttempt(
       "relatedCandidates must be an array of episode ids",
     );
   }
-  const previous: StagedGeneration | null = episode.activeVectorGeneration
-    ? {
-        generationId: episode.activeVectorGeneration,
-        chunkCount: episode.chunkCount ?? 0,
-      }
-    : null;
   const related = relatedFromCandidates(
     sql,
     episode.episodeId,
@@ -237,8 +231,43 @@ export function completeAttempt(
   return {
     attempt: attempts.toAttempt(row),
     episode: requireRecord(sql, episode.episodeId),
-    previousGeneration: previous,
+    supersededGenerations: superseded(sql, episode.episodeId),
   };
+}
+
+/**
+ * Every generation of this episode that is not the one now serving
+ * (docs/specs/vector-generation-cleanup.md §4.2).
+ *
+ * **Called from exactly one place, and that is the contract.** "Every generation that is not the
+ * active one" is a dangerous sentence anywhere the active one might be null — it would name all of
+ * them. Here it cannot be: `episodes.publish` has just written it in this same transaction, and the
+ * read below fails loudly rather than quietly deleting everything if that ever stops being true.
+ *
+ * A generation belonging to a `running` attempt is excluded too. `beginAttempt` admits only one
+ * running attempt per episode and that attempt is this one, so the case is unreachable — but the
+ * predicate costs one comparison and makes the delete set safe to read here, rather than safe by
+ * appeal to an invariant two modules away.
+ */
+function superseded(sql: SqlStorage, episodeId: string): StagedGeneration[] {
+  const active = episodes.requireState(sql, episodeId).activeVectorGeneration;
+  if (active === null) {
+    throw new DomainError(
+      "INVALID_STATE",
+      "publication left no active generation",
+    );
+  }
+  const seen = new Set<string>([active]);
+  const stale: StagedGeneration[] = [];
+  for (const row of attempts.generationsFor(sql, episodeId)) {
+    if (row.running || seen.has(row.generationId)) continue;
+    seen.add(row.generationId);
+    stale.push({
+      generationId: row.generationId,
+      chunkCount: row.chunkCount,
+    });
+  }
+  return stale;
 }
 
 /**

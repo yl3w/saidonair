@@ -44,7 +44,6 @@ import {
   registry,
   seedApprovedChannel,
   seedEpisode,
-  seedSummary,
   userDO,
 } from "./helpers";
 
@@ -560,31 +559,18 @@ describe("ingestAttempt", () => {
 
   it("replaces content atomically: old summary and vectors stay until the new generation is verified, then only the new one remains", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(EPISODE_ENGLISH, CHANNEL_A, {
-      status: "available",
-      chunkCount: 3,
-      processedAt: 1,
-    });
-    await seedSummary(EPISODE_ENGLISH);
-    const oldIds = generationIds(EPISODE_ENGLISH, `gen-${EPISODE_ENGLISH}`, 3);
-    await vectorStore(env).upsert(
-      SHARED_NAMESPACE,
-      oldIds.map((id, i) => ({
-        id,
-        values: Array.from({ length: 8 }, (_, k) => (k === i ? 1 : 0)),
-        metadata: {
-          episodeId: EPISODE_ENGLISH,
-          channelId: CHANNEL_A,
-          generationId: `gen-${EPISODE_ENGLISH}`,
-          channelTitle: "A",
-          title: "t",
-          startSec: 0,
-          endSec: 1,
-          text: "old",
-          publishedAt: 1,
-        },
-      })),
-    );
+    // The first publication is run rather than seeded. An available episode seeded with an active
+    // generation has no attempt row behind it, and the superseded set is read from that ledger
+    // (docs/specs/vector-generation-cleanup.md §4.2) — so a seeded generation is invisible to
+    // cleanup, and a test built on one would assert against a state the product cannot reach.
+    await pendingNow(EPISODE_ENGLISH);
+    const first = await run(EPISODE_ENGLISH, await begin(EPISODE_ENGLISH));
+    expect(first.result).toMatchObject({ ended: "published" });
+    const firstGeneration = (await generations(EPISODE_ENGLISH)).active ?? "";
+    const firstAvailableAt = (
+      await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH)
+    )?.summaryAvailableAt;
+
     await userDO(ALICE).markRead([EPISODE_ENGLISH]);
     await registry().retryEpisode(CHANNEL_A, EPISODE_ENGLISH);
     const attemptId = await begin(EPISODE_ENGLISH, "owner_retry");
@@ -597,11 +583,11 @@ describe("ingestAttempt", () => {
       chunkCount: ENGLISH_CHUNKS,
       replaced: true,
     });
-    expect(stepNames(step)).toContain("cleanup");
+    expect(stepNames(step)).toContain(`cleanup:${firstGeneration}`);
     const episode = await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH);
     expect(episode).toMatchObject({
       status: "available",
-      summaryAvailableAt: 1,
+      summaryAvailableAt: firstAvailableAt,
       summary: { format: "structured", topicTags: ["canned", "test"] },
       processing: { chunkCount: ENGLISH_CHUNKS, intent: null },
     });
@@ -611,6 +597,42 @@ describe("ingestAttempt", () => {
     expect(await userDO(ALICE).readEpisodeIds([EPISODE_ENGLISH])).toEqual([
       EPISODE_ENGLISH,
     ]);
+  });
+
+  it("deletes every generation a past cleanup left behind, each under its own step name", async () => {
+    await seedApprovedChannel(CHANNEL_A, "A");
+    await pendingNow(EPISODE_ENGLISH);
+    await run(EPISODE_ENGLISH, await begin(EPISODE_ENGLISH));
+    const first = (await generations(EPISODE_ENGLISH)).active ?? "";
+
+    // The second publication's cleanup fails, so the first generation survives it — the exact
+    // situation that made a stray permanent when the delete named one generation.
+    env.VECTORIZE_FAKE = JSON.stringify({ throwOn: ["deleteByIds"] });
+    await registry().retryEpisode(CHANNEL_A, EPISODE_ENGLISH);
+    await run(EPISODE_ENGLISH, await begin(EPISODE_ENGLISH, "owner_retry"));
+    const second = (await generations(EPISODE_ENGLISH)).active ?? "";
+    expect(fakeVectorIds()).toEqual(
+      expect.arrayContaining(
+        generationIds(EPISODE_ENGLISH, first, ENGLISH_CHUNKS),
+      ),
+    );
+
+    // The third carries out both, under two distinct step names — one name for two deletes would
+    // collide on replay, and the name says which generation a failure belonged to.
+    env.VECTORIZE_FAKE = "{}";
+    await registry().retryEpisode(CHANNEL_A, EPISODE_ENGLISH);
+    const { step } = await run(
+      EPISODE_ENGLISH,
+      await begin(EPISODE_ENGLISH, "owner_retry"),
+    );
+    const third = (await generations(EPISODE_ENGLISH)).active ?? "";
+
+    expect(stepNames(step)).toContain(`cleanup:${first}`);
+    expect(stepNames(step)).toContain(`cleanup:${second}`);
+    expect(new Set(stepNames(step)).size).toBe(stepNames(step).length);
+    expect(fakeVectorIds().sort()).toEqual(
+      generationIds(EPISODE_ENGLISH, third, ENGLISH_CHUNKS).sort(),
+    );
   });
 
   it("deletes exactly the abandoned generation of a failed attempt before staging its own", async () => {
@@ -639,12 +661,9 @@ describe("ingestAttempt", () => {
 
   it("publishes even when cleanup or the related lookup fails", async () => {
     await seedApprovedChannel(CHANNEL_A, "A");
-    await seedEpisode(EPISODE_ENGLISH, CHANNEL_A, {
-      status: "available",
-      chunkCount: 3,
-      processedAt: 1,
-    });
-    await seedSummary(EPISODE_ENGLISH);
+    await pendingNow(EPISODE_ENGLISH);
+    await run(EPISODE_ENGLISH, await begin(EPISODE_ENGLISH));
+    const firstGeneration = (await generations(EPISODE_ENGLISH)).active ?? "";
     await registry().retryEpisode(CHANNEL_A, EPISODE_ENGLISH);
     env.VECTORIZE_FAKE = JSON.stringify({ throwOn: ["deleteByIds", "query"] });
     const { step, result } = await run(
@@ -652,7 +671,7 @@ describe("ingestAttempt", () => {
       await begin(EPISODE_ENGLISH, "owner_retry"),
     );
     expect(result).toMatchObject({ ended: "published", replaced: true });
-    expect(stepNames(step)).toContain("cleanup");
+    expect(stepNames(step)).toContain(`cleanup:${firstGeneration}`);
     expect(stepNames(step)).toContain("related");
     expect(
       (await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH))?.status,

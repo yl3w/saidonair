@@ -126,6 +126,40 @@ export function latestWithGeneration(
 }
 
 /** The episode's newest attempt that minted a generation other than the one named: what a running attempt may find abandoned. */
+/**
+ * Every generation this episode has ever written vectors under, oldest first
+ * (docs/specs/vector-generation-cleanup.md §4.1).
+ *
+ * **`staged_chunk_count IS NOT NULL` is the filter that matters.** The count is written when embedding
+ * begins, so an attempt without one never wrote a vector — it is not an orphan that was missed, it is
+ * not an orphan at all, and a null count downstream could only become an empty id list or a crash.
+ *
+ * Ascending, unlike `previousWithGeneration` below, which wants the newest. Different questions: this
+ * one is the cleanup's worklist and replays in a stable order.
+ */
+export function generationsFor(
+  sql: SqlStorage,
+  episodeId: string,
+): { generationId: string; chunkCount: number; running: boolean }[] {
+  return sql
+    .exec<{
+      generation_id: string;
+      staged_chunk_count: number;
+      status: string;
+    }>(
+      `SELECT generation_id, staged_chunk_count, status FROM episode_ingestion_attempts
+       WHERE episode_id = ? AND generation_id IS NOT NULL AND staged_chunk_count IS NOT NULL
+       ORDER BY created_at ASC, attempt_id ASC`,
+      episodeId,
+    )
+    .toArray()
+    .map((row) => ({
+      generationId: row.generation_id,
+      chunkCount: row.staged_chunk_count,
+      running: row.status === "running",
+    }));
+}
+
 export function previousWithGeneration(
   sql: SqlStorage,
   episodeId: string,

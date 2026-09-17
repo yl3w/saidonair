@@ -201,9 +201,16 @@ export type AttemptResult = {
   episode: EpisodeRecord;
 };
 
-/** `completeAttempt`'s answer: the generation that was active before, for the cleanup step, or null on first publication. */
+/**
+ * `completeAttempt`'s answer, including **every generation this episode has left behind** for the
+ * cleanup step — empty on a first publication (docs/specs/vector-generation-cleanup.md §4.2).
+ *
+ * Plural, not the one generation that was active a moment ago. A singular delete cannot retry a miss,
+ * and a cleanup that fails once is swallowed by design, so its vectors would otherwise stay in the
+ * index forever, spending candidate slots on every query that reaches that episode.
+ */
 export type PublicationResult = AttemptResult & {
-  previousGeneration: StagedGeneration | null;
+  supersededGenerations: StagedGeneration[];
 };
 
 /** The summary an attempt publishes, validated by shape at the Registry boundary (docs/PRD.md §4.4). */

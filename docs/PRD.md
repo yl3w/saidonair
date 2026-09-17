@@ -349,14 +349,20 @@ episode's row, phrased from its latest attempt.
     until every expected id is present, absorbing Vectorize's asynchronous processing; only after those retries does a
     missing id count as `VECTORIZE_INCOMPLETE`. Availability is never based on an accepted upsert alone.
 25. On success, one Registry publication writes the summary, switches `active_vector_generation` to the staged
-    generation, closes the window, sets `processed_at` only when it was null, and returns the previous
-    generation with its chunk count. `processed_at` is first availability and is never reset.
-26. One generation rule: the attempt deletes the previous generation right after activation, and an attempt that
-    follows a failed one deletes the abandoned staged generation, whose chunk count the failed attempt recorded,
-    before writing its own. The index therefore holds one active generation per episode plus whatever one attempt is
-    staging. Retrieval verifies each vector's generation, parsed from its id, against the episode's active one and
-    fetches more to fill any gap, so a failed available replacement cannot damage current retrieval and a retry never
-    leaves duplicate passages behind. A failed cleanup is logged and leaves publication standing.
+    generation, closes the window, sets `processed_at` only when it was null, and returns **every superseded
+    generation** with its chunk count. `processed_at` is first availability and is never reset.
+26. One generation rule: the attempt deletes every generation of that episode that is not the one it just activated
+    (revised 2026-09-17, §9), and an attempt that follows a failed one deletes the abandoned staged generation, whose
+    chunk count the failed attempt recorded, before writing its own. **Every, not the previous one**: a cleanup
+    failure is logged and leaves publication standing, so a singular delete could never retry a miss and the stray
+    stayed in the index for good. The set is the attempt ledger's own record — every attempt stores the generation it
+    wrote and how many vectors it wrote — minus the generation now serving and any a running attempt owns, so it
+    needs no state of its own and cannot name what is live. The index therefore holds one active generation per
+    episode plus whatever one attempt is staging. Retrieval verifies each vector's generation, parsed from its id,
+    against the episode's active one and fetches more to fill any gap, so a failed available replacement cannot
+    damage current retrieval and a retry never leaves duplicate passages behind. Cleanup runs only on a successful
+    publication, so an episode whose re-ingests keep failing keeps its strays until one succeeds, and one never
+    re-ingested keeps them; both are accepted, and both are inert to retrieval.
 
 #### Derived facts and channel state
 
@@ -668,7 +674,7 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
   `active_vector_generation` before using retrieved text. Fetch additional candidates as necessary when rejecting
   inactive or partial generations; the generation comes from the vector id, and there is no generation metadata
   index or per-episode filter. Never publish availability based only on accepting an asynchronous upsert; verify
-  the complete staged generation and switch it active with the summary publication, then delete the previous
+  the complete staged generation and switch it active with the summary publication, then delete every superseded
   generation (§4.2 rules 24–26).
 - Declining a channel does not require vector deletion or rewriting every vector. Current catalog eligibility excludes
   the retained vectors; approving the channel again reuses them.
@@ -968,13 +974,20 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   that sentence, not eight timestamps implying otherwise. It costs a fourth fixed reply, "Nothing in this episode
   covers that." Retrieval now answers from as many chunks as bear on the question, from none upward, and the keep
   counts are ceilings. Full reasoning and measurements: `docs/specs/chat-relevance-rerank.md`.
-- **Open defect: a superseded vector generation can outlive its replacement — found 2026-09-17.** Episode
-  `pduZ-bfcKAQ` has two generations live in `media-rag-dev`; the dead one takes **17 of 50** candidate slots in its
-  channel and cost two of twenty-four on a real question during the walkthrough above. Retrieval rejects them
-  correctly on generation mismatch, so no citation is wrong and nothing is user-visible — the cost is that the
-  over-fetch is spent on vectors that cannot be used. §4.2 rule 26's cleanup runs after a replace and is designed to
-  swallow its own failures, so once one misses, nothing retries it and nothing detects it. Not yet fixed, and named
-  here so it is not rediscovered from scratch.
+- **A superseded vector generation could outlive its replacement — found and fixed 2026-09-17.** Episode
+  `pduZ-bfcKAQ` had two generations live in `media-rag-dev`; the dead one took **17 of 50** candidate slots in its
+  channel and cost two of twenty-four on a real question. Retrieval rejects them correctly on generation mismatch, so
+  no citation was wrong and nothing was user-visible — the cost was that the over-fetch was spent on vectors that
+  could not be used, which mattered newly, because the reranker above made candidate depth load-bearing where the
+  top six by cosine had been the whole answer. Nothing had malfunctioned twice: cleanup is designed to swallow its
+  own failures, correctly, since a published episode must not be marked failed over a delete that blipped — but the
+  delete named one generation, so a single miss was permanent. Rule 26 now deletes every superseded generation, which
+  makes the next successful publication carry out whatever the last one failed to, using the attempt ledger as the
+  record of what exists. **The order is the part not to touch:** publish, then delete. Deleting first would empty an
+  episode that is on screen and answerable, and since the floor-both decision above the reader would be told
+  "Nothing in this episode covers that." about an episode they are reading — a confident and verifiable lie, where
+  deleting late costs only candidate slots nobody can see. What stays open is detection: a cleanup that fails is now
+  self-correcting but still silent. Reasoning: `docs/specs/vector-generation-cleanup.md`.
 
 - **Lucide icons, and monograms where artwork is missing — decided 2026-09-14.** The icon set is Lucide, shipped as
   `lucide-preact` (the dependency approved 2026-09-15): one stroke weight, one grid, and a name for every glyph, so a
