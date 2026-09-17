@@ -140,7 +140,10 @@ function ChatScreen() {
            Back is the browser's own; this is the fallback for a reader who arrived by a pasted
            link and has nowhere to return to. */
         <header class="sticky top-0 z-20 border-b border-rule bg-ground">
-          <div class="mx-auto flex h-14 w-full items-center gap-2 px-5 md:px-8">
+          {/* Constrained to the reading measure, as the reading column's bar is: the arrow and the
+              name line up with the conversation beneath rather than with the window. A channel's
+              bar spans the window because its column is a list measure; this one is not. */}
+          <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
             <button
               type="button"
               class="flex size-11 shrink-0 items-center justify-center text-ink-2"
