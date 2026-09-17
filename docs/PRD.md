@@ -1477,6 +1477,16 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the cursor is null, and claims the reader is through only on the second. Cost: a reader with hundreds waiting
   presses Show more rather than scrolling forever; an explicit control was chosen over loading on scroll because it
   is reachable from a keyboard and because History already uses exactly this one.
+- **M6 is a sweep of §8, not a build — decided 2026-09-17.** The milestone read "isolation/lifecycle tests ·
+  `wrangler` verification · docs", and an audit found all three largely answered: isolation is covered by eight test
+  files exercising two identities, both Durable Objects have migration tests, every chunk since M3 carries a
+  `wrangler dev` walkthrough record in its plan, and the API document is generated and guarded. The same audit found
+  §8's **first line untested** — one shared episode set for two followers, true by construction and therefore
+  unprotected against a refactor. §8 holds about sixty such criteria and has never been walked end to end, so the
+  milestone becomes that walk: each criterion marked tested, structural, or unverified. The pattern behind the
+  decision is this session's own record — two milestone lines outliving their work, one acceptance criterion
+  describing something the product could not do, another with no test — every one found by reading a list against
+  reality. Reading the biggest remaining list is worth more than the tests the original line would have produced.
 - **Chat search and chat deletion are not in this version, and a chat needs no title route — decided 2026-09-17.**
   `docs/specs/design-phase.md` §4.9 had recorded three gaps for M4 to close, and M4 closed none of them, because
   each dissolved rather than being built. **Naming** needed no route: a chat is named by its first question, which
@@ -1668,7 +1678,7 @@ M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunki
    Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
 M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations   ✓ 2026-09-17
 M5 UI            conversations                                                                  ✓ 2026-09-17
-M6 Hardening     isolation/lifecycle tests · wrangler verification · docs
+M6 Hardening     a full sweep of §8: every criterion marked tested, structural, or unverified
 ```
 
 **M4 no longer lists unread receipts — audited 2026-09-16.** The line carried them from the original plan, but the
@@ -1704,4 +1714,21 @@ Design phase had taken the five screens M5 once held, leaving it that one subjec
 were "built in M4". The three gaps `design-phase.md` §4.9 reserved for it were settled the same day without routes —
 naming needs none, and search and deletion are not in this version (§9). This is the second milestone line to
 outlive its work, after unread receipts, which is why an audit now opens a milestone rather than closing one.
-**M6 is next**, and it is the last: isolation and lifecycle tests, `wrangler` verification, and docs.
+**M6 is next, and it is the last. Redefined 2026-09-17 after an audit** (§9): it is **a sweep of §8**, not a build.
+
+§8 holds about sixty verification criteria and nobody has ever walked them end to end. The audit found its three
+original items largely answered already — isolation is covered by eight test files exercising two identities,
+migrations are tested for both Durable Objects, `wrangler dev` has verified every chunk since M3 with a walkthrough
+record in each plan, and the API document is generated and guarded by `openapi.test.ts`. What it also found is that
+§8's **first line has no test**: "two users following one channel produce one shared episode/summary/vector set with
+independent read receipts" is true by construction, because episodes carry no user dimension, and true by
+construction is exactly what stops being true after a refactor.
+
+So M6's work is to take each criterion and mark it **tested** (name the test), **structural** (say what makes it
+impossible to violate), or **unverified** (and decide whether to close it or accept it). The value is the third
+category. Two milestone lines have already outlived their work, `chat-origin-scope.md` §5 had a criterion describing
+something the product could not do, and another had no test at all — each found by reading a list against reality
+rather than by running one. §8 is the largest such list left.
+
+Known to be unverified before the sweep starts: `chat-origin-scope.md` §5 criterion 19's second half, that
+`Try again` sends a new attempt and keeps the failed reply above it.
