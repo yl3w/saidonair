@@ -21,12 +21,12 @@ export function SourceCards({ sources }: { sources: readonly ChatSource[] }) {
       {cards.map((card) => (
         <div
           key={card.episodeId}
-          class="rounded-card border border-edge bg-panel px-4 py-3.5"
+          class="rounded-box border border-edge bg-panel px-4 py-3.5"
         >
           <span class="block font-serif text-row-compact font-semibold leading-tight text-ink">
             {card.episodeTitle}
           </span>
-          <span class="mt-0.5 block text-meta text-tertiary">
+          <span class="mt-0.5 block text-meta text-ink-3">
             {card.channelTitle}
           </span>
           <div class="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-2">

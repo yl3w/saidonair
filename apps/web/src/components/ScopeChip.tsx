@@ -20,14 +20,12 @@ export function ScopeChip({
 }) {
   if (episodeTitle === null) return null;
   return (
-    <div class="mb-2.5 inline-flex items-center gap-2 rounded-control border border-edge bg-panel py-1 pl-2.5 pr-1">
-      <span class="text-label uppercase tracking-label text-tertiary">
-        About
-      </span>
+    <div class="mb-2.5 inline-flex items-center gap-2 rounded-selector border border-edge bg-panel py-1 pl-2.5 pr-1">
+      <span class="text-label uppercase text-ink-3">About</span>
       <span class="font-serif text-ui text-ink">{episodeTitle}</span>
       <button
         type="button"
-        class="flex size-11 items-center justify-center text-tertiary md:size-6"
+        class="flex size-11 items-center justify-center text-ink-3 md:size-6"
         aria-label={`Stop asking about ${episodeTitle}`}
         onClick={onDismiss}
       >
@@ -40,7 +38,7 @@ export function ScopeChip({
 /** Which of the two is in force, said in words beneath the composer. */
 export function ScopeLine({ scoped }: { scoped: boolean }) {
   return (
-    <span class="text-meta text-tertiary">
+    <span class="text-meta text-ink-3">
       {scoped ? SCOPE_ON_COPY : SCOPE_OFF_COPY}
     </span>
   );

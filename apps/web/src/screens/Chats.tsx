@@ -38,7 +38,7 @@ function ChatsScreen() {
 
   return (
     <Page>
-      <h1 class="font-serif text-screen font-semibold tracking-tight text-ink">
+      <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
         Chats
       </h1>
 
@@ -50,7 +50,7 @@ function ChatsScreen() {
       )}
 
       {load.status === "ready" && load.data.length === 0 && (
-        <p class="mt-7 max-w-prose font-serif text-body text-secondary">
+        <p class="mt-7 max-w-prose font-serif text-body text-ink-2">
           {CHATS_EMPTY_COPY}
         </p>
       )}
@@ -77,9 +77,7 @@ function groups(rows: readonly ChatRow[]) {
 
   return seen.map((key) => (
     <section key={key} class="mb-7">
-      <h2 class="mb-2 text-label uppercase tracking-label text-tertiary">
-        {dayLabel(key)}
-      </h2>
+      <h2 class="mb-2 text-label uppercase text-ink-3">{dayLabel(key)}</h2>
       <div class="border-t border-rule">
         {(byDay.get(key) ?? []).map((row) => (
           <a
@@ -90,7 +88,7 @@ function groups(rows: readonly ChatRow[]) {
             <span class="block font-serif text-row-compact font-semibold leading-tight text-ink">
               {row.name}
             </span>
-            <span class="mt-1.5 block text-meta text-tertiary">
+            <span class="mt-1.5 block text-meta text-ink-3">
               {chatOriginCopy(row.origin)} · {row.messages} messages ·{" "}
               {relativeTime(row.chat.updatedAt)}
             </span>

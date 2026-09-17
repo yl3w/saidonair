@@ -34,13 +34,13 @@ export function ChatMessage({
 
   return (
     <div class="mb-6 md:flex md:gap-5">
-      <span class="mb-1.5 block text-label uppercase tracking-label text-tertiary md:mb-0 md:w-16 md:shrink-0 md:pt-1">
+      <span class="mb-1.5 block text-label uppercase text-ink-3 md:mb-0 md:w-16 md:shrink-0 md:pt-1">
         {message.role === "user" ? "You" : "Answer"}
       </span>
 
       <div class="min-w-0 md:flex-1">
         {scope !== null && (
-          <span class="mb-1.5 block text-meta text-tertiary">{scope}</span>
+          <span class="mb-1.5 block text-meta text-ink-3">{scope}</span>
         )}
 
         {message.status === "pending" && (
@@ -52,7 +52,7 @@ export function ChatMessage({
 
         {message.status === "failed" && (
           <>
-            <p class="font-serif text-body text-secondary">
+            <p class="font-serif text-body text-ink-2">
               {chatFailureCopy(message.failureCode)}
             </p>
             {onRetry !== undefined && (
@@ -74,7 +74,7 @@ export function ChatMessage({
               {linkify(message.content)}
             </p>
             {message.truncated === true && (
-              <span class="mt-3 block border-t border-rule pt-2.5 text-meta text-tertiary">
+              <span class="mt-3 block border-t border-rule pt-2.5 text-meta text-ink-3">
                 {ANSWER_SHORTENED_COPY}
               </span>
             )}

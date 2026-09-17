@@ -16,12 +16,13 @@ const MEASURES = {
 } as const;
 
 /**
- * Beside a rail the column needs a **definite** width, not a maximum. The wrapper is `lg:w-fit` so
- * the column and rail centre as a group, and `w-full` inside a fit-to-content parent resolves to the
- * content's own width — so a column holding something narrow shrink-wraps around it and the page
- * lists to one side. A composer with nothing above it made that visible (2026-09-17).
+ * The column needs a **definite** width, not a maximum. The wrapper is `lg:w-fit` so a column and
+ * its rail centre as a group, and `w-full` inside a fit-to-content parent resolves to the content's
+ * own width — so a column holding something narrow shrink-wraps around it and the page lists to one
+ * side. Screens whose rows carry wrapping text never showed this; a composer with nothing above it
+ * did, and so did a list of short chat rows (2026-09-17). It applies with or without a rail.
  */
-const RAIL_COLUMNS = {
+const COLUMNS = {
   reading: "lg:w-reading",
   list: "lg:w-list",
   wide: "",
@@ -49,11 +50,7 @@ export function Page({
   children: ComponentChildren;
 }) {
   const column = (
-    <main
-      class={`w-full min-w-0 ${MEASURES[measure]} ${
-        rail === undefined ? "" : RAIL_COLUMNS[measure]
-      }`}
-    >
+    <main class={`w-full min-w-0 ${MEASURES[measure]} ${COLUMNS[measure]}`}>
       {desktopOnly && (
         <p class="font-reading text-body text-ink-2 lg:hidden">
           Curate needs a wider screen than this one. What is waiting is on your

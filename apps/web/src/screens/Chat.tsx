@@ -149,12 +149,12 @@ function ChatScreen() {
                   class={`block font-serif text-ui leading-tight ${
                     row.chat.chatId === chatId
                       ? "font-semibold text-ink"
-                      : "text-secondary"
+                      : "text-ink-2"
                   }`}
                 >
                   {row.name}
                 </span>
-                <span class="mt-1 block text-meta text-tertiary">
+                <span class="mt-1 block text-meta text-ink-3">
                   {relativeTime(row.chat.updatedAt)}
                 </span>
               </a>
@@ -193,13 +193,13 @@ function ChatScreen() {
 
       {messages.length === 0 && load.status === "ready" && (
         <div class="mb-8">
-          <h1 class="font-serif text-screen font-semibold tracking-tight text-ink">
+          <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
             {scopedTitle === null
               ? "Ask across everything you follow"
               : `Ask about ${scopedTitle}`}
           </h1>
           {episode !== null && (
-            <p class="mt-1.5 text-meta text-tertiary">{episode.channelTitle}</p>
+            <p class="mt-1.5 text-meta text-ink-3">{episode.channelTitle}</p>
           )}
         </div>
       )}
@@ -212,7 +212,7 @@ function ChatScreen() {
           onDismiss={() => setScope(null)}
         />
         <textarea
-          class="textarea w-full resize-none rounded-card border-edge bg-panel font-serif text-body text-ink"
+          class="textarea w-full resize-none rounded-box border-edge bg-panel font-serif text-body text-ink"
           rows={3}
           placeholder={ASK_PLACEHOLDER_COPY}
           value={draft}
