@@ -74,7 +74,11 @@ export function Nav() {
           {email !== null && (
             <a
               href="/account"
-              class="ml-auto flex min-h-11 items-center gap-2 text-meta text-ink-2"
+              class={`ml-auto flex min-h-11 items-center gap-2 text-meta ${
+                isCurrent(path, "/account")
+                  ? "font-semibold text-ink"
+                  : "text-ink-2"
+              }`}
               aria-current={isCurrent(path, "/account") ? "page" : undefined}
             >
               <span class="hidden lg:inline">{email}</span>
@@ -86,7 +90,7 @@ export function Nav() {
       </header>
 
       <nav
-        class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-2 border-t border-rule bg-panel pb-[env(safe-area-inset-bottom)] md:hidden"
+        class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-rule bg-panel pb-[env(safe-area-inset-bottom)] md:hidden"
         aria-label="Primary"
       >
         {DESTINATIONS.map(({ href, label, icon }) => {

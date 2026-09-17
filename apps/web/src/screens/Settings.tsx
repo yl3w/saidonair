@@ -80,9 +80,11 @@ function SettingsScreen() {
 
   return (
     <Page measure="reading">
-      <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
-        Account
-      </h1>
+      {/* No visible heading, as Queue, Sources and Chats have none: the frame names this screen —
+          the reader's own email and monogram sit in the bar and mark it current (owner decision
+          2026-09-17, amending docs/design.md §2.2, which had listed Account among the screens the
+          frame does not name). It stays in the document for anyone navigating by headings. */}
+      <h1 class="sr-only">Account</h1>
 
       <Section title="Reading as">
         <div class="flex flex-wrap items-center gap-3">

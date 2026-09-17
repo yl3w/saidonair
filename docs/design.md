@@ -104,7 +104,7 @@ sentences. The split is the fastest way to tell a reader what is content and wha
 | Role | Size / family | Notes |
 |---|---|---|
 | Reading title | 36 px serif 600, `-0.015em`, 1.16 | 25 px on a phone |
-| Screen title | 27 px serif 600, `-0.01em` | History, a channel, Account — the screens the frame does not name |
+| Screen title | 27 px serif 600, `-0.01em` | History and a channel — the screens the frame does not name. **Account lost its heading 2026-09-17**: the reader's own email and monogram sit in the bar and mark it current, so the frame does name it after all |
 | Section head | 18–19 px serif 600 | day headers, chat titles |
 | Row title, full | 20 px serif 600, 1.25 | 17 px on a phone |
 | Row title, compact | 16 px serif 600 | a channel's name in a list — Sources, a feed just verified |
@@ -466,7 +466,7 @@ nothing-waiting state, and both pickers as sheets. **Owner operations are deskto
 a phone, and Account tells the owner how many things wait and that they need a larger screen. Approving, declining,
 retrying and the catalog table are dense, consequential and rare; designing them twice costs more than it returns.
 
-Three rules: a bottom tab bar of the reader's destinations with 44 px targets — two today, three once Chats is built
+Three rules: a bottom tab bar of the reader's destinations with 44 px targets — three since Chats was built
 (§3); no fake status bar and no fake keyboard in a mockup — the real ones render on top of your layout; and nothing
 scrolls horizontally except a table, a diagram, or a code block inside its own container.
 
