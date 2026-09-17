@@ -244,8 +244,14 @@ before code.
 2. `Ask` creates nothing. Navigating away without sending leaves no chat in `GET /chats`.
 3. A first message sent from `Ask` carries `aboutEpisodeId`, and its reply's sources all come from that episode.
 4. `chat_messages.about_episode_id` is written on the user message and null on the reply.
-5. The chip survives a page reload, because the URL carries it; dismissing it leaves `/chats/:id` valid.
-6. A second `Ask` into the same chat replaces the chip rather than adding one.
+5. The chip survives a page reload, recovered from the chat's **last question** — every question stores its own
+   `aboutEpisodeId`, so the conversation is the record of what it is searching and nothing is in the URL. A
+   dismissal that is never sent does not survive, because the conversation still says scoped (revised 2026-09-17,
+   when scope moved out of the URL; this had read "because the URL carries it").
+6. A chat can widen and cannot re-narrow: dismissing the chip is the only way to change scope from inside a
+   conversation, and `Ask` always opens a **new** chat rather than re-scoping an open one (revised 2026-09-17; this
+   had read "a second `Ask` into the same chat replaces the chip", which the product cannot do and never could —
+   `Ask` navigates to `/chats/new`).
 7. A message sent after dismissal retrieves across every eligible channel, and its stored hint is null.
 8. A hint whose channel has become ineligible produces the stored refusal of §4.2 step 3 — never a global answer —
    with no AI and no Vectorize call, verified by the fakes recording zero calls.

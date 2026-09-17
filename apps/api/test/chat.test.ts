@@ -387,3 +387,37 @@ describe("trimming a cut-off answer", () => {
     expect(trimToSentence("")).toBe("");
   });
 });
+
+describe("a stored hint outlives the follow it was asked under", () => {
+  it("is unchanged after the reader unfollows and follows again", async () => {
+    const reg = registry();
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_A);
+    await reg.recordFollow(ALICE, CHANNEL_A);
+
+    const d = await deps([CHANNEL_A], async (store) => {
+      await store.upsert(SHARED_NAMESPACE, [chunkOf(EPISODE_A, CHANNEL_A, 0)]);
+    });
+    const chat = await d.user.createChat();
+    const { userMessage } = await answer(d, {
+      chatId: chat.chatId,
+      message: "what did they say?",
+      aboutEpisodeId: EPISODE_A,
+    });
+    expect(userMessage.aboutEpisodeId).toBe(EPISODE_A);
+
+    // Eligibility is recomputed per message, so the next question would be refused — but the
+    // question already asked keeps the scope it was sent under. History is never scrubbed
+    // (docs/PRD.md §4.5).
+    await reg.recordUnfollow(ALICE, CHANNEL_A);
+    const afterUnfollow = await d.user.getMessages(chat.chatId);
+    expect(afterUnfollow[0]?.aboutEpisodeId).toBe(EPISODE_A);
+    expect(afterUnfollow[0]?.sources).toEqual(userMessage.sources);
+
+    await reg.recordFollow(ALICE, CHANNEL_A);
+    const afterRefollow = await d.user.getMessages(chat.chatId);
+    expect(afterRefollow[0]?.aboutEpisodeId).toBe(EPISODE_A);
+    // And the reply's citation snapshots are the ones taken when it was written, not re-derived.
+    expect(afterRefollow[1]?.sources).toEqual(afterUnfollow[1]?.sources);
+  });
+});
