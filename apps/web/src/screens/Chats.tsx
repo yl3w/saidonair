@@ -38,26 +38,27 @@ function ChatsScreen() {
 
   return (
     <Page>
-      <h1 class="font-serif text-screen-title font-semibold tracking-tight text-ink">
-        Chats
-      </h1>
+      {/* The bar above and the phone's tab bar below both say "Chats" and mark it current, and
+          neither ever scrolls away, so a heading here would be a constant on the one screen it
+          names — the rule docs/design.md §2.2 states as "the screens the frame does not name"
+          (owner decision 2026-09-17). It stays in the document and leaves the screen: a page whose
+          first heading is a day group has no name for anyone navigating by headings. */}
+      <h1 class="sr-only">Chats</h1>
 
       {load.status === "loading" && (
-        <div class="mt-7 flex flex-col gap-4">
+        <div class="flex flex-col gap-4">
           <div class="skeleton h-5 w-80" />
           <div class="skeleton h-5 w-64" />
         </div>
       )}
 
       {load.status === "ready" && load.data.length === 0 && (
-        <p class="mt-7 max-w-prose font-serif text-body text-ink-2">
+        <p class="max-w-prose font-serif text-body text-ink-2">
           {CHATS_EMPTY_COPY}
         </p>
       )}
 
-      {load.status === "ready" && load.data.length > 0 && (
-        <div class="mt-7">{groups(load.data)}</div>
-      )}
+      {load.status === "ready" && load.data.length > 0 && groups(load.data)}
     </Page>
   );
 }
