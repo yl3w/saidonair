@@ -3,8 +3,9 @@
 **Implements:** `docs/specs/chat-origin-scope.md` under `AGENTS.md`; product contract `docs/PRD.md` §4.5, §5.2, §6,
 §7, §8, §9.
 **Written:** 2026-09-15, against `main` at `455c9e8`.
-**Status:** M4.1 complete 2026-09-16 (`97247d5`, decision record `24f2902`). M4.2 complete 2026-09-16. M4.3 spec
-and plan written 2026-09-16, artboards drawn, not started.
+**Status:** **all three chunks complete.** M4.1 2026-09-16 (`97247d5`, decision record `24f2902`), M4.2
+2026-09-16, M4.3 2026-09-17 with the owner's walkthrough done. What remains of M4 itself is the `CHECK` on
+`chat_messages.failure_code` and a pass over PRD §10.
 **Shape:** three chunks, each with its own spec and plan, in the shape M3 used. Origin and scope are **not** a chunk:
 they are woven through all three, so chat is never built global and then amended.
 
@@ -31,7 +32,7 @@ and no web screen — the Design phase deleted the placeholder rather than stubb
 |---|---|---|---|---|---|---|
 | M4.1 | `m4-1-chat-routes.md`, `-plan.md` | `routes/chats.ts` (three routes), `about_episode_id` and its plumbing, `getChat` on the DO, the OpenAPI entry | M | nothing | no: no screen calls them yet | complete 2026-09-16 (`97247d5`) |
 | M4.2 | `m4-2-chat-answering.md`, `-plan.md` | `lib/chat.ts`, the widened `lib/vectorize.ts` filter union and its fake, `POST /chats/:id/messages` with `aboutEpisodeId` and **five** outcomes, the chat prompt, `prompt_version`, staleness reconciliation, `lib/eligibility.ts` | L | M4.1 | no: still no screen | spec and plan written 2026-09-16, not started |
-| M4.3 | `m4-3-chat-web.md`, `-plan.md` | `/chats` as a history, `/chats/:id` with the sticky chip, `Ask` on the reading screen, per-message scope, source grouping and ascending timestamps, `Try again`, Account's chat-rules field | L | M4.2; its six artboards were drawn 2026-09-16 | yes: the whole feature | spec and plan written 2026-09-16 |
+| M4.3 | `m4-3-chat-web.md`, `-plan.md` | `/chats` as a history, `/chats/:id` with its own bar, the scope chip, `Ask` on the reading screen, per-message scope, source grouping and ascending timestamps, `Try again`, Account's chat-rules field | L | M4.2; artboards drawn 2026-09-16 and republished 2026-09-17 | yes: the whole feature | complete 2026-09-17, walkthrough done |
 
 ## Decisions the split made (2026-09-15)
 

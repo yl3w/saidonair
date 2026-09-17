@@ -6,8 +6,8 @@
 against this prose. Tokens, type and spacing are `docs/design.md` §2; every colour resolves through `var(--token)`
 so the three themes keep working with no per-component knowledge.
 **Written:** 2026-09-16, against `main` at `2ac6650`.
-**Status:** in progress. **Steps 1–4 complete 2026-09-16**, committed as two commits rather than four. Step 5, the
-walkthrough, is not started — and it is the only thing that verifies any of this.
+**Status:** complete 2026-09-17. **Steps 1–4 complete 2026-09-16**, committed as two commits rather than four. **Step 5 complete
+2026-09-17**, by the owner; it produced eleven further commits, which is recorded below.
 **Amended 2026-09-16, while building — the step boundaries were wrong twice, the same way.** Step 1 would have
 committed `Chats` into primary navigation pointing at a screen that did not exist; Step 3 would have committed a
 conversation screen whose composer said it arrived in Step 4. Both are the condition PRD §9 deleted the last
@@ -195,9 +195,32 @@ listing right of centre. Five causes, one of them a real bug:
   which was an accessibility failure as much as a comfort one.
 - The rail's "CHATS" header is gone: the nav item directly above it already says so.
 
-**Still unverified, and it needs a person:** criteria 4–6 and 12–14 — the chip across interactions, 390 px, the three
-themes, and the accessibility floor. Also unexercised: a reply with **more than one source card** (every question so
-far retrieved from a single episode), a truncated answer, and a failed reply with `Try again`.
+**Completed by the owner 2026-09-17.** It produced eleven commits, and two of them reversed decisions these very
+specs had made — which is the argument for the step existing. By theme:
+
+- **Two design reversals.** A conversation has **no rail of other chats**: §3 reserves a rail for navigation *about*
+  what is on the page, and a list of other conversations was the only one in the product navigating away from it.
+  With the rail gone the screen is about one object, so it takes **its own bar** — a way back and the chat's name,
+  at the `text-section` the guide assigns to chat titles. `/chats` lost its visible heading for the same reason
+  Queue and Sources never had one. `design.md` §5, `design-phase.md` §4.9 and §2.2 were all amended rather than
+  quietly contradicted, and the artboards were republished.
+- **Five utilities that did not exist** — `text-screen`, `text-tertiary`, `rounded-card`, `rounded-control`,
+  `tracking-label`. Tailwind emits nothing for an unknown utility, so the screen title had no size and every meta
+  line had no colour, through typecheck, lint, a build and a first pass.
+- **A layout bug in `Page`, affecting every screen.** `lg:w-fit` on the wrapper plus `w-full` on the column meant a
+  column shrink-wrapped to its content. Screens whose rows carry wrapping text never showed it; a composer and a
+  list of short chat rows did.
+- **The wrong font family everywhere in chat.** `font-serif` is fixed; `font-reading` follows the reader's choice on
+  Account. Sizes already scaled, so only the family ignored the setting — invisible until someone changed it.
+- **Two accessibility failures.** There was no keyboard path to asking a question at all until Enter sent; and
+  `min-h-11` on the timestamp links was not a 44 px target, because `min-height` does nothing to a non-replaced
+  inline element.
+- **The phone tab bar was `grid-cols-2` with three destinations**, wrapping to two rows — added in Step 1 and
+  invisible at desktop width.
+- **Bars did not align with their columns.** All three now take their column's measure, and the rule is in
+  `design.md` §3 rather than in three comments.
+
+Not exercised by any question during the walkthrough: a truncated answer, and a failed reply offering `Try again`.
 
 **One quality observation, not a defect.** An unscoped question across five episodes returned all six chunks from one
 of them, and the model answered that the excerpts did not mention others. Either the other four do not discuss the
