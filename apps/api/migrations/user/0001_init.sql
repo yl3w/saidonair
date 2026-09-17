@@ -31,7 +31,12 @@ CREATE TABLE chat_messages (
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
-  failure_code TEXT,
+  -- The closed set of reasons a reply is not there (docs/specs/m4-2-chat-answering.md §3.5). Added
+  -- at the end of M4, once every value had been produced through the fakes, as outcome_code's was:
+  -- a column constrained against values nobody has seen written is a guess with a CHECK on it.
+  failure_code TEXT CHECK (failure_code IS NULL OR failure_code IN (
+    'EMBEDDING_FAILED', 'RETRIEVAL_FAILED', 'MODEL_FAILED', 'ANSWER_TIMEOUT'
+  )),
   reply_to_message_id TEXT,
   channel_id TEXT,
   -- The episode a question was scoped to (docs/PRD.md §4.5; docs/specs/chat-origin-scope.md).

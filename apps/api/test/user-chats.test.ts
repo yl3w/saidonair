@@ -192,7 +192,7 @@ describe("user chats", () => {
       "INVALID_STATE",
     );
     await expectDomainError(
-      stub.failAssistantMessage("missing", "X"),
+      stub.failAssistantMessage("missing", "MODEL_FAILED"),
       "NOT_FOUND",
     );
   });
@@ -204,11 +204,11 @@ describe("user chats", () => {
 
     const failed = await stub.failAssistantMessage(
       assistantMessage.messageId,
-      "AI_ERROR",
+      "MODEL_FAILED",
     );
     expect(failed).toMatchObject({
       status: "failed",
-      failureCode: "AI_ERROR",
+      failureCode: "MODEL_FAILED",
       content: "",
     });
     expect((await stub.getMessages(chat.chatId)).map((m) => m.status)).toEqual([

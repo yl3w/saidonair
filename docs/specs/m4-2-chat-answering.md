@@ -139,9 +139,9 @@ The web renders one line, *"Answer shortened."*, which is rendered state and so 
 unlike §3.2's three stored replies, which are content.
 
 `failure_code` takes a closed set: `EMBEDDING_FAILED`, `RETRIEVAL_FAILED`, `MODEL_FAILED`, `ANSWER_TIMEOUT`. The
-matching `CHECK` is added at the end of M4, not here (decision 6). **All four are produced through the fakes as of
-2026-09-16**, so decision 6's precondition — every value seen before it is constrained — is met, and the `CHECK` is
-now waiting only on the milestone, not on evidence.
+matching `CHECK` is added at the end of M4, not here (decision 6). **Added 2026-09-17**, once all four had been
+produced through the fakes. It earned itself immediately: two tests were failing replies with `AI_ERROR` and `X`,
+codes nothing in the product emits, which nothing had been able to notice.
 
 **A `/clean-local` scoped to `UserDO` is owed before the next `pnpm dev`.**
 

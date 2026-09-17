@@ -104,6 +104,17 @@ describe("user migrations", () => {
         ),
       ).toThrow(/CHECK/i);
 
+      // A reply's failure code is a closed set, constrained at the end of M4 once every value had
+      // been produced for real (docs/PRD.md §5.3).
+      expect(() =>
+        sql.exec(
+          "UPDATE chat_messages SET status = 'failed', failure_code = 'NOPE' WHERE message_id = 'm2'",
+        ),
+      ).toThrow(/CHECK/i);
+      sql.exec(
+        "UPDATE chat_messages SET status = 'failed', failure_code = 'ANSWER_TIMEOUT' WHERE message_id = 'm2'",
+      );
+
       // Preferences are a singleton.
       expect(() =>
         sql.exec(

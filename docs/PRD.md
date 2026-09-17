@@ -564,6 +564,7 @@ Use `CHECK` constraints for these enums:
 | `episode_ingestion_attempts.status` | `running`, `available`, `failed`, `skipped`, `waiting`, `blocked` |
 | `episode_ingestion_attempts.outcome_code` | null, or one of the fourteen `AttemptOutcomeCode` values below (since 2026-09-13, M3.7; `LIVE_OR_UPCOMING` retired 2026-09-14) |
 | `chat_messages.role` | `user`, `assistant` |
+| `chat_messages.failure_code` | `EMBEDDING_FAILED`, `RETRIEVAL_FAILED`, `MODEL_FAILED`, `ANSWER_TIMEOUT` — constrained at the end of M4 (2026-09-17), once every value had been produced, as `outcome_code` was |
 | `chat_messages.status` | `pending`, `completed`, `failed` |
 
 `episode_ingestion_attempts.outcome_code` carries the attempt's reason, a closed set since 2026-09-12: a `waiting`
