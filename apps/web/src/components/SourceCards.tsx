@@ -33,7 +33,9 @@ export function SourceCards({ sources }: { sources: readonly ChatSource[] }) {
             {card.startSecs.map((startSec) => (
               <a
                 key={startSec}
-                class="min-h-11 text-ui text-primary md:min-h-0"
+                // inline-flex, not inline: min-height does nothing to a non-replaced
+                // inline element, so a bare `min-h-11` on an anchor is not a 44 px target.
+                class="inline-flex min-h-11 items-center text-ui text-primary md:min-h-0"
                 href={`https://youtu.be/${card.episodeId}?t=${Math.floor(startSec)}`}
               >
                 {momentCopy(startSec)}

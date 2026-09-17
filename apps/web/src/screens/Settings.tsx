@@ -152,7 +152,7 @@ function SettingsScreen() {
         note="Applied to chat answers alone, never to a summary — those are shared, and one reader's preferences cannot shape what everyone else reads."
       >
         <textarea
-          class="textarea w-full rounded-card border-edge bg-panel font-reading text-excerpt text-ink"
+          class="textarea w-full rounded-box border-edge bg-panel font-reading text-excerpt text-ink"
           rows={4}
           maxLength={4000}
           placeholder="Answer briefly. Prefer the guest's own words."

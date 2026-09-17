@@ -20,9 +20,11 @@ export function ScopeChip({
 }) {
   if (episodeTitle === null) return null;
   return (
-    <div class="mb-2.5 inline-flex items-center gap-2 rounded-selector border border-edge bg-panel py-1 pl-2.5 pr-1">
-      <span class="text-label uppercase text-ink-3">About</span>
-      <span class="font-serif text-ui text-ink">{episodeTitle}</span>
+    <div class="mb-2.5 flex w-fit max-w-full items-center gap-2 rounded-selector border border-edge bg-panel py-1 pl-2.5 pr-1">
+      <span class="shrink-0 text-label uppercase text-ink-3">About</span>
+      <span class="min-w-0 truncate font-serif text-ui text-ink">
+        {episodeTitle}
+      </span>
       <button
         type="button"
         class="flex size-11 items-center justify-center text-ink-3 md:size-6"
