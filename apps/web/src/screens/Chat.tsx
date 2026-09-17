@@ -68,6 +68,11 @@ function ChatScreen() {
         // Replace, not push: Back belongs to the summary Ask was pressed on, never to an empty
         // composer the reader has already left behind. Scope rides in state across this, so the
         // URL is the chat and nothing else.
+        //
+        // Seeded here rather than by the load below: the scope in state is the one this chat's
+        // only question was just sent under, so the conversation has nothing to add, and claiming
+        // it now means a dismissal made while the first reply is still loading survives.
+        seededFor.current = id;
         route(`/chats/${id}`, true);
       } else {
         reload();
@@ -77,11 +82,15 @@ function ChatScreen() {
     }
   }
 
+  // The loaded chat travels with its messages. A render can hold a `ready` load from the *previous*
+  // chatId — minting a chat replaces the URL and this screen re-renders before `useLoad` has
+  // started the new fetch, because preact-iso reuses the component across `/chats/new` and
+  // `/chats/:chatId` — and the seed below must not read that as "this chat asked nothing".
   const [load, reload] = useLoad(
     async () => {
-      if (chatId === null) return { messages: [] as Message[] };
+      if (chatId === null) return { chatId, messages: [] as Message[] };
       const { messages } = await api.getChatMessages(chatId);
-      return { messages };
+      return { chatId, messages };
     },
     [chatId],
     { retainDataOnReload: true },
@@ -95,15 +104,17 @@ function ChatScreen() {
    * question stores its own `aboutEpisodeId`, so the conversation is the record of what it is
    * currently searching and no URL parameter is needed to survive a refresh.
    *
-   * Seeded once, deliberately. `reload()` after every send would otherwise undo a dismissal — the
-   * reader clears the chip, asks a wide question, and the next load would put the chip back from
-   * the question before it. Within a session the reader's last gesture wins; across a reload the
-   * conversation does.
+   * Seeded once per chat, deliberately. `reload()` after every send would otherwise undo a
+   * dismissal — the reader clears the chip, asks a wide question, and the next load would put the
+   * chip back from the question before it. Within a session the reader's last gesture wins; across
+   * a reload the conversation does.
    */
-  const seeded = useRef(false);
+  const seededFor = useRef<string | null>(null);
   useEffect(() => {
-    if (seeded.current || load.status !== "ready" || chatId === null) return;
-    seeded.current = true;
+    if (load.status !== "ready" || chatId === null) return;
+    // Once per chat, and only from that chat's own messages.
+    if (seededFor.current === chatId || load.data.chatId !== chatId) return;
+    seededFor.current = chatId;
     const asked = [...load.data.messages]
       .reverse()
       .find((message) => message.role === "user");
