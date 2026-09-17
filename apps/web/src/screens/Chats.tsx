@@ -1,6 +1,7 @@
-import type { Chat } from "@media-digest/shared";
 import { api } from "../api";
 import { Page } from "../components/Page";
+import type { ChatRow } from "../lib/chat-rows";
+import { chatRow } from "../lib/chat-rows";
 import { CHATS_EMPTY_COPY, chatOriginCopy } from "../lib/copy";
 import { dayKeyOf, dayLabel } from "../lib/day";
 import { relativeTime } from "../lib/time";
@@ -17,9 +18,6 @@ export function Chats() {
   );
 }
 
-/** A chat with what its first message says about where it began. */
-type Row = { chat: Chat; origin: string | null; messages: number };
-
 /**
  * Every conversation the reader has started (docs/specs/m4-3-chat-web.md §3.1), newest first and
  * grouped by the day it was last active.
@@ -35,7 +33,7 @@ type Row = { chat: Chat; origin: string | null; messages: number };
 function ChatsScreen() {
   const [load] = useLoad(async () => {
     const { chats } = await api.listChats();
-    return Promise.all(chats.map(rowFor));
+    return Promise.all(chats.map(chatRow));
   }, []);
 
   return (
@@ -64,35 +62,10 @@ function ChatsScreen() {
   );
 }
 
-/**
- * A chat's origin is the scope of its first question. **Sources hang on the reply, never on the
- * question**, so the title cannot come from the asking message; it comes from whichever reply cited
- * that episode, and only when no reply did — a refusal carries no sources — is the episode fetched
- * by id. Two requests per chat in the worst case: the alternative is an origin field on
- * `GET /chats`, which is an API change M4.3 deliberately does not make
- * (docs/specs/m4-3-chat-web-plan.md, Step 2).
- */
-async function rowFor(chat: Chat): Promise<Row> {
-  const { messages } = await api.getChatMessages(chat.chatId);
-  const asked = messages.find((message) => message.role === "user");
-  const scope = asked?.aboutEpisodeId ?? null;
-  if (scope === null) return { chat, origin: null, messages: messages.length };
-
-  const cited = messages
-    .flatMap((message) => message.sources)
-    .find((source) => source.episodeId === scope);
-  if (cited !== undefined) {
-    return { chat, origin: cited.episodeTitle, messages: messages.length };
-  }
-
-  const { episode } = await api.getEpisodeById(scope);
-  return { chat, origin: episode.title, messages: messages.length };
-}
-
 /** Rows under the day they were last active, in the order `GET /chats` already answers them. */
-function groups(rows: readonly Row[]) {
+function groups(rows: readonly ChatRow[]) {
   const seen: string[] = [];
-  const byDay = new Map<string, Row[]>();
+  const byDay = new Map<string, ChatRow[]>();
   for (const row of rows) {
     const key = dayKeyOf(row.chat.updatedAt);
     if (!byDay.has(key)) {
@@ -115,7 +88,7 @@ function groups(rows: readonly Row[]) {
             class="block border-b border-rule py-[18px]"
           >
             <span class="block font-serif text-row-compact font-semibold leading-tight text-ink">
-              {row.chat.title ?? "Untitled chat"}
+              {row.name}
             </span>
             <span class="mt-1.5 block text-meta text-tertiary">
               {chatOriginCopy(row.origin)} · {row.messages} messages ·{" "}

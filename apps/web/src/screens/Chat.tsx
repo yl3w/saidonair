@@ -6,6 +6,7 @@ import { ChatMessage } from "../components/ChatMessage";
 import { Page } from "../components/Page";
 import { ScopeChip, ScopeLine } from "../components/ScopeChip";
 import { takeAskScope } from "../lib/ask-scope";
+import { chatRow, episodeTitle } from "../lib/chat-rows";
 import { ASK_PLACEHOLDER_COPY } from "../lib/copy";
 import { relativeTime } from "../lib/time";
 import { useDocumentTitle } from "../lib/title";
@@ -82,8 +83,14 @@ function ChatScreen() {
     { retainDataOnReload: true },
   );
 
-  const [rail] = useLoad(async () => (await api.listChats()).chats, []);
+  // The rail names chats the way `/chats` does — by their first question, because `chats.title` is
+  // never set and reading it would render every chat as "Untitled chat".
+  const [rail] = useLoad(
+    async () => Promise.all((await api.listChats()).chats.map(chatRow)),
+    [],
+  );
   const messages = load.status === "ready" ? load.data.messages : [];
+  const scopeTitles = useScopeTitles(messages);
 
   /**
    * **A reload picks the scope back up from the last question** (owner decision 2026-09-16). Each
@@ -133,24 +140,24 @@ function ChatScreen() {
             Chats
           </h2>
           <div class="border-t border-rule">
-            {(rail.status === "ready" ? rail.data : []).map((chat) => (
+            {(rail.status === "ready" ? rail.data : []).map((row) => (
               <a
-                key={chat.chatId}
-                href={`/chats/${chat.chatId}`}
+                key={row.chat.chatId}
+                href={`/chats/${row.chat.chatId}`}
                 class="block border-b border-rule py-3"
-                aria-current={chat.chatId === chatId ? "page" : undefined}
+                aria-current={row.chat.chatId === chatId ? "page" : undefined}
               >
                 <span
                   class={`block font-serif text-ui leading-tight ${
-                    chat.chatId === chatId
+                    row.chat.chatId === chatId
                       ? "font-semibold text-ink"
                       : "text-secondary"
                   }`}
                 >
-                  {chat.title ?? "Untitled chat"}
+                  {row.name}
                 </span>
                 <span class="mt-1 block text-meta text-tertiary">
-                  {relativeTime(chat.updatedAt)}
+                  {relativeTime(row.chat.updatedAt)}
                 </span>
               </a>
             ))}
@@ -169,7 +176,11 @@ function ChatScreen() {
         <ChatMessage
           key={message.messageId}
           message={message}
-          episodeTitle={titleFor(message, messages)}
+          episodeTitle={
+            message.aboutEpisodeId === null
+              ? null
+              : (scopeTitles.get(message.aboutEpisodeId) ?? null)
+          }
           onRetry={
             message.status === "failed"
               ? () => {
@@ -212,19 +223,29 @@ function ChatScreen() {
 }
 
 /**
- * The title of the episode a question was scoped to. Sources hang on the reply rather than the
- * question, so it comes from whichever reply in this chat cited that episode; a refusal cites
- * nothing, and the mark then names no title rather than inventing one.
+ * The titles of every episode this conversation's questions were scoped to, resolved once.
+ *
+ * Sources hang on the reply rather than the question, so a title usually comes from whichever reply
+ * cited that episode — but **a refusal, a nothing-found and a failure all cite nothing**, which is
+ * exactly where the reader most needs to know which episode it was about. Those are fetched by id
+ * (`lib/chat-rows.ts`), the same fallback `/chats` already uses for its origin line.
  */
-function titleFor(
-  message: Message,
-  messages: readonly Message[],
-): string | null {
-  if (message.aboutEpisodeId === null) return null;
-  return (
-    messages
-      .flatMap((other) => other.sources)
-      .find((source) => source.episodeId === message.aboutEpisodeId)
-      ?.episodeTitle ?? null
-  );
+function useScopeTitles(messages: readonly Message[]): Map<string, string> {
+  const scopes = [
+    ...new Set(
+      messages
+        .map((message) => message.aboutEpisodeId)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const key = scopes.join(",");
+  const [titles] = useLoad(async () => {
+    const resolved = await Promise.all(
+      scopes.map(async (id) => [id, await episodeTitle(id, messages)] as const),
+    );
+    return new Map(
+      resolved.filter((pair): pair is [string, string] => pair[1] !== null),
+    );
+  }, [key]);
+  return titles.status === "ready" ? titles.data : new Map();
 }
