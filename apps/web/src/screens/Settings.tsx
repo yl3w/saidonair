@@ -30,10 +30,11 @@ import { Guard, useReadySession, useSession } from "../session";
  * either a fact about this browser or a fact about this reader — nothing on this screen changes
  * anything anyone else sees.
  *
- * The chat rules field is not here. It shapes answers from a feature that cannot answer anything
- * yet, and a control that accepts input and reports it saved is worse than a missing one; it
- * returns with the screen in M4 (owner decision 2026-09-15, `docs/PRD.md` §9). `GET`/`PUT
- * /preferences` stay registered and anything already stored is untouched.
+ * **The chat rules field returned on 2026-09-16**, with the screen that gives it something to
+ * shape. It was held out from 2026-09-15 because a control that accepts input and reports it saved,
+ * while shaping answers from a feature that cannot answer anything, is worse than a missing one
+ * (owner decision, `docs/PRD.md` §9). `GET`/`PUT /preferences` stayed registered throughout, so a
+ * rule saved before the field was withdrawn comes back with it.
  */
 export function Settings() {
   useDocumentTitle("Account");
@@ -45,6 +46,25 @@ export function Settings() {
 }
 
 function SettingsScreen() {
+  const [rules, setRules] = useState("");
+  const [savingRules, setSavingRules] = useState(false);
+  useLoad(async () => {
+    const { preferences } = await api.getPreferences();
+    setRules(preferences.systemRules);
+    return preferences;
+  }, []);
+
+  /** Empty clears them, which is why a blank value is saved rather than skipped (PRD §7). */
+  async function saveRules() {
+    if (savingRules) return;
+    setSavingRules(true);
+    try {
+      await api.putPreferences({ systemRules: rules });
+    } finally {
+      setSavingRules(false);
+    }
+  }
+
   const { email, role } = useReadySession();
   const { signOut } = useSession();
   const { route } = useLocation();
@@ -122,6 +142,27 @@ function SettingsScreen() {
         <p class="mt-4 font-reading text-body text-ink-2">
           He spent the first twenty minutes on why the old measurement was
           wrong, and the rest on what replaces it.
+        </p>
+      </Section>
+
+      <Section
+        title="Chat rules"
+        note="Applied to chat answers alone, never to a summary — those are shared, and one reader's preferences cannot shape what everyone else reads."
+      >
+        <textarea
+          class="textarea w-full rounded-card border-edge bg-panel font-reading text-excerpt text-ink"
+          rows={4}
+          maxLength={4000}
+          placeholder="Answer briefly. Prefer the guest's own words."
+          value={rules}
+          disabled={savingRules}
+          onInput={(event) => setRules(event.currentTarget.value)}
+          onBlur={() => void saveRules()}
+        />
+        <p class="mt-2 text-meta text-ink-3">
+          {savingRules
+            ? "Saving…"
+            : "Saved when you click away. Empty clears them."}
         </p>
       </Section>
 

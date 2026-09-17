@@ -198,6 +198,37 @@ export const CURATE_LINK_COPY = "Open in Curate";
  * place in the same bar, so they are named the same way. Where they go is the external-link glyph's
  * job, and the tooltip's.
  */
+/** The two things a scope chip's presence changes, said in words (docs/specs/m4-3-chat-web.md §3.4). */
+export const SCOPE_ON_COPY = "Searches this episode only.";
+export const SCOPE_OFF_COPY = "Searches every channel you follow.";
+export const ASK_PLACEHOLDER_COPY = "Ask another question…";
+
+/** A cut-off answer is kept and trimmed, never failed (docs/PRD.md §9, 2026-09-16). */
+export const ANSWER_SHORTENED_COPY = "Answer shortened.";
+export const TRY_AGAIN_COPY = "Try again";
+
+/** The scope a question was sent under, or nothing at all when it was global. */
+export function chatScopeCopy(
+  aboutEpisodeId: string | null,
+  episodeTitle: string | null,
+): string | null {
+  if (aboutEpisodeId === null) return null;
+  return episodeTitle === null
+    ? "Asked about one episode"
+    : `Asked about ${episodeTitle}`;
+}
+
+/**
+ * Why a reply is not there. The reader is told what happened in their terms, never the code: the
+ * codes are `EMBEDDING_FAILED`, `RETRIEVAL_FAILED`, `MODEL_FAILED` and `ANSWER_TIMEOUT`, and the
+ * first three are the same event to a reader — the answer did not come back.
+ */
+export function chatFailureCopy(failureCode: string | null): string {
+  return failureCode === "ANSWER_TIMEOUT"
+    ? "This answer took too long and was given up on."
+    : "This answer could not be produced.";
+}
+
 /** Chats are started from a summary, so the empty state points there rather than at a button. */
 export const CHATS_EMPTY_COPY =
   "Chats begin on a summary. Open something from your queue and ask about it.";

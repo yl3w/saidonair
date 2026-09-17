@@ -6,12 +6,14 @@
 against this prose. Tokens, type and spacing are `docs/design.md` §2; every colour resolves through `var(--token)`
 so the three themes keep working with no per-component knowledge.
 **Written:** 2026-09-16, against `main` at `2ac6650`.
-**Status:** in progress. **Steps 1 and 2 complete 2026-09-16**, committed together — see the amendment below.
-Steps 3–5 not started.
-**Amended 2026-09-16, while building:** Step 1 as written ended with a commit that would have put `Chats` in
-primary navigation pointing at a screen that did not exist yet, which is the exact condition PRD §9 deleted the last
-placeholder over. The nav entry and the routes therefore land with Step 2, and the two steps commit together. A step
-boundary that leaves `main` advertising something unbuilt is the wrong boundary, however tidy it looks in a plan.
+**Status:** in progress. **Steps 1–4 complete 2026-09-16**, committed as two commits rather than four. Step 5, the
+walkthrough, is not started — and it is the only thing that verifies any of this.
+**Amended 2026-09-16, while building — the step boundaries were wrong twice, the same way.** Step 1 would have
+committed `Chats` into primary navigation pointing at a screen that did not exist; Step 3 would have committed a
+conversation screen whose composer said it arrived in Step 4. Both are the condition PRD §9 deleted the last
+placeholder over. Steps 1–2 and 3–4 therefore commit in pairs. The lesson is general and worth carrying to any web
+chunk: **a screen is the shippable unit here, not a layer of it** — the API could be built in five commits because
+each left a coherent contract behind, and a half-built screen never does.
 **Shape:** five code steps, each ending with `pnpm check` green and one commit when the owner asks. **The web
 workspace is typecheck and lint only — it has no tests** (`docs/specs/channel-simplification.md`), so every step's
 evidence is the browser, and Step 5 is the click-through that closes M4. Steps 1 and 2 are independent; 3 needs 2;
