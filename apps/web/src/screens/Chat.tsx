@@ -155,9 +155,14 @@ function ChatScreen() {
             {/* The chat's name, which is its first question. The transcript opens with that same
                 question, but the bar is sticky and the question is not: once a reader is a screen
                 into a long answer, this is the only thing on screen saying which conversation they
-                are in. Truncated, because a question is as long as someone felt like typing. */}
+                are in. Truncated, because a question is as long as someone felt like typing.
+                `text-section` because docs/design.md §2.2 assigns it to chat titles, and serif
+                because a question is the reader's own words — content, not chrome. It is the `h1`
+                too: this screen has no wordmark and no other heading, so the name is the page's. */}
             {name !== null && (
-              <span class="min-w-0 truncate text-ui text-ink">{name}</span>
+              <h1 class="min-w-0 truncate font-reading text-section font-semibold text-ink">
+                {name}
+              </h1>
             )}
           </div>
         </header>
