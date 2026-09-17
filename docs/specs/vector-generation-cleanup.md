@@ -164,6 +164,10 @@ Counts and ids only; no text ever reaches a log (PRD §1).
   rejects them, and a failing episode is not producing new ones either.
 - **An episode that is never re-ingested** keeps any stray it already has, forever. Decision 5's cron is the answer
   if that ever matters; at this scale it does not.
-- **Detection.** This spec makes a missed cleanup self-correcting but still invisible. If the owner wants to *know*,
-  the ledger already computes the orphan set from §4.1 and needs only somewhere to say so. Named, not built.
+- **Detection — declined by the owner, 2026-09-17**, not deferred. A missed cleanup is self-correcting on the next
+  successful publication and still invisible, and §4.1's ledger query would have made it observable for almost
+  nothing. Declined because the failure costs no reader anything, the recurring path heals itself, and fifteen
+  episodes do not need a monitoring surface. **The condition that would reopen it:** a cleanup failure that is not
+  self-correcting or not deterministic. This one was both — it always failed above 100 chunks and always succeeded
+  below — and it still read as a transient fault for a day, which is the argument detection would have had.
 - **The existing stray**, which decision 9 leaves to an Owner Retry of `pduZ-bfcKAQ` once this lands.

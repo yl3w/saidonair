@@ -1009,8 +1009,13 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   "Nothing in this episode covers that." about an episode they are reading — a confident and verifiable lie, where
   deleting late costs only candidate slots nobody can see. Verified end to end on 2026-09-17: a publication reporting
   `superseded: 3` deleted all three, and a 50-wide sweep of that channel went from 33 usable candidates to 50. What
-  stays open is detection: a cleanup that fails is now self-correcting but still silent. Reasoning:
-  `docs/specs/vector-generation-cleanup.md`.
+  **Detection was considered and declined — owner, 2026-09-17.** A cleanup that fails is
+  now self-correcting on the next successful publication, and still silent; the ledger computes the orphan set for
+  free, so saying so would have been cheap. It is not worth a surface at this size: the failure is inert to every
+  reader, the recurring path heals itself, and nothing here is deployed to anyone but the owner. What would reopen
+  it is a failure that is *not* self-correcting — episodes that stop being re-ingested, or a cleanup fault that is
+  intermittent rather than deterministic, since this one only stayed hidden because four short episodes succeeded
+  while the single long one could never have. Reasoning: `docs/specs/vector-generation-cleanup.md`.
 
 - **Lucide icons, and monograms where artwork is missing — decided 2026-09-14.** The icon set is Lucide, shipped as
   `lucide-preact` (the dependency approved 2026-09-15): one stroke weight, one grid, and a name for every glyph, so a
