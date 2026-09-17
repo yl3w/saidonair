@@ -254,7 +254,10 @@ first paint, so dark never starts white.
 **The frame.** A 56 px top bar: wordmark, then Queue · Sources (and Curate for the owner, desktop only, with
 a count that renders only when something waits), then the reader's email and monogram on the right.
 **A screen that is *about* one object takes its own bar instead** — a way back on the left, that object's own acts
-on the right, and no wordmark and no destinations (2026-09-15, PRD §9). The reading column has always done this;
+on the right, and no wordmark and no destinations (2026-09-15, PRD §9). **The bar takes its column's measure**, not
+the window's (2026-09-17): its contents line up with what is beneath them, so a reading column's bar is 680 px and a
+channel's is 760 px. A bar that spans the window puts the way back at the edge of the screen and the acts at the
+other edge, which reads as chrome belonging to the product rather than to the thing on the page. The reading column has always done this;
 a channel's page does too. A destination a reader *navigates to* keeps the nav; a page they *opened something to
 get to* carries the way back out. Back is the browser's own, because that is what "the page I came from" means —
 a remembered path is wrong the moment someone presses the browser's back button — with a real fallback for a

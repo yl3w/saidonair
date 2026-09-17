@@ -233,7 +233,9 @@ function SourceBar({ channel }: { channel: Channel | null }) {
   const { route } = useLocation();
   return (
     <header class="sticky top-0 z-20 border-b border-rule bg-ground">
-      <div class="mx-auto flex h-14 w-full items-center gap-2 px-5 md:px-8">
+      {/* Constrained to this screen's own measure, as the reading column's bar and a chat's are:
+          a bar belongs to the column beneath it, not to the window (2026-09-17). */}
+      <div class="mx-auto flex h-14 max-w-list items-center gap-2 px-5 md:px-8">
         <button
           type="button"
           class="flex size-11 items-center justify-center text-ink-2"
