@@ -40,7 +40,8 @@ Spec §4, all fourteen criteria, and the walkthrough below.
   `episode.read !== undefined` — `GET /episodes/:episodeId` returns `read` only to an eligible caller (PRD §7), so
   the screen already holds the answer and needs no second call. If that reads too clever in review, a `follows`
   lookup is the alternative and costs a request.
-- 1.3 It navigates to `/chats/new?about=<episodeId>` and writes nothing (spec decision 1). Nothing else on the
+- 1.3 It navigates to `/chats/new`, setting the scope in `lib/ask-scope.ts` on the way, and writes nothing (spec
+  decision 1, revised 2026-09-16: nothing is in the URL). Nothing else on the
   reading screen changes: `Done` still owns the only write.
 - 1.4 `main.tsx`: three routes — `/chats`, `/chats/new`, `/chats/:chatId` — with `new` declared **before** the
   parameterised one, or `preact-iso` matches `new` as a chat id.
@@ -109,13 +110,13 @@ episode in score order; the phone layout keeps roles as words.
 `apps/web/src/screens/Settings.tsx`, `apps/web/src/api.ts`.
 
 - 4.1 `ScopeChip.tsx`: the chip above the composer — an `About` label, the episode title, and a `✕` in a 44 px
-  target (owner decision 2026-09-16: the `✕` stays; no labelled control). Dismissing strips `?about=` from the URL
-  without a navigation that loses the draft.
+  target (owner decision 2026-09-16: the `✕` stays; no labelled control). Dismissing is `setScope(null)` — no
+  navigation at all, so the draft cannot be lost, which the URL version had left unverified.
 - 4.2 Beneath the composer, one line: "Searches this episode only." with a chip, "Searches every channel you
   follow." without. **This line is the only thing telling a reader that widening exists** — it is not decoration.
 - 4.3 The composer: on `/chats/new`, the first send calls `createChat()` then `sendMessage(...)` and **replaces**
-  the URL with `/chats/:chatId?about=…` (replace, not push, so Back returns to the summary rather than to an empty
-  composer). On an existing chat it sends and appends.
+  the URL with `/chats/:chatId` (replace, not push, so Back returns to the summary rather than to an empty
+  composer); the scope rides across in state. On an existing chat it sends and appends.
 - 4.4 The chip's episode title needs a title for an id the screen may not hold on `/chats/new` — fetch it with the
   existing `api.getEpisodeById`.
 - 4.5 `Settings.tsx`: the `system_rules` field returns against `GET`/`PUT /preferences` (registered since
@@ -143,9 +144,8 @@ has one followed channel and five scoped-searchable episodes.
     mark is least informative where the reader most needs it. `Chats.tsx` already falls back to
     `api.getEpisodeById` for the same problem; carry that fallback across. The alternative — naming the episode in
     the refusal text — is wrong: those sentences are stored content a reader sees again next week.
-  - Dismissing the chip is a `route(…, true)` on the same route, and **whether a half-typed question survives it is
-    unverified**. If the draft is lost, a reader who types a question, decides to widen, and clears the chip loses
-    what they wrote. Check it before anything else in this step.
+  - ~~Dismissing the chip is a `route(…, true)`~~ — **resolved 2026-09-16** by moving scope out of the URL:
+    dismissal is now `setScope(null)` with no navigation, so a draft cannot be lost. Nothing to check.
 - 5.5 Report what the click-through found. The Design phase's produced thirty-three commits; expect to find things.
 
 **Done when:** the owner has walked through it and M4 is declared complete.

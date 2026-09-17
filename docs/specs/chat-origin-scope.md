@@ -22,7 +22,8 @@ A chat now begins at a summary and nowhere else: `Ask` on `/read/:episodeId` is 
 opens is scoped to that episode. The scope is a property of each **message** — one optional `aboutEpisodeId` on
 `POST /chats/:id/messages`, one nullable `chat_messages.about_episode_id` — and never of the chat, so no chat holds
 state that follow changes could invalidate. The reader sees the scope as a chip that is sticky until dismissed and
-rides in the URL as `?about=<episodeId>`. Dismissing it returns the chat to every eligible channel.
+is the screen's own state, recovered on load from the chat's last question. Dismissing it returns the chat to
+  every eligible channel.
 
 The API delta is one optional field. The schema delta is one nullable column. Everything else is web and retrieval.
 
@@ -99,7 +100,7 @@ being failure** — the question to ask is what share of *read* episodes produce
 | 1 | `Ask` on a summary is the only entry to a chat | A "new chat" control anywhere else restores the blank box §2.1 removes |
 | 2 | Scope is per message, never on `chats` | Chat-level scope owes a policy for every unfollow, decline and re-approval, per chat; a hint owes nothing |
 | 3 | The chip is sticky until dismissed | A one-shot chip can be missed; a persistent one is a standing disclosure of what is being searched |
-| 4 | Scope rides in the web URL as `?about=` | A path identifies a resource, a query modifies one; a dismissable chip must leave a valid URL behind |
+| 4 | ~~Scope rides in the web URL as `?about=`~~ — **reversed 2026-09-16**: the chip is the screen's state | Two of the three reasons did not survive: a chat is not shareable (another identity gets 404), and an honest address bar is aesthetic. The third, surviving a reload, is answered better by the data — every question stores its own `aboutEpisodeId`, so a chat's scope is its last question's |
 | 5 | The API carries it in the message body | It belongs to the message being created. A web-route question and an API-resource question need not agree |
 | 6 | A hint narrows, never widens | Otherwise the parameter is a way to read chunks from a channel the caller does not follow |
 | 7 | Dismissing widens the chat to global | **The reversal the owner is most likely to want.** Cross-source synthesis is the one thing chat does that a transcript search cannot |
@@ -140,8 +141,9 @@ Validation order, because it decides which of three responses the reader gets:
 One chip above the input, showing the episode title and a dismiss control. Sticky: it survives message sends and
 reloads, persisting until dismissed. A second `Ask` **replaces** it; scope is one episode or none, never a set.
 
-It is held in the URL as `/chats/:id?about=<episodeId>` — that is what makes it survive a reload, and it makes a
-scoped chat linkable. Dismissing it strips the parameter and leaves `/chats/:id`, which is a valid chat URL.
+It is the screen's own state. **A reload recovers it from the chat's last question**, which already stores its own
+`aboutEpisodeId`, so the conversation is the record of what it is searching and the URL carries nothing. `Ask` hands
+the episode to a chat that does not exist yet; a reload of that empty composer lands unscoped.
 
 ### 4.4 Retrieval
 

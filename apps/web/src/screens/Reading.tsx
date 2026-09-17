@@ -8,6 +8,7 @@ import { Icon } from "../components/Icon";
 import { MetaLine } from "../components/MetaLine";
 import { Retry } from "../components/Retry";
 import { Sheet } from "../components/Sheet";
+import { setAskScope } from "../lib/ask-scope";
 import {
   ASK_COPY,
   ASK_HINT_COPY,
@@ -216,8 +217,9 @@ function ReadingScreen() {
             episode.read !== undefined && (
               <a
                 class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
-                href={`/chats/new?about=${encodeURIComponent(episode.episodeId)}`}
+                href="/chats/new"
                 title={ASK_HINT_COPY}
+                onClick={() => setAskScope(episode.episodeId)}
               >
                 {ASK_COPY}
                 <Icon of={MessageSquare} size={16} />

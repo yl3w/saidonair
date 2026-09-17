@@ -1,10 +1,11 @@
 import type { ChatMessage as Message } from "@media-digest/shared";
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
 import { ChatMessage } from "../components/ChatMessage";
 import { Page } from "../components/Page";
 import { ScopeChip, ScopeLine } from "../components/ScopeChip";
+import { takeAskScope } from "../lib/ask-scope";
 import { ASK_PLACEHOLDER_COPY } from "../lib/copy";
 import { relativeTime } from "../lib/time";
 import { useDocumentTitle } from "../lib/title";
@@ -30,14 +31,15 @@ export function Chat() {
  */
 function ChatScreen() {
   const { params } = useRoute();
-  const { url, route } = useLocation();
+  const { route } = useLocation();
   const chatId = params.chatId ?? null;
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState("");
 
-  // The chip lives in the URL, so a reload keeps it and a scoped chat is linkable. Reading it from
-  // the location rather than from state is what makes that true (docs/specs/m4-3-chat-web.md §2).
-  const scope = new URLSearchParams(url.split("?")[1] ?? "").get("about");
+  // Scope is component state and nothing is in the URL (owner decision 2026-09-16). `Ask` hands the
+  // episode over through `lib/ask-scope.ts` for a chat that does not exist yet; an existing chat
+  // recovers it from its own last question, below.
+  const [scope, setScope] = useState<string | null>(() => takeAskScope());
   const [scopeTitle] = useLoad(
     async () =>
       scope === null ? null : (await api.getEpisodeById(scope)).episode.title,
@@ -59,11 +61,9 @@ function ChatScreen() {
       setDraft("");
       if (chatId === null) {
         // Replace, not push: Back belongs to the summary Ask was pressed on, never to an empty
-        // composer the reader has already left behind.
-        route(
-          `/chats/${id}${scope === null ? "" : `?about=${encodeURIComponent(scope)}`}`,
-          true,
-        );
+        // composer the reader has already left behind. Scope rides in state across this, so the
+        // URL is the chat and nothing else.
+        route(`/chats/${id}`, true);
       } else {
         reload();
       }
@@ -84,6 +84,26 @@ function ChatScreen() {
 
   const [rail] = useLoad(async () => (await api.listChats()).chats, []);
   const messages = load.status === "ready" ? load.data.messages : [];
+
+  /**
+   * **A reload picks the scope back up from the last question** (owner decision 2026-09-16). Each
+   * question stores its own `aboutEpisodeId`, so the conversation is the record of what it is
+   * currently searching and no URL parameter is needed to survive a refresh.
+   *
+   * Seeded once, deliberately. `reload()` after every send would otherwise undo a dismissal — the
+   * reader clears the chip, asks a wide question, and the next load would put the chip back from
+   * the question before it. Within a session the reader's last gesture wins; across a reload the
+   * conversation does.
+   */
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || load.status !== "ready" || chatId === null) return;
+    seeded.current = true;
+    const asked = [...load.data.messages]
+      .reverse()
+      .find((message) => message.role === "user");
+    setScope(asked?.aboutEpisodeId ?? null);
+  }, [load, chatId]);
   const first = messages.find((message) => message.role === "user");
   useDocumentTitle(first?.content ?? "Chat");
 
@@ -165,9 +185,7 @@ function ChatScreen() {
       <div class="mt-7 border-t border-rule pt-4">
         <ScopeChip
           episodeTitle={scopedTitle}
-          onDismiss={() =>
-            route(chatId === null ? "/chats/new" : `/chats/${chatId}`, true)
-          }
+          onDismiss={() => setScope(null)}
         />
         <div class="flex items-end gap-2.5">
           <textarea

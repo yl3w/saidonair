@@ -24,7 +24,7 @@ After it, M4 is complete and chat works for a person rather than for `curl`.
 
 | # | Decision | Why not the alternative |
 |---|---|---|
-| 1 | `Ask` navigates to `/chats/new?about=<episodeId>` | §4.1 said only "the URL names no chat id". `new` is a reserved segment rather than a query flag so the composer route is one pattern, and a reload of a half-typed question keeps its scope. A chat id is minted by the first send, which is what keeps an abandoned `Ask` out of the history |
+| 1 | `Ask` navigates to `/chats/new` and hands the scope over in memory; **nothing is in the URL** | Owner decision 2026-09-16. `new` is a reserved segment so the composer route is one pattern. Scope is the screen's state: an existing chat recovers it from its last question, which is more authoritative than a parameter, and a chat that does not exist yet has only the navigation to carry it. A chat id is minted by the first send, which keeps an abandoned `Ask` out of the history |
 | 2 | Six source cards stack; nothing collapses | Unscoped keeps six chunks, so six episodes is the ceiling, and a card is three lines. Collapsing would hide the evidence the citation exists to show — and grouping already means a scoped reply is one card, not eight |
 | 3 | On a phone the role gutter becomes a line above the message | The 64 px gutter does not fit at 390 px. Roles stay words, never colour or alignment: a right-aligned bubble would be the "no bubbles" rule of §4.9 broken to save 64 px |
 | 4 | The chip keeps its `✕` rather than a labelled "Search everything" control | Owner decision 2026-09-16. The line beneath the composer — "Searches this episode only." / "Searches every channel you follow." — does the explaining, and a labelled control is heavier chrome for a mode a reader changes rarely |
@@ -37,8 +37,8 @@ After it, M4 is complete and chat works for a person rather than for `curl`.
 | Route | Screen | Notes |
 |---|---|---|
 | `/chats` | `Chats.tsx` | The history. No create control, no search, no delete |
-| `/chats/new` | `Chat.tsx` | The composer before a chat exists; `?about=` carries the scope |
-| `/chats/:chatId` | `Chat.tsx` | The conversation; `?about=` carries the sticky chip |
+| `/chats/new` | `Chat.tsx` | The composer before a chat exists; `lib/ask-scope.ts` carries the scope across the navigation |
+| `/chats/:chatId` | `Chat.tsx` | The conversation; the chip is state, recovered from the last question on load |
 
 `/chats` joins primary navigation for the first time (`docs/design.md` §3 anticipated it). The phone's tab bar goes
 from two destinations to three, each still 44 px.
@@ -65,8 +65,9 @@ keeps the failed reply above it (§4.9).
 
 ### 3.4 The chip
 
-Sticky until dismissed, carried as `?about=<episodeId>`. A second `Ask` replaces it; dismissing strips the parameter
-and leaves a valid chat URL. Beneath the composer, one line says which of the two is in force — the only thing
+Sticky until dismissed, and held as the screen's state. **A reload recovers it from the chat's last question** —
+every question stores its own `aboutEpisodeId`, so the conversation says what it is searching. Seeded once per load,
+deliberately: re-seeding after every send would undo a dismissal from the question before it. Beneath the composer, one line says which of the two is in force — the only thing
 telling a reader that widening exists.
 
 ### 3.5 Account
@@ -77,10 +78,12 @@ The `system_rules` field returns, against `GET`/`PUT /preferences`, which have b
 ## 4. Acceptance criteria
 
 1. `Ask` renders on an eligible, summarised episode with an active generation, and is absent otherwise.
-2. `Ask` navigates to `/chats/new?about=<episodeId>` and creates nothing; leaving without sending adds no chat to
-   `/chats`.
-3. The first send creates the chat and replaces the URL with `/chats/:chatId?about=<episodeId>`.
-4. The chip survives a reload, a second `Ask` replaces it, and dismissing it leaves `/chats/:chatId` valid.
+2. `Ask` navigates to `/chats/new` with the scope in memory and creates nothing; leaving without sending adds no
+   chat to `/chats`.
+3. The first send creates the chat and replaces the URL with `/chats/:chatId`; the scope carries over in state.
+3b. Reloading a scoped chat recovers the chip from its last question; reloading `/chats/new` lands unscoped.
+4. Dismissing the chip widens the next question; a dismissal that is never sent does not survive a reload, because
+   the conversation still says scoped.
 5. A message sent with the chip carries `aboutEpisodeId`; one sent after dismissal does not.
 6. Each message renders the scope it was sent under; a global one renders no mark.
 7. Several sources from one episode render as **one card**, its timestamps ascending, not in stored order.

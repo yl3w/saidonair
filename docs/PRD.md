@@ -766,9 +766,11 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   (decided 2026-09-15, §9): conversations are started by `Ask` on a summary and nowhere else, so the route lists what
   exists and offers no way to make a new one, and primary navigation still does not carry it. A chat is named by its
   first question, and the rail shows the episode that chat began at beside the name, because a chat born at a
-  summary reads as being about it. `/chats/:id` carries the sticky scope chip in its URL as `?about=<episodeId>` — a
-  query parameter, since scope modifies a chat rather than naming a different one, and dismissing the chip must
-  leave a valid URL behind. Each message in the transcript shows the scope it was sent under.
+  summary reads as being about it. **The scope chip is the screen's own state and nothing is in the URL** (decided
+  2026-09-16, reversing the day's earlier ruling). A reload recovers it from the chat's **last question**, which
+  already stores its own `aboutEpisodeId` — the conversation is the record of what it is searching, so no parameter
+  is needed to survive a refresh. `Ask` hands the episode to a chat that does not exist yet through the screen
+  itself; a reload of that empty composer, and a middle-click into a new tab, land unscoped. Each message in the transcript shows the scope it was sent under.
   **A reply's sources are grouped by episode and its timestamps ascend within each group** (decided 2026-09-16).
   Storage keeps them in score order, which is real information and stays recoverable from `position`; a reader
   scanning one episode's moments reads them in the order they were said, not the order they matched. So an unscoped
@@ -1488,11 +1490,15 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   still gates the query, so it can never reach a channel the caller does not follow. The chip is **sticky until
   dismissed** rather than clearing after one message, which turns it into a standing disclosure of what is being
   searched — the one thing a global chat could never tell a reader, whether a thin answer means nothing was said or
-  nothing was found. It rides in the web URL as `?about=<episodeId>`: a query parameter because scope modifies a chat
-  rather than identifying a different one, because a dismissable chip must leave a valid URL behind, and because a
-  path segment would need two route patterns for one screen. The API keeps it in the message body, where it belongs
-  to the message being created — a web-route decision and an API-resource decision are different questions and need
-  not match. **Dismissing the chip widens the chat to every eligible channel**, which is the ruling here the owner is
+  nothing was found. ~~It rides in the web URL as `?about=<episodeId>`.~~ **Reversed the same day**, when the owner asked why
+  the URL was carrying it at all. Three reasons had been given and two did not survive: a scoped chat is not
+  shareable, since chats live in the caller's own User DO and another identity gets a 404; and an honest address bar
+  is aesthetic. The third — that a reload would otherwise widen the search — turned out to be answered better by the
+  data: **every question stores its own `aboutEpisodeId`, so a chat's current scope is its last question's**, which
+  is more authoritative than a parameter and needs nothing in the URL. The chip is therefore the screen's state,
+  recovered from the conversation on load. Cost accepted: a dismissal that is never sent does not survive a reload —
+  the conversation still says scoped, so the chip returns. The API keeps the hint in the message body, where it
+  belongs to the message being created; a web decision and an API-resource decision were always separate questions. **Dismissing the chip widens the chat to every eligible channel**, which is the ruling here the owner is
   most likely to want back: it makes "no way to start a global chat" a speed bump rather than a rule. It stands
   because cross-source synthesis is the one thing chat does that a transcript search cannot, and forbidding it would
   cut the feature's ceiling to buy very little. Costs accepted: a genuinely global question — "what has anyone said
