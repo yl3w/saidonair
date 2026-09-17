@@ -22,11 +22,26 @@ import { requireEpisodeId } from "./youtube/ids";
  * gets a finished reply in one round trip.
  */
 
-/** Depth follows the question's scope (docs/PRD.md §6, decided 2026-09-16). */
+/**
+ * Depth follows the question's scope (docs/PRD.md §6, decided 2026-09-16). Since
+ * `docs/specs/chat-relevance-rerank.md` these are **caps, not quotas**: the floor below decides how
+ * many chunks a question deserves, and these decide how many it may have at most.
+ */
 export const SCOPED_KEEP = 8;
 export const SCOPED_CANDIDATES = 16;
 export const UNSCOPED_KEEP = 6;
 export const UNSCOPED_CANDIDATES = 24;
+/**
+ * The cross-encoder score below which a chunk does not bear on the question
+ * (docs/specs/chat-relevance-rerank.md §4.3). Measured, not guessed: at this value a question the
+ * corpus answers kept six chunks, one it partly answers kept one, and one it does not answer at all
+ * kept none — where the embedder's own cosine score had ranked the unanswerable question *highest*
+ * of the three and could carry no floor at any value.
+ *
+ * Three questions is three. `chat.reranked` logs what real ones score, and this constant is the one
+ * thing to move when they say it is wrong.
+ */
+export const RELEVANCE_FLOOR = 0.01;
 /** Exchanges of this chat's history in the prompt; the successor is a context budget (PRD §11). */
 export const HISTORY_EXCHANGES = 10;
 
@@ -46,6 +61,12 @@ export const NO_FOLLOWS_REPLY =
 export const SCOPE_INELIGIBLE_REPLY =
   "That episode's channel is no longer one you follow, so it cannot be searched. Remove the episode to ask across everything you follow.";
 export const NOTHING_FOUND_REPLY = "Nothing in what you follow covers that.";
+/**
+ * The same outcome for a scoped question, which needs its own words: the reader asked about one
+ * episode, and "what you follow" names something they did not ask about — worse, it reads as though
+ * the episode was never searched (owner decision 2026-09-17, choosing to floor scoped questions too).
+ */
+export const SCOPE_NOTHING_FOUND_REPLY = "Nothing in this episode covers that.";
 
 export type ChatDeps = {
   user: DurableObjectStub<UserDO>;
@@ -116,9 +137,11 @@ export async function answer(
     return fail(deps, exchange, codeFor(error));
   }
 
-  const kept = await validate(deps, matches, eligible, keep);
+  const validated = await validate(deps, matches, eligible);
+  const kept = await rank(deps, input.message, validated, keep, scope !== null);
 
-  // Outcome 4: nothing survived validation. Vectorize was called; the model is not.
+  // Outcome 4: nothing survived validation, or nothing cleared the floor. Vectorize was called; the
+  // answering model is not.
   if (kept.length === 0) {
     // The reader sees one sentence either way, so these two are logged apart. A filter that matches
     // nothing is the signature of a metadata index that does not cover the property being filtered
@@ -127,13 +150,24 @@ export async function answer(
     // infrastructure drift, not of an empty catalog. Counts and shapes only: no question text and
     // no transcript ever reaches a log (docs/PRD.md §1).
     console.log({
-      event: matches.length === 0 ? "chat.no_matches" : "chat.none_validated",
+      event:
+        matches.length === 0
+          ? "chat.no_matches"
+          : validated.length === 0
+            ? "chat.none_validated"
+            : "chat.below_floor",
       filter: scope === null ? "channelId" : "episodeId",
       candidates,
       matched: matches.length,
+      validated: validated.length,
       eligibleChannels: eligible.size,
     });
-    return settle(deps, exchange, NOTHING_FOUND_REPLY, []);
+    return settle(
+      deps,
+      exchange,
+      scope === null ? NOTHING_FOUND_REPLY : SCOPE_NOTHING_FOUND_REPLY,
+      [],
+    );
   }
 
   // Outcome 5: an answer.
@@ -182,6 +216,71 @@ export function trimToSentence(text: string): string {
 }
 
 /**
+ * The chunks that bear on the question, best first, capped at `keep`
+ * (docs/specs/chat-relevance-rerank.md §4.2).
+ *
+ * **Vector similarity ranks; the cross-encoder decides.** The embedder compares two independently
+ * made vectors, and its score answers "is this text like that text" — which is not the question
+ * being asked of it. Measured on 2026-09-17: a question the corpus could not answer at all scored
+ * *higher* than one it answered well, so no floor on that score is expressible at any value, and a
+ * chunk about Steve Jobs outranked three passages about the subject actually asked after. The
+ * cross-encoder reads the pair together and put that same chunk 22nd of 24.
+ *
+ * A failure here costs ordering, never an answer: the vector order and the cap are exactly what this
+ * function did before the reranker existed, so the fallback is the old behaviour rather than a
+ * degraded one.
+ */
+async function rank(
+  deps: ChatDeps,
+  question: string,
+  validated: readonly VectorMatch[],
+  keep: number,
+  scoped: boolean,
+): Promise<VectorMatch[]> {
+  if (validated.length === 0) return [];
+
+  let scores: number[];
+  try {
+    scores = await deps.ai.rerank(
+      question,
+      validated.map((match) => match.metadata.text),
+    );
+  } catch (error) {
+    console.log({
+      event: "chat.rerank_failed",
+      validated: validated.length,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    return [...validated].slice(0, keep);
+  }
+
+  // Sorted on score alone, and `sort` is stable, so chunks scoring exactly alike keep the order the
+  // vector query gave them. Ties are not hypothetical: a duplicated vector scores identically to its
+  // twin, and an arbitrary order between equals would make a test flaky for no reason.
+  const ranked = validated
+    .map((match, index) => ({ match, score: scores[index] ?? 0 }))
+    .sort((a, b) => b.score - a.score);
+  const above = ranked.filter((row) => row.score >= RELEVANCE_FLOOR);
+
+  console.log({
+    event: "chat.reranked",
+    scoped,
+    validated: validated.length,
+    aboveFloor: above.length,
+    kept: Math.min(above.length, keep),
+    topScore: round(ranked[0]?.score),
+    keptFloor: round(above[Math.min(above.length, keep) - 1]?.score),
+  });
+
+  return above.slice(0, keep).map((row) => row.match);
+}
+
+/** Four places is enough to tune a floor by and short enough to read in a log line. */
+function round(score: number | undefined): number | null {
+  return score === undefined ? null : Math.round(score * 10000) / 10000;
+}
+
+/**
  * Every validated chunk is its own source, in score order, including several from one episode.
  * **Grouping is the reader's view, not the record** (decided 2026-09-16): unscoped, the unit of
  * citation is the episode; scoped, every chunk is that same episode and the only thing a citation
@@ -199,15 +298,19 @@ function toSource(match: VectorMatch): ChatMessageSourceInput {
 }
 
 /**
- * Keeps matches in score order whose episode is still available, whose channel is still eligible,
- * and whose vector belongs to that episode's active generation (docs/PRD.md §6). An id that does not
- * parse is a rejection like any other.
+ * Every match whose episode is still available, whose channel is still eligible, and whose vector
+ * belongs to that episode's active generation (docs/PRD.md §6), in the order Vectorize returned
+ * them. An id that does not parse is a rejection like any other.
+ *
+ * **Every candidate, not the first few.** It stopped at the keep count until
+ * `docs/specs/chat-relevance-rerank.md`, which is the wrong shape once something downstream reorders:
+ * the chunk that turned out to matter most for the question that occasioned that spec sat at
+ * candidate 7 of 24 and was never validated at all.
  */
 async function validate(
   deps: ChatDeps,
   matches: readonly VectorMatch[],
   eligible: ReadonlySet<string>,
-  keep: number,
 ): Promise<VectorMatch[]> {
   if (matches.length === 0) return [];
   const states = await deps.registry.listEpisodeStates([
@@ -217,7 +320,6 @@ async function validate(
 
   const kept: VectorMatch[] = [];
   for (const match of matches) {
-    if (kept.length === keep) break;
     const state = byId.get(match.metadata.episodeId);
     // An episode the catalog no longer holds reads undefined here, which is a rejection like any
     // other: a vector can outlive the episode it came from.

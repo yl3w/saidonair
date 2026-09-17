@@ -169,8 +169,12 @@ never killed. Nothing polls; nothing sweeps.
 6. Retrieval that validates nothing stores the §3.2 empty reply, with zero AI calls and **one** Vectorize call.
 7. One valid chunk answers, with exactly that one source.
 8. A scoped question queries 16 candidates and keeps at most 8; an unscoped one queries 24 and keeps at most 6.
+   **Amended 2026-09-17** (`chat-relevance-rerank.md`): these are now ceilings rather than targets — a question
+   keeps only the chunks a cross-encoder scores above `RELEVANCE_FLOOR`, and may keep none.
 9. Every validated chunk is stored as its own source in score order, including several from one episode, so a
-   scoped reply carries one timestamp per kept chunk rather than one for the episode.
+   scoped reply carries one timestamp per kept chunk rather than one for the episode. **Amended 2026-09-17**
+   (`chat-relevance-rerank.md`): "score order" is the cross-encoder's score, not the embedder's cosine — the two
+   disagree, which is the whole point of that spec.
 10. A match whose generation differs from the episode's `activeVectorGeneration` is skipped, and a deeper candidate
     takes its place.
 11. A match whose episode is unavailable, or whose channel has become ineligible, is skipped the same way.

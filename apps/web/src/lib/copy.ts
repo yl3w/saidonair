@@ -203,6 +203,13 @@ export const SCOPE_ON_COPY = "Searches this episode only.";
 export const SCOPE_OFF_COPY = "Searches every channel you follow.";
 export const ASK_PLACEHOLDER_COPY = "Ask another question…";
 
+/**
+ * What the source cards under a reply are (docs/specs/chat-relevance-rerank.md §4.6). **"Based on",
+ * not "Sources":** the cards are the excerpts the answer was written from, and the model chooses
+ * which of them to lean on — a label claiming each one was used would be a claim nothing verifies.
+ */
+export const SOURCES_LABEL = "Based on";
+
 /** A cut-off answer is kept and trimmed, never failed (docs/PRD.md §9, 2026-09-16). */
 export const ANSWER_SHORTENED_COPY = "Answer shortened.";
 export const TRY_AGAIN_COPY = "Try again";

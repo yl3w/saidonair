@@ -8,8 +8,11 @@ import {
   EMBEDDING_MODEL,
   FAKE_INVALID,
   FAKE_INVALID_ONCE,
+  FAKE_IRRELEVANT,
+  FAKE_RERANK_THROW,
   FAKE_THROW,
   FAKE_TRUNCATE,
+  RERANK_MODEL,
   realClient,
   resetAiFake,
   SUMMARY_MODEL,
@@ -296,5 +299,74 @@ describe("chat answers", () => {
     await expect(realClient(empty.binding).answer("ask")).rejects.toThrow(
       /ANSWER_FAILED/,
     );
+  });
+});
+
+describe("reranking", () => {
+  it("asks for a score per passage and returns them in input order", async () => {
+    // Deliberately shuffled, and deliberately not the order asked: the rows carry their own index,
+    // and reading them positionally would mis-attribute every score.
+    const s = stub(() => ({
+      response: [
+        { id: 2, score: 0.9 },
+        { id: 0, score: 0.1 },
+        { id: 1, score: 0.5 },
+      ],
+    }));
+    const scores = await realClient(s.binding).rerank("q", ["a", "b", "c"]);
+
+    expect(scores).toEqual([0.1, 0.5, 0.9]);
+    expect(s.calls[0]?.model).toBe(RERANK_MODEL);
+    expect(s.calls[0]?.inputs).toEqual({
+      query: "q",
+      contexts: [{ text: "a" }, { text: "b" }, { text: "c" }],
+      // The whole point: a smaller top_k leaves the tail unscored, which reads as irrelevant.
+      top_k: 3,
+    });
+  });
+
+  it("scores a passage the model left out as zero rather than failing", async () => {
+    const s = stub(() => ({ response: [{ id: 1, score: 0.4 }] }));
+    expect(await realClient(s.binding).rerank("q", ["a", "b"])).toEqual([
+      0, 0.4,
+    ]);
+  });
+
+  it("ignores rows naming an index or a score it cannot use", async () => {
+    const s = stub(() => ({
+      response: [
+        { id: 9, score: 0.9 },
+        { id: 0, score: "high" },
+        { id: 1, score: Number.NaN },
+        null,
+      ],
+    }));
+    expect(await realClient(s.binding).rerank("q", ["a", "b"])).toEqual([0, 0]);
+  });
+
+  it("calls no model for no passages", async () => {
+    const s = stub(() => ({ response: [] }));
+    expect(await realClient(s.binding).rerank("q", [])).toEqual([]);
+    expect(s.calls).toHaveLength(0);
+  });
+
+  it("fails when the model returns no scores", async () => {
+    const s = stub(() => ({ response: "not an array" }));
+    await expect(realClient(s.binding).rerank("q", ["a"])).rejects.toThrow(
+      /RERANK_FAILED/,
+    );
+  });
+
+  it("fakes descending scores, a zero for the marked passage, and a throw on the query", async () => {
+    expect(await fake().rerank("q", ["a", "b", "c"])).toEqual([1, 0.5, 1 / 3]);
+    expect(await fake().rerank("q", ["a", `b ${FAKE_IRRELEVANT}`])).toEqual([
+      1, 0,
+    ]);
+    await expect(
+      fake().rerank(`q ${FAKE_RERANK_THROW}`, ["a"]),
+    ).rejects.toThrow(/RERANK_FAILED/);
+    // Its own marker, because the question reaches the answering prompt verbatim: the shared
+    // FAKE_THROW would fail the answer as well, and the fallback under test would never be seen.
+    expect(await fake().rerank(`q ${FAKE_THROW}`, ["a"])).toEqual([1]);
   });
 });

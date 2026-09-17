@@ -25,6 +25,14 @@ export const SUMMARY_MAX_TOKENS = 1024;
 export const CHAT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 /** A scoped answer draws on up to eight chunks, so a ceiling below its evidence is the wrong constraint. */
 export const CHAT_MAX_TOKENS = 1024;
+/**
+ * The cross-encoder that decides whether a retrieved chunk bears on the question
+ * (docs/specs/chat-relevance-rerank.md §4.1). Its own constant, like `CHAT_MODEL`: tuning retrieval
+ * must not be able to move answering. It scores the (question, passage) pair jointly rather than
+ * comparing two independently made embeddings, which is why its scores separate where the
+ * embedder's cosine does not — §2 of that spec is the measurement.
+ */
+export const RERANK_MODEL = "@cf/baai/bge-reranker-base";
 
 export type Embedder = {
   /** One vector per text, each `EMBEDDING_DIMENSIONS` wide; at most `EMBEDDING_BATCH` texts. */
@@ -55,7 +63,16 @@ export type Answerer = {
   answer(prompt: string): Promise<Answer>;
 };
 
-export type AiClient = Embedder & Summarizer & Answerer;
+export type Reranker = {
+  /**
+   * One relevance score per passage, **in the order given** — not sorted, and never shorter than the
+   * input. The caller pairs them back to its own candidates by index, so a reordering here would
+   * silently mis-attribute every score.
+   */
+  rerank(query: string, passages: readonly string[]): Promise<number[]>;
+};
+
+export type AiClient = Embedder & Summarizer & Answerer & Reranker;
 
 export function ai(env: { AI?: Ai; AI_FAKE?: string }): AiClient {
   if (env.AI_FAKE !== undefined)
@@ -105,7 +122,63 @@ export function realClient(binding: Ai): AiClient {
       }
       return { text: raw.response, truncated: isTruncated(raw) };
     },
+    async rerank(query, passages) {
+      if (passages.length === 0) return [];
+      const inputs: RerankInput = {
+        query,
+        contexts: passages.map((text) => ({ text })),
+        // Never optional. The runtime returns only `top_k` rows, so a smaller value leaves the tail
+        // unscored, and an unscored passage reads downstream as irrelevant — which is a quieter,
+        // worse version of the defect this model was added to fix.
+        top_k: passages.length,
+      };
+      const result = (await binding.run(
+        RERANK_MODEL,
+        inputs as never,
+      )) as RerankResponse;
+      return requireScores(result?.response, passages.length);
+    },
   };
+}
+
+/**
+ * **`query` is missing from the platform's own input type.** `Ai_Cf_Baai_Bge_Reranker_Base_Input`
+ * carries the JSDoc for it — "A query you wish to perform against the provided contexts" — and then
+ * declares only `top_k` and `contexts`, so the one field the model cannot work without does not
+ * typecheck (workers-types 5.20260907.1, verified against the live model 2026-09-17). Hence the local
+ * type and the single `as never` at the call: the same treatment `ChatCompletion` gets below, and for
+ * the same reason — do not widen the platform types to claim a contract Cloudflare has not published.
+ * Recheck on the next workers-types bump; when the field appears, this type and the cast both go.
+ */
+type RerankInput = {
+  query: string;
+  contexts: { text: string }[];
+  top_k: number;
+};
+
+/** One row per context, carrying the context's **input index** as `id`. */
+type RerankResponse = {
+  response?: unknown;
+};
+
+/**
+ * Scores back in input order. A row for an index that never arrives scores `0` rather than throwing:
+ * the model omitting a context is a relevance judgement of sorts, and one missing row must not cost a
+ * reader the whole answer. A non-array `response` is a failed call, which the caller catches.
+ */
+function requireScores(response: unknown, expected: number): number[] {
+  if (!Array.isArray(response)) {
+    throw new Error("RERANK_FAILED: the model returned no scores");
+  }
+  const scores = new Array<number>(expected).fill(0);
+  for (const row of response) {
+    const { id, score } = (row ?? {}) as { id?: unknown; score?: unknown };
+    if (typeof id !== "number" || typeof score !== "number") continue;
+    if (!Number.isInteger(id) || id < 0 || id >= expected) continue;
+    if (!Number.isFinite(score)) continue;
+    scores[id] = score;
+  }
+  return scores;
 }
 
 /**
@@ -168,6 +241,14 @@ function requireVectors(data: unknown, expected: number): number[][] {
 export const FAKE_INVALID_ONCE = "[[invalid-once]]";
 /** Drives `answer` to a reply that stops mid-sentence, for the trim path. */
 export const FAKE_TRUNCATE = "[[truncate]]";
+/** In a **passage**, drives `rerank` to score it zero, so the relevance floor is drivable. */
+export const FAKE_IRRELEVANT = "[[irrelevant]]";
+/**
+ * In the **question**, drives `rerank` to throw, so its fallback is drivable. Its own marker rather
+ * than `FAKE_THROW`: the question is copied verbatim into the answering prompt, so the shared marker
+ * would fail the answer too and a test could never see the fallback it was written for.
+ */
+export const FAKE_RERANK_THROW = "[[rerank-throw]]";
 export const FAKE_INVALID = "[[invalid]]";
 export const FAKE_THROW = "[[throw]]";
 
@@ -236,6 +317,17 @@ function fakeClient(options: FakeOptions): AiClient {
         };
       }
       return { text: cannedAnswer(prompt), truncated: false };
+    },
+    async rerank(query, passages) {
+      // The marker goes on the query, not a passage: a test failing the call should not have to make
+      // one chunk special, and a passage marker already means something else.
+      if (query.includes(FAKE_RERANK_THROW))
+        throw new Error("RERANK_FAILED: canned failure");
+      // Descending by input order, so a test that says nothing about relevance sees the order the
+      // vector query returned — every test written before the reranker existed still means what it meant.
+      return passages.map((passage, index) =>
+        passage.includes(FAKE_IRRELEVANT) ? 0 : 1 / (index + 1),
+      );
     },
   };
 }

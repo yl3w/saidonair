@@ -119,6 +119,12 @@ sentences. The split is the fastest way to tell a reader what is content and wha
 **12 px is the floor for anything bearing meaning**, uppercase labels included — they are the hardest to read small,
 so they get the floor, not an exception below it.
 
+**The Label token also names a group of things.** A chat message's role sits in it, and so does the line above a
+reply's source cards. The rule is what the word may claim: a label names what the group *is*, never what it did —
+the cards under an answer say "Based on" and not "Sources", because the model chooses which excerpts to lean on and
+nothing downstream can verify that each one was used (`docs/specs/chat-relevance-rerank.md` §4.6). A label that
+overstates is worse than no label, because a reader trusts the smaller type as machine fact.
+
 ### 2.3 Space, shape, and line
 
 A 4 px base. Page padding 32 px desktop, 20 px phone. The reading column is 680 px; list columns are 760 px; the

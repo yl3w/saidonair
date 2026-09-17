@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { ai, FAKE_THROW, FAKE_TRUNCATE } from "../src/lib/ai";
+import {
+  ai,
+  FAKE_IRRELEVANT,
+  FAKE_RERANK_THROW,
+  FAKE_THROW,
+  FAKE_TRUNCATE,
+} from "../src/lib/ai";
 import {
   answer,
   type ChatDeps,
   NO_FOLLOWS_REPLY,
   NOTHING_FOUND_REPLY,
   SCOPE_INELIGIBLE_REPLY,
+  SCOPE_NOTHING_FOUND_REPLY,
   SCOPED_CANDIDATES,
   trimToSentence,
   UNSCOPED_CANDIDATES,
@@ -40,6 +47,7 @@ function chunkOf(
   channelId: string,
   index: number,
   generationId = `gen-${episodeId}`,
+  text = `transcript text ${index}`,
 ): { id: string; values: number[]; metadata: ChunkMetadata } {
   return {
     id: `${episodeId}:${generationId}:${index}`,
@@ -52,20 +60,26 @@ function chunkOf(
       title: `Episode ${episodeId}`,
       startSec: index * 60,
       endSec: index * 60 + 60,
-      text: `transcript text ${index}`,
+      text,
       publishedAt: 1_000,
     },
   };
 }
 
 /** Wraps the fakes so a test can assert a branch called neither of them. */
-function spied(vectors: VectorStore) {
+function spied(
+  vectors: VectorStore,
+  rerank?: (query: string, passages: readonly string[]) => Promise<number[]>,
+) {
   const queries: QueryOptions[] = [];
   const aiCalls: string[] = [];
+  /** The passages each rerank call saw, so a test can prove it was handed every candidate. */
+  const reranked: readonly string[][] = [];
   const client = ai({ AI_FAKE: "{}" });
   return {
     queries,
     aiCalls,
+    reranked,
     vectors: {
       ...vectors,
       async query(ns: typeof SHARED_NAMESPACE, v: number[], o: QueryOptions) {
@@ -83,6 +97,10 @@ function spied(vectors: VectorStore) {
         aiCalls.push(prompt);
         return client.answer(prompt);
       },
+      async rerank(query: string, passages: readonly string[]) {
+        (reranked as string[][]).push([...passages]);
+        return (rerank ?? client.rerank)(query, passages);
+      },
     },
   };
 }
@@ -90,10 +108,17 @@ function spied(vectors: VectorStore) {
 async function deps(
   eligible: string[],
   seed: (store: VectorStore) => Promise<void> = async () => {},
-): Promise<ChatDeps & { queries: QueryOptions[]; aiCalls: string[] }> {
+  rerank?: (query: string, passages: readonly string[]) => Promise<number[]>,
+): Promise<
+  ChatDeps & {
+    queries: QueryOptions[];
+    aiCalls: string[];
+    reranked: readonly string[][];
+  }
+> {
   const store = vectorStore({ VECTORIZE_FAKE: "{}" });
   await seed(store);
-  const spy = spied(store);
+  const spy = spied(store, rerank);
   return {
     user: userDO(ALICE),
     registry: registry(),
@@ -102,7 +127,26 @@ async function deps(
     eligible: new Set(eligible),
     queries: spy.queries,
     aiCalls: spy.aiCalls,
+    reranked: spy.reranked,
   };
+}
+
+/** Captures the structured log lines a branch writes, and always restores `console.log`. */
+async function captureLog<T>(
+  run: () => Promise<T>,
+): Promise<{ result: T; lines: Record<string, unknown>[] }> {
+  const lines: Record<string, unknown>[] = [];
+  const log = console.log;
+  console.log = (entry: unknown) => {
+    if (typeof entry === "object" && entry !== null) {
+      lines.push(entry as Record<string, unknown>);
+    }
+  };
+  try {
+    return { result: await run(), lines };
+  } finally {
+    console.log = log;
+  }
 }
 
 describe("answering a chat question", () => {
@@ -419,5 +463,196 @@ describe("a stored hint outlives the follow it was asked under", () => {
     expect(afterRefollow[0]?.aboutEpisodeId).toBe(EPISODE_A);
     // And the reply's citation snapshots are the ones taken when it was written, not re-derived.
     expect(afterRefollow[1]?.sources).toEqual(afterUnfollow[1]?.sources);
+  });
+});
+
+describe("relevance (docs/specs/chat-relevance-rerank.md)", () => {
+  /** Ten episodes, one chunk each: more candidates than any keep count. Ids are 11 characters,
+      as every episode id in this product is (`lib/youtube/ids.ts`). */
+  const TEN = Array.from({ length: 10 }, (_, i) => `relevance-${i}`);
+
+  async function tenEpisodes() {
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    for (const id of TEN) await seedEpisode(id, CHANNEL_A);
+  }
+
+  it("reranks every validated candidate, not the first few", async () => {
+    await tenEpisodes();
+    const d = await deps([CHANNEL_A], async (store) => {
+      await store.upsert(
+        SHARED_NAMESPACE,
+        TEN.map((id) => chunkOf(id, CHANNEL_A, 0)),
+      );
+    });
+    const chat = await d.user.createChat();
+
+    await answer(d, { chatId: chat.chatId, message: "across everything" });
+
+    // Ten validated, six kept: the reranker must see all ten or the chunk that matters most can
+    // never climb into the answer, which is the defect this exists for.
+    expect(d.reranked).toHaveLength(1);
+    expect(d.reranked[0]).toHaveLength(10);
+  });
+
+  it("stores sources in rerank order, not the order the vector query returned", async () => {
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_A);
+    // Exactly inverts the candidate order, so an implementation that kept vector order passes
+    // nothing here by accident.
+    const d = await deps(
+      [CHANNEL_A],
+      async (store) => {
+        await store.upsert(SHARED_NAMESPACE, [
+          chunkOf(EPISODE_A, CHANNEL_A, 0),
+          chunkOf(EPISODE_A, CHANNEL_A, 1),
+          chunkOf(EPISODE_A, CHANNEL_A, 2),
+        ]);
+      },
+      async (_query, passages) => passages.map((_, i) => (i + 1) / 10),
+    );
+    const chat = await d.user.createChat();
+
+    const { assistantMessage } = await answer(d, {
+      chatId: chat.chatId,
+      message: "what did they say?",
+    });
+
+    expect(assistantMessage.sources.map((s) => s.startSec)).toEqual([
+      120, 60, 0,
+    ]);
+  });
+
+  it("drops a chunk below the floor from the sources and from the prompt", async () => {
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_A);
+    const d = await deps([CHANNEL_A], async (store) => {
+      await store.upsert(SHARED_NAMESPACE, [
+        chunkOf(EPISODE_A, CHANNEL_A, 0),
+        chunkOf(
+          EPISODE_A,
+          CHANNEL_A,
+          1,
+          undefined,
+          `off topic ${FAKE_IRRELEVANT}`,
+        ),
+        chunkOf(EPISODE_A, CHANNEL_A, 2),
+      ]);
+    });
+    const chat = await d.user.createChat();
+
+    const { assistantMessage } = await answer(d, {
+      chatId: chat.chatId,
+      message: "what did they say?",
+    });
+
+    expect(assistantMessage.status).toBe("completed");
+    expect(assistantMessage.sources.map((s) => s.startSec)).toEqual([0, 120]);
+    expect(d.aiCalls.at(-1) ?? "").not.toContain("off topic");
+  });
+
+  it("answers the unscoped sentence when nothing clears the floor, without asking the model", async () => {
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_A);
+    const d = await deps([CHANNEL_A], async (store) => {
+      await store.upsert(SHARED_NAMESPACE, [
+        chunkOf(EPISODE_A, CHANNEL_A, 0, undefined, `a ${FAKE_IRRELEVANT}`),
+        chunkOf(EPISODE_A, CHANNEL_A, 1, undefined, `b ${FAKE_IRRELEVANT}`),
+      ]);
+    });
+    const chat = await d.user.createChat();
+
+    const { result, lines } = await captureLog(() =>
+      answer(d, { chatId: chat.chatId, message: "about something else" }),
+    );
+
+    expect(result.assistantMessage.content).toBe(NOTHING_FOUND_REPLY);
+    expect(result.assistantMessage.sources).toEqual([]);
+    // Vectorize was called and the answering model was not — the one observable difference
+    // between this outcome and an empty catalog.
+    expect(d.queries).toHaveLength(1);
+    expect(d.aiCalls).toEqual(["embed"]);
+    // A third reason for one sentence, kept distinguishable in logs from the other two.
+    expect(lines.map((l) => l.event)).toContain("chat.below_floor");
+  });
+
+  it("answers the scoped sentence for a scoped question, naming the episode and not the follows", async () => {
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_A);
+    const d = await deps([CHANNEL_A], async (store) => {
+      await store.upsert(SHARED_NAMESPACE, [
+        chunkOf(EPISODE_A, CHANNEL_A, 0, undefined, `a ${FAKE_IRRELEVANT}`),
+      ]);
+    });
+    const chat = await d.user.createChat();
+
+    const { assistantMessage } = await answer(d, {
+      chatId: chat.chatId,
+      message: "something this episode never covers",
+      aboutEpisodeId: EPISODE_A,
+    });
+
+    expect(assistantMessage.content).toBe(SCOPE_NOTHING_FOUND_REPLY);
+    // The assertion that would pass either way if the two shared a sentence.
+    expect(assistantMessage.content).not.toBe(NOTHING_FOUND_REPLY);
+    expect(assistantMessage.sources).toEqual([]);
+  });
+
+  it("answers from vector order when the reranker fails, and never fails the reply", async () => {
+    await tenEpisodes();
+    const d = await deps([CHANNEL_A], async (store) => {
+      await store.upsert(
+        SHARED_NAMESPACE,
+        TEN.map((id) => chunkOf(id, CHANNEL_A, 0)),
+      );
+    });
+    const chat = await d.user.createChat();
+
+    const { result, lines } = await captureLog(() =>
+      answer(d, {
+        chatId: chat.chatId,
+        // Its own marker: FAKE_THROW here would fail the answering call too, and the fallback
+        // under test would never run.
+        message: `across everything ${FAKE_RERANK_THROW}`,
+      }),
+    );
+
+    expect(result.assistantMessage.status).toBe("completed");
+    expect(result.assistantMessage.failureCode).toBeNull();
+    // Exactly the behaviour that predates the reranker: vector order, cut at the keep count.
+    expect(result.assistantMessage.sources).toHaveLength(UNSCOPED_KEEP);
+    expect(result.assistantMessage.sources.map((s) => s.episodeId)).toEqual(
+      TEN.slice(0, UNSCOPED_KEEP),
+    );
+    const failed = lines.find((l) => l.event === "chat.rerank_failed");
+    expect(failed).toMatchObject({ validated: 10 });
+  });
+
+  it("logs the scores it ranked by, and no text", async () => {
+    await seedApprovedChannel(CHANNEL_A, OWNER);
+    await seedEpisode(EPISODE_A, CHANNEL_A);
+    const d = await deps([CHANNEL_A], async (store) => {
+      await store.upsert(SHARED_NAMESPACE, [
+        chunkOf(EPISODE_A, CHANNEL_A, 0),
+        chunkOf(EPISODE_A, CHANNEL_A, 1),
+      ]);
+    });
+    const chat = await d.user.createChat();
+
+    const { lines } = await captureLog(() =>
+      answer(d, { chatId: chat.chatId, message: "a question" }),
+    );
+
+    const entry = lines.find((l) => l.event === "chat.reranked");
+    expect(entry).toMatchObject({
+      scoped: false,
+      validated: 2,
+      aboveFloor: 2,
+      kept: 2,
+      topScore: 1,
+    });
+    // No question and no transcript ever reaches a log (docs/PRD.md §1).
+    const text = JSON.stringify(entry);
+    expect(text).not.toContain("a question");
+    expect(text).not.toContain("transcript text");
   });
 });

@@ -644,7 +644,17 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
   available with an active generation or it is not, and all its candidates stand or fall together. Neither candidate
   count may exceed **50**, the most Vectorize returns when metadata is requested, and chat always requests metadata
   because the metadata is the citation.
-- **Every validated chunk is stored as its own source, in score order** (revised 2026-09-16, §9). Grouping several
+- **A cross-encoder decides relevance; vector similarity only ranks** (added 2026-09-17, §9). Every validated
+  candidate is rescored by `@cf/baai/bge-reranker-base` against the question, and a chunk scoring below
+  `RELEVANCE_FLOOR` is not used and not cited — in a scoped question as in an unscoped one. The keep counts above
+  become ceilings rather than targets: a question keeps what bears on it, which may be nothing, and that is how
+  "Nothing in what you follow covers that." is now reached honestly. The embedding score cannot carry that floor at
+  any value: measured on 2026-09-17, a question the corpus could not answer at all scored **higher** than one it
+  answered well. The reranker's pair limit is 512 tokens against the 480-token chunk cap above, so a long chunk's
+  tail is truncated out of the comparison; the measured behaviour already includes that. A rerank failure falls back
+  to vector order and never costs a reader their answer.
+- **Every validated chunk is stored as its own source, in score order** — the reranker's score since 2026-09-17
+  (revised 2026-09-16, §9). Grouping several
   chunks of one episode into one citation is the reader's view and belongs to the web, not to the record: unscoped,
   the unit of citation is the episode; scoped, every chunk is that same episode and the only thing a citation can
   carry is *when*. Collapsing before storage would throw those timestamps away before any screen could choose.
@@ -941,6 +951,30 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   `wrangler dev`. Follow the engineering constraints and setup commands in `AGENTS.md`.
 
 ## 9. Decisions and retention
+
+- **A cross-encoder decides what a chat answer is built from — decided 2026-09-17** after a live defect: an unscoped
+  question about a true-crime episode cited *What 12 Years of Failure Taught Steve Jobs About Success*. Nothing had
+  malfunctioned. Retrieval ranked by the embedder's cosine score and kept a fixed six, so the sixth slot was filled
+  by whatever came next once the genuinely relevant chunks ran out, and the source cards showed it as evidence.
+  **The finding worth keeping is that the cosine score cannot carry a relevance floor at any value**: replayed
+  against the live index, a question the corpus had zero coverage of scored **0.717** where the question it answered
+  well scored **0.681**, and the mis-cited chunk outranked three on-topic ones. A relative floor fails for the same
+  reason — at `0.95 × top` the wrong chunk survives, at `0.96 × top` two chunks survive and the answer loses its best
+  detail. Adding the BGE query-instruction prefix, which the model documents for retrieval, made it worse. So the
+  floor moved onto a model built to judge pairs: `@cf/baai/bge-reranker-base` put that same chunk 22nd of 24, and
+  separates a question with no coverage (top 0.0061) from one with coverage (top 0.5334). The floor applies to scoped
+  questions too — **the owner's call, against the first draft**, which had exempted them on the grounds that a weak
+  citation from the episode on screen misleads nobody: a reader who asks something an episode does not answer is owed
+  that sentence, not eight timestamps implying otherwise. It costs a fourth fixed reply, "Nothing in this episode
+  covers that." Retrieval now answers from as many chunks as bear on the question, from none upward, and the keep
+  counts are ceilings. Full reasoning and measurements: `docs/specs/chat-relevance-rerank.md`.
+- **Open defect: a superseded vector generation can outlive its replacement — found 2026-09-17.** Episode
+  `pduZ-bfcKAQ` has two generations live in `media-rag-dev`; the dead one takes **17 of 50** candidate slots in its
+  channel and cost two of twenty-four on a real question during the walkthrough above. Retrieval rejects them
+  correctly on generation mismatch, so no citation is wrong and nothing is user-visible — the cost is that the
+  over-fetch is spent on vectors that cannot be used. §4.2 rule 26's cleanup runs after a replace and is designed to
+  swallow its own failures, so once one misses, nothing retries it and nothing detects it. Not yet fixed, and named
+  here so it is not rediscovered from scratch.
 
 - **Lucide icons, and monograms where artwork is missing — decided 2026-09-14.** The icon set is Lucide, shipped as
   `lucide-preact` (the dependency approved 2026-09-15): one stroke weight, one grid, and a name for every glyph, so a

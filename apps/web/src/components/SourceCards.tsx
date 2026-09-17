@@ -1,5 +1,5 @@
 import type { ChatSource } from "@media-digest/shared";
-import { momentCopy } from "../lib/copy";
+import { momentCopy, SOURCES_LABEL } from "../lib/copy";
 
 /**
  * A reply's citations (docs/specs/m4-3-chat-web.md §3.3). The API stores **one source per retrieved
@@ -10,7 +10,11 @@ import { momentCopy } from "../lib/copy";
  * construction, so without grouping a reply would show the same title eight times; and a reader
  * scanning one episode's moments wants them in the order they were said, not the order they
  * matched. Card order stays first-appearance, which is score order — the strongest match first
- * (docs/PRD.md §9, 2026-09-16).
+ * (docs/PRD.md §9, 2026-09-16), where the score has been the cross-encoder's since
+ * `docs/specs/chat-relevance-rerank.md`.
+ *
+ * The group takes a label, because a bare stack of cards under a reply reads as a claim the answer
+ * cited each one, and nothing in the product can make that claim (§4.6 of that spec).
  */
 export function SourceCards({ sources }: { sources: readonly ChatSource[] }) {
   const cards = groupByEpisode(sources);
@@ -18,6 +22,9 @@ export function SourceCards({ sources }: { sources: readonly ChatSource[] }) {
 
   return (
     <div class="mt-4 flex flex-col gap-2.5">
+      {/* Chrome naming a group, not content: the label token, the same treatment the role gutter
+          beside every message uses (docs/design.md §2.2). */}
+      <span class="text-label uppercase text-ink-3">{SOURCES_LABEL}</span>
       {cards.map((card) => (
         <div
           key={card.episodeId}
