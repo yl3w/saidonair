@@ -990,8 +990,10 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   record of what exists. **The order is the part not to touch:** publish, then delete. Deleting first would empty an
   episode that is on screen and answerable, and since the floor-both decision above the reader would be told
   "Nothing in this episode covers that." about an episode they are reading — a confident and verifiable lie, where
-  deleting late costs only candidate slots nobody can see. What stays open is detection: a cleanup that fails is now
-  self-correcting but still silent. Reasoning: `docs/specs/vector-generation-cleanup.md`.
+  deleting late costs only candidate slots nobody can see. Verified end to end on 2026-09-17: a publication reporting
+  `superseded: 3` deleted all three, and a 50-wide sweep of that channel went from 33 usable candidates to 50. What
+  stays open is detection: a cleanup that fails is now self-correcting but still silent. Reasoning:
+  `docs/specs/vector-generation-cleanup.md`.
 
 - **Lucide icons, and monograms where artwork is missing — decided 2026-09-14.** The icon set is Lucide, shipped as
   `lucide-preact` (the dependency approved 2026-09-15): one stroke weight, one grid, and a name for every glyph, so a

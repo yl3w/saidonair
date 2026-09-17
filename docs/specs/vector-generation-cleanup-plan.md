@@ -19,8 +19,16 @@ Everything else in the walkthrough behaved as specified: `superseded: 2` on the 
 `cleanup:<generationId>` steps, failures logged, publication standing, episode `available`. The mechanism was right
 and the ceiling was wrong.
 
-**Still owed: one more Retry of `pduZ-bfcKAQ`.** There are now three superseded generations rather than two, and
-the next publication should delete all three.
+**Second Retry, 2026-09-17: COMPLETE and verified.** `ingest.published` carried `superseded: 3`, no
+`cleanup_failed` followed it, and a 50-wide sweep of the channel now returns **one generation per episode and 50 of
+50 usable candidates** — against 33 of 50 before. The spec's whole claim, measured end to end:
+
+| | before | after |
+|---|---|---|
+| generations on `pduZ-bfcKAQ` | 3 | 1 |
+| usable of a 50-candidate sweep | 33 | 50 |
+
+Both faults were needed. The plural delete found all three; the corrected ceiling let each of them through.
 
 **Step 2.4 was wrong, and the correction is the interesting part of this change.** The plan called the two existing
 assertions a mechanical rename. One of them could not be renamed: it seeded an `available` episode, which
