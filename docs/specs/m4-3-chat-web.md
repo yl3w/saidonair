@@ -54,7 +54,12 @@ disabled**. `GET /episodes/:episodeId` already answers everything the condition 
 **No rail of other chats, and the screen takes its own bar** (owner decision 2026-09-17). §3 reserves a rail for
 navigation *about* what is on the page; a list of different conversations navigates away from it, `/chats` is one
 click away in the nav, and a chat here is not a workspace — it begins at a summary, serves a few questions, and is
-left. The bar carries a way back to `/chats` and nothing else, because nothing renames or deletes a chat.
+left. The bar carries a way back and **the chat's name**, which is its first question. The transcript opens with that
+same question, but the bar is sticky and the question is not — a screen into a long answer, the bar is the only thing
+saying which conversation this is. It is truncated, because a question is as long as someone felt like typing. The
+right side stays empty: nothing renames or deletes a chat, so there are no acts to put there. Back is `goBack()` with
+`/chats` as the fallback, as a channel's bar does — the browser's own history is what "the page I came from" means
+(§3), and the fallback is for a pasted link.
 
 Roles in the left gutter, no bubbles. A question shows the scope it was sent under — "Asked about *<title>*", or
 nothing at all when it was global. An answer renders as plain text with newlines preserved; only `youtube.com` URLs

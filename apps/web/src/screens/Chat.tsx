@@ -8,8 +8,9 @@ import { Icon } from "../components/Icon";
 import { Page } from "../components/Page";
 import { ScopeChip, ScopeLine } from "../components/ScopeChip";
 import { takeAskScope } from "../lib/ask-scope";
+import { goBack } from "../lib/back";
 import { episodeTitle } from "../lib/chat-rows";
-import { ASK_PLACEHOLDER_COPY } from "../lib/copy";
+import { ASK_PLACEHOLDER_COPY, BACK_COPY } from "../lib/copy";
 import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { Guard } from "../session";
@@ -109,7 +110,8 @@ function ChatScreen() {
     setScope(asked?.aboutEpisodeId ?? null);
   }, [load, chatId]);
   const first = messages.find((message) => message.role === "user");
-  useDocumentTitle(first?.content ?? "Chat");
+  const name = first?.content ?? null;
+  useDocumentTitle(name ?? "Chat");
 
   /** `Try again` resends the same question, with the same scope, as a new attempt (§4.9). */
   async function retry(question: Message) {
@@ -138,13 +140,22 @@ function ChatScreen() {
            Back is the browser's own; this is the fallback for a reader who arrived by a pasted
            link and has nowhere to return to. */
         <header class="sticky top-0 z-20 border-b border-rule bg-ground">
-          <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
-            <a
-              href="/chats"
-              class="flex size-11 items-center justify-center text-ink-2"
+          <div class="mx-auto flex h-14 w-full items-center gap-2 px-5 md:px-8">
+            <button
+              type="button"
+              class="flex size-11 shrink-0 items-center justify-center text-ink-2"
+              onClick={() => goBack(() => route("/chats"))}
             >
-              <Icon of={ArrowLeft} size={20} label="Chats" />
-            </a>
+              <Icon of={ArrowLeft} size={20} label={BACK_COPY} />
+            </button>
+
+            {/* The chat's name, which is its first question. The transcript opens with that same
+                question, but the bar is sticky and the question is not: once a reader is a screen
+                into a long answer, this is the only thing on screen saying which conversation they
+                are in. Truncated, because a question is as long as someone felt like typing. */}
+            {name !== null && (
+              <span class="min-w-0 truncate text-ui text-ink">{name}</span>
+            )}
           </div>
         </header>
       }
