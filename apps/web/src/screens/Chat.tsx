@@ -41,12 +41,13 @@ function ChatScreen() {
   // episode over through `lib/ask-scope.ts` for a chat that does not exist yet; an existing chat
   // recovers it from its own last question, below.
   const [scope, setScope] = useState<string | null>(() => takeAskScope());
-  const [scopeTitle] = useLoad(
+  const [scoped] = useLoad(
     async () =>
-      scope === null ? null : (await api.getEpisodeById(scope)).episode.title,
+      scope === null ? null : (await api.getEpisodeById(scope)).episode,
     [scope],
   );
-  const scopedTitle = scopeTitle.status === "ready" ? scopeTitle.data : null;
+  const episode = scoped.status === "ready" ? scoped.data : null;
+  const scopedTitle = episode?.title ?? null;
 
   /** The first question mints the chat; every later one appends to it. */
   async function send() {
@@ -135,10 +136,7 @@ function ChatScreen() {
     <Page
       measure="reading"
       rail={
-        <nav>
-          <h2 class="mb-2 text-label uppercase tracking-label text-tertiary">
-            Chats
-          </h2>
+        <nav aria-label="Your chats">
           <div class="border-t border-rule">
             {(rail.status === "ready" ? rail.data : []).map((row) => (
               <a
@@ -193,30 +191,52 @@ function ChatScreen() {
         />
       ))}
 
-      <div class="mt-7 border-t border-rule pt-4">
+      {messages.length === 0 && load.status === "ready" && (
+        <div class="mb-8">
+          <h1 class="font-serif text-screen font-semibold tracking-tight text-ink">
+            {scopedTitle === null
+              ? "Ask across everything you follow"
+              : `Ask about ${scopedTitle}`}
+          </h1>
+          {episode !== null && (
+            <p class="mt-1.5 text-meta text-tertiary">{episode.channelTitle}</p>
+          )}
+        </div>
+      )}
+
+      <div
+        class={messages.length === 0 ? "" : "mt-7 border-t border-rule pt-4"}
+      >
         <ScopeChip
           episodeTitle={scopedTitle}
           onDismiss={() => setScope(null)}
         />
-        <div class="flex items-end gap-2.5">
-          <textarea
-            class="textarea min-h-11 w-full flex-1 rounded-card border-edge bg-panel font-serif text-body text-ink"
-            rows={2}
-            placeholder={ASK_PLACEHOLDER_COPY}
-            value={draft}
-            disabled={sending}
-            onInput={(event) => setDraft(event.currentTarget.value)}
-          />
+        <textarea
+          class="textarea w-full resize-none rounded-card border-edge bg-panel font-serif text-body text-ink"
+          rows={3}
+          placeholder={ASK_PLACEHOLDER_COPY}
+          value={draft}
+          disabled={sending}
+          onInput={(event) => setDraft(event.currentTarget.value)}
+          // Enter sends, Shift+Enter breaks the line. Without it the only way to ask is the mouse.
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void send();
+            }
+          }}
+        />
+        <div class="mt-2.5 flex items-center justify-between gap-4">
+          <ScopeLine scoped={scope !== null} />
           <button
             type="button"
-            class="btn btn-sm min-h-11 border-edge bg-primary text-ui text-panel"
+            class="btn btn-sm min-h-11 shrink-0 border-edge bg-primary text-ui text-panel"
             disabled={sending || draft.trim().length === 0}
             onClick={() => void send()}
           >
             {sending ? "…" : "Send"}
           </button>
         </div>
-        <ScopeLine scoped={scope !== null} />
       </div>
     </Page>
   );

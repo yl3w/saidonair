@@ -40,7 +40,7 @@ export function ScopeChip({
 /** Which of the two is in force, said in words beneath the composer. */
 export function ScopeLine({ scoped }: { scoped: boolean }) {
   return (
-    <span class="mt-2 block text-meta text-tertiary">
+    <span class="text-meta text-tertiary">
       {scoped ? SCOPE_ON_COPY : SCOPE_OFF_COPY}
     </span>
   );

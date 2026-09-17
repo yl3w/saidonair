@@ -179,6 +179,22 @@ Rendered unsorted, a reader's timestamps would jump backwards and forwards; the 
 - `titleFor` named no episode exactly where it mattered most — the refusal, nothing-found and failed cases, none of
   which cite anything. Unresolved scopes are now fetched by id.
 
+**Fixed 2026-09-17, from a screenshot of `/chats/new`.** The empty composer sat adrift in a mostly blank page,
+listing right of centre. Five causes, one of them a real bug:
+
+- **The column was the wrong width.** `Page` wraps a rail layout in `lg:w-fit` so column and rail centre as a group,
+  and the column's `w-full` inside a fit-to-content parent resolves to its *content's* width — so a column holding
+  something narrow shrink-wraps and the page lists sideways. Beside a rail the column now takes a definite
+  `lg:w-reading` / `lg:w-list`. Every rail screen is affected, so History wants an eye.
+- **The empty state had never been designed.** §4.9 lists "the first run" among its states; the composer had been
+  built as a tail appended to a transcript, so with no transcript it floated under a stray rule. There is now a
+  serif heading naming what the chat will search — the episode, or everything followed — with the channel beneath.
+- The rule above the composer renders only when there are messages to rule off.
+- The input is full width with `resize-none` (the browser's grabber was showing), `Send` moved beneath it beside the
+  scope line, and **Enter sends with Shift+Enter for a newline** — there had been no keyboard path to asking at all,
+  which was an accessibility failure as much as a comfort one.
+- The rail's "CHATS" header is gone: the nav item directly above it already says so.
+
 **Still unverified, and it needs a person:** criteria 4–6 and 12–14 — the chip across interactions, 390 px, the three
 themes, and the accessibility floor. Also unexercised: a reply with **more than one source card** (every question so
 far retrieved from a single episode), a truncated answer, and a failed reply with `Try again`.
