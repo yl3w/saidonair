@@ -825,9 +825,12 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   here, in a **diagnostics row each episode opens on request** — nothing is removed, and nothing diagnostic is on
   by default. **Retry on every row, Skip on failed rows only**; Retry is quiet rather than accent on an episode
   that is already summarised, where it would replace a working summary and spend a transcript credit, so the accent
-  keeps meaning "you can act on this". Retry carries its reason on the row
-  while it is unavailable, naming who started the attempt that is holding it and when it frees up; after an hour
-  the route reconciles a dead instance inline (§4.2 rule 17). Never shows any user's read or chat activity.
+  keeps meaning "you can act on this". **An episode with a running attempt says so in its status column** —
+  "Re-processing · running for 2 min", which outranks the settled status beneath it — and Retry is simply
+  unavailable, and looks it, with no sentence beside it (revised 2026-09-17, §9). The one line the row still carries
+  is the takeover, and only once it is real: past an hour the engine has probably lost the instance and Retry claims
+  it (§4.2 rule 17). **The table refetches itself while any attempt is running and makes no requests otherwise.**
+  Never shows any user's read or chat activity.
 - **Three rules the screens share.** Declining an approved channel confirms in a native `<dialog>` naming the
   follower count and what those readers lose; nothing else confirms, because nothing else is felt by anyone but the
   person doing it. An action in flight says so, and an unavailable one carries its reason on the row rather than
@@ -957,6 +960,20 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   `wrangler dev`. Follow the engineering constraints and setup commands in `AGENTS.md`.
 
 ## 9. Decisions and retention
+
+- **Work in progress is a state, not a footnote — decided 2026-09-17** after the owner watched a Retry they had just
+  started. The row said *"bhaskar.maddala@protonmail.com started this; Retry is available in 60 min"* beside a status
+  column still reading "Summarised" and a Retry button that looked pressable and was not. Every part of that was
+  wrong, and **the design guide had prescribed it**: its interaction rule asked an in-flight action to say who
+  started it and an unavailable one to carry a countdown, so the screen was obeying the guide rather than departing
+  from it. The email named the reader to themselves, since owner screens have one owner. The hour was the
+  force-takeover deadline for a background instance the engine appears to have lost, not an estimate — the attempt
+  finishes in two or three minutes and frees Retry then — so the line counted down to the wrong event, overstated it
+  twentyfold, and never ticked, because the screen had no refresh at all. **Elapsed, not remaining**: "running for
+  2 min" cannot be wrong and needs no estimate the product does not have. The status column now carries the
+  in-progress state, which outranks whatever the episode last came to rest as; an unavailable control looks
+  unavailable; and a screen showing background work refreshes while it lasts and only while it lasts. `docs/design.md`
+  §4 is rewritten, because a rule that produced this is the thing to fix.
 
 - **A cross-encoder decides what a chat answer is built from — decided 2026-09-17** after a live defect: an unscoped
   question about a true-crime episode cited *What 12 Years of Failure Taught Steve Jobs About Success*. Nothing had

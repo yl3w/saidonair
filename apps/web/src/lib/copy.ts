@@ -79,6 +79,17 @@ export const EPISODE_STATUS_COPY: Record<EpisodeStatus, string> = {
   skipped: "No summary",
 };
 
+/**
+ * What a row says while an attempt is running, which outranks every settled status above: those
+ * describe what the episode last came to rest as, and this describes what is happening to it now
+ * (docs/design.md §4 — the in-progress state every screen owes). An episode with a summary is being
+ * *re*-processed, and saying so is the difference between a table that looks stuck and one that is
+ * visibly working.
+ */
+export function inProgressCopy(status: EpisodeStatus): string {
+  return status === "available" ? "Re-processing" : "Summarising";
+}
+
 export const SKIP_REASON_COPY: Record<EpisodeSkipReason, string> = {
   SHORT: "under three minutes",
   NON_ENGLISH: "no English captions",
@@ -475,23 +486,34 @@ export const SOURCE_SORTS = {
 const HOUR_MS = 60 * 60 * 1000;
 
 /**
- * Why Retry is unavailable, on the row rather than in a tooltip: an unavailable control carries its
- * reason, never a dead grey button (docs/design.md §4). An attempt under an hour old holds the
- * episode; after that the route reconciles a lost instance itself (docs/PRD.md §4.2 rule 17).
+ * Whether an attempt is holding this episode, and what the row should say about it.
+ *
+ * **Rewritten 2026-09-17** after the owner read the old line on a live Retry. It said
+ * "<their own email> started this; Retry is available in 60 min", and all three parts were wrong.
+ * The email named the reader to themselves — Curate is the owner's screen, so an owner-triggered
+ * attempt was started by whoever is reading the line. The hour was `RECONCILE_AFTER_MS`, the point
+ * at which Retry force-takes-over an instance the engine appears to have lost (docs/PRD.md §4.2
+ * rule 17) — a crash valve, not an estimate. A normal attempt finishes in two or three minutes and
+ * frees Retry then, so the line counted down to the wrong event and overstated it twentyfold. And it
+ * was computed once at render on a screen that never refetches, so it did not even count down.
+ *
+ * What a row owes instead is elapsed time, which cannot be wrong, and the takeover only once it is
+ * genuinely available. Where an attempt is running now lives in the status column, not in a footnote
+ * beside a disabled button (docs/design.md §4).
  */
-export function retryWaitCopy(
+export function attemptHoldCopy(
   attempt: EpisodeIngestionAttempt | null,
   now = Date.now(),
 ): string | null {
   if (attempt === null || attempt.status !== "running") return null;
-  const left = attempt.startedAt + HOUR_MS - now;
-  if (left <= 0) return null;
-  const minutes = Math.max(1, Math.round(left / 60_000));
-  const who =
-    attempt.trigger === "owner_retry" && attempt.requestedByEmail !== null
-      ? `${attempt.requestedByEmail} started this`
-      : "An attempt is running";
-  return `${who}; Retry is available in ${minutes} min`;
+  return now - attempt.startedAt >= HOUR_MS
+    ? "Running over an hour — Retry will take it over."
+    : null;
+}
+
+/** Whether an attempt is running, which is what makes Retry unavailable and the row in progress. */
+export function isRunning(attempt: EpisodeIngestionAttempt | null): boolean {
+  return attempt?.status === "running";
 }
 
 /** The decline confirmation names who loses what, not "are you sure" (docs/design.md §4). */

@@ -3,9 +3,11 @@ import type { ComponentChildren } from "preact";
 import { api } from "../api";
 import {
   attemptCountCopy,
+  attemptHoldCopy,
   CHANNEL_ACTION_COPY,
   failureDetailCopy,
-  retryWaitCopy,
+  isRunning,
+  runningForCopy,
 } from "../lib/copy";
 import { relativeTime } from "../lib/time";
 import { useLoad } from "../lib/use-load";
@@ -214,8 +216,12 @@ function FailedEpisodes({
 
 /**
  * A failed episode with the two things that can be done to it. **Skip renders on failed episodes
- * only** (docs/PRD.md §7), which is what this list holds; Retry says on the row when it is not
- * available yet and who started the attempt that is holding it, rather than greying out silently.
+ * only** (docs/PRD.md §7), which is what this list holds.
+ *
+ * A running attempt is said in the row's own facts line — "retrying, running for 2 min" — rather
+ * than in a sentence beside a disabled button (2026-09-17). Retry is unavailable while one holds the
+ * episode, and becomes an action again past the hour, when the engine has probably lost the instance
+ * and Retry takes it over (docs/PRD.md §4.2 rule 17).
  */
 function EpisodeRow({
   episode: e,
@@ -226,7 +232,9 @@ function EpisodeRow({
   busy: boolean;
   act: (work: () => Promise<unknown>) => Promise<void>;
 }) {
-  const wait = retryWaitCopy(e.processing.latestAttempt);
+  const latest = e.processing.latestAttempt;
+  const running = isRunning(latest);
+  const takeover = attemptHoldCopy(latest);
   return (
     <div class="mt-2 flex flex-wrap items-center gap-3 pl-3">
       <div class="min-w-0 flex-1">
@@ -238,12 +246,15 @@ function EpisodeRow({
           {e.processing.failureDetail &&
             ` · ${failureDetailCopy(e.processing.failureDetail)}`}
           {` · ${attemptCountCopy(e.processing.attemptCount)} · failed ${relativeTime(e.processing.updatedAt)}`}
+          {running &&
+            latest &&
+            ` · retrying, ${runningForCopy(latest.startedAt)}`}
         </p>
-        {wait !== null && <p class="text-meta text-owner">{wait}</p>}
+        {takeover !== null && <p class="text-meta text-owner">{takeover}</p>}
       </div>
       <Action
         id={`retry-${e.episodeId}`}
-        busy={busy || wait !== null}
+        busy={busy || (running && takeover === null)}
         onClick={() => act(() => api.retryEpisode(e.channelId, e.episodeId))}
       >
         Retry

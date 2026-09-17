@@ -1,7 +1,7 @@
 import type { Channel, Episode } from "@media-digest/shared";
 import { ChevronDown, ChevronRight } from "lucide-preact";
 import { type ComponentChildren, Fragment, type JSX } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { useRoute } from "preact-iso";
 import { api } from "../api";
 import {
@@ -16,14 +16,16 @@ import { Time } from "../components/Time";
 import {
   actionErrorCopy,
   attemptCountCopy,
+  attemptHoldCopy,
   channelStateCopy,
   EPISODE_STATUS_COPY,
   failureDetailCopy,
+  inProgressCopy,
   intentCopy,
+  isRunning,
   OUTCOME_CODE_COPY,
   RAW_SUMMARY_COPY,
   RETRY_AVAILABLE_HINT,
-  retryWaitCopy,
   runningForCopy,
   runResultCopy,
   SKIP_REASON_COPY,
@@ -41,21 +43,34 @@ export function CurateChannel() {
   );
 }
 
+/** How often the episode table refetches while an attempt is running; it makes no requests otherwise. */
+const REFRESH_MS = 10_000;
+
 /** One channel for the owner (spec §8; PRD §7): management header, discovery runs, episodes, followers. */
 function CurateChannelScreen() {
   const { params } = useRoute();
   const channelId = params.id ?? "";
+  // `retainDataOnReload` on all four: a reload here is a **refresh of something already on screen**,
+  // either after an action or from the poll below, and `Section` answers `loading` with a skeleton
+  // that replaces the whole table. Without this the table blanked and redrew every ten seconds,
+  // which is a worse thing to look at than a stale row — and the skeleton is a different height, so
+  // it moved everything under it each time (owner, 2026-09-17). A dependency change still loads from
+  // empty, because that is different data rather than newer data.
+  const refresh = { retainDataOnReload: true };
   const [channel, reloadChannel] = useLoad(
     () => api.getChannel(channelId),
     [channelId],
+    refresh,
   );
   const [episodes, reloadEpisodes] = useLoad(
     () => api.listEpisodes(channelId, 200),
     [channelId],
+    refresh,
   );
   const [runs, reloadRuns] = useLoad(
     () => api.listIngestionRuns(channelId),
     [channelId],
+    refresh,
   );
   // Followers are only fetched for a requested channel (spec §7); any other status shows a count.
   const showFollowers =
@@ -63,7 +78,7 @@ function CurateChannelScreen() {
   const [followers, reloadFollowers] = useLoad(
     () => api.listFollowers(channelId),
     [channelId],
-    { enabled: showFollowers },
+    { enabled: showFollowers, ...refresh },
   );
 
   // Which channel, and which of the two screens about it: a source's page and its review carry the
@@ -76,6 +91,26 @@ function CurateChannelScreen() {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * **While an attempt is running, the table refetches itself** (2026-09-17). Everything else here
+   * reloads only when a button is pressed, which is right for a screen whose facts change when the
+   * owner changes them — but an attempt is the one thing that changes on its own, takes minutes,
+   * and is the reason a control is unavailable. Without this the owner presses Retry and the row is
+   * frozen until they think to reload, which is what made the screen read as broken rather than
+   * busy.
+   *
+   * Stops when nothing is running, so a settled screen makes no requests. `REFRESH_MS` is well
+   * inside a typical attempt (two to three minutes), and the request is one already-cheap list.
+   */
+  const anyRunning =
+    episodes.status === "ready" &&
+    episodes.data.episodes.some((e) => isRunning(e.processing.latestAttempt));
+  useEffect(() => {
+    if (!anyRunning) return;
+    const timer = setInterval(reloadEpisodes, REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [anyRunning, reloadEpisodes]);
 
   // One action against this channel or one of its episodes; every button reloads through this,
   // on failure as well as success, since the Registry may have applied the change before the
@@ -294,7 +329,11 @@ function EpisodesTable({
             </th>
             <th class="py-2 pr-4 font-semibold text-ink-3">Episode</th>
             <th class="py-2 pr-4 font-semibold text-ink-3">Published</th>
-            <th class="py-2 pr-4 font-semibold text-ink-3">State</th>
+            {/* The one column whose text changes while the reader watches: "Summarised" becomes
+                "Re-processing · running for 12 min" and back. In an auto-layout table that
+                reallocates every column and the whole row shifts sideways, so the column reserves
+                the width the longest in-progress phrase needs and stops moving (owner, 2026-09-17). */}
+            <th class="min-w-56 py-2 pr-4 font-semibold text-ink-3">State</th>
             <th class="py-2 pr-4 font-semibold text-ink-3">Actions</th>
           </tr>
         </thead>
@@ -402,9 +441,13 @@ function Fact({
 
 /**
  * Retry on every row; **Skip on failed rows only** (docs/PRD.md §7), which is why a pending episode
- * offers Retry alone. An unavailable Retry carries its reason on the row — who started the attempt
- * that is holding it and when it frees up — rather than being a dead grey control (docs/design.md §4);
- * after an hour the route reconciles a lost instance itself (docs/PRD.md §4.2 rule 17).
+ * offers Retry alone.
+ *
+ * **A running attempt is said in the status column, not here** (2026-09-17). Retry is simply
+ * unavailable while one holds the episode, and "Re-processing · running for 2 min" beside it is a
+ * better explanation than any sentence this cell could carry. The one thing left on the row is the
+ * takeover, and only once it is real: an attempt past the hour is one the engine has probably lost,
+ * and then Retry is an action again rather than a wait (docs/PRD.md §4.2 rule 17).
  */
 function EpisodeActions({
   episode: e,
@@ -415,7 +458,8 @@ function EpisodeActions({
   busy: boolean;
   act: ChannelAct;
 }) {
-  const wait = retryWaitCopy(e.processing.latestAttempt);
+  const running = isRunning(e.processing.latestAttempt);
+  const takeover = attemptHoldCopy(e.processing.latestAttempt);
   // Blue says "you can act on this" (docs/design.md §2.1), and on an episode that is already
   // summarised there is nothing to act on: Retry there replaces a working summary, costs a
   // transcript credit, and may return something no better. It stays on every row as §7 requires —
@@ -425,7 +469,7 @@ function EpisodeActions({
     <div class="flex flex-wrap items-center gap-1">
       <Action
         id={`detail-retry-${e.episodeId}`}
-        busy={busy || wait !== null}
+        busy={busy || (running && takeover === null)}
         tone={routine ? "safe" : "quiet"}
         title={routine ? undefined : RETRY_AVAILABLE_HINT}
         onClick={() => act(() => api.retryEpisode(e.channelId, e.episodeId))}
@@ -442,8 +486,8 @@ function EpisodeActions({
           Skip
         </Action>
       )}
-      {wait !== null && (
-        <span class="block w-full text-meta text-owner">{wait}</span>
+      {takeover !== null && (
+        <span class="block w-full text-meta text-owner">{takeover}</span>
       )}
     </div>
   );
@@ -455,6 +499,12 @@ function EpisodeActions({
  * summary fact worth a column's worth of attention, because it is what a reader is looking at.
  */
 function statusCopy(e: Episode): string {
+  // What is happening now outranks what the episode last came to rest as: an episode being
+  // re-processed is not "Summarised", whatever its stored status still says.
+  const latest = e.processing.latestAttempt;
+  if (latest?.status === "running") {
+    return `${inProgressCopy(e.status)} · ${runningForCopy(latest.startedAt)}`;
+  }
   const base = EPISODE_STATUS_COPY[e.status];
   if (e.status === "pending" && e.waitReason)
     return `${base} · ${WAIT_REASON_COPY[e.waitReason]}`;

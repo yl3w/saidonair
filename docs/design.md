@@ -427,8 +427,30 @@ understand.
 - **Confirm only what someone else feels.** Declining an approved channel confirms, and the confirmation names the
   follower count and what those readers lose. Pausing, starting a run and retrying do not confirm — they are
   reversible and affect nobody.
-- **Busy and unavailable are visible.** An action in flight shows it and says who started it. An unavailable one
-  carries its reason on the row — "available in 46 min" — never a dead grey control.
+- **Work in progress is a state of the thing, not a note beside the button.** **Rewritten 2026-09-17**: this rule
+  used to read "an action in flight shows it and says who started it; an unavailable one carries its reason on the
+  row — 'available in 46 min' — never a dead grey control", and Curate followed it exactly, to this:
+  *"bhaskar.maddala@protonmail.com started this; Retry is available in 60 min."* Three faults, all of them the
+  rule's:
+  - **It named the reader to themselves.** Owner screens have one owner. Attribute an action only when the actor
+    might be someone else, and then only where that matters.
+  - **It promised a time the product does not know.** The 60 minutes was the point at which Retry force-takes-over a
+    lost background instance; the attempt itself finishes in two or three. A countdown to the wrong event is worse
+    than no countdown, and a *deadline* is almost always the wrong event. **Say elapsed, not remaining** — "running
+    for 2 min" cannot be wrong, and it needs no estimate the system does not have.
+  - **It put the news in a footnote.** The status column still said "Summarised" while the episode was being
+    re-summarised, so the row needed a sentence to explain a control. Say it where the state lives — "Re-processing ·
+    running for 2 min" — and the disabled control explains itself.
+
+  So: **an in-progress state belongs in the object's own status line and outranks whatever it last came to rest as.**
+  A control that is unavailable because of it says nothing at all; a control that is unavailable for a reason the
+  reader could act on still carries that reason.
+- **An unavailable control must look unavailable.** `disabled` with unchanged colour and weight is a button that
+  refuses every press while inviting them, which reads as a broken screen rather than an unavailable action.
+- **A screen showing work in progress refreshes itself while it lasts, and only while it lasts.** Everything else
+  here reloads when the reader acts, because everything else changes when the reader acts. Background work is the
+  exception: it changes on its own, takes minutes, and is usually the reason something is unavailable. A settled
+  screen makes no requests.
 - **Undo lives where the consequence is visible.** A read receipt can be undone in History, where the row is, and
   nowhere else.
 - **A screen gives the reader back to where they came from.** Anything opened out of a list returns to that list, at

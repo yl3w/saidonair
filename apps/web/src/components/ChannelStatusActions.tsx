@@ -175,7 +175,11 @@ export function Action({
       type="button"
       title={title}
       disabled={busy}
-      class={`min-h-11 rounded px-2 text-ui font-semibold ${
+      // A disabled control has to look disabled. Without this the button kept its full colour and
+      // weight while refusing every press, which reads as a broken screen rather than an
+      // unavailable action (owner, 2026-09-17) — and `quiet` is already dim, so nothing but opacity
+      // separates the two states reliably across the three tones.
+      class={`min-h-11 rounded px-2 text-ui font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
         tone === "consequence"
           ? "text-consequence"
           : tone === "quiet"
