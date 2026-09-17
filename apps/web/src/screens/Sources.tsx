@@ -111,7 +111,7 @@ function SourcesScreen() {
             key={name}
             href={name === "following" ? "/sources" : `/sources?show=${name}`}
             aria-current={tab === name ? "page" : undefined}
-            class={`flex min-h-11 items-center gap-1.5 border-b-2 text-ui ${
+            class={`flex min-h-11 items-center gap-1.5 border-b-2 text-ui hover:text-ink ${
               tab === name
                 ? "border-ink font-semibold text-ink"
                 : "border-transparent text-ink-2"
@@ -127,11 +127,10 @@ function SourcesScreen() {
       </nav>
 
       <div class="mt-4 flex flex-wrap items-center gap-3">
-        <div class="flex min-h-11 flex-1 items-center gap-2 rounded border border-edge bg-panel px-3">
+        <label class="input flex-1">
           <Icon of={Search} size={16} class="text-ink-3" />
           <input
             type="search"
-            class="min-h-11 w-full bg-transparent text-ui text-ink outline-none"
             placeholder="Find a channel"
             aria-label="Find a channel"
             value={needle}
@@ -140,11 +139,11 @@ function SourcesScreen() {
               setShown(PAGE);
             }}
           />
-        </div>
-        <label class="flex items-center gap-2 text-meta text-ink-3">
+        </label>
+        <label class="flex cursor-pointer items-center gap-2 text-meta text-ink-3">
           Sort
           <select
-            class="select min-h-11 border-edge bg-panel text-ui text-ink"
+            class="select"
             value={sort}
             onChange={(event) => setSort(event.currentTarget.value as Sort)}
           >
@@ -197,7 +196,7 @@ function SourcesScreen() {
       {filtered.length > page.length && (
         <button
           type="button"
-          class="btn btn-sm mt-4 min-h-11 border-edge bg-panel text-ui text-primary"
+          class="btn btn-quiet mt-4"
           onClick={() => setShown(shown + PAGE)}
         >
           Show {Math.min(PAGE, filtered.length - page.length)} more
@@ -250,7 +249,7 @@ function SourceRow({
       {channel.status === "declined" ? (
         <button
           type="button"
-          class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
+          class="btn btn-quiet"
           disabled={busy}
           onClick={onRequest}
         >

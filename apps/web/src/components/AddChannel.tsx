@@ -137,7 +137,7 @@ export function AddChannel({
             <input
               id="add-channel"
               type="text"
-              class="input min-h-11 flex-1 border-edge bg-panel text-ui text-ink"
+              class="input flex-1"
               placeholder="UC…"
               value={pasted}
               onInput={(event) => {
@@ -147,7 +147,7 @@ export function AddChannel({
             />
             <button
               type="submit"
-              class="btn min-h-11 border-edge bg-panel text-ui text-primary"
+              class="btn btn-quiet"
               disabled={busy || pasted.trim().length === 0}
             >
               {busy ? "Reading its feed…" : "Check it"}
@@ -221,7 +221,7 @@ export function AddChannel({
             {step.channel === null ? (
               <button
                 type="button"
-                class="btn min-h-11 border-edge bg-panel text-ui text-primary"
+                class="btn btn-quiet"
                 disabled={busy}
                 onClick={() => decide(step.feed)}
               >
@@ -233,14 +233,14 @@ export function AddChannel({
               </button>
             ) : step.channel.status === "declined" ? (
               <a
-                class="btn min-h-11 border-edge bg-panel text-ui text-primary"
+                class="btn btn-quiet"
                 href={`/sources/${step.channel.channelId}`}
               >
                 See why it was declined
               </a>
             ) : step.channel.following ? (
               <a
-                class="btn min-h-11 border-edge bg-panel text-ui text-primary"
+                class="btn btn-quiet"
                 href={`/sources/${step.channel.channelId}`}
               >
                 You already follow it — open it
@@ -248,7 +248,7 @@ export function AddChannel({
             ) : (
               <button
                 type="button"
-                class="btn min-h-11 border-edge bg-panel text-ui text-primary"
+                class="btn btn-quiet"
                 disabled={busy}
                 onClick={() => follow(step.feed)}
               >
@@ -257,7 +257,7 @@ export function AddChannel({
             )}
             <button
               type="button"
-              class="btn min-h-11 border-edge bg-panel text-ui text-ink-2"
+              class="btn btn-quiet-secondary"
               disabled={busy}
               onClick={restart}
             >
@@ -270,11 +270,7 @@ export function AddChannel({
       {step.name === "done" && (
         <div class="mt-3">
           <p class="font-reading text-body text-ink">{step.message}</p>
-          <button
-            type="button"
-            class="btn mt-3 min-h-11 border-edge bg-panel text-ui text-primary"
-            onClick={restart}
-          >
+          <button type="button" class="btn btn-quiet mt-3" onClick={restart}>
             Add another
           </button>
         </div>
@@ -306,7 +302,7 @@ function Field({
       <input
         id={id}
         type="text"
-        class="input mt-1 min-h-11 w-full border-edge bg-panel text-ui text-ink"
+        class="input mt-1 w-full"
         value={value}
         placeholder={placeholder}
         onInput={(event) => onInput(event.currentTarget.value)}

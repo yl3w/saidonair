@@ -16,7 +16,7 @@ export function Retry({
     <button
       id={id}
       type="button"
-      class="inline-flex min-h-11 items-center px-1 align-middle text-ui font-semibold text-primary underline decoration-1 underline-offset-2"
+      class="btn btn-link [--btn-p:0.25rem]"
       onClick={onClick}
     >
       {children}

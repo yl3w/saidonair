@@ -91,13 +91,13 @@ function SettingsScreen() {
           <Avatar id={email} name={email.split("@")[0] ?? email} size={34} />
           <span class="text-ui text-ink">{email}</span>
           {isOwner && (
-            <span class="badge badge-sm border-owner bg-transparent text-meta text-owner">
+            <span class="badge badge-outline badge-warning badge-sm">
               Owner
             </span>
           )}
           <button
             type="button"
-            class="btn btn-sm ml-auto min-h-11 border-edge bg-panel text-ui text-primary"
+            class="btn btn-quiet ml-auto"
             onClick={() => {
               signOut();
               route("/");
@@ -152,7 +152,7 @@ function SettingsScreen() {
         note="Applied to chat answers alone, never to a summary — those are shared, and one reader's preferences cannot shape what everyone else reads."
       >
         <textarea
-          class="textarea w-full rounded-box border-edge bg-panel font-reading text-excerpt text-ink"
+          class="textarea w-full font-reading [--font-size:var(--text-excerpt)]"
           rows={4}
           maxLength={4000}
           placeholder="Answer briefly. Prefer the guest's own words."
@@ -169,7 +169,7 @@ function SettingsScreen() {
       </Section>
 
       <Section title="Counts">
-        <label class="flex min-h-11 items-center gap-3 text-ui text-ink">
+        <label class="flex min-h-11 cursor-pointer items-center gap-3 text-ui text-ink">
           <input
             type="checkbox"
             class="toggle toggle-sm"

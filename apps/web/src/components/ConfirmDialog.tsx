@@ -43,7 +43,7 @@ export function ConfirmDialog({
       onClose={onClose}
       onCancel={onClose}
     >
-      <div class="modal-box rounded-modal border border-edge bg-panel">
+      <div class="modal-box modal-edge">
         <h2 class="font-reading text-section font-semibold text-ink">
           {title}
         </h2>
@@ -51,14 +51,14 @@ export function ConfirmDialog({
         <div class="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-ink-2"
+            class="btn btn-quiet-secondary"
             onClick={onClose}
           >
             Keep it as it is
           </button>
           <button
             type="button"
-            class="btn btn-sm min-h-11 border-consequence bg-panel text-ui text-consequence"
+            class="btn btn-outline btn-error"
             disabled={busy}
             onClick={onConfirm}
           >

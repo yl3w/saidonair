@@ -157,7 +157,7 @@ function ChatScreen() {
           <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
             <button
               type="button"
-              class="flex size-11 shrink-0 items-center justify-center text-ink-2"
+              class="btn btn-ghost btn-square"
               onClick={() => goBack(() => route("/chats"))}
             >
               <Icon of={ArrowLeft} size={20} label={BACK_COPY} />
@@ -228,7 +228,7 @@ function ChatScreen() {
           onDismiss={() => setScope(null)}
         />
         <textarea
-          class="textarea w-full resize-none rounded-box border-edge bg-panel font-reading text-body text-ink"
+          class="textarea w-full resize-none font-reading [--font-size:var(--text-body)]"
           rows={3}
           placeholder={ASK_PLACEHOLDER_COPY}
           value={draft}
@@ -246,7 +246,7 @@ function ChatScreen() {
           <ScopeLine scoped={scope !== null} />
           <button
             type="button"
-            class="btn btn-sm min-h-11 shrink-0 border-edge bg-primary text-ui text-panel"
+            class="btn btn-primary shrink-0"
             disabled={sending || draft.trim().length === 0}
             onClick={() => void send()}
           >

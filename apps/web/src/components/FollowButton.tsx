@@ -42,9 +42,7 @@ export function FollowButton({
       aria-label={full}
       title={full}
       disabled={busy}
-      class={`flex min-h-11 shrink-0 items-center gap-1.5 rounded border border-edge bg-panel px-3 text-ui ${
-        following ? "text-ink-2" : "text-primary"
-      }`}
+      class={`btn ${following ? "btn-quiet-secondary" : "btn-quiet"}`}
       onClick={onClick}
     >
       <Icon of={following ? Minus : Plus} size={16} />

@@ -199,6 +199,42 @@ own) and `--ground` is `base-200` and the page. **There is no green**: `success`
 has no success colour and a colour nobody designed is worse than a repeated one. Write `text-primary` rather than
 reaching for `--accent` directly — daisyUI owns the name `accent`, and the token is the one place they could drift.
 
+**Customize through daisyUI's own variables; never with utilities on top of its classes.** A daisyUI component is
+a small state machine, not a bag of declarations. `.btn` resolves its background from `--btn-bg`, and `:hover` works
+by *reassigning that variable*; `.input` and `.select` resolve their border from `--input-color`; every size in the
+library is `--size-field` or `--size-selector` times a whole number. Put `bg-panel` beside `btn` and you pin
+`background-color` directly — and because Tailwind's own utilities sit in an unnamed sub-layer of `utilities` while
+daisyUI's sit in `daisyui.l1.l2.l3`, the utility wins on layer order regardless of specificity, and the hover
+resolves into nothing. That is not a theoretical risk: it is how this product shipped 43 buttons with no hover state
+on any of them (2026-09-17).
+
+So the division is absolute:
+
+| Lives in | What |
+|---|---|
+| the `@plugin "daisyui/theme"` block | every colour slot, `--radius-*`, `--border`, `--depth`, `--noise`, and **`--size-field`, which is where the 44 px floor of §7 comes from** — not a `min-h-11` at thirty call sites |
+| a Tailwind `@utility` in `styles.css` | a variant daisyUI has no name for, written as daisyUI writes its own: set `--btn-color`, `--btn-fg`, `--btn-border`, `--input-color`, never `background-color` |
+| the call site | daisyUI's classes, and **layout only** — `flex`, `gap`, `mt-*`, `w-*`, `shrink-0` |
+
+A colour, border, background, radius or type size on an element that already carries a daisyUI class is a bug, not a
+preference. Where daisyUI already has the variant, use its name rather than rebuilding it: the owner's amber pill is
+`badge badge-outline badge-warning`, and it was `badge badge-sm border-owner bg-transparent text-meta text-owner`
+until someone checked.
+
+**Pick the component before the classes.** `.btn` is a button: it centres its text and sets weight 600, which is
+right for a control and wrong for a row. Dressing the channel filter's rows as `btn btn-ghost btn-block
+justify-start` looked correct in the markup and shipped three channel names each starting at a different left edge,
+because `justify-start` moves the flex children and `text-align: center` still centres the text inside the one that
+grows (2026-09-17). A list of choices is `.menu`, which aligns to the start and leaves the weight alone. The check
+that catches this is opening the screen — no audit of class names will, because the classes were not the mistake.
+
+**Two things stay ours, and both were measured rather than assumed** (2026-09-17). daisyUI's `.label` sets its
+colour to 60% of whatever it inherits, which takes a `--ink-3` form label to about 2.6:1 and fails §7 outright — so
+form labels are plain elements, and a label that *wraps* its control sets `cursor-pointer` itself, since the control
+inside it cannot speak for the words beside it. And navigation is anchors, per the rule below: the nav, the section
+tabs and every in-sentence link are `.link`/`link-primary` or plain `<a>`, never `.btn`, which would dress a
+destination as a button and lose what a link is for.
+
 Four rules that are not preferences — they are build constraints and their home is
 `AGENTS.md` → Web UI code; they are here because they shape what you can design:
 
@@ -422,6 +458,23 @@ understand.
 
 ## 4. Interaction rules
 
+- **A control announces itself before it is touched, and acknowledges the touch.** Four states carry that, and one
+  of them is not optional because it is the only one a mouse user gets: **at rest** it has the form of a control —
+  the bordered box of §2.4, or a glyph sitting in its own 44 px field; **on hover** it changes, quietly — daisyUI's
+  7 % darkening, or a ghost button's 10 % ink wash, is the whole effect and enough; **while pressed** it changes
+  again, so the click is confirmed before the network is; **disabled** it looks disabled (below). Focus is §7's and
+  is already global.
+
+  The **cursor is the last of these and the weakest**. It does not exist on a touch screen, it arrives only after
+  the reader has already guessed and moved the mouse there, and it says nothing at all to a keyboard or a screen
+  reader. It is a *confirmation of a guess the design already invited*, never the invitation. It comes free with
+  `.btn` and every other daisyUI control, which is the only reason to care where it comes from.
+
+  This rule is here because the product shipped without it (2026-09-17). Every control was assembled from raw
+  utilities — `flex size-11 items-center justify-center text-ink-2` for an icon button — so there was no hover state
+  anywhere in the web app, and the ones built on `.btn` had theirs cancelled by a `bg-panel` beside it (§2.6). The
+  missing hand cursor was the only symptom visible enough for anyone to notice, and it was the least of it.
+
 - **44 px** minimum for anything a finger reaches. On a desktop, an action in a table row still needs vertical
   padding to be a target rather than a word.
 - **Confirm only what someone else feels.** Declining an approved channel confirms, and the confirmation names the
@@ -555,6 +608,11 @@ size now apply to every page. The three palettes are in §2.7 and were measured 
 `Done`'s advance to the next unread — the reading column now returns the reader to the list they opened the summary
 from, and offers `Done` only where there is no receipt yet (§3, §4; PRD §9). And the queue's **density switch**,
 which was the only place a summary row had two forms — the row now has one shape everywhere (§3, §5; PRD §9).
+
+**Decided 2026-09-17:** the product uses daisyUI rather than re-skinning it (§2.6), and a control owes four states
+rather than one (§4). Both came out of a single question — why no button showed the hand cursor — whose answer was
+that Tailwind 4 stopped setting it, daisyUI sets it on `.btn`, and this product overrode `.btn` at every call site
+with the utilities that also cancelled its hover. The cursor was a symptom of having built the controls twice.
 
 **Open, and yours to close if you get there first:**
 

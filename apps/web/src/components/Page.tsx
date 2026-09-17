@@ -56,7 +56,7 @@ export function Page({
           Curate needs a wider screen than this one. What is waiting is on your
           Account screen, and the decisions that take five seconds are beside
           each channel on{" "}
-          <a class="text-primary" href="/sources">
+          <a class="link link-hover link-primary" href="/sources">
             Sources
           </a>
           .

@@ -175,16 +175,17 @@ export function Action({
       type="button"
       title={title}
       disabled={busy}
-      // A disabled control has to look disabled. Without this the button kept its full colour and
-      // weight while refusing every press, which reads as a broken screen rather than an
-      // unavailable action (owner, 2026-09-17) — and `quiet` is already dim, so nothing but opacity
-      // separates the two states reliably across the three tones.
-      class={`min-h-11 rounded px-2 text-ui font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+      // A disabled control has to look disabled (owner, 2026-09-17). daisyUI's own disabled state
+      // is what does it now — 20% ink on a 10% ink ground, the same in all three tones — so the
+      // `disabled:opacity-40` that used to carry it is gone. The tones are daisyUI's colour words
+      // because the theme already maps them: primary is --accent, secondary --ink-2, error
+      // --consequence (docs/design.md §2.6).
+      class={`btn btn-ghost ${
         tone === "consequence"
-          ? "text-consequence"
+          ? "btn-error"
           : tone === "quiet"
-            ? "text-ink-2"
-            : "text-primary"
+            ? "btn-secondary"
+            : "btn-primary"
       }`}
       onClick={onClick}
     >
@@ -224,8 +225,8 @@ export function IconAction({
       type="button"
       title={hint ?? label}
       disabled={busy}
-      class={`flex size-11 shrink-0 items-center justify-center rounded ${
-        tone === "owner" ? "text-owner" : "text-primary"
+      class={`btn btn-ghost btn-square ${
+        tone === "owner" ? "btn-warning" : "btn-primary"
       }`}
       onClick={onClick}
     >

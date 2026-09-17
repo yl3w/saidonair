@@ -23,7 +23,7 @@ export function Choice<T extends string>({
             key={option.value}
             type="radio"
             name={legend}
-            class="btn join-item min-h-11 border-edge bg-panel text-ui text-ink-2 checked:bg-base-200 checked:font-semibold checked:text-ink"
+            class="btn join-item"
             aria-label={option.label}
             checked={value === option.value}
             onChange={() => onChange(option.value)}

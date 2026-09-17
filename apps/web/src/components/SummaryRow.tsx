@@ -120,7 +120,7 @@ export function SummaryRow({
       {onDone !== undefined && (
         <button
           type="button"
-          class="flex size-11 shrink-0 items-center justify-center self-start rounded border border-edge text-ink-2 disabled:opacity-100"
+          class="btn btn-quiet-secondary btn-square self-start"
           disabled={busy}
           aria-label={`Mark "${episode.title}" done`}
           onClick={() => onDone(episode)}
@@ -132,7 +132,7 @@ export function SummaryRow({
       {onUndo !== undefined && (
         <button
           type="button"
-          class="min-h-11 shrink-0 self-start px-2 text-ui text-primary"
+          class="btn btn-ghost btn-primary self-start"
           disabled={busy}
           onClick={() => onUndo(episode)}
         >

@@ -98,7 +98,7 @@ function WaitingRow({
         <div class="min-w-0 flex-1">
           <p class="text-ui font-semibold text-ink">{c.title}</p>
           <p class="text-meta text-ink-3">
-            <a class="text-primary" href={c.canonicalUrl}>
+            <a class="link link-hover link-primary" href={c.canonicalUrl}>
               {c.channelId}
             </a>
             {c.management?.createdAt !== undefined &&
@@ -180,7 +180,7 @@ function WaitingRow({
           <button
             id={`approve-confirm-${c.channelId}`}
             type="submit"
-            class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
+            class="btn btn-quiet"
             disabled={busy || disabled}
           >
             {busy ? "Approving…" : "Confirm approval"}
@@ -209,7 +209,7 @@ function WaitingRow({
           <button
             id={`decline-confirm-${c.channelId}`}
             type="submit"
-            class="btn btn-sm min-h-11 border-consequence bg-panel text-ui text-consequence"
+            class="btn btn-outline btn-error"
             disabled={busy || disabled}
           >
             {busy ? "Declining…" : "Confirm decline"}
@@ -246,7 +246,7 @@ function DecisionField({
         id={id}
         type={type}
         min={type === "number" ? "1" : undefined}
-        class={`input mt-1 min-h-11 border-edge bg-panel text-ui text-ink ${width}`}
+        class={`input mt-1 ${width}`}
         value={value}
         onInput={(event) => onInput(event.currentTarget.value)}
       />

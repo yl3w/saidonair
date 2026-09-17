@@ -77,7 +77,7 @@ export function ChannelFilter({
   const trigger = (
     <button
       type="button"
-      class="flex min-h-11 items-center gap-2 rounded border border-edge bg-panel px-3 text-ui text-ink"
+      class="btn btn-quiet-secondary"
       aria-expanded={open}
       aria-haspopup="true"
       onClick={() => {
@@ -155,26 +155,25 @@ function List({
 }) {
   return (
     <>
-      <div class="flex items-center gap-2 border-b border-rule px-3">
+      <label class="input input-ghost w-full">
         <Icon of={Search} size={16} class="text-ink-3" />
         <input
           type="search"
-          class="min-h-11 w-full bg-transparent text-ui text-ink outline-none"
           placeholder="Find a channel"
           aria-label="Find a channel"
           value={query}
           onInput={(event) => onQuery(event.currentTarget.value)}
         />
-      </div>
+      </label>
 
-      <ul class="max-h-72 overflow-y-auto">
+      <ul class="menu max-h-72 w-full flex-nowrap overflow-y-auto border-t border-rule">
         {channels.map((channel) => {
           const on = selected.has(channel.channelId);
           return (
             <li key={channel.channelId}>
               <button
                 type="button"
-                class="flex min-h-11 w-full items-center gap-2 px-3 text-left text-ui text-ink"
+                class="flex"
                 aria-pressed={on}
                 onClick={() => onToggle(channel.channelId)}
               >
@@ -196,14 +195,14 @@ function List({
       </ul>
 
       {selected.size > 0 && (
-        <button
-          type="button"
-          class="flex min-h-11 w-full items-center gap-2 border-t border-rule px-3 text-left text-ui text-primary"
-          onClick={onClear}
-        >
-          <Icon of={X} size={16} />
-          Show every channel
-        </button>
+        <ul class="menu w-full border-t border-rule">
+          <li>
+            <button type="button" class="flex text-primary" onClick={onClear}>
+              <Icon of={X} size={16} />
+              Show every channel
+            </button>
+          </li>
+        </ul>
       )}
     </>
   );

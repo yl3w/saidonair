@@ -103,14 +103,14 @@ export function Calendar({
         </h2>
         <button
           type="button"
-          class="flex size-11 items-center justify-center text-ink-2"
+          class="btn btn-ghost btn-square"
           onClick={() => onAnchorChange(shiftAnchor(anchor, -1))}
         >
           <Icon of={ChevronLeft} size={20} label="Five weeks earlier" />
         </button>
         <button
           type="button"
-          class="flex size-11 items-center justify-center text-ink-2"
+          class="btn btn-ghost btn-square"
           onClick={() => onAnchorChange(shiftAnchor(anchor, 1))}
         >
           <Icon of={ChevronRight} size={20} label="Five weeks later" />
@@ -198,12 +198,12 @@ function Cell({
         aria-current={isSelected ? "date" : undefined}
         aria-label={cellName(day, total, unread)}
         disabled={!holds}
-        class={`flex h-11 w-full flex-col items-center justify-center rounded text-meta ${
+        class={`btn btn-block flex-col gap-0 [--btn-p:0] [--fontsize:var(--text-meta)] ${
           isSelected
-            ? "bg-ink text-panel"
+            ? "btn-neutral"
             : holds
-              ? "bg-base-200 font-semibold text-ink underline decoration-ink decoration-1 underline-offset-2"
-              : "text-ink-3"
+              ? "underline decoration-1 underline-offset-2"
+              : "btn-ghost"
         } ${isToday && !isSelected ? "ring-1 ring-edge" : ""}`}
         onFocus={onFocus}
         onKeyDown={onKeyDown}

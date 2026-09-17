@@ -95,7 +95,7 @@ function HistoryScreen() {
         </p>
         <p class="mt-4">
           <a
-            class="inline-flex min-h-11 items-center text-ui text-primary"
+            class="inline-flex min-h-11 items-center text-ui link link-hover link-primary"
             href="/history"
           >
             Every day
@@ -115,7 +115,7 @@ function HistoryScreen() {
         </h1>
         <button
           type="button"
-          class="flex min-h-11 items-center gap-2 rounded border border-edge bg-panel px-3 text-ui text-ink lg:hidden"
+          class="btn btn-quiet-secondary lg:hidden"
           onClick={() => {
             setSheetDay(validDay);
             setSheetOpen(true);
@@ -129,7 +129,7 @@ function HistoryScreen() {
       {validDay !== null && (
         <p class="mt-1 text-meta text-ink-3">
           {fullDate(validDay)} ·{" "}
-          <a class="text-primary" href="/history">
+          <a class="link link-hover link-primary" href="/history">
             every day
           </a>
         </p>
@@ -190,7 +190,7 @@ function HistoryScreen() {
       {rows.status === "ready" && rows.more && (
         <button
           type="button"
-          class="btn btn-sm mt-6 min-h-11 border-edge bg-panel text-ui text-primary"
+          class="btn btn-quiet mt-6"
           disabled={rows.loadingMore}
           onClick={rows.loadMore}
         >

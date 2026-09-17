@@ -50,7 +50,7 @@ export function Sheet({
       onClose={onClose}
       onCancel={onClose}
     >
-      <div class="modal-box max-h-[85dvh] rounded-t-md border border-edge bg-panel pb-[env(safe-area-inset-bottom)]">
+      <div class="modal-box modal-edge-bottom max-h-[85dvh] pb-[env(safe-area-inset-bottom)]">
         <div
           class="mx-auto mb-3 h-1 w-10 rounded-full bg-edge"
           aria-hidden="true"
@@ -64,7 +64,7 @@ export function Sheet({
         <div class="mt-4 flex gap-2 border-t border-rule pt-3">
           <button
             type="button"
-            class="btn btn-sm min-h-11 flex-1 border-edge bg-panel text-ui text-ink-2"
+            class="btn btn-quiet-secondary flex-1"
             onClick={onClose}
           >
             {dismiss}
@@ -72,7 +72,7 @@ export function Sheet({
           {confirm !== undefined && (
             <button
               type="button"
-              class="btn btn-sm min-h-11 flex-1 border-edge bg-panel text-ui text-primary"
+              class="btn btn-quiet flex-1"
               disabled={onConfirm === undefined}
               onClick={onConfirm}
             >

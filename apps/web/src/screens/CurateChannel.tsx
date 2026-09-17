@@ -134,7 +134,7 @@ function CurateChannelScreen() {
     <Page measure="wide" desktopOnly>
       <p>
         <a
-          class="inline-flex min-h-11 items-center text-ui text-primary"
+          class="inline-flex min-h-11 items-center text-ui link link-hover link-primary"
           href="/curate"
         >
           ← Curate
@@ -244,7 +244,7 @@ function Header({
           chained with "·" at 12.5 px, which is density from small type rather than from structure
           (docs/design.md principle 6, owner decision 2026-09-15). */}
       <p class="mt-1 text-meta text-ink-3">
-        <a class="text-primary" href={c.canonicalUrl}>
+        <a class="link link-hover link-primary" href={c.canonicalUrl}>
           {c.channelId}
         </a>{" "}
         · {channelStateCopy(c)} · {followerLabel(c.followerCount)}
@@ -347,7 +347,7 @@ function EpisodesTable({
                   <td class="py-2 pr-2">
                     <button
                       type="button"
-                      class="flex size-11 items-center justify-center text-ink-3"
+                      class="btn btn-ghost btn-square"
                       aria-expanded={shown}
                       aria-controls={panel}
                       aria-label={`Diagnostics for "${e.title}"`}

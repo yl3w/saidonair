@@ -99,10 +99,10 @@ export function CatalogTable({
                 >
                   <button
                     type="button"
-                    class={`min-h-11 text-cell ${
+                    class={`btn btn-ghost [--btn-p:0.25rem] [--fontsize:var(--text-cell)] ${
                       sort.column === column
-                        ? "font-semibold text-ink underline decoration-1 underline-offset-4"
-                        : "text-ink-3"
+                        ? "btn-active underline decoration-1 underline-offset-4"
+                        : ""
                     }`}
                     onClick={() => toggle(column)}
                   >
@@ -193,7 +193,7 @@ export function CatalogTable({
       {rows.length > page.length && (
         <button
           type="button"
-          class="btn btn-sm mt-3 min-h-11 border-edge bg-panel text-ui text-primary"
+          class="btn btn-quiet mt-3"
           onClick={() => setShown(shown + PAGE)}
         >
           Show {Math.min(PAGE, rows.length - page.length)} more of {rows.length}

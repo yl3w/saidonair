@@ -42,7 +42,7 @@ export function SourceCards({ sources }: { sources: readonly ChatSource[] }) {
                 key={startSec}
                 // inline-flex, not inline: min-height does nothing to a non-replaced
                 // inline element, so a bare `min-h-11` on an anchor is not a 44 px target.
-                class="inline-flex min-h-11 items-center text-ui text-primary md:min-h-0"
+                class="inline-flex min-h-11 items-center text-ui link link-hover link-primary md:min-h-0"
                 href={`https://youtu.be/${card.episodeId}?t=${Math.floor(startSec)}`}
               >
                 {momentCopy(startSec)}

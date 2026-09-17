@@ -128,7 +128,7 @@ function QueueScreen() {
           </p>
           <p class="mt-4">
             <a
-              class="inline-flex min-h-11 items-center text-ui text-primary"
+              class="inline-flex min-h-11 items-center text-ui link link-hover link-primary"
               href={nothingFollowed ? "/sources" : "/history"}
             >
               {nothingFollowed ? "Find a channel" : "Browse History"}
@@ -174,7 +174,7 @@ function QueueScreen() {
           {queue.more ? (
             <button
               type="button"
-              class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
+              class="btn btn-quiet"
               disabled={queue.loadingMore}
               onClick={queue.loadMore}
             >
@@ -184,7 +184,7 @@ function QueueScreen() {
             <p class="font-reading text-body text-ink-2">
               {endOfQueueCopy(showCounts ? queue.rows.length : null)}{" "}
               <a
-                class="inline-flex min-h-11 items-center text-primary"
+                class="inline-flex min-h-11 items-center link link-hover link-primary"
                 href="/history"
               >
                 {browseHistoryCopy(inHistory, queue.rows.length)}

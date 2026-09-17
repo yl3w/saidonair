@@ -27,7 +27,7 @@ export function ScopeChip({
       </span>
       <button
         type="button"
-        class="flex size-11 items-center justify-center text-ink-3 md:size-6"
+        class="btn btn-ghost btn-square md:[--size-field:0.15rem]"
         aria-label={`Stop asking about ${episodeTitle}`}
         onClick={onDismiss}
       >

@@ -74,7 +74,7 @@ export function Nav() {
           {email !== null && (
             <a
               href="/account"
-              class={`ml-auto flex min-h-11 items-center gap-2 text-meta ${
+              class={`ml-auto flex min-h-11 items-center gap-2 text-meta hover:text-ink ${
                 isCurrent(path, "/account")
                   ? "font-semibold text-ink"
                   : "text-ink-2"
@@ -100,7 +100,7 @@ export function Nav() {
               key={href}
               href={href}
               aria-current={current ? "page" : undefined}
-              class={`flex min-h-14 flex-col items-center justify-center gap-1 text-label ${
+              class={`flex min-h-14 flex-col items-center justify-center gap-1 text-label hover:text-ink ${
                 current ? "font-semibold text-ink" : "text-ink-2"
               }`}
             >
@@ -137,7 +137,7 @@ function TopLink({
     <a
       href={href}
       aria-current={current ? "page" : undefined}
-      class={`flex min-h-11 items-center gap-1.5 border-b-2 text-ui ${
+      class={`flex min-h-11 items-center gap-1.5 border-b-2 text-ui hover:text-ink ${
         current ? "border-ink font-semibold" : "border-transparent"
       } ${owner ? "text-owner" : current ? "text-ink" : "text-ink-2"} ${
         owner ? "hidden lg:flex" : ""
@@ -146,9 +146,7 @@ function TopLink({
       {owner && <Icon of={Table} size={16} />}
       {label}
       {count !== null && count > 0 && (
-        <span class="badge badge-sm border-owner bg-transparent text-meta text-owner">
-          {count}
-        </span>
+        <span class="badge badge-outline badge-warning badge-sm">{count}</span>
       )}
     </a>
   );

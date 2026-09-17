@@ -58,7 +58,7 @@ export function ChatMessage({
             {onRetry !== undefined && (
               <button
                 type="button"
-                class="btn btn-sm mt-3 min-h-11 border-edge bg-panel text-ui text-primary"
+                class="btn btn-quiet mt-3"
                 disabled={retrying === true}
                 onClick={onRetry}
               >
@@ -95,7 +95,7 @@ const YOUTUBE_URL = /(https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/\S+)/g;
 function linkify(text: string) {
   return text.split(YOUTUBE_URL).map((part, index) =>
     index % 2 === 1 ? (
-      <a key={index} class="text-primary" href={part}>
+      <a key={index} class="link link-hover link-primary" href={part}>
         {part}
       </a>
     ) : (

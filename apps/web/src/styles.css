@@ -232,11 +232,56 @@
   --radius-field: 0.25rem;
   --radius-box: 0.25rem;
   --size-selector: 0.25rem;
-  --size-field: 0.25rem;
+  /* The 44 px floor of docs/design.md §7, in the one place that sets it: every daisyUI control is
+   * `--size-field` times a whole number, so 0.275rem makes `btn` and `input` 44 px and `btn-square`
+   * a 44 px square. This replaced a `min-h-11` repeated at thirty call sites, which forced the
+   * height while leaving daisyUI's own padding and type sized for the 40 px control underneath. */
+  --size-field: 0.275rem;
   --border: 1px;
   /* Flat: one shadow in the product, and only on things that float. */
   --depth: 0;
   --noise: 0;
+}
+
+/* --- the two button variants daisyUI has no name for (docs/design.md §2.6) --------------------
+ * A `@utility` is Tailwind 4's own extension point and daisyUI's own idiom: these set daisyUI's
+ * documented `--btn-*` variables and nothing else, so every state the component owns still works.
+ * `--btn-color` in particular is what `:hover` darkens by 7% and `[aria-pressed]` by 5%; a
+ * `bg-panel` beside `btn` would pin `background-color` instead and silently kill both.
+ *
+ * The bordered box is the reader's own act (§2.4): panel ground, a 1 px `--edge`, and the accent
+ * when it is an action being offered or `--ink-2` when it is the way out of a dialog. Everything
+ * else the product needs is already a daisyUI variant by name — `btn-ghost` for the bare glyph,
+ * `btn-primary` for the one solid button, `btn-outline btn-error` for a destructive confirm. */
+@utility btn-quiet {
+  --btn-color: var(--panel);
+  --btn-border: var(--edge);
+  --btn-fg: var(--accent);
+}
+
+@utility btn-quiet-secondary {
+  --btn-color: var(--panel);
+  --btn-border: var(--edge);
+  --btn-fg: var(--ink-2);
+}
+
+/* The modal skin, through daisyUI's own per-corner hooks rather than a `rounded-*` that would
+ * outrank them: 6 px is the one radius a modal gets (§2.3), and the 1 px edge is an addition
+ * daisyUI makes no declaration about — `.modal-box` ships a shadow and no border.
+ * `modal-edge-bottom` leaves `--modal-bl`/`--modal-br` alone so `.modal-bottom` can still square
+ * the two corners that meet the bottom of the screen. */
+@utility modal-edge {
+  --modal-tl: var(--radius-modal);
+  --modal-tr: var(--radius-modal);
+  --modal-bl: var(--radius-modal);
+  --modal-br: var(--radius-modal);
+  border: var(--border) solid var(--edge);
+}
+
+@utility modal-edge-bottom {
+  --modal-tl: var(--radius-modal);
+  --modal-tr: var(--radius-modal);
+  border: var(--border) solid var(--edge);
 }
 
 @layer base {

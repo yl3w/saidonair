@@ -171,17 +171,14 @@ function ReadingScreen() {
 
       <header class="sticky top-0 z-20 border-b border-rule bg-ground">
         <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
-          <a
-            href={back.href}
-            class="flex size-11 items-center justify-center text-ink-2"
-          >
+          <a href={back.href} class="btn btn-ghost btn-square">
             <Icon of={ArrowLeft} size={20} label={back.label} />
           </a>
 
           <div class="relative ml-auto" ref={panel}>
             <button
               type="button"
-              class="min-h-11 px-3 font-reading text-ui text-ink-2"
+              class="btn btn-ghost btn-secondary font-reading"
               aria-expanded={panelOpen}
               aria-haspopup="true"
               onClick={() => setPanelOpen(!panelOpen)}
@@ -197,7 +194,7 @@ function ReadingScreen() {
 
           {episode !== null && (
             <a
-              class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
+              class="flex min-h-11 items-center gap-1.5 px-2 text-ui link link-hover link-primary"
               href={`https://youtu.be/${episode.episodeId}`}
               title={EXTERNAL_HINT_COPY}
             >
@@ -216,7 +213,7 @@ function ReadingScreen() {
             episode.processing.vectorizedAt !== null &&
             episode.read !== undefined && (
               <a
-                class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
+                class="flex min-h-11 items-center gap-1.5 px-2 text-ui link link-hover link-primary"
                 href="/chats/new"
                 title={ASK_HINT_COPY}
                 onClick={() => setAskScope(episode.episodeId)}
@@ -232,7 +229,7 @@ function ReadingScreen() {
           {episode !== null && summary !== null && episode.read === false && (
             <button
               type="button"
-              class="btn btn-sm min-h-11 border-edge bg-panel text-ui text-primary"
+              class="btn btn-quiet"
               disabled={finishing}
               onClick={() => done(episode)}
             >
@@ -315,7 +312,7 @@ function ReadingScreen() {
                               "—"
                             ) : (
                               <a
-                                class="inline-flex min-h-11 items-center text-primary md:justify-end"
+                                class="inline-flex min-h-11 items-center link link-hover link-primary md:justify-end"
                                 href={`https://youtu.be/${episode.episodeId}?t=${Math.floor(takeaway.startSec)}`}
                               >
                                 {momentCopy(takeaway.startSec)}
@@ -353,7 +350,7 @@ function ReadingScreen() {
                   {episode.related.map((related) => (
                     <li key={related.episodeId} class="mt-1">
                       <a
-                        class="inline-flex min-h-11 items-center font-reading text-excerpt text-primary"
+                        class="inline-flex min-h-11 items-center font-reading text-excerpt link link-hover link-primary"
                         href={`/read/${related.episodeId}`}
                       >
                         {related.title}

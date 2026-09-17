@@ -109,7 +109,7 @@ function SourceScreen() {
         <p class="text-ui text-consequence">
           Couldn't load this channel: {actionErrorCopy(channel.error)}.{" "}
           <a
-            class="inline-flex min-h-11 items-center text-primary"
+            class="inline-flex min-h-11 items-center link link-hover link-primary"
             href="/sources"
           >
             Back to Sources
@@ -170,10 +170,10 @@ function SourceScreen() {
                   key={option}
                   type="button"
                   aria-current={option === currentYear ? "true" : undefined}
-                  class={`min-h-11 px-2 text-ui ${
+                  class={`btn btn-ghost ${
                     option === currentYear
-                      ? "font-semibold text-ink underline decoration-1 underline-offset-4"
-                      : "text-ink-2"
+                      ? "underline decoration-1 underline-offset-4"
+                      : ""
                   }`}
                   onClick={() => setYear(option)}
                 >
@@ -260,7 +260,7 @@ function SourceBar({
       <div class="mx-auto flex h-14 max-w-list items-center gap-2 px-5 md:px-8">
         <button
           type="button"
-          class="flex size-11 items-center justify-center text-ink-2"
+          class="btn btn-ghost btn-square"
           onClick={() => goBack(() => route("/sources"))}
         >
           <Icon of={ArrowLeft} size={20} label={BACK_COPY} />
@@ -282,7 +282,7 @@ function SourceBar({
               </div>
             )}
             <a
-              class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
+              class="flex min-h-11 items-center gap-1.5 px-2 text-ui link link-hover link-primary"
               href={channel.canonicalUrl}
               title={EXTERNAL_HINT_COPY}
             >
@@ -327,7 +327,7 @@ function ChannelActs({
             act={act}
           />
           <a
-            class="flex size-11 shrink-0 items-center justify-center rounded text-owner"
+            class="btn btn-ghost btn-square btn-warning"
             href={`/curate/${channel.channelId}`}
             title={CURATE_LINK_COPY}
           >

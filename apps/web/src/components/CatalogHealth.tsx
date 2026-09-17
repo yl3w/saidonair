@@ -58,15 +58,11 @@ export function CatalogHealth({
               id={`filter-${name}`}
               type="button"
               aria-pressed={on}
-              class={`flex min-h-11 items-center gap-1.5 rounded border px-3 text-cell ${
-                on
-                  ? "border-ink bg-base-200 font-semibold text-ink"
-                  : "border-edge bg-panel text-ink-2"
-              }`}
+              class={`btn ${on ? "btn-neutral" : "btn-quiet-secondary"} [--fontsize:var(--text-cell)]`}
               onClick={() => onFilter(name)}
             >
               {label}
-              <span class="text-meta text-ink-3">{n}</span>
+              <span class="text-meta opacity-70">{n}</span>
             </button>
           );
         })}

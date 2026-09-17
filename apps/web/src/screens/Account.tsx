@@ -58,7 +58,7 @@ export function Account() {
           <input
             id="reader-email"
             type="email"
-            class="input min-h-11 flex-1 border-edge bg-panel text-ui text-ink"
+            class="input flex-1"
             value={value}
             placeholder="you@example.com"
             autoComplete="email"
@@ -69,7 +69,7 @@ export function Account() {
           />
           <button
             type="submit"
-            class="btn min-h-11 border-edge bg-panel text-ui text-primary"
+            class="btn btn-quiet"
             disabled={value.trim().length === 0}
           >
             Continue
@@ -88,7 +88,7 @@ export function Account() {
               <li key={email}>
                 <button
                   type="button"
-                  class="flex min-h-11 w-full items-center text-left text-ui text-primary"
+                  class="btn btn-ghost btn-primary btn-block justify-start text-left"
                   onClick={() => choose(email)}
                 >
                   {email}
