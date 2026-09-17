@@ -17,9 +17,9 @@ guide — principles, tokens, patterns, the scale playbook and the accessibility
 and behaves the way this document governs what it does. Where a spec and this
 document disagree, this document governs and the spec is due for revision.
 **Implementation status:** This document defines the target requirements and logical schema, not completed
-features. Items marked M4 are not yet built (§10); M3 shipped 2026-09-13. The Design phase between M3 and M4 (§10) shipped
-2026-09-15, so §7's screens and route table are the built ones; `docs/design.md` is canonical for how they look and
-behave. Next is M4.
+features. M3 shipped 2026-09-13, the Design phase 2026-09-15, and **M4 2026-09-17** — so §4.5's chats, §6's
+retrieval and §7's screens and route table are all built ones, and `docs/design.md` is canonical for how they look
+and behave. Items marked M5 and M6 are not yet built (§10). Next is M5.
 
 ## 1. Summary
 
@@ -1655,7 +1655,7 @@ M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunki
                  generations · shared summaries · one Workflow instance per episode attempt · two six-hour crons ·
                  Start route · Retry/Skip · availability-ordered digest
    Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
-M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations
+M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations   ✓ 2026-09-17
 M5 UI            conversations
 M6 Hardening     isolation/lifecycle tests · wrangler verification · docs
 ```
@@ -1675,4 +1675,15 @@ rebuilt. Its first step is the daisyUI and Tailwind install (§3, §9), which no
 
 **The Design phase is complete — declared by the owner 2026-09-15.** Its nine steps landed that day, and the owner's
 click-through against a live catalog then produced thirty-three further commits, every one of them a decision in §9;
-`docs/specs/design-phase-plan.md` → Record carries them by theme. **M4 is next.**
+`docs/specs/design-phase-plan.md` → Record carries them by theme.
+
+**M4 is complete — declared by the owner 2026-09-17.** Three chunks (`docs/specs/chat-origin-scope-plan.md`):
+M4.1 the chat routes, M4.2 retrieval and answering, M4.3 the screens. Unread receipts left the milestone's line on
+2026-09-16, having been delivered by the Design phase and never noticed. The owner's click-through closed M4.3 and
+produced eleven further commits, including two design reversals — a conversation has no rail of other chats and
+takes its own bar, and `/chats` carries no visible heading — which `docs/design.md` §2.2, §3 and §5 and
+`docs/specs/design-phase.md` §4.9 were amended to match.
+
+**One acceptance criterion is outstanding and was accepted anyway:** `chat-origin-scope.md` §5 criterion 19's second
+half — that `Try again` sends a new attempt and keeps the failed reply above it. The staleness half is tested;
+nothing has yet provoked a failed reply, in a test or in use, so the control has never run. **M5 is next.**

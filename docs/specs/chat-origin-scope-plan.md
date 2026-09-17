@@ -63,3 +63,10 @@ These are the split's, not the spec's, and the owner may reverse any of them.
 
 All nineteen criteria of `chat-origin-scope.md` §5, plus each chunk spec's own. `pnpm check` green at every chunk
 boundary. The owner's click-through against a live catalog, which is what closed the Design phase and M3.
+
+**Met 2026-09-17, with one exception the owner accepted.** Eighteen of the nineteen hold; criteria 5 and 6 were
+rewritten rather than satisfied, because decisions taken during the build overtook what they described — scope left
+the URL, and `Ask` was found to always open a new chat rather than re-scope an open one. **Criterion 19's second
+half is outstanding**: `Try again` sends a new attempt and keeps the failed reply above it, and nothing has provoked
+a failed reply in a test or in use, so the control has never run. The `CHECK` on `failure_code` landed the same day
+and caught two tests using codes the product does not emit.
