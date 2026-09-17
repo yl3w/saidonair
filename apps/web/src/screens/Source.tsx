@@ -133,7 +133,17 @@ function SourceScreen() {
         );
 
   return (
-    <Page bar={<SourceBar channel={record} />}>
+    <Page
+      bar={
+        <SourceBar
+          channel={record}
+          isOwner={role === "owner"}
+          busy={busy}
+          act={act}
+          onFollow={() => record !== null && follow(record.following)}
+        />
+      }
+    >
       {record === null ? (
         <div class="skeleton h-16 w-full" />
       ) : (
@@ -229,7 +239,19 @@ function SourceScreen() {
  * Back is the browser's, which is what "the page I came from" means; a reader who opened this URL
  * directly has no such page, and goes to Sources, which is this channel's home.
  */
-function SourceBar({ channel }: { channel: Channel | null }) {
+function SourceBar({
+  channel,
+  isOwner = false,
+  busy = false,
+  act,
+  onFollow,
+}: {
+  channel: Channel | null;
+  isOwner?: boolean;
+  busy?: boolean;
+  act?: ChannelAct;
+  onFollow?: () => void;
+}) {
   const { route } = useLocation();
   return (
     <header class="sticky top-0 z-20 border-b border-rule bg-ground">
@@ -245,17 +267,84 @@ function SourceBar({ channel }: { channel: Channel | null }) {
         </button>
 
         {channel !== null && (
-          <a
-            class="ml-auto flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
-            href={channel.canonicalUrl}
-            title={EXTERNAL_HINT_COPY}
-          >
-            {EXTERNAL_CHANNEL_COPY}
-            <Icon of={ExternalLink} size={16} />
-          </a>
+          <div class="ml-auto flex items-center gap-3">
+            {/* The acts join the bar from md up; below it they are in the header, where there is
+                room for them (see ChannelActs). */}
+            {act !== undefined && onFollow !== undefined && (
+              <div class="hidden items-center gap-3 md:flex">
+                <ChannelActs
+                  channel={channel}
+                  isOwner={isOwner}
+                  busy={busy}
+                  act={act}
+                  onFollow={onFollow}
+                />
+              </div>
+            )}
+            <a
+              class="flex min-h-11 items-center gap-1.5 px-2 text-ui text-primary"
+              href={channel.canonicalUrl}
+              title={EXTERNAL_HINT_COPY}
+            >
+              {EXTERNAL_CHANNEL_COPY}
+              <Icon of={ExternalLink} size={16} />
+            </a>
+          </div>
         )}
       </div>
     </header>
+  );
+}
+
+/**
+ * A channel's own acts (docs/design.md §3). The owner's are amber and come first because they are
+ * about the channel; the follow is everyone's and comes last because it is about the reader. No
+ * label over either half: they are told apart by colour and by the border on the reader's own.
+ */
+function ChannelActs({
+  channel,
+  isOwner,
+  busy,
+  act,
+  onFollow,
+}: {
+  channel: Channel;
+  isOwner: boolean;
+  busy: boolean;
+  act: ChannelAct;
+  onFollow: () => void;
+}) {
+  return (
+    <>
+      {isOwner && (
+        <>
+          <ChannelStatusActions
+            channel={channel}
+            busy={busy}
+            idPrefix="source-"
+            scope="adjustments"
+            tone="owner"
+            act={act}
+          />
+          <a
+            class="flex size-11 shrink-0 items-center justify-center rounded text-owner"
+            href={`/curate/${channel.channelId}`}
+            title={CURATE_LINK_COPY}
+          >
+            <Icon of={SquarePen} size={20} label={CURATE_LINK_COPY} />
+          </a>
+        </>
+      )}
+
+      {channel.status !== "declined" && (
+        <FollowButton
+          title={channel.title}
+          following={channel.following}
+          busy={busy}
+          onClick={onFollow}
+        />
+      )}
+    </>
   );
 }
 
@@ -306,39 +395,17 @@ function Header({
         <p class="mt-3 font-reading text-excerpt text-ink-2">{review}</p>
       )}
 
-      {/* One line, and controls only. The owner's are amber and come first because they are about
-          the channel; the follow is everyone's and comes last because it is about the reader. No
-          separate strip and no label: a page that offers a reader's act and an owner's act tells
-          them apart by colour and by the border on the reader's own, not by a heading over half. */}
-      <div class="mt-3 flex flex-wrap items-center gap-3 border-t border-rule pt-3">
-        {isOwner && (
-          <>
-            <ChannelStatusActions
-              channel={channel}
-              busy={busy}
-              idPrefix="source-"
-              scope="adjustments"
-              tone="owner"
-              act={act}
-            />
-            <a
-              class="flex size-11 shrink-0 items-center justify-center rounded text-owner"
-              href={`/curate/${channel.channelId}`}
-              title={CURATE_LINK_COPY}
-            >
-              <Icon of={SquarePen} size={20} label={CURATE_LINK_COPY} />
-            </a>
-          </>
-        )}
-
-        {channel.status !== "declined" && (
-          <FollowButton
-            title={channel.title}
-            following={channel.following}
-            busy={busy}
-            onClick={onFollow}
-          />
-        )}
+      {/* Below md the acts stay here: in the bar they would come to about 430 px of controls in
+          350 px of room. Above it they belong to the bar, where a screen about one object carries
+          that object's acts (docs/design.md §3). One component, rendered in one place at a time. */}
+      <div class="mt-3 flex flex-wrap items-center gap-3 border-t border-rule pt-3 md:hidden">
+        <ChannelActs
+          channel={channel}
+          isOwner={isOwner}
+          busy={busy}
+          act={act}
+          onFollow={onFollow}
+        />
       </div>
     </header>
   );
