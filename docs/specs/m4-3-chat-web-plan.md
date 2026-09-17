@@ -158,4 +158,32 @@ PRD §10.
 
 ## Walkthrough record
 
-To be filled in by Step 5.
+**2026-09-16/17, first owner session.** Chat `04dbc61a`, four messages, in a browser against the dev environment.
+
+**Confirmed working.** `Ask` opened a scoped chat from a summary; the first send minted the chat and replaced the
+URL; the reader dismissed the chip and asked a cross-source follow-up in the same conversation. The stored data
+matches the contract exactly: scope on both questions and null on both replies, **8 chunks kept when scoped and 6
+when not** — `SCOPED_KEEP` and `UNSCOPED_KEEP` chosen correctly without being told — `promptVersion` on the replies
+and null on the questions, `truncated` false.
+
+**The ascending sort earned its keep, with evidence.** Sources for the scoped reply were stored
+`2730, 5636, 56, 3070, 735, 905, 3299, 4893` — real score order, genuinely scrambled across a 94-minute episode.
+Rendered unsorted, a reader's timestamps would jump backwards and forwards; the card shows
+`0:56 · 12:15 · 15:05 · 45:30 · 51:10 · 54:59 · 81:33 · 93:56`.
+
+**Fixed during the step, both invisible to typecheck, lint and the API tests:**
+
+- Every chat rendered "Untitled chat". The screens read `chats.title`, which nothing sets — §4.9 says a chat is
+  named by its first question, and it was already there. Loader moved to `lib/chat-rows.ts` so the two lists cannot
+  diverge again (`8381cdf`).
+- `titleFor` named no episode exactly where it mattered most — the refusal, nothing-found and failed cases, none of
+  which cite anything. Unresolved scopes are now fetched by id.
+
+**Still unverified, and it needs a person:** criteria 4–6 and 12–14 — the chip across interactions, 390 px, the three
+themes, and the accessibility floor. Also unexercised: a reply with **more than one source card** (every question so
+far retrieved from a single episode), a truncated answer, and a failed reply with `Try again`.
+
+**One quality observation, not a defect.** An unscoped question across five episodes returned all six chunks from one
+of them, and the model answered that the excerpts did not mention others. Either the other four do not discuss the
+topic, or retrieval skews toward the episode holding the most chunks. This is what the click-through measure of
+`docs/specs/chat-origin-scope.md` §2.4 exists to settle.
