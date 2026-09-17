@@ -544,10 +544,13 @@ which was the only place a summary row had two forms — the row now has one sha
   to read, which implies a follow, and a second marker beside it may be noise.
 - Whether losing a read summary from History when its channel is unfollowed surprises people enough to change the
   rule. Today History renders current eligible follows; the receipt survives and returns on a refollow.
-- Chat titles: nothing sets `chats.title`, so a chat is named by its first question. Either a rename route or drop
-  the column.
-- Chat search, which the rail's search box needs and no route provides.
-- Chat deletion: nothing deletes a chat, and the rail only grows.
+- ~~Chat titles: nothing sets `chats.title`.~~ Settled 2026-09-17: **a chat is named by its first question**, which
+  `/chats` and a conversation's bar both do. The column stays — unset and harmless — because a rename route would
+  want it and dropping it costs a migration and a wiped Durable Object to remove something nothing reads.
+- ~~Chat search, which the rail's search box needs and no route provides.~~ **Not in this version** (owner decision
+  2026-09-17). The rail it was wanted for is gone, so the requirement went with it.
+- ~~Chat deletion: nothing deletes a chat, and the rail only grows.~~ **Not in this version** (owner decision
+  2026-09-17). The list grows; a reader who wants a conversation gone has no way to get it, which is accepted.
 - ~~Fonts: self-hosted files or system stacks.~~ Settled 2026-09-15: self-hosted.
 
 ---

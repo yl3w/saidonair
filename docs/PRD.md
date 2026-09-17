@@ -19,7 +19,7 @@ document disagree, this document governs and the spec is due for revision.
 **Implementation status:** This document defines the target requirements and logical schema, not completed
 features. M3 shipped 2026-09-13, the Design phase 2026-09-15, and **M4 2026-09-17** — so §4.5's chats, §6's
 retrieval and §7's screens and route table are all built ones, and `docs/design.md` is canonical for how they look
-and behave. Items marked M5 and M6 are not yet built (§10). Next is M5.
+and behave. Items marked M6 are not yet built (§10). Next is M6.
 
 ## 1. Summary
 
@@ -766,8 +766,10 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   redirect every unknown path takes, to `/queue`. **When M4 builds it, `/chats` is a history and not an entry**
   (decided 2026-09-15, §9): conversations are started by `Ask` on a summary and nowhere else, so the route lists what
   exists and offers no way to make a new one, and primary navigation still does not carry it. A chat is named by its
-  first question, and the rail shows the episode that chat began at beside the name, because a chat born at a
-  summary reads as being about it. **The scope chip is the screen's own state and nothing is in the URL** (decided
+  first question, and `/chats` shows the episode that chat began at beside the name, because a chat born at a
+  summary reads as being about it; the row carries three lines of the first reply, as a summary row carries its
+  excerpt. **A conversation has no rail of other chats and takes its own bar** (decided 2026-09-17): a rail carries
+  navigation *about* what is on the page, and a list of different conversations navigates away from it. **The scope chip is the screen's own state and nothing is in the URL** (decided
   2026-09-16, reversing the day's earlier ruling). A reload recovers it from the chat's **last question**, which
   already stores its own `aboutEpisodeId` — the conversation is the record of what it is searching, so no parameter
   is needed to survive a refresh. `Ask` hands the episode to a chat that does not exist yet through the screen
@@ -1475,6 +1477,15 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the cursor is null, and claims the reader is through only on the second. Cost: a reader with hundreds waiting
   presses Show more rather than scrolling forever; an explicit control was chosen over loading on scroll because it
   is reachable from a keyboard and because History already uses exactly this one.
+- **Chat search and chat deletion are not in this version, and a chat needs no title route — decided 2026-09-17.**
+  `docs/specs/design-phase.md` §4.9 had recorded three gaps for M4 to close, and M4 closed none of them, because
+  each dissolved rather than being built. **Naming** needed no route: a chat is named by its first question, which
+  `/chats` and a conversation's bar both render, and `chats.title` stays unset because a future rename route would
+  want the column and dropping it would cost a migration and a wiped Durable Object to remove something nothing
+  reads. **Search** was wanted for the chat rail's search box, and the rail was removed on 2026-09-17, so the
+  requirement left with the thing that needed it. **Deletion** is simply declined for now, and the cost is named
+  rather than hidden: the list only grows, and a reader who wants a conversation gone has no way to get it. This
+  empties M5 (§10), whose whole scope was conversations — which M4.3 built.
 - **Chats begin at a summary, and scope belongs to a message — decided 2026-09-15.** Chat was specified as a global
   surface: an empty chat, a blank box, and every message searching everything the reader follows. Two faults follow
   from that. A blank box has no cold start — the reader meets an empty input, tests it with the question it is worst
@@ -1656,7 +1667,7 @@ M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunki
                  Start route · Retry/Skip · availability-ordered digest
    Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
 M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations   ✓ 2026-09-17
-M5 UI            conversations
+M5 UI            conversations                                                                  ✓ 2026-09-17
 M6 Hardening     isolation/lifecycle tests · wrangler verification · docs
 ```
 
@@ -1686,4 +1697,11 @@ takes its own bar, and `/chats` carries no visible heading — which `docs/desig
 
 **One acceptance criterion is outstanding and was accepted anyway:** `chat-origin-scope.md` §5 criterion 19's second
 half — that `Try again` sends a new attempt and keeps the failed reply above it. The staleness half is tested;
-nothing has yet provoked a failed reply, in a test or in use, so the control has never run. **M5 is next.**
+nothing has yet provoked a failed reply, in a test or in use, so the control has never run.
+
+**M5 is complete — audited 2026-09-17, and it was empty.** Its whole scope was conversations, which M4.3 built: the
+Design phase had taken the five screens M5 once held, leaving it that one subject, and §7's own entry says chats
+were "built in M4". The three gaps `design-phase.md` §4.9 reserved for it were settled the same day without routes —
+naming needs none, and search and deletion are not in this version (§9). This is the second milestone line to
+outlive its work, after unread receipts, which is why an audit now opens a milestone rather than closing one.
+**M6 is next**, and it is the last: isolation and lifecycle tests, `wrangler` verification, and docs.
