@@ -979,9 +979,13 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   channel and cost two of twenty-four on a real question. Retrieval rejects them correctly on generation mismatch, so
   no citation was wrong and nothing was user-visible — the cost was that the over-fetch was spent on vectors that
   could not be used, which mattered newly, because the reranker above made candidate depth load-bearing where the
-  top six by cosine had been the whole answer. Nothing had malfunctioned twice: cleanup is designed to swallow its
-  own failures, correctly, since a published episode must not be marked failed over a delete that blipped — but the
-  delete named one generation, so a single miss was permanent. Rule 26 now deletes every superseded generation, which
+  top six by cosine had been the whole answer. **Two faults, and the first was invisible behind the second.**
+  `DELETE_BATCH` was 1000, carried from the upsert ceiling and never measured, where Vectorize refuses more than 100
+  ids per delete — so an episode over 100 chunks could *never* have a superseded generation deleted, while every
+  shorter one always could. Four shorter episodes cleaning up correctly made a deterministic bug read as a transient
+  one. It stayed hidden because cleanup is designed to swallow its own failures, correctly, since a published episode
+  must not be marked failed over a delete that blipped — and because the delete named one generation, so a single
+  miss was permanent. Rule 26 now deletes every superseded generation, which
   makes the next successful publication carry out whatever the last one failed to, using the attempt ledger as the
   record of what exists. **The order is the part not to touch:** publish, then delete. Deleting first would empty an
   episode that is on screen and answerable, and since the floor-both decision above the reader would be told

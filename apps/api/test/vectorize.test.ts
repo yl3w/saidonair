@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type ChunkMetadata,
+  DELETE_BATCH,
   FILTERABLE_PROPERTIES,
   fakeVectorIds,
   GET_BY_IDS_BATCH,
@@ -219,6 +220,38 @@ describe("the vector store", () => {
       GET_BY_IDS_BATCH,
       1,
     ]);
+  });
+
+  it("splits deletes into batches under the ceiling", async () => {
+    // The test this file did not have, and the reason a real generation leaked: DELETE_BATCH was
+    // 1000, carried over from the upsert ceiling, and the binding refuses more than 100 ids with
+    // `too many ids in payload`. A 105-chunk episode could therefore never have a superseded
+    // generation deleted, deterministically, while every shorter one cleaned up fine.
+    const sizes: number[] = [];
+    const stub = {
+      async getByIds(ids: string[]) {
+        return ids.map((id) => ({
+          id,
+          values: axis(0),
+          namespace: SHARED_NAMESPACE,
+        }));
+      },
+      async deleteByIds(ids: string[]) {
+        sizes.push(ids.length);
+        return { mutationId: "m" };
+      },
+    } as unknown as Vectorize;
+
+    await realStore(stub).deleteByIds(
+      SHARED_NAMESPACE,
+      generationIds(VIDEO, GEN, DELETE_BATCH + 5),
+    );
+
+    expect(sizes).toEqual([DELETE_BATCH, 5]);
+    // **The assertion that would have caught it.** Everything above is written in terms of
+    // DELETE_BATCH, so it passes at any value — it proves the splitting works, never that the
+    // ceiling is right. The binding's limit is 100, measured against the live index on 2026-09-17.
+    expect(DELETE_BATCH).toBeLessThanOrEqual(100);
   });
 
   it("splits upserts into batches under the ceiling", async () => {

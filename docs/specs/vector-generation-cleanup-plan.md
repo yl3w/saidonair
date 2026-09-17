@@ -2,7 +2,25 @@
 
 **Implements:** `docs/specs/vector-generation-cleanup.md` under `AGENTS.md`.
 **Written:** 2026-09-17, against `main` at `759ec93` plus the uncommitted `chat-relevance-rerank` work.
-**Status:** Steps 1–4 COMPLETE 2026-09-17, 390 tests. Step 5 is owner-triggered and not yet run.
+**Status:** Steps 1–4 COMPLETE 2026-09-17 (`29c7fcd`). **Step 5 ran and failed, productively** — see below. 391 tests.
+
+**Step 5 found the real root cause, which no test could have.** The Retry published generation four and attempted
+both cleanups, each under its own step name, each retried three times by the step config, each failing with
+`VECTOR_DELETE_ERROR (code = 40007): too many ids in payload; max id count is 100, got 105`. `DELETE_BATCH` was
+1000 — carried from the upsert ceiling, never measured — against a real limit of 100, so the 105-chunk episode
+could never have a generation deleted and the four shorter ones always could. The "one transient failure" reading
+in the spec's first draft was an artefact of only one episode being long.
+
+The constant is now 100, `test/vectorize.test.ts` gained the delete-batching test it never had, and that test
+carries an explicit `expect(DELETE_BATCH).toBeLessThanOrEqual(100)` — **because a batching test written in terms of
+the constant passes at any value**, which is precisely why the upsert test beside it never caught this.
+
+Everything else in the walkthrough behaved as specified: `superseded: 2` on the publication line, two distinct
+`cleanup:<generationId>` steps, failures logged, publication standing, episode `available`. The mechanism was right
+and the ceiling was wrong.
+
+**Still owed: one more Retry of `pduZ-bfcKAQ`.** There are now three superseded generations rather than two, and
+the next publication should delete all three.
 
 **Step 2.4 was wrong, and the correction is the interesting part of this change.** The plan called the two existing
 assertions a mechanical rename. One of them could not be renamed: it seeded an `available` episode, which

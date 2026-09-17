@@ -1,6 +1,6 @@
 # Feature spec — Publication deletes every superseded vector generation
 
-**Status:** written 2026-09-17, awaiting the owner's go.
+**Status:** IMPLEMENTED 2026-09-17, 391 tests. The live run found a second fault, §2.1; the stray it was run to clear is still in the index and needs one more Retry.
 **PRD:** §4.2 (rules 24–26), §6 (retrieval boundaries), §9 (decisions).
 **Depends on:** nothing. Independent of `chat-relevance-rerank.md`, though that spec is why this one is worth doing now.
 **Occasioned by:** a stray generation found on 2026-09-17 while measuring retrieval for `chat-relevance-rerank.md`.
@@ -24,9 +24,26 @@ retry: any generation a previous publication failed to remove is carried out by 
 Episode `pduZ-bfcKAQ` ("I did it 8 Times!", 105 chunks) was published on 2026-09-15 and replaced on 2026-09-16.
 Both generations are still in `media-rag-dev`; the Registry correctly says only the second is active.
 
-Four other episodes were replaced in the same period and show one generation each, so this reads as **one cleanup
-that failed once**, not as cleanup being broken. That is precisely the problem: the code is right, and it has no way
-to notice when it does not take.
+Four other episodes were replaced in the same period and show one generation each, so this read as **one cleanup
+that failed once** — and that reading was wrong. **Corrected 2026-09-17**, when the fix below ran for real and the
+delete failed again, out loud this time:
+
+```
+VECTOR_DELETE_ERROR (code = 40007): too many ids in payload; max id count is 100, got 105
+```
+
+`DELETE_BATCH` was **1000**, carried over from the upsert ceiling and never measured. Vectorize refuses more than
+**100** ids per delete. The episode has 105 chunks; the other four have 49, 69, 57 and 67. Nothing was transient:
+**an episode over 100 chunks could never have a superseded generation deleted**, and one under it always could. The
+sampling that looked like evidence of a blip was really the observation that only one episode is long.
+
+Two faults, then, and this spec fixes the second by itself only for short episodes:
+
+1. `DELETE_BATCH = 100`, measured (`lib/vectorize.ts`).
+2. The delete is plural, so a generation that survived one publication is collected by the next (§3 decision 1).
+
+Either alone leaves a hole. The ceiling alone would still lose any generation whose one cleanup attempt failed for
+any other reason; the plural delete alone would retry a delete that is guaranteed to fail again.
 
 ### 2.2 Nothing a reader sees is wrong
 
@@ -55,6 +72,8 @@ Cleanup is singular in both places it happens: `completeAttempt` returns the one
 (`processing.ts:260`). Neither looks further back, so a generation that survives one publication survives all of them.
 `discard` swallows its own failures by design — correct for the attempt, since a published episode must not be marked
 failed over a cleanup blip, but it means a cleanup that worked and one that did not are indistinguishable afterwards.
+**That is what made a deterministic bug look like a rare one for a day**, and it is why §6's detection gap is the
+part of this worth returning to.
 
 ## 3. Decisions this spec makes
 

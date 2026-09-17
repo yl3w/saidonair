@@ -82,9 +82,18 @@ export type VectorStore = {
 // 2026-09-13): 1000 vectors per upsert through the binding, 50 matches when metadata is returned.
 // getByIds is kept to 20 ids per call, the figure the binding has enforced; smaller batches cost
 // nothing but a call.
+//
+// **DELETE_BATCH is 100, measured, not documented** (2026-09-17). It was 1000, carried over from the
+// upsert ceiling, and the binding answers
+// `VECTOR_DELETE_ERROR (code = 40007): too many ids in payload; max id count is 100, got 105`.
+// The consequence was invisible for a year of short episodes and deterministic for long ones: an
+// episode over 100 chunks could never have a superseded generation deleted, because the cleanup is
+// designed to swallow its own failures. One 99-minute episode leaked two whole generations that way
+// while four shorter ones cleaned up correctly, which reads exactly like a transient fault and is
+// not one (docs/PRD.md §9).
 export const UPSERT_BATCH = 200;
 export const GET_BY_IDS_BATCH = 20;
-export const DELETE_BATCH = 1000;
+export const DELETE_BATCH = 100;
 export const QUERY_TOP_K_MAX = 50;
 
 const EPISODE_ID = "[A-Za-z0-9_-]{11}";
