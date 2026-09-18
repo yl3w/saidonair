@@ -458,8 +458,9 @@ episode's row, phrased from its latest attempt.
   chats.
 - **A chat begins at a summary and nowhere else (decided 2026-09-15, §9).** The only entry is `Ask` on the reading
   screen, and it renders only where the episode can answer: a published summary, an active vector generation, and a
-  channel eligible for that caller. There is no new-chat control anywhere else, `/chats` is the history of
-  conversations rather than a way into one, and primary navigation stays Queue and Sources.
+  channel eligible for that caller. There is no new-chat control anywhere else, and `/chats` is the history
+  of conversations rather than a way into one. **Primary navigation carries Chats** since M4.3 built the screen
+  (2026-09-16, §9); a destination is not an entry, and the route still offers no way to start one.
 - Every message searches all channels the user currently follows that are approved, paused or not, **unless it
   carries an episode scope hint**. There is no fixed channel selection at chat creation and no chat-to-channel
   membership table.
@@ -783,7 +784,9 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   `/chats` route** (§9, 2026-09-15): primary navigation is Queue and Sources, and a stale `/chats` link falls to the
   redirect every unknown path takes, to `/queue`. **When M4 builds it, `/chats` is a history and not an entry**
   (decided 2026-09-15, §9): conversations are started by `Ask` on a summary and nowhere else, so the route lists what
-  exists and offers no way to make a new one, and primary navigation still does not carry it. A chat is named by its
+  exists and offers no way to make a new one. **Primary navigation does carry it** (2026-09-16, §9, reversing that
+  day's expectation): a reader who has conversations needs a way back to them, which a history can be without
+  being an entry. A chat is named by its
   first question, and `/chats` shows the episode that chat began at beside the name, because a chat born at a
   summary reads as being about it; the row carries three lines of the first reply, as a summary row carries its
   excerpt. **A conversation has no rail of other chats and takes its own bar** (decided 2026-09-17): a rail carries
@@ -1685,7 +1688,13 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   (`docs/specs/design-phase.md` §4.9) are unchanged. The placeholder screen and the generic `Unbuilt` component it
   used are deleted rather than commented out; M4 builds from the design, not from a stub. **Made permanent the same
   day by the chat-origin decision above:** with chats beginning only at a summary, `/chats` never becomes a primary
-  destination, and the navigation stays two items after M4 rather than three.
+  destination, and the navigation stays two items after M4 rather than three. **That last clause was reversed on
+  2026-09-16**, when M4.3 built the screen (`docs/specs/m4-3-chat-web.md` §3.1): chats still begin only at a summary,
+  but a reader who has conversations needs a way back to them, so the history is a destination like Queue and
+  Sources without being an entry. Primary navigation is three items and the phone's tab bar three 44 px targets, and
+  the item shipped in the same commit as the screen (`de875d0`), never before it, which is what the ruling above
+  actually protects. Recorded here 2026-09-18: §4.5, §7 and this entry claimed two items for two days, because
+  `m4-3-chat-web.md` §6 judged that PRD §7 needed no edit and nothing re-read it against the shipped nav.
 - **Cron cadence — decided 2026-09-12:** channel discovery runs at `0 */6 * * *` UTC and episode recovery at
   `30 */6 * * *` UTC; both have a six-hour cadence. The triggers exist in production only (2026-09-13, below).
 - **Environments — decided 2026-09-13: three, dev, staging, production.** Local `wrangler dev` runs as dev against
