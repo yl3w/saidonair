@@ -1,0 +1,5 @@
+{
+  "out": "docs/prompts/conversations",
+  "retentionDays": 30,
+  "remindWithinDays": 7
+}

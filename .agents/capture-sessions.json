@@ -1,0 +1,118 @@
+{
+  "claude-01c729d4": {
+    "title": "The summary card, and page titles",
+    "note": "Density removed from Queue, repeated page headings replaced with sr-only names and per-route document titles, and the Reviewed section deleted once it could not justify itself. Ends with the milestone declared complete."
+  },
+  "claude-0cb7956e": {
+    "title": "The README says what shipped",
+    "note": "Bringing the README and its architecture diagram back in line with the built product."
+  },
+  "claude-31bb4686": {
+    "title": "Scoring the summaries",
+    "note": "The first session that judged the product's actual output. Real summaries were pasted in and scored, the owner diagnosed the takeaway cap as duration-blind before the code did, sections were resized, and a harness was specced by first asking what exactly it would verify. It ends with the attribution work discarded \u2014 the results were good enough without it."
+  },
+  "claude-3426388e": {
+    "title": "Documenting the prompts",
+    "note": "This export: deciding what a record of the work should be, and building it. The session is included because leaving it out would make the record incomplete on its first day."
+  },
+  "claude-377a708a": {
+    "title": "Code review feedback, one item at a time",
+    "note": "Four rounds of the same loop: paste a review finding, ask for an explanation and whether it is worth addressing, implement it into the working tree, look at it, then commit. The empty-string validation ruling came out of this."
+  },
+  "claude-3816b4ef": {
+    "title": "Fifteen items of UI feedback",
+    "note": "The longest UI session: each item explained as if to a novice user, options weighed, then applied. Read and Unread were removed entirely rather than restyled, reading-time estimates dropped for being visibly untrustworthy, and several decisions were reversed mid-session once seen on screen. Screenshots drive most of the second half."
+  },
+  "claude-51e0b539": {
+    "title": "The PRD becomes canonical",
+    "note": "The split that governs every document since: PRD.md is the product specification and AGENTS.md keeps only engineering. Then two review findings, including the one that removed an optimisation because a missing row made the ledger harder to reason about than the row cost."
+  },
+  "claude-53d8de9d": {
+    "title": "The UULF playlist prefix",
+    "note": "The owner brought the finding \u2014 YouTube's feed can be filtered by swapping the channel prefix \u2014 and drove it to a decision: UULF only, so Shorts and live VODs never crowd the fifteen-entry feed."
+  },
+  "claude-56317bcc": {
+    "title": "Which skills are installed",
+    "note": "A single question, kept for completeness."
+  },
+  "claude-6175d3e7": {
+    "title": "A design milestone, and choosing daisyUI",
+    "note": "A progress report that turned into inserting a whole UI/UX milestone before M4. shadcn was evaluated and daisyUI chosen, with the conflicting rules removed rather than left to contradict it."
+  },
+  "claude-68c1db28": {
+    "title": "The chat cited the wrong episode",
+    "note": "A live defect \u2014 a true-crime question citing a Steve Jobs episode \u2014 traced to the fact that a cosine score cannot carry a relevance floor at any value, and fixed with a cross-encoder reranker. That exposed a second fault: superseded vector generations were never deleted above 100 chunks, because the delete batch size had been carried over from the upsert ceiling and never measured."
+  },
+  "claude-6b0a45e9": {
+    "title": "The design phase, designed",
+    "note": "Wireframes argued over rather than accepted: the digest window dropped in favour of day groups, a calendar proposed for thirty channels, opening and finishing pulled apart. Six numbered critiques came back at the artifact. It produced docs/design.md and wired AGENTS.md to it the way it already pointed at the PRD."
+  },
+  "claude-7163b283": {
+    "title": "The design phase, built",
+    "note": "Nine steps, mostly 'proceed with step N'. The vocabulary ruling landed here \u2014 episodeId everywhere, videoId only at the feed boundary \u2014 and the session ended in a live error hunt over a newly added channel."
+  },
+  "claude-8dd9ca45": {
+    "title": "What a channel actually is",
+    "note": "A product session first \u2014 explain the current model, diagram it, evaluate the owner's own proposal \u2014 and an implementation session second. Soft delete became a declined state, the schema was rewritten rather than migrated because nothing was deployed, and the back half is eight review findings worked one at a time, against some resistance to being handed all of them at once."
+  },
+  "claude-90edcfdc": {
+    "title": "The Registry Durable Object",
+    "note": "The first implementation session. The Registry DO, the identity middleware, and GET /me, then the User DO \u2014 with a detour into how to clear every migration and reapply it, which became the habit that eventually turned into the clean-local skill."
+  },
+  "claude-96072d04": {
+    "title": "The cursor on clickable things",
+    "note": "A small session with a general ruling inside it: use daisyUI rather than overriding it, written into the design guide before the controls were reclassified."
+  },
+  "claude-9be0a26d": {
+    "title": "A false start",
+    "note": "The same instruction as the next session, mistyped and abandoned a minute later. Kept because it happened."
+  },
+  "claude-c6833921": {
+    "title": "Checking a new channel ingested",
+    "note": "One prompt, asking whether a newly added channel's workers and summaries had run."
+  },
+  "claude-cb72d979": {
+    "title": "Is M5 all that is left",
+    "note": "One question about what remained."
+  },
+  "claude-d4ad1ab7": {
+    "title": "The read experience, specced and built",
+    "note": "The first feature worked end to end: spec, decisions taken one at a time, a two-phase plan, then implementation. Two rulings here outlived the session \u2014 that channel ids are asked for rather than resolved from @handles, and that the API is modelled on entities rather than roles, which killed OwnerRequest and every /owner/* route. It also contains the first transcript spike, whose finding was set aside for later."
+  },
+  "claude-d82bad18": {
+    "title": "M3 split into seven chunks",
+    "note": "M3 was too big to hold, so it was broken into seven spec-and-plan pairs and the first chunks were built. A staging environment was stood up so the dev vector index was not the only one. The last few prompts are the first real summary coming back raw, and the owner rewriting the map prompt by hand."
+  },
+  "claude-d91282ac": {
+    "title": "The API reference, specified and implemented",
+    "note": "Resumed from an earlier session, so it carries the whole arc. The rulings are the interesting part: the API enforces no authorization at all and the web is the only gate; the owner-specific channel route is removed; migrations stop being additive-only; and the plan is restructured to depend on nothing in M3. It ends by finding channel state in two places and specifying follows onto a single owner."
+  },
+  "claude-e5fed134": {
+    "title": "The long-form feed, implemented",
+    "note": "Two prompts: walk me through the plan as if I were junior, then build it."
+  },
+  "claude-e79bc0f7": {
+    "title": "A skill for wiping local Durable Object state",
+    "note": "Editing an applied migration means the local DO state has to go. This turned that chore into a skill, and settled two things that stuck: skills follow the open Agent Skills standard rather than a Claude-only format, and Node is pinned to the 22.x line rather than an exact patch."
+  },
+  "claude-eb35f7e4": {
+    "title": "Chats, from PRD to walkthrough",
+    "note": "The largest session in the project: the chat feature specified, planned, built across five steps, then tested end to end through the API before the UI existed. Scope handling was argued down to component state with nothing in the URL, dedupe was removed in favour of grouping in the UI, and the last stretch is a visual walkthrough. It closes by auditing M4, M5 and M6."
+  },
+  "claude-eda6b43d": {
+    "title": "A browser test client, then the transcript spike",
+    "note": "Began as a way to read the API from a browser and became the session that settled how transcripts are fetched at all. Every Cloudflare egress path to YouTube failed from a DO-free spike Worker; a Bright Data unlocker was raised and dropped; DownSub was probed against its own API docs and a HAR capture, and chosen. The InnerTube fetcher was removed and its history rewritten. It closed on embeddings, dimensions, and the cron cadence."
+  },
+  "claude-f1f6bf74": {
+    "title": "clean-local reaches the vector index",
+    "note": "Extending the skill to clear dev Vectorize, and pushing back on a name until the scope was right. It also added the skills install and remove commands, after the CLI's unscoped remove was found to delete the source."
+  },
+  "claude-f6c585fa": {
+    "title": "The M3 ingestion spec, argued out",
+    "note": "The longest design session in the project and almost no code. Dozens of review findings taken one by one, most of them answered with a question rather than an acceptance \u2014 lifecycle versions dropped, stale-run claims challenged on product grounds, ER diagrams and status tables requested to check the model held together. It ends with the decision to throw the schema away and start it over."
+  },
+  "claude-f98fcb94": {
+    "title": "Naming it Said on Air",
+    "note": "Three prompts: suggest names, find one with a free domain, write it into the PRD."
+  }
+}
