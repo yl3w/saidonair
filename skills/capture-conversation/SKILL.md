@@ -18,11 +18,29 @@ the repo, where it outlives the cache.
 | Titles and notes | `.agents/capture-sessions.json` |
 | Settings | `.agents/capture.json`, all keys optional |
 
-## ⚠ Screening is not built yet
+## Screening happens before anything is written
 
-**Do not commit a capture until `screen.mjs` exists.** Captures can contain anything that was pasted into a
-conversation, including keys and command output. Until the screening step lands, write captures to a scratch
-directory with `--out` and read them yourself before anything is staged.
+A capture can contain whatever was pasted into a conversation. Screening runs on every capture **before** it reaches
+disk — screening afterwards would mean the secret had already landed in the repo.
+
+It produces two kinds of result, and the difference is the point:
+
+**Redactions are certain, so they are applied and reported.** Email addresses, and any value read out of this
+machine's own `.dev.vars` or `.env` files. A value enumerated in an env file is a secret by definition; there is
+nothing to decide. Template files (`.example`, `.sample`, `.template`) are skipped — they are committed on purpose
+and their values are already public.
+
+**Findings are suspicions, so they stop the write.** Bearer tokens, private key blocks, AWS, Google, GitHub, Slack
+and npm token shapes, and 32-character hex ids. That last one is a Cloudflare account id and also an md5, which is
+exactly why it asks instead of assuming.
+
+A blocked capture is not written at all, and the report names what was found without printing the value. Then either
+remove the secret at its source, or — if it is harmless — add the exact string to `allow` in `.agents/capture.json`
+and run again. For a value from an env file, allow it by its **key name**: that means "yes, redact that one and
+continue", and the raw value never reaches disk on either path.
+
+**Then read the capture yourself.** The patterns catch known shapes; they cannot catch an internal hostname, a
+customer name, or a credential in a form nobody has seen before. Read what was written before committing it.
 
 ## Running it
 

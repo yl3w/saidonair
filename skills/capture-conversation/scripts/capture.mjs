@@ -9,13 +9,15 @@
 //   node capture.mjs --out <dir>        # override the configured output directory
 //   --dry-run                           # report, write nothing
 //
-// This writes the conversation. It does NOT screen it — `screen.mjs` does that, and the skill runs it first.
+// Every capture is screened before it is written (see screen.mjs). A capture with an unresolved finding is not
+// written at all — screening after the fact would mean the secret had already landed in the repo.
 
 import { execFileSync } from "node:child_process";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { settings, titles, writeTitles } from "./lib/config.mjs";
 import { day, renderCapture, renderIndex } from "./lib/render.mjs";
+import { knownSecrets, screen } from "./screen.mjs";
 import { claude } from "./sources/claude.mjs";
 import { codex } from "./sources/codex.mjs";
 
@@ -188,17 +190,29 @@ async function capture(session, cache) {
     commits: commitsIn(first, session.turns.at(-1).at),
   });
 
-  if (!dryRun) {
-    await mkdir(outDir, { recursive: true });
-    await writeFile(join(outDir, file), body);
-  }
-  return {
+  const screened = screen(body, { secrets, allow: config.allow ?? [] });
+  const common = {
     key,
     file,
     date: day(first),
     agent: session.agent,
     turns: session.turns.length,
+  };
+  if (screened.findings.length)
+    return {
+      ...common,
+      blocked: screened.findings,
+      redacted: screened.redacted,
+    };
+
+  if (!dryRun) {
+    await mkdir(outDir, { recursive: true });
+    await writeFile(join(outDir, file), screened.text);
+  }
+  return {
+    ...common,
     titled: Boolean(entry.title),
+    redacted: screened.redacted,
   };
 }
 
@@ -232,6 +246,7 @@ async function buildIndex(cache) {
 }
 
 const cache = await titles(repo);
+const secrets = await knownSecrets(repo);
 
 if (flag("--retitle")) {
   // Clearing a cached title is what makes it get written again. A hand-corrected entry is pinned and survives.
@@ -285,11 +300,13 @@ const read_all = [];
 for (const group of targets) read_all.push(await read(group));
 
 const merged = mergeOverlapping(read_all);
-const written = [];
+const results = [];
 for (const session of merged) {
   const result = await capture(session, cache);
-  if (result) written.push({ ...result, mergedFrom: session.mergedFrom });
+  if (result) results.push({ ...result, mergedFrom: session.mergedFrom });
 }
+const written = results.filter((r) => !r.blocked);
+const blocked = results.filter((r) => r.blocked);
 
 const indexed = await buildIndex(cache);
 
@@ -309,6 +326,26 @@ if (indexed)
 
 // The script never invents a title. A mechanical one built from the first prompt would be worse than none, and
 // because a cached title is not regenerated it would poison the cache permanently.
+const redacted = [...new Set(written.flatMap((w) => w.redacted ?? []))];
+if (redacted.length) console.log(`redacted throughout: ${redacted.join(", ")}`);
+
+if (blocked.length) {
+  console.error(
+    `\n${blocked.length} capture${blocked.length === 1 ? " was" : "s were"} NOT written — screening found:`,
+  );
+  for (const b of blocked) {
+    console.error(`  ${b.file}`);
+    for (const f of b.blocked)
+      console.error(`      ${f.name} ×${f.count}  (first: ${f.sample})`);
+  }
+  console.error(
+    "\nRead the finding. If it is a secret, remove it at the source; if it is harmless, add the exact",
+  );
+  console.error(
+    'string to "allow" in .agents/capture.json and run again. Nothing was written for these sessions.',
+  );
+}
+
 const untitled = written.filter((w) => !w.titled);
 if (untitled.length) {
   console.log(
@@ -320,3 +357,5 @@ if (untitled.length) {
   );
   console.log("and re-run with --index.");
 }
+
+if (blocked.length) process.exit(1);
