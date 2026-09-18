@@ -2,7 +2,8 @@
 
 **Spec:** `docs/specs/conversation-capture.md`.
 **Written:** 2026-09-18, against `main` at `335eab6`.
-**Status:** APPROVED 2026-09-18. Step 1 complete; Steps 2–5 outstanding.
+**Status:** COMPLETE 2026-09-18. All five steps landed on `main` (00bbab2, 86342f9, 4ffa6f9, 4303659, 38631cd).
+Cursor's registration remains written-from-documentation and unexercised; Codex retention remains unconfirmed.
 **Shape:** five steps, each one commit when the owner asks, with `pnpm check` green before the next begins.
 Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 **No new dependencies.** Node 22 and POSIX sh only, as `clean-local` does.

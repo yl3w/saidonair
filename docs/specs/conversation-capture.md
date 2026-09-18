@@ -1,7 +1,7 @@
 # Feature spec — conversation capture
 
 **Written:** 2026-09-18, against `main` at `335eab6`.
-**Status:** APPROVED 2026-09-18. Implementation in progress — see the plan.
+**Status:** IMPLEMENTED 2026-09-18 on `main` in five commits (6b91fdb…38631cd). 49 conversations captured, both agents.
 **Supersedes:** `scripts/prompts.mjs` and the `pnpm prompts` command, both added 2026-09-18 and not yet committed.
 **Does not touch the PRD.** This is repository tooling, like `clean-local`. It captures how the product was built; it
 changes nothing the product does, no route, no schema, and nothing a reader sees. `README.md` and `AGENTS.md` change.
