@@ -147,6 +147,8 @@ function mergeOverlapping(sessions) {
       id: primary.id,
       turns,
       mergedFrom: cluster.length,
+      // Every transcript this conversation was assembled from, so the reminder knows they are all accounted for.
+      covers: cluster.map((c) => `${c.agent}-${c.id}`).sort(),
     };
   });
 }

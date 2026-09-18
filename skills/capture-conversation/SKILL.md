@@ -107,6 +107,34 @@ Neither agent stores a conversation the way you would guess, and the script reco
 A capture taken now cannot contain the turns that follow it, including the one that asked for it. Re-running
 overwrites it with a longer version. The file is always a prefix of the truth, never wrong — this is not data loss.
 
+## The expiry reminder
+
+`scripts/uncaptured.mjs` reports conversations that are near the end of their cache's retention and have never been
+captured. It is meant to run from a session-start hook, and Step 4 of the plan registers it.
+
+```
+node skills/capture-conversation/scripts/uncaptured.mjs --agent claude|cursor|codex
+  --within <days>   widen the expiry window (for testing)
+  --force           ignore the throttle (for testing)
+```
+
+**It never blocks, never writes a capture, and always exits 0**, even when it fails. A reminder that can break
+someone's session start is worse than no reminder.
+
+**It speaks once a day per repository**, not once per session. The stamp lives in `~/.cache/capture-conversation/`,
+outside the repo — it is per-machine state, and committing it would let one developer's reminder silence another's.
+The throttle is shared across agents, so opening three agents in a day is one reminder rather than three.
+
+**It knows about merged conversations.** Every capture carries a `<!-- capture:covers … -->` marker naming the
+transcripts it was assembled from, so a transcript absorbed into a merged conversation is not reported as missing.
+
+**It skips transcripts with no conversation in them** — an agent opened and closed leaves a file with nothing to
+capture, and reporting it daily until it expires is a false alarm. That check costs a read, so it runs against the
+handful of candidates rather than every transcript on disk.
+
+**Codex retention is unconfirmed.** The 30-day window is Claude Code's `cleanupPeriodDays` default, applied to Codex
+as a guess; the reminder says so on any Codex row rather than implying a certainty it does not have.
+
 ## Cursor
 
 Not supported. The reminder hook fires in Cursor, but there is no reader for its conversations. Adding one means a

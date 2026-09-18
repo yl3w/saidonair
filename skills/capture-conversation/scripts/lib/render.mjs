@@ -31,7 +31,15 @@ function fence(text) {
 
 const AGENT_LABEL = { claude: "Claude Code", codex: "Codex", cursor: "Cursor" };
 
-export function renderCapture({ agent, id, turns, title, note, commits }) {
+export function renderCapture({
+  agent,
+  id,
+  turns,
+  title,
+  note,
+  commits,
+  covers,
+}) {
   const first = turns[0].at;
   const last = turns.at(-1).at;
   const span =
@@ -46,6 +54,12 @@ export function renderCapture({ agent, id, turns, title, note, commits }) {
     `${span} · ${AGENT_LABEL[agent] ?? agent} · ${asked} prompt${asked === 1 ? "" : "s"}, ${turns.length} turns · session \`${id}\``,
     "",
   ];
+  // Which transcripts this file accounts for. A merged conversation has no file under the ids it absorbed, so
+  // without this the reminder would report them uncaptured forever.
+  lines.push(
+    `<!-- capture:covers ${(covers ?? [`${agent}-${id}`]).join(" ")} -->`,
+    "",
+  );
   if (note) lines.push(note, "");
   if (commits?.length) {
     lines.push("Commits in this window:", "");
