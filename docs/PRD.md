@@ -92,10 +92,10 @@ deployment, and general admin dashboards beyond owner catalog management.
 ## 3. Architecture
 
 ```text
-Cloudflare Pages: Vite + Preact + TypeScript
-    Account → Home (owner attention card · digest · followed and catalog channels · add a channel · chats in M4)
-                 → Channel details
-                 → Owner (approval queue · needs attention · catalog health) → Owner channel detail
+Cloudflare Pages: Vite + Preact + TypeScript, daisyUI over Tailwind
+    Sign in /  →  Queue /queue · History /history, /history/:day · Sources /sources, /sources/:id
+                  Chats /chats · Account /account · Curate /curate, /curate/:id (owner rendering, desktop)
+    A queue row, a day, or a source opens Reading /read/:episodeId, whose Ask is the only way into a chat
                          |
               Hono Worker + X-User-Email
                          |
@@ -106,14 +106,16 @@ catalog, follows, episodes,            read receipts,
 shared summaries, discovery runs,      chats/messages/sources, preferences
 episode processing attempts
        |
-First approval, Start, or channel cron → long-form RSS discovery run → new episodes
+First approval, Start, or discovery cron → long-form RSS discovery run → new episodes
 New episode, recovery cron, or Owner Retry → episode attempt → one Workflow
        stagger → transcript → classify → chunk → Workers AI embed → Vectorize (staged generation)
                               → verify → shared summary → publish: episode available in the Registry
+                              → delete every generation the publication superseded
 
-Vectorize: media-rag, namespace shared-catalog
-Chat query: current follows ∩ approved channels
-           → channelId metadata filter → validate available episodes and active generation → Workers AI answer
+Vectorize: media-rag (media-rag-staging, media-rag-dev), namespace shared-catalog
+Chat query: current follows ∩ approved channels, narrowed to one episode when the message carries a scope
+           → channelId or episodeId metadata filter → validate available episodes and the active generation
+           → cross-encoder rerank above the relevance floor → Workers AI prose; the kept chunks are the sources
 ```
 
 ### Stack
