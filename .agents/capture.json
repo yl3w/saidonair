@@ -1,5 +1,8 @@
 {
-  "out": "docs/prompts/conversations",
+  "out": "docs/prompts",
   "retentionDays": 30,
-  "remindWithinDays": 7
+  "remindWithinDays": 7,
+  "redact": {
+    "6169f2e614cc6b203145e5d7af922875": "<cloudflare-account-id>"
+  }
 }

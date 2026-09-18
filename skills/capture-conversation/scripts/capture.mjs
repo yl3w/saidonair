@@ -192,7 +192,11 @@ async function capture(session, cache) {
     commits: commitsIn(first, session.turns.at(-1).at),
   });
 
-  const screened = screen(body, { secrets, allow: config.allow ?? [] });
+  const screened = screen(body, {
+    secrets,
+    allow: config.allow ?? [],
+    redact: config.redact ?? {},
+  });
   const common = {
     key,
     file,
@@ -226,7 +230,7 @@ async function buildIndex(cache) {
       (f) => f.endsWith(".md") && f !== "README.md",
     );
   } catch {
-    return 0;
+    return []; // nothing captured yet
   }
   const entries = files.sort().map((file) => {
     const [date, agent, rest] = [
@@ -239,12 +243,13 @@ async function buildIndex(cache) {
       date,
       agent,
       file,
+      key,
       title: cache[key]?.title,
       note: cache[key]?.note,
     };
   });
   if (!dryRun) await writeFile(join(outDir, "README.md"), renderIndex(entries));
-  return entries.length;
+  return entries;
 }
 
 const cache = await titles(repo);
@@ -321,9 +326,9 @@ for (const w of written.filter((w) => w.mergedFrom)) {
     `  ${w.file} merges ${w.mergedFrom} transcripts of one conversation`,
   );
 }
-if (indexed)
+if (indexed.length)
   console.log(
-    `${dryRun ? "would index" : "indexed"} ${indexed} capture${indexed === 1 ? "" : "s"}`,
+    `${dryRun ? "would index" : "indexed"} ${indexed.length} capture${indexed.length === 1 ? "" : "s"}`,
   );
 
 // The script never invents a title. A mechanical one built from the first prompt would be worse than none, and
@@ -348,12 +353,12 @@ if (blocked.length) {
   );
 }
 
-const untitled = written.filter((w) => !w.titled);
+const untitled = indexed.filter((e) => !e.title);
 if (untitled.length) {
   console.log(
     `\n${untitled.length} capture${untitled.length === 1 ? " needs" : "s need"} a title and note:`,
   );
-  for (const w of untitled) console.log(`  ${w.key}  ${w.file}`);
+  for (const e of untitled) console.log(`  ${e.key}  ${e.file}`);
   console.log(
     "\nRead each capture, then add { title, note } under its key in .agents/capture-sessions.json",
   );

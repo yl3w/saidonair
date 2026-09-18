@@ -80,6 +80,10 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │                             # summary-quality, summary-coverage, and M3 as the decision record m3-ingestion (its
 │                             # -plan.md is the roadmap) plus seven child chunks m3-1-transcripts-chunking, m3-2-attempt-ledger,
 │                             # m3-3-ai-vectorize, m3-4-discovery, m3-5-episode-workflow, m3-6-recovery, m3-7-owner-ux
+├── docs/prompts/             # generated: every agent conversation that built this, prompts and replies verbatim,
+│                             # one file per session plus a generated README index. Written by the
+│                             # capture-conversation skill — never hand-edit a capture or the index; titles and
+│                             # notes live in .agents/capture-sessions.json
 ├── package.json              # workspace root: volta.node, packageManager, turbo scripts
 ├── pnpm-workspace.yaml
 ├── .npmrc                    # engine-strict=true
@@ -266,6 +270,10 @@ pnpm skills:install --agent <agents…>   # copy skills/ into those agents' dire
 pnpm skills:remove <name> -y            # prune a renamed or deleted skill from them
 pnpm skills:remove --all                # clear every installed skill (skills/ itself is protected)
 ```
+
+`skills:install` also registers the `capture-conversation` session-start hook in each agent's own config
+(`.claude/settings.json`, `.codex/hooks.json`, `.cursor/hooks.json`); `skills:remove` unregisters it. The skills CLI
+has no hooks command, so `scripts/skills.sh` does that step — see `skills/capture-conversation/SKILL.md`.
 
 Agent skills live in `skills/<name>/SKILL.md` following the Agent Skills standard (agentskills.io): standard frontmatter
 only, no agent-specific syntax in the body. They are installed into each developer's agent directory with the Vercel

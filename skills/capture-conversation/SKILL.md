@@ -13,7 +13,7 @@ the repo, where it outlives the cache.
 
 | What | Where |
 | --- | --- |
-| Captures | `docs/prompts/conversations/` (configurable) |
+| Captures | `docs/prompts/` (configurable) |
 | Index | `<out>/README.md`, generated — never hand-edit |
 | Titles and notes | `.agents/capture-sessions.json` |
 | Settings | `.agents/capture.json`, all keys optional |

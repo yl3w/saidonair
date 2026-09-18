@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const DEFAULTS = {
-  out: "docs/prompts/conversations",
+  out: "docs/prompts",
   retentionDays: 30,
   remindWithinDays: 7,
 };

@@ -82,8 +82,10 @@ export async function knownSecrets(repo) {
 /** Certain. Applied without asking. */
 const REDACTIONS = [
   {
+    // `git@github.com:user/repo.git` is an SSH remote, not an address. The trailing `(?![:\w])` leaves those alone;
+    // without it a capture records "<email>:user/repo.git", which is simply a wrong record of what was said.
     name: "email address",
-    re: /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g,
+    re: /\b[\w.+-]+@[\w-]+\.[\w.-]*[\w-](?![:\w])/g,
     with: "<email>",
   },
 ];
@@ -114,7 +116,7 @@ const FINDINGS = [
  * a thing to act on rather than to tidy away. Naming the key in `allow` means "yes, redact that one and continue";
  * the raw value never reaches disk on either path.
  */
-export function screen(text, { secrets = [], allow = [] } = {}) {
+export function screen(text, { secrets = [], allow = [], redact = {} } = {}) {
   let out = text;
   const redacted = [];
   const findings = [];
@@ -137,6 +139,14 @@ export function screen(text, { secrets = [], allow = [] } = {}) {
       });
     }
   }
+  // Strings this repository has declared should always be scrubbed. This is the third option between blocking a
+  // capture forever and committing something you would rather not: name it, replace it, move on.
+  for (const [value, replacement] of Object.entries(redact)) {
+    if (!out.includes(value)) continue;
+    out = out.replaceAll(value, replacement);
+    redacted.push(`configured: ${replacement}`);
+  }
+
   for (const rule of REDACTIONS) {
     if (!rule.re.test(out)) continue;
     rule.re.lastIndex = 0;

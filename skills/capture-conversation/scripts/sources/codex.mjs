@@ -19,6 +19,9 @@ const INJECTED = [
   "<environment_context>",
   "<user_instructions>",
   "# AGENTS.md instructions",
+  // Codex advertises uninstalled plugins in the user role. Twenty of these were captured as though the developer
+  // had typed them before this was noticed.
+  "<recommended_plugins>",
 ];
 
 /** Payload types that are tool traffic or model internals, not conversation. */

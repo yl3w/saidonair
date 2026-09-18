@@ -180,7 +180,7 @@ apps/web/        Preact web application
 packages/shared/ Shared Zod schemas and TypeScript API types
 docs/            Product requirements, the design guide, and implementation plans
 skills/          Repository-specific agent skills
-scripts/         Skill installation and Vectorize verification
+scripts/         Skill and hook installation, and Vectorize verification
 ```
 
 ## Documentation
@@ -193,6 +193,9 @@ scripts/         Skill installation and Vectorize verification
   commands, and contribution guidance for this repository.
 - [`docs/specs/`](docs/specs/) contains design reasoning and implementation
   plans subordinate to the PRD.
+- [`docs/prompts/`](docs/prompts/) is the record of how this was built: every
+  agent conversation that produced it, prompts and replies verbatim. Written by
+  the `capture-conversation` skill, not by hand.
 
 Before contributing, read `AGENTS.md` and run `pnpm check` before considering a
 change complete.
