@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node skills/capture-conversation/scripts/uncaptured.mjs --agent claude || true"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node skills/capture-conversation/scripts/uncaptured.mjs --agent cursor || true"
+      }
+    ]
+  }
+}

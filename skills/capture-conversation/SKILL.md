@@ -110,7 +110,31 @@ overwrites it with a longer version. The file is always a prefix of the truth, n
 ## The expiry reminder
 
 `scripts/uncaptured.mjs` reports conversations that are near the end of their cache's retention and have never been
-captured. It is meant to run from a session-start hook, and Step 4 of the plan registers it.
+captured. It runs from a session-start hook, registered by `pnpm skills:install`.
+
+```
+pnpm skills:install                              # installs skills, registers the hook for all three agents
+pnpm skills:install --agent claude-code codex    # only those two
+pnpm skills:remove capture-conversation          # removes the skill and unregisters the hook
+```
+
+The skills CLI has no hooks command — it installs skill directories and nothing else — so `scripts/skills.sh` does
+the registration alongside it. That keeps setup to the one command a fresh clone already runs, and keeps removal
+symmetrical: a hook left pointing at a deleted script would fire on every session start and fail silently, which is
+the worst kind of breakage.
+
+Registration **merges** into each agent's config and never overwrites it, finds its own entry by the script path so
+re-running updates rather than duplicating, and on removal deletes the config file only if nothing else was in it.
+With no `--agent`, all three are registered: there is no hook equivalent of the CLI's agent auto-detection, and a
+fresh clone with the skill installed but no reminder is a failure nobody notices.
+
+| Agent | Config file | Event |
+| --- | --- | --- |
+| Claude Code (`claude-code`) | `.claude/settings.json` | `SessionStart` |
+| Codex (`codex`) | `.codex/hooks.json` | `SessionStart` |
+| Cursor (`cursor`) | `.cursor/hooks.json` | `sessionStart` |
+
+Each registered command ends in `|| true`, so a hook cannot fail a session start even if node itself will not run.
 
 ```
 node skills/capture-conversation/scripts/uncaptured.mjs --agent claude|cursor|codex

@@ -2,7 +2,7 @@
 # The repo's agent skills: one place for the pinned CLI version and for what "the standard set" means.
 # Driven by the root package.json scripts (`pnpm skills:install`, `pnpm skills:remove`); see AGENTS.md → Commands.
 #
-# Usage: sh scripts/skills.sh install [--agent <agents…>]
+# Usage: sh scripts/skills.sh install [--agent <agents…>]   # also registers the capture-conversation hook
 #        sh scripts/skills.sh remove <name…> [-y]
 #        sh scripts/skills.sh remove --all
 #
@@ -21,6 +21,11 @@ SKILLS_CLI="skills@1.5.24"
 SUPERPOWERS="obra/superpowers"
 LOCAL_SKILLS="./skills"
 
+# The capture-conversation skill also needs a session-start hook registered in each agent's own config. The skills
+# CLI has no hooks command — it installs skill directories and nothing else — so that step lives here, where it
+# rides along with the command a fresh clone already runs. Agent names match the CLI's, so `--agent` passes through.
+REGISTER_HOOK="$LOCAL_SKILLS/capture-conversation/scripts/register-hook.mjs"
+
 usage() {
   sed -n '/^# Usage:/,/remove --all/p' "$0" | sed 's/^# \{0,1\}//'
 }
@@ -33,6 +38,8 @@ case "$command" in
     # `--skill '*' -y` keeps it deterministic and unattended: every skill from each source, no prompts.
     pnpm dlx "$SKILLS_CLI" add "$SUPERPOWERS" --skill '*' -y "$@"
     pnpm dlx "$SKILLS_CLI" add "$LOCAL_SKILLS" --skill '*' -y "$@"
+    # Quiet when there is nothing to change, so a re-install does not report work it did not do.
+    node "$REGISTER_HOOK" --quiet "$@"
     ;;
   remove)
     if [ "$#" -eq 0 ]; then
@@ -55,6 +62,12 @@ case "$command" in
       printf '\nnote: the skills CLI deleted files under %s; restored from a pre-run snapshot.\n' "$LOCAL_SKILLS"
     fi
     rm -rf "$snapshot"
+    # Unregister symmetrically. A hook left pointing at a script that has been removed would fire on every session
+    # start and fail — silently, because the hook is written to never break one, which is the worst kind of
+    # breakage: broken and invisible.
+    case " $* " in
+      *" --all "*|*" capture-conversation "*) node "$REGISTER_HOOK" --remove --agent claude-code cursor codex ;;
+    esac
     exit "$status"
     ;;
   -h|--help)
