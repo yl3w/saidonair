@@ -1,0 +1,342 @@
+# Implementation plan — The Auth phase
+
+**Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
+(PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
+**Written:** 2026-09-20, against `main` at `c675e5d`.
+**Status:** awaiting owner approval. Nothing installed, nothing committed.
+**Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
+proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
+makes are marked **plan decision** and stand unless vetoed.
+
+**The ordering rule, and the only one:** every chunk ends with the product running. Check it against the last
+column of spec §4.9 before moving a step between chunks.
+
+## Definition of complete
+
+Spec §7, all twenty-five criteria, with A9 carrying 4-for-Apple only.
+
+## Owner actions (agents propose, never run — `AGENTS.md` → One-time setup)
+
+| When | Action |
+|---|---|
+| A0 | `wrangler d1 create media-digest-auth-spike` for the throwaway |
+| A0 end | Approve the dependencies under hard rule 1 |
+| A4 | `wrangler d1 create media-digest-auth{,-staging,-dev}` |
+| A4 | Google Cloud OAuth client + Meta app; `wrangler secret put` × 5 × 3 environments |
+| A2 | Run `/clean-local` when asked, after the migration edit |
+| A9 | Apple Developer Program, Services ID, `.p8`; stand up the deployed staging web origin |
+
+---
+
+### A0 — Spike: better-auth on workerd  (size: M, throwaway)
+
+**First, because it is the only chunk that can invalidate the rest, and it depends on nothing.** Precedent: the
+DO-free spike Worker on `spike/transcript-remote` that settled DownSub (`docs/specs/transcript-spike-results.md`).
+
+**Files:** none kept. A scratch Worker on a `spike/auth` branch, never merged.
+
+- 0.1 Scratch Worker: Hono, `nodejs_compat`, one D1 binding, `app.all("/auth/*", (c) => auth.handler(c.req.raw))`.
+- 0.2 Wiring A — `kysely` + `kysely-d1`, the auth instance built per request from `c.env`.
+- 0.3 Wiring B — `better-auth-cloudflare`.
+- 0.4 One **real Google sign-in** end to end under `wrangler dev` against each wiring.
+
+**The six questions this spike exists to answer.** A wiring that cannot answer all six loses:
+
+1. Which wiring, and why.
+2. Does `transaction: false` actually clear the social-sign-in `unable_to_create_user` failure on D1
+   (better-auth issue #4732), or does it need more?
+3. **The exact sign-in entry URL** for a top-level navigation without the client library. Spec §4.5 deliberately
+   left this as "the provider sign-in URL better-auth exposes"; A6 cannot be written until it is a literal string.
+4. **Is the bearer token the same value as the `session` row's token?** A7's test helper mints sessions by
+   inserting rows, which only works if it is.
+5. **Can the `verification` table hold the handoff codes**, or does A5 need its own table?
+6. Does `auth.api.getSession()` work against a per-request instance, and what does it cost per call?
+
+**Done when:** the answers are written into spec §4.1 and §4.5 as amendments, the dependency proposal is put to the
+owner, and the branch is deleted. **No code from this chunk survives.**
+
+---
+
+### A1 — The authorizing document edit  (size: S)
+
+Small on purpose. Everything after this is permitted by the PRD rather than contradicting it.
+
+**Files:** `docs/PRD.md`, `AGENTS.md`.
+
+- 1.1 PRD §2: replace *"No authentication is added, and none should be: no login, sessions, JWTs, or Cloudflare
+  Access"* with the reversal, naming `docs/specs/auth-phase.md`. Leave §2's authorization paragraph alone — A8
+  owns it, and it is still true until then.
+- 1.2 PRD §9: one entry, 2026-09-20, in the owner's words, stating it as a reversal of a decision and why.
+- 1.3 PRD §10: the `Auth phase` line between M5 and M6, unnumbered, citing the Design phase precedent.
+- 1.4 `AGENTS.md` → Identity plumbing: delete *"Never add login, sessions, JWTs, or Cloudflare Access."* and point
+  the section at the spec. Leave the `X-User-Email` description — it is accurate until A7.
+
+**Done when:** `pnpm check` green, one commit.
+
+---
+
+### A2 — Registry schema and internals  (size: L)
+
+The re-key's first half. Callers still pass email; the Registry resolves internally. Nothing outside
+`src/do/registry/` changes.
+
+**Files:** `apps/api/migrations/registry/0001_init.sql`, `apps/api/src/do/registry/users.ts`,
+`apps/api/src/do/registry/types.ts`, `apps/api/src/do/registry/followers.ts`,
+`apps/api/src/do/registry/channels.ts`, `apps/api/src/do/registry/episodes.ts`,
+`apps/api/src/do/registry/attempts.ts`, `apps/api/test/registry-users.test.ts`,
+`apps/api/test/registry-followers.test.ts`, `apps/api/test/registry-migrations.test.ts`.
+
+- 2.1 `0001_init.sql`, edited in place under the open migration governance of PRD §5.4 — a further in-place edit,
+  after the 2026-09-13 M3.7 one the file's own header records. Note that the registry has a **second** migration,
+  `0002_episode_duration.sql`; it adds `episodes.duration_sec` and touches no re-keyed column, and it replays
+  normally after the wipe. Changes to `0001_init.sql`:
+  - `global_users`: `user_id TEXT PRIMARY KEY`, `email TEXT UNIQUE` (nullable), `auth_user_id TEXT UNIQUE`
+    (nullable), `role`, `last_seen_at`, `created_at` unchanged.
+  - `channel_followers`: `user_email` → `user_id`, in the composite PK, the FK, and
+    `channel_followers_user_email_unfollowed_at` → `channel_followers_user_id_unfollowed_at`.
+  - `channels.reviewed_by_email` → `reviewed_by_user_id`, and its CHECK.
+  - `episodes.skipped_by_email` → `skipped_by_user_id`, and its CHECK.
+  - `episode_ingestion_attempts.requested_by_email` → `requested_by_user_id`, and its CHECK.
+  - Header comment gains the 2026-09-20 edit line, as the 2026-09-13 one did.
+- 2.2 `users.ts`: `ensureUser` mints `crypto.randomUUID()` on insert — the generator this repo already uses for
+  run, attempt, generation, chat and message ids — and keeps `ON CONFLICT (email) DO UPDATE SET last_seen_at`.
+  `getUser` gains a by-`user_id` form. `seedOwner` unchanged in behaviour: it mints an id, sets `role = 'owner'`,
+  leaves `auth_user_id` null.
+- 2.3 `types.ts`: `RegistryUser` gains `userId` and `authUserId: string | null`.
+- 2.4 `followers.ts` and the three audit writers resolve email → `user_id` internally. **Plan decision:** they take
+  email in A2 and `user_id` in A3, rather than both at once — a module whose signature changes twice is easier to
+  review than one that accepts either.
+- 2.5 Tests: `registry-users.test.ts` covers a minted id, the unique email, many null emails, many null
+  `auth_user_id`, and `seedOwner` promoting an existing row without creating a second.
+  `registry-migrations.test.ts` covers idempotent apply on a fresh DO and every re-keyed CHECK still rejecting.
+- 2.6 PRD §5.1 rewritten to the re-keyed schema, and §5.4 records this in-place edit of `0001_init.sql` — this
+  chunk's own first commit, per spec §9.
+- 2.7 Ask the owner to run `/clean-local`. The edited migration cannot apply over existing storage.
+
+**Tests:** spec §7 criteria 8, 16, 18, 22, 23.
+**Done when:** `pnpm check` green.
+
+---
+
+### A3 — Call sites, and the gate  (size: L)
+
+The re-key's second half, and the chunk that proves it is innocent.
+
+**Files:** `apps/api/src/do/user.ts`, `apps/api/src/middleware/user.ts`, `apps/api/src/do/registry.ts`,
+`apps/api/src/lib/eligibility.ts`, `apps/api/src/lib/channel-view.ts`, `apps/api/src/lib/episode-view.ts`,
+`apps/api/src/routes/*.ts`, `packages/shared/src/index.ts`, `apps/api/test/helpers.ts`, and every test that names a
+follower or an actor.
+
+- 3.1 `getUserDO(env, userId)`: the name becomes the id. Its docstring's claim that "the email is implicit in the
+  object's name and is never stored or logged here" becomes literally true — say so there.
+- 3.2 The Registry facade's public methods take `user_id`; `followers.ts` and the audit writers stop resolving
+  internally.
+- 3.3 `middleware/user.ts`: still reads `X-User-Email`, still calls `ensureUser(email)`, and now sets
+  `c.var.identity` carrying `{ userId, email, role }` and passes `identity.userId` to `getUserDO`.
+- 3.4 `channel-view.ts` and `episode-view.ts` resolve the reviewer's, skipper's and requester's email through
+  `global_users` for display, since the rows now carry ids. **Plan decision:** one batched lookup per view build,
+  not one per row — the Owner screens render up to fifty.
+- 3.5 `packages/shared`: `MeResponse` gains `userId`. `FollowersResponse` carries `userId` and `email`.
+- 3.6 Every affected test updated. `helpers.ts` gains a helper that creates an identity and returns its `user_id`.
+- 3.7 `AGENTS.md` hard rule 3 reworded: "user emails are never namespaces" becomes "user identifiers are never
+  namespaces". Unchanged in force; `lib/vectorize.ts` is not touched.
+- 3.8 **The gate.** Full `wrangler dev` walkthrough on the old identity: add a channel, approve, discover, ingest,
+  read a summary, mark it read, ask a question, and open every Curate screen. Record it below.
+
+**Tests:** spec §7 criterion 24.
+**Done when:** `pnpm check` green and the walkthrough recorded. **Stop here and get the owner's eyes on it** — this
+is the last point before a dependency enters the tree.
+
+---
+
+### A4 — better-auth stood up, consumed by nothing  (size: M)
+
+**Files:** `apps/api/package.json`, `apps/api/wrangler.jsonc`, `apps/api/src/lib/auth.ts` (new),
+`apps/api/src/index.ts`, `apps/api/src/bindings.d.ts`, `apps/api/migrations/auth/0001_better_auth.sql` (new),
+`apps/api/test/wrangler-config.test.ts`, `apps/api/test/openapi.test.ts`.
+
+- 4.1 Install the dependencies the owner approved at A0's end, and no others.
+- 4.2 `wrangler.jsonc`: `AUTH_DB` bound to `media-digest-auth` / `-staging` / `-dev`, repeated in all three
+  environments because wrangler does not inherit bindings. `wrangler-config.test.ts` gains it, and will fail when
+  they drift — as it already does for every other binding.
+- 4.3 `lib/auth.ts`: one exported factory taking `Env` and returning the better-auth instance, built **per
+  request** because the D1 binding does not exist at module scope. Transactions off. `trustedOrigins` parsed from
+  `WEB_ORIGINS` with the same `parseOrigins` `lib/cors.ts` uses — one source, never two lists to drift.
+  `socialProviders`: `google` and `facebook`. `mapProfileToUser` admits a profile with no email as `email: null`.
+  **Account linking on a verified email** (spec decision 6): both providers listed as trusted, so the same person
+  arriving via Google and via Meta resolves to one better-auth user and therefore one `user_id` and one User DO.
+  The Registry's `email TEXT UNIQUE` is the belt-and-braces check that it worked, and criterion 7 asserts it.
+- 4.4 `index.ts`: `app.all("/auth/*", …)` registered before any catch-all, as better-auth's Hono integration
+  requires.
+- 4.5 `migrations/auth/0001_better_auth.sql`: the schema better-auth's CLI generates against a local SQLite,
+  applied with `wrangler d1 migrations apply`. The CLI cannot reach D1; this is the documented workaround and it
+  matches how this repo already treats migrations.
+- 4.6 `openapi.test.ts`: `/auth/*` added as the one declared exclusion, with the reason in a comment — PRD §8
+  promises the document lists exactly the registered routes, so the exclusion is written into the criterion rather
+  than discovered later.
+- 4.7 Docs this chunk falsifies, as its first commit (spec §9): PRD §1's external-services list and `AGENTS.md`
+  hard rule 2 extended to **Google's and Meta's OAuth token and profile endpoints** — server-side, over the
+  redirect flow, and nothing else; no analytics, no email vendor, no third-party script in the page. PRD §3's
+  stack table gains D1 and better-auth.
+- 4.8 Manual verification under `wrangler dev`: sign in with Google, then with Meta, and confirm `user`, `session`
+  and `account` rows exist. Nothing else in the product has changed.
+
+**Tests:** spec §7 criteria 19, and 4 and 5 manually — an end-to-end social sign-in cannot be tested offline, which
+is why the walkthrough carries it.
+**Done when:** `pnpm check` green and both sign-ins verified.
+
+---
+
+### A5 — The handoff  (size: M)
+
+The custom security code, reviewed alone because that is what it is.
+
+**Files:** `apps/api/src/routes/session.ts` (new), `apps/api/src/lib/handoff.ts` (new),
+`apps/api/src/index.ts`, `packages/shared/src/index.ts`, `apps/api/test/routes-session.test.ts` (new).
+
+- 5.1 `lib/handoff.ts`: `mintCode(auth, sessionToken, now)` and `consumeCode(auth, code, now)`, over better-auth's
+  `verification` table if A0 question 5 said yes, or a table of our own if it said no. Sixty-second life.
+  `consumeCode` deletes and returns in one statement so a replay gets nothing.
+- 5.2 `GET /session/handoff`: reads the first-party session cookie better-auth has just set — same origin, so it is
+  sent — mints a code, and `302`s to the web. **The redirect target is validated with `isAllowedOrigin` against
+  the parsed `WEB_ORIGINS`.** An unlisted target is `400 INVALID_INPUT` and no code is minted.
+- 5.3 `POST /session/exchange`: consumes the code and answers `{ token, expiresAt, userId, email }`. **Plan
+  decision:** it returns the email too, because A6 still needs it for the header it is still sending, and A7 wants
+  it for the Account screen. An expired, unknown or already-consumed code is one indistinguishable `401`.
+- 5.4 Zod schemas in `packages/shared`, `describeRoute` on both routes, `openapi.test.ts` list updated.
+- 5.5 Tests: a code works once; a replay is 401; sixty-one seconds is 401; an unknown code is 401; a handoff to an
+  origin outside `WEB_ORIGINS` is refused and mints nothing; no response body or redirect location anywhere in the
+  suite contains a session token.
+
+**Tests:** spec §7 criteria 9, 10, 11, 12.
+**Done when:** `pnpm check` green.
+
+---
+
+### A6 — Web prepared, still on the old header  (size: L)
+
+The chunk that removes the broken intermediate. The web can sign in and holds a token; the API has not moved.
+
+**Files:** `apps/web/src/screens/SignIn.tsx` (new), `apps/web/src/screens/AuthCallback.tsx` (new),
+`apps/web/src/session.tsx`, `apps/web/src/api.ts`, `apps/web/src/main.tsx`, `apps/web/src/account.ts` (deleted),
+`apps/web/src/screens/Account.tsx`, `apps/web/src/components/Avatar.tsx`, `apps/web/src/lib/copy.ts`,
+`docs/design.md`, `docs/PRD.md` §7.
+
+- 6.1 `SignIn.tsx` replaces the "Who is this for?" screen at `/`: two provider buttons, each a top-level
+  navigation to the sign-in URL A0 question 3 established, with `callbackURL` pointing at `/session/handoff`.
+- 6.2 `AuthCallback.tsx` at `/auth/callback`: read `location.hash`, **`history.replaceState` before anything
+  else**, `POST /session/exchange`, store the token, route to `/queue`.
+- 6.3 `api.ts`: sends `Authorization: Bearer` **and** `X-User-Email`, the email taken from the exchange response.
+  The API ignores the former for now. This redundancy is the whole cost of the phasing and it lasts one chunk.
+- 6.4 `session.tsx`: keeps `Guard`, `useSession`, `useReadySession` and the bind-before-render rule; binds the
+  token and the email together so a tab can still only send what it displays. `signOut` calls better-auth and
+  drops the token.
+- 6.5 `account.ts` deleted: no stored email, no recent-emails list.
+- 6.6 `Account.tsx` and `Avatar.tsx` read the email from `/me`, which may be null; `copy.ts` gains the line for a
+  reader with no email address.
+- 6.7 PRD §7 and `docs/design.md`: `/` is sign-in, `/auth/callback` joins the route table.
+
+**Known transitional limitation, stated rather than discovered:** a Meta account with no email cannot use the
+product during A6, because the header it must still send has nothing to carry. A7 removes the limitation with the
+header. The A6 walkthrough uses Google.
+
+**Tests:** the web is typecheck and lint only (`AGENTS.md` → Web UI code). Spec §7 criterion 25 is the walkthrough.
+**Done when:** `pnpm check` green and a reader can sign in, land on the queue, and use the product.
+
+---
+
+### A7 — The swap  (size: L)
+
+The irreversible one.
+
+**Files:** `apps/api/src/middleware/user.ts`, `apps/api/src/lib/cors.ts`, `apps/api/src/do/registry/users.ts`,
+`packages/shared/src/index.ts`, `apps/web/src/api.ts`, `apps/api/test/helpers.ts`, `apps/api/test/cors.test.ts`,
+`apps/api/test/me.test.ts`, and every route test.
+
+- 7.1 `middleware/user.ts`: read `Authorization: Bearer`, resolve the session through better-auth, call
+  `ensureUser(authUserId, email)`. Missing or invalid is `401 UNAUTHENTICATED` and reaches neither Durable Object.
+- 7.2 `users.ts` `ensureUser` resolves **in one order and only one**: by `auth_user_id` if attached; else by
+  `email`, attaching it; else insert. The middle branch is what links the seeded owner, and anyone created before
+  A7, to the account they later sign in with.
+- 7.3 `packages/shared`: `ErrorCodeSchema` gains `UNAUTHENTICATED`; its description loses "including a missing or
+  malformed `X-User-Email`".
+- 7.4 `X-User-Email` deleted everywhere: the middleware constant, `lib/cors.ts` `allowHeaders` (which gains
+  `Authorization`), `apps/web/src/api.ts`, and every test helper.
+- 7.5 `helpers.ts`: a test identity is minted by inserting `user` and `session` rows into local D1 and returning
+  the token. **No route in any environment mints a session** — a bypass behind a flag is still a bypass that
+  shipped, and this is the deliberate departure from the env-selected-fake precedent recorded in spec §3.
+- 7.6 Every route test moves from a header to a bearer token.
+- 7.7 PRD §3's architecture diagram: `Hono Worker + X-User-Email` becomes the verified session.
+- 7.8 Walkthrough: sign in, use the product, and confirm a Meta account with no email now works.
+
+**Tests:** spec §7 criteria 1, 2, 3, 6, 7, 13, 17, 20.
+**Done when:** `pnpm check` green and the walkthrough recorded.
+
+---
+
+### A8 — Authorization  (size: M)
+
+**Files:** `apps/api/src/middleware/owner.ts` (new), `apps/api/src/routes/channels.ts`,
+`apps/api/src/routes/episodes.ts`, `packages/shared/src/index.ts`, `apps/api/src/lib/openapi.ts`,
+`apps/api/test/routes-channels.test.ts`, `apps/api/test/openapi.test.ts`,
+`apps/api/test/authorization.test.ts` (new), `apps/api/test/isolation.test.ts` (new), `docs/PRD.md`.
+
+- 8.1 `middleware/owner.ts`: `requireOwner`, after `requireIdentity`, reading `c.var.identity.role`.
+- 8.2 Applied to seven routes and no others: approve, decline, pause, resume, channel `start`, episode retry,
+  episode skip.
+- 8.3 `ErrorCodeSchema` gains `FORBIDDEN`; `lib/openapi.ts` gains the bearer security scheme; every route
+  documents `401`, and the seven document `403`.
+- 8.4 `authorization.test.ts`: each of the seven returns 403 for a non-owner **and writes nothing** — no channel
+  row, no run, no attempt. The write assertion is the point; a 403 that has already mutated is the bug worth
+  catching.
+- 8.5 `isolation.test.ts`: two identities, and the second cannot read the first's chats, messages, preferences or
+  read receipts — **PRD §8's second criterion, tested for the first time** — plus two followers of one channel
+  producing one shared episode, summary and vector set with independent receipts, which is §8's first line and
+  what the M6 audit found untested.
+- 8.6 PRD §2's authorization paragraph rewritten, §9 gains the reversal entry, §8 absorbs criteria 1, 2 and 13–25.
+
+**Tests:** spec §7 criteria 14, 15, 19, 21.
+**Done when:** `pnpm check` green.
+
+---
+
+### A9 — Apple  (size: M, gated)
+
+**Blocked until a deployed staging web origin exists with HTTPS.** Apple supports neither `localhost` nor
+non-HTTPS, and `CLAUDE.md` makes `wrangler dev` the gate for runtime behavior — so this is the one chunk whose
+verification happens on staging. `wrangler.jsonc`'s `WEB_ORIGINS` for staging is an unfilled `TODO(owner)` today.
+
+**Files:** `apps/api/src/lib/auth.ts`, `apps/api/wrangler.jsonc`, `apps/web/src/screens/SignIn.tsx`,
+`docs/PRD.md` §1, `AGENTS.md` hard rule 2.
+
+- 9.1 Owner: Apple Developer Program, a Services ID, a `.p8` key; secrets per environment. better-auth generates
+  the client-secret JWT in config from the key material, so there is no expiring string to rotate by hand.
+- 9.2 `lib/auth.ts` gains the `apple` provider.
+- 9.3 **Treat the first callback as irreversible.** Apple emits the email only on first authorization and offers no
+  user-info endpoint to fetch it later; if that callback fails to persist it, it is gone until the user revokes the
+  app in their Apple ID settings. `mapProfileToUser` must persist on the first pass and tolerate its absence on
+  every later one.
+- 9.4 A third button on `SignIn.tsx`.
+- 9.5 Hard rule 2 and PRD §1 extended to Apple.
+- 9.6 Walkthrough on deployed staging, not locally.
+
+**Done when:** `pnpm check` green and a real Apple sign-in verified on staging.
+
+---
+
+## Walkthrough record
+
+Filled as each gate runs, the way every plan since M3 carries one.
+
+| Chunk | Date | What was exercised | Result |
+|---|---|---|---|
+| A3 | | full product on the old identity | |
+| A4 | | Google and Meta sign-in creating rows | |
+| A6 | | sign in, land on the queue, use the product | |
+| A7 | | the swap, incl. a Meta account with no email | |
+| A9 | | Apple, on deployed staging | |
+
+## Record
+
+Decisions made while implementing, by theme, added as they happen — the pattern
+`docs/specs/design-phase-plan.md` established.
