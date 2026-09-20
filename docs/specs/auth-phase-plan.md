@@ -3,7 +3,8 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** awaiting owner approval. Nothing installed, nothing committed.
+**Status:** approved 2026-09-20. **A0 complete** the same day (findings below; spec §4.1, §4.2, §4.5 amended).
+A1 is next and needs no owner action. Nothing is installed in the repo: A0 ran entirely in a scratch directory.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
 makes are marked **plan decision** and stand unless vetoed.
@@ -19,8 +20,9 @@ Spec §7, all twenty-five criteria, with A9 carrying 4-for-Apple only.
 
 | When | Action |
 |---|---|
-| A0 | `wrangler d1 create media-digest-auth-spike` for the throwaway |
-| A0 end | Approve the dependencies under hard rule 1 |
+| ~~A0~~ | ~~`wrangler d1 create`~~ — not needed: `wrangler dev` makes a local D1 on disk |
+| A0 end | Approve the dependency under hard rule 1 — **one package, `better-auth`** |
+| A0 | Google Cloud OAuth client for the spike, redirect `http://localhost:8787/auth/callback/google` |
 | A4 | `wrangler d1 create media-digest-auth{,-staging,-dev}` |
 | A4 | Google Cloud OAuth client + Meta app; `wrangler secret put` × 5 × 3 environments |
 | A2 | Run `/clean-local` when asked, after the migration edit |
@@ -52,8 +54,34 @@ DO-free spike Worker on `spike/transcript-remote` that settled DownSub (`docs/sp
 5. **Can the `verification` table hold the handoff codes**, or does A5 need its own table?
 6. Does `auth.api.getSession()` work against a per-request instance, and what does it cost per call?
 
-**Done when:** the answers are written into spec §4.1 and §4.5 as amendments, the dependency proposal is put to the
-owner, and the branch is deleted. **No code from this chunk survives.**
+**Answers, 2026-09-20, against better-auth 1.7.5.** Five of six settled before a Google client existed, including
+both blockers:
+
+1. **Neither wiring.** 1.7.5 takes the D1 binding directly — `database: env.AUTH_DB`. `kysely`, `kysely-d1` and
+   `better-auth-cloudflare` are all unnecessary and `better-auth-cloudflare` was never installed: the comparison
+   dissolved rather than resolved.
+2. **No workaround needed.** A live Google sign-in completed on D1 — `POST /auth/sign-in/social` `200`, callback
+   `302`, `user`/`account`/`session` written, zero errors. Issue #4732 does not reproduce on 1.7.5.
+3. **Not a navigable link.** `POST /auth/sign-in/social` answers `200` and `{"url":…,"redirect":true}`; the web
+   fetches, then assigns `location.href`. A6 amended.
+4. **Yes** — a hand-inserted `session` row's raw `token` resolves as a Bearer through `getSession()`, in 6 ms.
+   A7's helper works. Timestamps are ISO 8601 strings.
+5. **Yes** — `verification` is `id, identifier, value, expiresAt, createdAt, updatedAt`. A5 needs no table.
+6. **Yes** — per-request instance, 4–6 ms.
+
+**Two findings nobody asked for.** The OAuth `state` and PKCE `code_verifier` live in the `verification` table
+keyed by the state parameter, **not in a cookie**, so starting a sign-in works cross-origin — the step most likely
+to have broken the two-origin design does not. And **better-auth's `user.email` is `not null unique`**, which
+contradicted decision 5; resolved the same day by synthesizing a `…@no-email.invalid` placeholder while the
+Registry holds null (spec §4.2).
+
+**A third unasked finding:** the callback sets a first-party session cookie on the API origin, and the session it
+resolves carries the same `session.token` the bearer plugin accepts — so A5's handoff can read the cookie and mint
+a code bound to that token. That was the last assumption in the design standing without evidence.
+
+**Status: A0 COMPLETE, 2026-09-20.** Six of six answered, three findings nobody asked for, one dependency proposed
+instead of three, and two chunks amended before they were written. Spec §4.1, §4.2 and §4.5 carry the answers.
+**No code from this chunk survives.**
 
 ---
 
@@ -155,12 +183,14 @@ is the last point before a dependency enters the tree.
 `apps/api/src/index.ts`, `apps/api/src/bindings.d.ts`, `apps/api/migrations/auth/0001_better_auth.sql` (new),
 `apps/api/test/wrangler-config.test.ts`, `apps/api/test/openapi.test.ts`.
 
-- 4.1 Install the dependencies the owner approved at A0's end, and no others.
+- 4.1 Install `better-auth` — **one package**. A0 found 1.7.5 takes the D1 binding directly, so `kysely`,
+  `kysely-d1` and `better-auth-cloudflare` are all unnecessary.
 - 4.2 `wrangler.jsonc`: `AUTH_DB` bound to `media-digest-auth` / `-staging` / `-dev`, repeated in all three
   environments because wrangler does not inherit bindings. `wrangler-config.test.ts` gains it, and will fail when
   they drift — as it already does for every other binding.
 - 4.3 `lib/auth.ts`: one exported factory taking `Env` and returning the better-auth instance, built **per
-  request** because the D1 binding does not exist at module scope. Transactions off. `trustedOrigins` parsed from
+  request** because the D1 binding does not exist at module scope. `database: env.AUTH_DB`, directly. Transactions
+  default to `false` in 1.7.5, so no explicit flag unless A0's live sign-in showed otherwise. `trustedOrigins` parsed from
   `WEB_ORIGINS` with the same `parseOrigins` `lib/cors.ts` uses — one source, never two lists to drift.
   `socialProviders`: `google` and `facebook`. `mapProfileToUser` admits a profile with no email as `email: null`.
   **Account linking on a verified email** (spec decision 6): both providers listed as trusted, so the same person
@@ -168,9 +198,10 @@ is the last point before a dependency enters the tree.
   The Registry's `email TEXT UNIQUE` is the belt-and-braces check that it worked, and criterion 7 asserts it.
 - 4.4 `index.ts`: `app.all("/auth/*", …)` registered before any catch-all, as better-auth's Hono integration
   requires.
-- 4.5 `migrations/auth/0001_better_auth.sql`: the schema better-auth's CLI generates against a local SQLite,
-  applied with `wrangler d1 migrations apply`. The CLI cannot reach D1; this is the documented workaround and it
-  matches how this repo already treats migrations.
+- 4.5 `migrations/auth/0001_better_auth.sql`: the schema better-auth's CLI generates. The CLI cannot reach a D1
+  binding, so it is pointed at Node's built-in `DatabaseSync` through a generation-only config, exactly as A0 did;
+  the emitted SQL is `user`, `session`, `account`, `verification` plus three indexes, applied with
+  `wrangler d1 execute --file`. Timestamps are ISO 8601 strings.
 - 4.6 `openapi.test.ts`: `/auth/*` added as the one declared exclusion, with the reason in a comment — PRD §8
   promises the document lists exactly the registered routes, so the exclusion is written into the criterion rather
   than discovered later.
@@ -222,8 +253,9 @@ The chunk that removes the broken intermediate. The web can sign in and holds a 
 `apps/web/src/screens/Account.tsx`, `apps/web/src/components/Avatar.tsx`, `apps/web/src/lib/copy.ts`,
 `docs/design.md`, `docs/PRD.md` §7.
 
-- 6.1 `SignIn.tsx` replaces the "Who is this for?" screen at `/`: two provider buttons, each a top-level
-  navigation to the sign-in URL A0 question 3 established, with `callbackURL` pointing at `/session/handoff`.
+- 6.1 `SignIn.tsx` replaces the "Who is this for?" screen at `/`: two provider buttons. **A0 settled the entry
+  and it is not an `href`** — each button does one `fetch`, `POST /auth/sign-in/social` with
+  `{provider, callbackURL: "…/session/handoff"}`, reads `url` from the JSON answer, and assigns `location.href`.
 - 6.2 `AuthCallback.tsx` at `/auth/callback`: read `location.hash`, **`history.replaceState` before anything
   else**, `POST /session/exchange`, store the token, route to `/queue`.
 - 6.3 `api.ts`: sends `Authorization: Bearer` **and** `X-User-Email`, the email taken from the exchange response.
@@ -263,7 +295,7 @@ The irreversible one.
 - 7.4 `X-User-Email` deleted everywhere: the middleware constant, `lib/cors.ts` `allowHeaders` (which gains
   `Authorization`), `apps/web/src/api.ts`, and every test helper.
 - 7.5 `helpers.ts`: a test identity is minted by inserting `user` and `session` rows into local D1 and returning
-  the token. **No route in any environment mints a session** — a bypass behind a flag is still a bypass that
+  `session.token` — **A0 proved the bearer token is that column's raw value**. Timestamps are ISO 8601 strings. **No route in any environment mints a session** — a bypass behind a flag is still a bypass that
   shipped, and this is the deliberate departure from the env-selected-fake precedent recorded in spec §3.
 - 7.6 Every route test moves from a header to a bearer token.
 - 7.7 PRD §3's architecture diagram: `Hono Worker + X-User-Email` becomes the verified session.

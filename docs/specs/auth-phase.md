@@ -131,14 +131,17 @@ All owner decisions of 2026-09-20 unless stated.
    mints one in A2 regardless, so the comparison flipped: keeping it costs one column and one lookup inside an
    RPC already being made, while replacing it costs a data migration and a second wipe — and the domain's primary
    key would have come from a library's id space.
-5. **Email survives as a nullable unique attribute.** SQLite permits many NULLs under a UNIQUE index and only one
-   row per non-null email, so the schema itself enforces one-person-one-email and still admits the Meta account
-   that has none.
+5. **Email survives as a nullable unique attribute** *in the Registry*. SQLite permits many NULLs under a UNIQUE
+   index and only one row per non-null email, so the schema itself enforces one-person-one-email and still admits
+   the Meta account that has none. **Amended after A0:** better-auth's own `user.email` is `not null unique` and
+   cannot do this, so it holds a synthesized `…@no-email.invalid` placeholder for those accounts while the
+   Registry holds null. §4.2 carries the reasoning.
 6. **Accounts sharing a verified email link into one identity** (better-auth trusted-provider linking). The
    Registry's UNIQUE email is the belt-and-braces check that it worked.
 7. **The session reaches the web as a one-time code in a URL fragment, exchanged for a bearer token.**
-8. **The auth store is D1, separate from both Durable Objects.** The wiring — `kysely` + `kysely-d1` written by us,
-   or the `better-auth-cloudflare` wrapper — is decided by the A0 spike, not by this spec. **A custom better-auth
+8. **The auth store is D1, separate from both Durable Objects.** ~~The wiring — `kysely` + `kysely-d1` written by
+   us, or the `better-auth-cloudflare` wrapper — is decided by the A0 spike.~~ **Settled by A0, 2026-09-20:
+   neither.** better-auth 1.7.5 takes the D1 binding directly, so the phase adds exactly one dependency. **A custom better-auth
    adapter over the Registry DO was raised and declined on 2026-09-20**, after an earlier objection to it was
    withdrawn as overstated: `requireIdentity` already round-trips to the Registry on every request, so a session
    lookup there would have been free, and it would have removed the binding entirely. It was declined anyway
@@ -166,14 +169,22 @@ It holds better-auth's four tables: `user`, `session`, `account`, `verification`
 and no auth table is added to either Durable Object. The two stores meet in exactly one place: `global_users.user_id`
 holds the same value as better-auth's `user.id`, with no foreign key across the boundary because there cannot be one.
 
-Three known constraints, all confirmed against better-auth's documentation and issues:
+**Amended by the A0 spike, 2026-09-20, against better-auth 1.7.5.** The spike overturned this section's premise:
 
-- **The binding exists only inside a request**, so the `auth` instance is constructed per request rather than at
-  module scope. Hono's per-request `c.env` makes this ordinary.
-- **Transactions must be disabled for D1.** Kysely's default of `transaction: true` on better-auth 1.3.10+ is
-  reported to break *social* sign-in on D1 with `unable_to_create_user`.
-- **The better-auth CLI cannot reach D1.** Schema SQL is generated once against a local SQLite and applied as a
-  normal `wrangler d1 migrations apply` — which is already how this repo treats migrations.
+- **The D1 binding is passed directly** — `database: env.AUTH_DB`. `@better-auth/core`'s option union carries its
+  own `D1Database` interface ("A Cloudflare D1-compatible database"). **There is no Kysely, no `kysely-d1`, and no
+  `better-auth-cloudflare`**, so the choice A0 was convened to make does not exist and the dependency proposal is
+  one package.
+- **The binding exists only inside a request**, so the `auth` instance is still constructed per request rather
+  than at module scope. Hono's per-request `c.env` makes this ordinary, and `getSession()` against a per-request
+  instance measured 4–6 ms.
+- **Transactions need no workaround.** `transaction` defaults to `false` in 1.7.5, and a live Google sign-in in
+  A0 completed cleanly on D1 with no explicit flag — issue #4732 does not reproduce on this version.
+- **The better-auth CLI cannot reach D1.** Schema SQL is generated once against Node's built-in `DatabaseSync`
+  (also in the option union) and applied with `wrangler d1 execute --file` — which is already how this repo
+  treats migrations. The generated schema is `user`, `session`, `account` and `verification`, plus indexes on
+  `session.userId`, `account.userId` and `verification.identifier`.
+- **Timestamps are stored as ISO 8601 strings**, not epoch milliseconds. A7's test helper must match.
 
 `nodejs_compat` is required for better-auth's `AsyncLocalStorage` and is already set in `wrangler.jsonc`.
 
@@ -185,8 +196,14 @@ Three known constraints, all confirmed against better-auth's documentation and i
 `trustedOrigins` is derived from the same `WEB_ORIGINS` value `lib/cors.ts` already parses — one source, parsed
 once, never two lists to drift.
 
-`mapProfileToUser` handles a provider that returns no email: the user is created with `email` null rather than
-refused.
+**A provider that returns no email, amended after A0.** better-auth's core schema declares `user.email` as
+`text not null unique`, so it cannot store a user without one — the spike found this, and it contradicted what
+this spec first said. The resolution (owner decision 2026-09-20): `mapProfileToUser` synthesizes
+`{providerId}:{accountId}@no-email.invalid` to satisfy the constraint, while `global_users.email` stays **null**.
+The Registry remains the source of truth for whether this product knows a person's address; better-auth's value is
+plumbing. `.invalid` is RFC 2606's reserved TLD, so the placeholder can never collide with a real address or be
+delivered to. That better-auth's `user.email` is then sometimes a fiction is inert here, because decision 2 means
+nothing ever sends email.
 
 ### 4.3 Identity: the Registry re-key
 
@@ -227,7 +244,9 @@ requires. Our two routes live under `/session/` so that nothing we add can ever 
 introduces later.
 
 ```
-web /                →  the provider sign-in URL better-auth exposes    top-level navigation (A0 confirms the exact entry)
+web /                →  POST api/auth/sign-in/social {provider, callbackURL}   one fetch
+                     ←  200 {"url":"https://accounts.google.com/...","redirect":true}
+                     →  location.href = url                            top-level navigation
                      →  Google / Meta                          consent
                      →  GET  api/auth/callback/google          better-auth sets its cookie, first-party to the API
                      →  302  api/session/handoff               same origin, so the cookie is readable
@@ -238,6 +257,18 @@ web /                →  the provider sign-in URL better-auth exposes    top-le
                      ←  { token, expiresAt }                   response body only
    thereafter:          Authorization: Bearer <token>
 ```
+
+**A0 established two things this design depended on.** The sign-in entry is **not** a navigable link: it is a
+`POST` that answers JSON, so the web makes one `fetch` and then assigns `location.href`. Still no client library
+(decision 9). And **the OAuth `state` and PKCE `code_verifier` live in the `verification` table**, keyed by the
+state parameter — the row's `identifier` *is* the state and its `value` is `{callbackURL, codeVerifier}`. Nothing
+about starting a sign-in depends on a cookie, which is the step most likely to have broken a two-origin design.
+
+**Confirmed by A0 end to end.** A real Google sign-in completed on D1 — `POST /auth/sign-in/social` → `302` from
+`/auth/callback/google` → `user`, `account` and `session` rows written, no `unable_to_create_user`, no explicit
+transaction flag. The callback **does** set a first-party session cookie on the API origin: `getSession()` resolved
+it from the browser in 13 ms, and the session it returned carries the same `session.token` value the bearer plugin
+accepts. So the handoff can read the cookie, take the session, and mint a code bound to that token.
 
 - `GET /session/handoff` validates its redirect target against the parsed `WEB_ORIGINS` list — the open-redirect
   guard is not optional and reuses `isAllowedOrigin` rather than reimplementing it.
@@ -308,8 +339,10 @@ The cost of that second move is one redundant header sent by the web for the len
   the storage one. Accepted as the price of two origins; the exit is a single origin, which PRD §3 would have to
   change to adopt.
 - **Apple cannot ship in this phase.** It needs HTTPS and a deployed staging origin that does not yet exist.
-- **A user with no email is a real, supported case.** They see their provider name on the Account screen and
-  nothing else; `OWNER_EMAIL` can never match them, which is correct.
+- **A user with no email is a real, supported case, and better-auth is lied to about it.** The Registry holds
+  null; better-auth holds `{providerId}:{accountId}@no-email.invalid` because its schema forbids null. The reader
+  sees their provider name on the Account screen and nothing else, and `OWNER_EMAIL` can never match them, which
+  is correct. The placeholder is unmailable by construction and nothing in this product sends email anyway.
 - **Apple's one-shot email is a live hazard for A7.** The first authorization either persists it or it is gone
   until the user revokes the app in their Apple ID settings. A7's plan must treat that callback as irreversible.
 - **Every local Durable Object is wiped — once, at A2.** Chats, read receipts, preferences, the catalog, every
@@ -344,7 +377,8 @@ exception and only when the owner asks in so many words.
 3. `X-User-Email` is not read anywhere; sending it changes nothing.
 4. A completed Google sign-in ends with the web holding a token and `/me` returning that person.
 5. The same for Meta.
-6. A Meta profile with no email creates a user with `email` null, who can follow, read, and chat.
+6. A Meta profile with no email creates a Registry row with `email` **null** — and a better-auth row carrying a
+   `…@no-email.invalid` placeholder — and that person can follow, read, and chat.
 7. Two providers returning the same verified email resolve to one `user_id` and therefore one User DO.
 8. The Registry rejects a second `global_users` row with an existing non-null email, and admits any number with
    null.
