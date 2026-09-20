@@ -329,12 +329,16 @@ exercised under `wrangler dev`, not only Node.
 
 ## Identity plumbing
 
-The identity model — email header, no authentication, the owner role, what lives in which DO — is `docs/PRD.md` §2.
-In code:
+The identity model — today an email header and no authentication, from the Auth phase a verified session and a
+generated `user_id` — plus the owner role and what lives in which DO, is `docs/PRD.md` §2. In code, as built
+today:
 
 - `middleware/user.ts` normalizes `X-User-Email` with `lib/email.ts`, auto-registers it in the Registry, and attaches
   the identity as `c.var.identity` and the per-user DO stub (`env.USER_DO.idFromName(email)`) as `c.var.user`.
-- Never add login, sessions, JWTs, or Cloudflare Access.
+- ~~Never add login, sessions, JWTs, or Cloudflare Access.~~ **Reversed 2026-09-20** (`docs/PRD.md` §9). The
+  **Auth phase** replaces the header with a verified `better-auth` session over consumer OAuth and keys the
+  User DO by a generated `user_id`: `docs/specs/auth-phase.md`, plan `auth-phase-plan.md`. Everything above
+  describes what is built today and stays accurate until chunk A7 deletes the header.
 - `OWNER_EMAIL` comes from `apps/api/.dev.vars` locally (copy `.dev.vars.example`) and `wrangler secret put` per
   environment when deployed (Environments); the Registry seeds the role from it on start. The email is never committed.
 - The API enforces no authorization (PRD §2, §9, decided 2026-09-12): no route or Registry method checks the role, and

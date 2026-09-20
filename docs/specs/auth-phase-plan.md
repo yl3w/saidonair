@@ -3,8 +3,9 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** approved 2026-09-20. **A0 complete** the same day (findings below; spec §4.1, §4.2, §4.5 amended).
-A1 is next and needs no owner action. Nothing is installed in the repo: A0 ran entirely in a scratch directory.
+**Status:** approved 2026-09-20. **A0 and A1 complete** the same day. A2 is next — the Registry schema and
+internals — and it is the first chunk that touches code. Nothing is installed in the repo yet: A0 ran entirely in a
+scratch directory, and A4 is where `better-auth` actually enters the tree.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
 makes are marked **plan decision** and stand unless vetoed.
@@ -100,6 +101,12 @@ Small on purpose. Everything after this is permitted by the PRD rather than cont
   the section at the spec. Leave the `X-User-Email` description — it is accurate until A7.
 
 **Done when:** `pnpm check` green, one commit.
+
+**Complete 2026-09-20.** Five edit sites, not the four this chunk listed. The sweep for *other* statements that the
+reversal falsified — which is the whole point of doing documents first — found three the plan had not named: the
+preamble's "Next is M6", §2's closing "This does not introduce authentication", and `AGENTS.md`'s Identity plumbing
+summary line, "email header, no authentication". Each would have outlived its work exactly the way the four
+documents in `m6-section-8-sweep` did.
 
 ---
 

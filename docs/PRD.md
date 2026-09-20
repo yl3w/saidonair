@@ -19,7 +19,7 @@ document disagree, this document governs and the spec is due for revision.
 **Implementation status:** This document defines the target requirements and logical schema, not completed
 features. M3 shipped 2026-09-13, the Design phase 2026-09-15, and **M4 2026-09-17** — so §4.5's chats, §6's
 retrieval and §7's screens and route table are all built ones, and `docs/design.md` is canonical for how they look
-and behave. Items marked M6 are not yet built (§10). Next is M6.
+and behave. Items marked M6 are not yet built (§10). **Next is the Auth phase** (§10, decided 2026-09-20), then M6.
 
 ## 1. Summary
 
@@ -65,9 +65,12 @@ deployment, and general admin dashboards beyond owner catalog management.
 
 ## 2. Users and ownership
 
-- Identity is normalized email (trimmed, lowercase), supplied through `X-User-Email`. No authentication is added, and
-  none should be: no login, sessions, JWTs, or Cloudflare Access. The UI says "Who is this for?", never "sign in".
-  Unknown emails auto-register in the Registry DO.
+- Identity is normalized email (trimmed, lowercase), supplied through `X-User-Email`; the UI says "Who is this
+  for?", never "sign in"; unknown emails auto-register in the Registry DO. **That is what is built today, and the
+  Auth phase replaces all of it** (`docs/specs/auth-phase.md`, §10): a verified session over consumer OAuth, a
+  generated `user_id` rather than an email as the key, and the header deleted. ~~No authentication is added, and
+  none should be: no login, sessions, JWTs, or Cloudflare Access.~~ **Reversed 2026-09-20** (§9). Cloudflare Access
+  stays declined, now for a different reason than that sentence gave.
 - Browser clients on another origin (the Pages web app, Vite locally) are admitted by CORS from the `WEB_ORIGINS`
   configuration: comma-separated origins, with `scheme://*.host` matching any subdomain for Pages previews; unset
   means the local Vite origins. No credentials are involved, so this is hygiene, not a guard, and preflights never
@@ -82,7 +85,8 @@ deployment, and general admin dashboards beyond owner catalog management.
   The API enforces no authorization (decided 2026-09-12, §9): no route or Registry method checks the role, `GET /me`
   returns it for the web's rendering, and the acting email is recorded as reviewer, skipper, or requester whoever it
   is. The owner email is never committed. The management interface is the Owner screens in §7, which the web shows
-  to the owner role only. This does not introduce authentication.
+  to the owner role only. ~~This does not introduce authentication.~~ **Superseded 2026-09-20** (§9): the Auth
+  phase introduces exactly that, and with it a `403` on those operations, so the web stops being the only gate.
 - Chats, preferences, and read receipts are private to the User DO. Global identity, the catalog, and every follow
   live in the Registry: one follower record per channel and email is the only record of who follows what (decided
   2026-09-13, replacing the two-store model of 2026-09-10), so the Registry can list a user's own follows, count a
@@ -966,6 +970,28 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
+- **Authentication arrives, and the API starts refusing — decided 2026-09-20.** Two standing decisions are
+  reversed together: §2's *"No authentication is added, and none should be"*, and the 2026-09-12 ruling that the
+  API enforces no authorization. The argument is not that users expect a login. It is that `X-User-Email` is
+  **self-asserted**, so any caller who knows the API's address can send anyone else's and read that person's chats,
+  messages, preferences and read receipts out of their User DO — and §8's second criterion, that users cannot do
+  exactly this, has been true only because nobody tried. That defence held while the catalog was the interesting
+  surface and stopped holding when M4 put conversations in the User DO. Authentication alone does not close the
+  second half: a stranger with a valid Google account still has a valid session, and can still approve channels.
+  So owner routes gain a real `403` and rendering stops being the only gate. **The shape:** `better-auth` inside
+  the existing Worker over its own D1, Google and Meta now and Apple once a deployed staging origin exists, since
+  Apple supports neither `localhost` nor non-HTTPS; a bearer token across the two origins, carried by a one-time
+  code in a URL fragment and exchanged for the real token, so the long-lived credential never enters a URL or the
+  browser's history; and the Registry minting its own `user_id` with better-auth's as a link column, so the
+  domain's primary key is not a library's. **What was declined, and why:** Cloudflare Access, which is the least
+  code of anything but gates an *enumerated* set of people and cannot do open sign-up; a hosted identity vendor,
+  which puts a third party in the critical path and locks the primary key to its id space; and both a Registry-DO
+  adapter and hand-rolling OAuth outright, because the flow is not the hard part — the accumulating provider
+  quirks are, and those are what a library absorbs. **The cost, named rather than hidden:** the token lives in
+  `localStorage`, where XSS can read it. The one-time code closes the redirect leak, not the storage one; only a
+  first-party `HttpOnly` cookie closes that, and that needs a single origin, which is a deployment change this
+  product has not made. The phase is unnumbered, on the Design phase precedent, so no `M6` reference is disturbed.
+
 - **Work in progress is a state, not a footnote — decided 2026-09-17** after the owner watched a Retry they had just
   started. The row said *"bhaskar.maddala@protonmail.com started this; Retry is available in 60 min"* beside a status
   column still reading "Summarised" and a Retry button that looked pressable and was not. Every part of that was
@@ -1764,6 +1790,7 @@ M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunki
    Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
 M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations   ✓ 2026-09-17
 M5 UI            conversations                                                                  ✓ 2026-09-17
+   Auth          better-auth sessions · Google/Meta (Apple later) · user_id keying · owner 403s
 M6 Hardening     a full sweep of §8: every criterion marked tested, structural, or unverified
 ```
 
@@ -1800,7 +1827,16 @@ Design phase had taken the five screens M5 once held, leaving it that one subjec
 were "built in M4". The three gaps `design-phase.md` §4.9 reserved for it were settled the same day without routes —
 naming needs none, and search and deletion are not in this version (§9). This is the second milestone line to
 outlive its work, after unread receipts, which is why an audit now opens a milestone rather than closing one.
-**M6 is next, and it is the last. Redefined 2026-09-17 after an audit** (§9): it is **a sweep of §8**, not a build.
+**The Auth phase is next — decided 2026-09-20** (§9), and it carries no number for the same reason the Design
+phase does not: forty-odd `M6` references across `docs/specs/` and this document keep their meaning and none has to
+be rewritten. `docs/specs/auth-phase.md` and its plan hold nine chunks, A0–A9, under one ordering rule — every
+chunk ends with the product running. **A0 is complete**, and the spike overturned three things before a line of
+real code was written: better-auth takes a D1 binding directly so the phase adds one dependency rather than three;
+the sign-in entry is a `POST` answering JSON rather than a navigable link; and better-auth's own `user.email` is
+`not null unique`, so a provider that returns no email gets a synthesized placeholder there while this product's
+Registry holds null.
+
+**M6 is last. Redefined 2026-09-17 after an audit** (§9): it is **a sweep of §8**, not a build.
 
 §8 holds about sixty verification criteria and nobody has ever walked them end to end. The audit found its three
 original items largely answered already — isolation is covered by eight test files exercising two identities,
