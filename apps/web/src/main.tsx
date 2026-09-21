@@ -50,7 +50,11 @@ export function App() {
       <SessionProvider>
         <TrackNavigation />
         <Router>
+          {/* `/sign-in` is the door since 2026-09-21 (docs/specs/public-reading.md §4.3). `/` still
+              renders it TEMPORARILY, until step 4 of `public-reading-plan.md` puts the landing page
+              there; that route goes with the same commit. */}
           <Route path="/" component={SignIn} />
+          <Route path="/sign-in" component={SignIn} />
           {/* Where the sign-in handoff lands with its one-time code. It must be a real route: the
               fallback below replaces the URL, which would discard the fragment and lose the code
               (A5, docs/specs/auth-phase-plan.md). */}

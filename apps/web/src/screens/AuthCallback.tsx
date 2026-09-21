@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { API_BASE_URL } from "../api";
+import { safeNextPath } from "../lib/next-path";
 import { useDocumentTitle } from "../lib/title";
 import { useSession } from "../session";
 
@@ -25,6 +26,12 @@ export function AuthCallback() {
     const code = new URLSearchParams(
       window.location.hash.replace(/^#/, ""),
     ).get("code");
+    // Where the reader was before they signed in, carried here by `SignIn` on this URL's query.
+    // Read before the erase below, for the same reason the code is: `replaceState` to the pathname
+    // discards the query as well as the fragment.
+    const to = safeNextPath(
+      new URLSearchParams(window.location.search).get("to"),
+    );
     // Out of the address bar and out of history immediately, whether or not it is any good.
     window.history.replaceState(null, "", window.location.pathname);
     if (code === null) {
@@ -48,7 +55,7 @@ export function AuthCallback() {
       .then(({ token, email }) => {
         if (cancelled) return;
         adopt({ token, email });
-        route("/queue", true);
+        route(to, true);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -64,7 +71,7 @@ export function AuthCallback() {
         <p class="text-ui text-consequence">
           That sign-in could not be completed — the link may have been used
           already, or it may have expired.{" "}
-          <a class="link" href="/">
+          <a class="link" href="/sign-in">
             Try again
           </a>
           .

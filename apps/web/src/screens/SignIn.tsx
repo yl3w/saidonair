@@ -1,6 +1,7 @@
 import { useEffect } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { API_BASE_URL } from "../api";
+import { safeNextPath } from "../lib/next-path";
 import { useDocumentTitle } from "../lib/title";
 import { useSession } from "../session";
 
@@ -18,15 +19,21 @@ export function SignIn() {
   useDocumentTitle(null);
 
   const { state } = useSession();
-  const { route } = useLocation();
+  const { route, query } = useLocation();
 
-  // Already signed in: this tab has somewhere to be.
+  // Where this sign-in is heading, from `?next=` and never trusted raw (lib/next-path.ts).
+  const to = safeNextPath(query.next);
+
+  // Already signed in: this tab has somewhere to be, and it is the same somewhere.
   const signedIn = state.status !== "none";
   useEffect(() => {
-    if (signedIn) route("/queue", true);
-  }, [signedIn, route]);
+    if (signedIn) route(to, true);
+  }, [signedIn, route, to]);
 
-  const next = `${window.location.origin}/auth/callback`;
+  // The destination rides through the round trip on the callback's own URL: the API redirects to
+  // `next` with the code in the fragment, and `/auth/callback` reads `?to=` before it erases the
+  // address bar. Nothing is stored anywhere (docs/specs/public-reading.md §3, decision 10).
+  const next = `${window.location.origin}/auth/callback?to=${encodeURIComponent(to)}`;
   const start = (provider: string) =>
     `${API_BASE_URL}/session/start?provider=${provider}&next=${encodeURIComponent(next)}`;
 

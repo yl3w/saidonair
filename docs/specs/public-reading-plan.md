@@ -2,7 +2,8 @@
 
 **Implements:** `docs/specs/public-reading.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **IN PROGRESS.** Steps 1–2 complete 2026-09-21; steps 3–10 outstanding.
+**Status:** **IN PROGRESS.** Steps 1–3 complete 2026-09-21; steps 4–10 outstanding. Step 3's browser
+walkthrough is the owner's — it needs a real Google round trip.
 **Shape:** ten steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
 product running**. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 
@@ -224,8 +225,13 @@ public — it redirects — but sign-in lives where the rest of the plan expects
 (sign-out's destination).
 
 - 3.1 Route `SignIn` at `/sign-in`; leave `/` routed to it too, temporarily, so nothing breaks mid-step.
-- 3.2 `SignIn.tsx` reads `?next=` and passes it through to the handoff's `next` instead of always building
-  `/auth/callback` with no destination, so a visitor returns where they were. Default stays `/queue`.
+- 3.2 `SignIn.tsx` reads `?next=` and passes it through to the handoff's `next`, so a visitor returns where they
+  were. Default stays `/queue`.
+
+  **Found while implementing:** the destination has to survive *two* hops, not one. `AuthCallback` hardcoded
+  `route("/queue")`, so carrying it to the callback is not enough — it rides on the callback's own query
+  (`/auth/callback?to=…`) and is read there **before** the `replaceState` that erases the address bar, which
+  discards the query as well as the fragment. Nothing is stored anywhere, which keeps decision 10 intact.
 
   **Plan decision: `next` is validated against the app's own path list before use** — it must start with `/` and
   not `//`, or it is dropped for the default. The API already guards its own redirect (`isAllowedOrigin`,

@@ -137,14 +137,19 @@ export function Guard({
   ownerOnly?: boolean;
 }) {
   const { state, retry } = useSession();
-  const { route } = useLocation();
+  const { route, path } = useLocation();
 
   useEffect(() => {
-    if (state.status === "none") route("/", true);
+    // `/sign-in`, not `/` — `/` is the landing page a visitor browses, and an expired session
+    // deserves a screen that explains itself (docs/specs/public-reading.md §4.3). The path comes
+    // back with them, so a reader whose session lapsed mid-read returns to what they were reading.
+    if (state.status === "none") {
+      route(`/sign-in?next=${encodeURIComponent(path)}`, true);
+    }
     if (ownerOnly && state.status === "ready" && state.role !== "owner") {
       route("/queue?note=owner-only", true);
     }
-  }, [state, ownerOnly, route]);
+  }, [state, ownerOnly, route, path]);
 
   if (state.status === "ready" && (!ownerOnly || state.role === "owner")) {
     return <>{children}</>;
