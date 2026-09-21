@@ -45,7 +45,8 @@ This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainabl
 1. **Never add or upgrade a dependency without explicit approval** in the conversation. Propose the package and why.
 2. **Never call any paid or third-party API** other than YouTube's public RSS feed, Cloudflare services, DownSub's
    API (`api.downsub.com`) for transcripts, authenticated with the `DOWNSUB_API_KEY` secret and never sent anything but
-   a public YouTube video URL, and the OAuth endpoints of **Google** and **Meta** — Apple too once A9 lands — reached
+   a public YouTube video URL, and the OAuth endpoints of **Google** and **Meta** — and no other provider: Apple was
+   declined on 2026-09-21 (`docs/PRD.md` §9) — reached
    server-side over the redirect flow by `better-auth` and by nothing else (Auth phase, 2026-09-20). No provider SDK
    or third-party script is loaded into the page, and no transactional email vendor exists: this product sends no
    email. No other YouTube endpoint: no InnerTube calls, no watch-page scraping, no YouTube Data

@@ -19,7 +19,8 @@ document disagree, this document governs and the spec is due for revision.
 **Implementation status:** This document defines the target requirements and logical schema, not completed
 features. M3 shipped 2026-09-13, the Design phase 2026-09-15, and **M4 2026-09-17** — so §4.5's chats, §6's
 retrieval and §7's screens and route table are all built ones, and `docs/design.md` is canonical for how they look
-and behave. Items marked M6 are not yet built (§10). **Next is the Auth phase** (§10, decided 2026-09-20), then M6.
+and behave. The **Auth phase** completed 2026-09-21, so §2's identity model, §7's target contract and the owner's
+operations describe what runs. **Next is M6** (§10), which is a read of §8 rather than a build.
 
 ## 1. Summary
 
@@ -52,7 +53,7 @@ deployment, and general admin dashboards beyond owner catalog management.
 
 - The only external services called are YouTube's public RSS feed, Cloudflare services, DownSub's API for
   transcripts (owner decision 2026-09-08), and — from the Auth phase (§10, decided 2026-09-20) — the OAuth
-  endpoints of **Google** and **Meta**, and of **Apple** when A9 lands. Those are reached server-side over the
+  endpoints of **Google** and **Meta**, and no others: Apple was declined on 2026-09-21 (§9). Those are reached server-side over the
   redirect flow and receive nothing but the flow itself; no provider SDK or third-party script is loaded into the
   page, and nothing is sent to them about what anyone reads. DownSub receives nothing but a public YouTube video URL and is
   authenticated with the `DOWNSUB_API_KEY` secret. No other YouTube endpoint is used: no InnerTube calls, no
@@ -137,7 +138,7 @@ Chat query: current follows ∩ approved channels, narrowed to one episode when 
 | Toolchain | Volta-pinned Node 22; `packageManager`-pinned pnpm |
 | Runtime | Cloudflare Workers on the Workers Paid plan (decided 2026-09-11); `compatibility_date` pinned; `nodejs_compat`; three environments, dev, staging, production, each its own Worker with its own Durable Objects, index, and Workflow (decided 2026-09-13; `AGENTS.md` → Environments) |
 | API | Hono, strict TypeScript, ESM only |
-| Authentication | `better-auth` inside the same Worker at `/auth/*`, over a D1 database per environment (`media-digest-auth`, `-staging`, `-dev`, bound `AUTH_DB`); Google and Meta as providers, Apple once a deployed origin exists. The binding is passed to better-auth directly — no Kysely, no dialect, no wrapper (Auth phase A0, 2026-09-20) |
+| Authentication | `better-auth` inside the same Worker at `/auth/*`, over a D1 database per environment (`media-digest-auth`, `-staging`, `-dev`, bound `AUTH_DB`); Google and Meta as the providers. The binding is passed to better-auth directly — no Kysely, no dialect, no wrapper (Auth phase A0, 2026-09-20) |
 | Validation and API document | Zod 4 schemas in `packages/shared` with the types inferred from them; `hono-openapi` generates OpenAPI 3.1 at `GET /openapi.json`; Scalar test client at `GET /docs` |
 | State | One SQLite Registry DO; one SQLite User DO per identity, named by its `user_id` |
 | Orchestration | Cloudflare Workflows, one instance per episode attempt; two Cron Triggers in the same Worker: discovery `0 */6 * * *` and recovery `30 */6 * * *` (UTC) |
@@ -993,6 +994,15 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
+- **Apple is not a sign-in provider — decided 2026-09-21.** It was planned as the Auth phase's last chunk and is
+  withdrawn rather than deferred. The cost was never the code: `better-auth` supports it and the provider is three
+  lines. It was everything around it — a paid developer account, a Services ID and a `.p8` key; no `localhost` and
+  no non-HTTPS, so it could never be exercised under `wrangler dev` and needed a deployed staging origin that does
+  not exist; and an email emitted **only on the first authorization**, with no user-info endpoint to recover it, so
+  a single mishandled callback loses a person's address until they revoke the app in their Apple ID settings. Two
+  providers cover the audience, and the third was buying a schedule dependency and a one-shot failure mode for a
+  button. **This completes the Auth phase** (§10).
+
 - **The catalog operations became the owner's — done 2026-09-20**, the second half of the decision below. Seven
   routes gained `403 FORBIDDEN`: approve, decline, pause, resume, Start, episode retry, episode skip. Nothing else
   did, and that is deliberate — reading stays open to every caller, which is §7's design. The bug worth naming is
@@ -1011,8 +1021,8 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   surface and stopped holding when M4 put conversations in the User DO. Authentication alone does not close the
   second half: a stranger with a valid Google account still has a valid session, and can still approve channels.
   So owner routes gain a real `403` and rendering stops being the only gate. **The shape:** `better-auth` inside
-  the existing Worker over its own D1, Google and Meta now and Apple once a deployed staging origin exists, since
-  Apple supports neither `localhost` nor non-HTTPS; a bearer token across the two origins, carried by a one-time
+  the existing Worker over its own D1, with Google and Meta as the providers; a bearer token across the two
+  origins, carried by a one-time
   code in a URL fragment and exchanged for the real token, so the long-lived credential never enters a URL or the
   browser's history; and the Registry minting its own `user_id` with better-auth's as a link column, so the
   domain's primary key is not a library's. **What was declined, and why:** Cloudflare Access, which is the least
@@ -1822,7 +1832,7 @@ M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunki
    Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
 M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations   ✓ 2026-09-17
 M5 UI            conversations                                                                  ✓ 2026-09-17
-   Auth          better-auth sessions · Google/Meta (Apple later) · user_id keying · owner 403s
+   Auth          better-auth sessions · Google/Meta · user_id keying · owner 403s        ✓ 2026-09-21
 M6 Hardening     a full sweep of §8: every criterion marked tested, structural, or unverified
 ```
 
@@ -1859,8 +1869,10 @@ Design phase had taken the five screens M5 once held, leaving it that one subjec
 were "built in M4". The three gaps `design-phase.md` §4.9 reserved for it were settled the same day without routes —
 naming needs none, and search and deletion are not in this version (§9). This is the second milestone line to
 outlive its work, after unread receipts, which is why an audit now opens a milestone rather than closing one.
-**The Auth phase is next — decided 2026-09-20** (§9), and it carries no number for the same reason the Design
-phase does not: forty-odd `M6` references across `docs/specs/` and this document keep their meaning and none has to
+**The Auth phase is complete — 2026-09-21.** Eight chunks, A0 through A8; A9 was Apple and was withdrawn rather
+than deferred (§9). The product is behind a real sign-in with Google and Meta, identity is a generated `user_id`
+rather than an email, and the seven catalog operations answer `403` to anyone but the owner. **M6 is next.** It
+carries no number for the same reason the Design phase does not: forty-odd `M6` references across `docs/specs/` and this document keep their meaning and none has to
 be rewritten. `docs/specs/auth-phase.md` and its plan hold nine chunks, A0–A9, under one ordering rule — every
 chunk ends with the product running. **A0 is complete**, and the spike overturned three things before a line of
 real code was written: better-auth takes a D1 binding directly so the phase adds one dependency rather than three;
@@ -1868,7 +1880,7 @@ the sign-in entry is a `POST` answering JSON rather than a navigable link; and b
 `not null unique`, so a provider that returns no email gets a synthesized placeholder there while this product's
 Registry holds null.
 
-**M6 is last. Redefined 2026-09-17 after an audit** (§9): it is **a sweep of §8**, not a build.
+**M6 is next and last. Redefined 2026-09-17 after an audit** (§9): it is **a sweep of §8**, not a build.
 
 §8 holds about sixty verification criteria and nobody has ever walked them end to end. The audit found its three
 original items largely answered already — isolation is covered by eight test files exercising two identities,

@@ -64,8 +64,10 @@ The providers chosen make it more than a tidiness argument:
 - **Meta can return an account with no email at all** — phone-only signup, revoked consent, or an address Meta has
   marked invalid. better-auth documents `mapProfileToUser` as the hook for exactly this. Keyed by email, that
   person cannot be admitted. Keyed by user id, they are an ordinary user who happens to have no email.
-- **Apple emits the email only on the first authorization** and offers no user-info endpoint to fetch it later. A
-  returning Apple user whose email was never captured is, under email keying, a different person.
+- **Apple emits the email only on the first authorization** and offers no user-info endpoint to fetch it later.
+  A returning Apple user whose email was never captured is, under email keying, a different person. *(Apple was
+  withdrawn on 2026-09-21; the argument is kept because it is one of the reasons it was, and because the same
+  hazard would return with any provider that behaves this way.)*
 - A Google account can change its address. Under email keying that silently orphans every chat and receipt the
   person had.
 
@@ -119,10 +121,11 @@ All owner decisions of 2026-09-20 unless stated.
    Reverses the 2026-09-12 no-authorization ruling.
 2. **Consumer OAuth only. No passwords, ever.** No password store, no reset mail, no email vendor, and
    `lib/email.ts` keeps its one job of normalizing.
-3. **Google and Meta in this phase; Apple deferred to its own chunk.** Apple supports neither `localhost` nor
-   non-HTTPS, and `CLAUDE.md` makes `wrangler dev` the gate for runtime behavior; staging's web origin is still an
-   unfilled `TODO(owner)` in `wrangler.jsonc`. Apple is sequenced behind the thing that makes testing it possible,
-   not dropped.
+3. **Google and Meta. Apple was deferred to A9 and then withdrawn entirely (owner, 2026-09-21)** — the
+   reasoning below is what made it last, and then made it never: it supports neither `localhost` nor non-HTTPS,
+   and `CLAUDE.md` makes `wrangler dev` the gate for runtime behavior, so it could not be exercised at all until
+   a deployed staging origin existed — and that dependency, plus a paid account and an unrecoverable one-shot
+   email, bought too little for one more button.
 4. **The User DO and the Registry are keyed by a `user_id` the Registry generates** — `crypto.randomUUID()`, the
    same way this repo already mints run, attempt, generation, chat and message ids. better-auth's `user.id` is
    stored beside it as `auth_user_id TEXT UNIQUE`, nullable until that person first signs in.
@@ -338,28 +341,28 @@ The cost of that second move is one redundant header sent by the web for the len
 
 | | Chunk | Ends with the product… |
 |---|---|---|
-| A0 | **Spike** (throwaway). `kysely` + `kysely-d1` versus `better-auth-cloudflare`, the D1 transaction workaround, one real Google sign-in on a scratch Worker. Output is a decision and the hard-rule-1 dependency proposal, not kept code. **First, because it is the only chunk that can invalidate the rest**, and it depends on nothing. Precedent: the DO-free spike Worker on `spike/transcript-remote` that settled DownSub. | unchanged |
-| A1 | **The authorizing document edit.** PRD §2's prohibition reversed, the §10 Auth phase line, and `AGENTS.md` → Identity plumbing losing "Never add login, sessions, JWTs, or Cloudflare Access." Small on purpose: everything after it is permitted rather than contradicting the PRD. | unchanged |
+| A0 ✓ | **Spike** (throwaway, complete 2026-09-20). `kysely` + `kysely-d1` versus `better-auth-cloudflare`, the D1 transaction workaround, one real Google sign-in on a scratch Worker. Output is a decision and the hard-rule-1 dependency proposal, not kept code. **First, because it is the only chunk that can invalidate the rest**, and it depends on nothing. Precedent: the DO-free spike Worker on `spike/transcript-remote` that settled DownSub. | unchanged |
+| A1 ✓ | **The authorizing document edit** (complete 2026-09-20). PRD §2's prohibition reversed, the §10 Auth phase line, and `AGENTS.md` → Identity plumbing losing "Never add login, sessions, JWTs, or Cloudflare Access." Small on purpose: everything after it is permitted rather than contradicting the PRD. | unchanged |
 | A2–A3 ✓ | **The Registry re-key** (complete 2026-09-20), with its own spec and plan (`auth-2-registry-rekey.md`, owner instruction 2026-09-20): nine S/M steps converting one identity-bearing table at a time — schema column, module and callers together — because `email` stays `UNIQUE` so every foreign key survives the primary key moving. Ends in a full `wrangler dev` walkthrough on the old identity, the gate that proves the re-key is innocent. | working, header identity |
 | A4 ✓ | **better-auth stood up** (complete 2026-09-20; Meta deferred for credentials, Google verified end to end). D1 ×3 environments, mounted at `/auth/*`, Google and Meta configured, schema applied, `trustedOrigins` from `WEB_ORIGINS`. Sign-in works end to end and writes rows. Nothing consumes it. | working, sign-in creates rows |
 | A5 ✓ | **The handoff** (complete 2026-09-20, walked end to end in a browser). `/session/handoff`, `/session/exchange`, the one-time code in better-auth's `verification` table, the open-redirect guard reusing `isAllowedOrigin`. Reviewed alone because it is the custom security code. | working, tokens issued but unused |
 | A6 ✓ | **Web** (complete 2026-09-20, signed in through the front door). Sign-in screen at `/`, `/auth/callback`, token stored and bound, 401 handling, sign-out, `account.ts` deleted. Still sends `X-User-Email`, which the API still honours. | working |
 | A7 ✓ | **The swap** (complete 2026-09-20; the owner's existing rows linked to their Google account on real data). `requireIdentity` reads the bearer token and resolves through better-auth; `ensureUser` attaches `auth_user_id` by email; `X-User-Email` deleted from the Worker, the web, the CORS list and the tests; tests mint sessions in local D1. The irreversible one. | working, on sessions |
-| A8 | **Authorization.** `requireOwner`, `403 FORBIDDEN`, `401 UNAUTHENTICATED`, the OpenAPI security scheme and its one declared exclusion, and the two §8 criteria that finally get tests. | working, gated |
-| A9 | **Apple.** Gated on a deployed staging origin with HTTPS. | working |
+| A8 ✓ | **Authorization** (complete 2026-09-20; the two §8 criteria the M6 audit found untested now have tests). `requireOwner`, `403 FORBIDDEN`, `401 UNAUTHENTICATED`, the OpenAPI security scheme and its one declared exclusion, and the two §8 criteria that finally get tests. | working, gated |
+| ~~A9~~ | ~~**Apple**, gated on a deployed staging origin.~~ **Withdrawn 2026-09-21** (PRD §9): not a provider this product supports. | — |
 
 ## 5. The consequences the owner accepted
 
 - **The bearer token lives in `localStorage` and XSS can read it.** The one-time code closes the redirect leak, not
   the storage one. Accepted as the price of two origins; the exit is a single origin, which PRD §3 would have to
   change to adopt.
-- **Apple cannot ship in this phase.** It needs HTTPS and a deployed staging origin that does not yet exist.
+- ~~**Apple cannot ship in this phase.**~~ **Moot from 2026-09-21**: Apple is not supported at all.
 - **A user with no email is a real, supported case, and better-auth is lied to about it.** The Registry holds
   null; better-auth holds `{providerId}:{accountId}@no-email.invalid` because its schema forbids null. The reader
   sees their provider name on the Account screen and nothing else, and `OWNER_EMAIL` can never match them, which
   is correct. The placeholder is unmailable by construction and nothing in this product sends email anyway.
-- **Apple's one-shot email is a live hazard for A7.** The first authorization either persists it or it is gone
-  until the user revokes the app in their Apple ID settings. A7's plan must treat that callback as irreversible.
+- ~~**Apple's one-shot email is a live hazard.**~~ **Moot from 2026-09-21** — and it was among the reasons the
+  provider was dropped rather than merely postponed.
 - **Every local Durable Object is wiped — once, at A2.** Chats, read receipts, preferences, the catalog, every
   episode and every summary in dev. The vectors survive unless `/clean-local --include-vectors` is asked for.
   A7 needs no second wipe: it attaches `auth_user_id` to rows that already exist rather than re-keying them.
@@ -375,7 +378,7 @@ installed before that.
 
 **Hard rule 2 (third-party APIs).** The rule today permits YouTube's public RSS feed, Cloudflare services, and
 DownSub. It must be amended to permit the OAuth token and profile endpoints of **Google** and **Meta**, and of
-**Apple** when A7 lands. Nothing else is added: no analytics, no email vendor, no third-party script in the page —
+Nothing else is added: no analytics, no email vendor, no third-party script in the page —
 the providers are reached server-side over the redirect flow only.
 
 **Hard rule 3 (Vectorize namespaces).** Unchanged in force, reworded: "user emails are never namespaces" becomes
@@ -427,7 +430,7 @@ exception and only when the owner asks in so many words.
 
 ## 8. Out of scope
 
-Apple (A7, gated). Passwords, magic links, and any email vendor. Passkeys. Session revocation UI and device lists.
+Apple, withdrawn 2026-09-21 (PRD §9). Passwords, magic links, and any email vendor. Passkeys. Session revocation UI and device lists.
 Multi-owner administration beyond the existing promote-never-demote. Rate limiting. Account deletion — which the
 product still does not offer for chats either (§9, 2026-09-17). A single-origin deployment, which would remove the
 handoff entirely and is the named exit from the `localStorage` exposure, but changes PRD §3.

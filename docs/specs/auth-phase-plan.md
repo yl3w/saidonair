@@ -3,9 +3,11 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** approved 2026-09-20. **A0 through A7 complete** the same day — the Registry re-key landed in
+**Status:** approved 2026-09-20. **A0 through A8 complete** — A0–A7 on 2026-09-20 and A8 the same night — the Registry re-key landed in
 seven commits with its own spec and plan (`auth-2-registry-rekey.md`), 395 tests, and a `wrangler dev` walkthrough
-on a real channel. **A7 is complete**: the product is behind a real sign-in, and `X-User-Email` is gone. **Next is A8, authorization** — the 403s, and the two PRD §8 criteria that finally get tests. Nothing is installed in the repo yet: A0 ran entirely in a
+on a real channel. **A8 is complete**: the seven catalog operations are the owner's, and PRD §8's first two criteria have tests for
+the first time. **A9 was withdrawn on 2026-09-21** — Apple is not a provider this product supports (PRD §9) — so
+**the Auth phase is complete.** Nothing is installed in the repo yet: A0 ran entirely in a
 scratch directory, and A4 is where `better-auth` actually enters the tree.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
@@ -16,7 +18,7 @@ column of spec §4.9 before moving a step between chunks.
 
 ## Definition of complete
 
-Spec §7, all twenty-five criteria, with A9 carrying 4-for-Apple only.
+Spec §7, all twenty-five criteria. Criterion 4's Apple half lapsed with A9 on 2026-09-21.
 
 ## Owner actions (agents propose, never run — `AGENTS.md` → One-time setup)
 
@@ -28,7 +30,7 @@ Spec §7, all twenty-five criteria, with A9 carrying 4-for-Apple only.
 | A4 | `wrangler d1 create media-digest-auth{,-staging,-dev}` |
 | A4 | Google Cloud OAuth client + Meta app; `wrangler secret put` × 5 × 3 environments |
 | A2–A3 | Run `/clean-local` when asked — **only if `pnpm dev` ran during the chunk** (see its plan, step 9) |
-| A9 | Apple Developer Program, Services ID, `.p8`; stand up the deployed staging web origin |
+| ~~A9~~ | ~~Apple Developer Program, Services ID, `.p8`~~ — withdrawn 2026-09-21. Stand up the deployed staging web origin |
 
 ---
 
@@ -339,29 +341,15 @@ happened to name.
 
 ---
 
-### A9 — Apple  (size: M, gated)
+### ~~A9 — Apple~~ — withdrawn 2026-09-21
 
-**Blocked until a deployed staging web origin exists with HTTPS.** Apple supports neither `localhost` nor
-non-HTTPS, and `CLAUDE.md` makes `wrangler dev` the gate for runtime behavior — so this is the one chunk whose
-verification happens on staging. `wrangler.jsonc`'s `WEB_ORIGINS` for staging is an unfilled `TODO(owner)` today.
+Not a provider this product supports (PRD §9). The code was never the cost: `better-auth` supports Apple and the
+provider block is three lines. What it carried was a paid developer account, a Services ID and a `.p8` key; no
+`localhost` and no non-HTTPS, so it could never be exercised under `wrangler dev` and needed a deployed staging
+origin that does not exist; and an email emitted only on the first authorization, unrecoverable afterwards, so one
+mishandled callback loses a person's address until they revoke the app. Two providers cover the audience.
 
-**Files:** `apps/api/src/lib/auth.ts`, `apps/api/wrangler.jsonc`, `apps/web/src/screens/SignIn.tsx`,
-`docs/PRD.md` §1, `AGENTS.md` hard rule 2.
-
-- 9.1 Owner: Apple Developer Program, a Services ID, a `.p8` key; secrets per environment. better-auth generates
-  the client-secret JWT in config from the key material, so there is no expiring string to rotate by hand.
-- 9.2 `lib/auth.ts` gains the `apple` provider.
-- 9.3 **Treat the first callback as irreversible.** Apple emits the email only on first authorization and offers no
-  user-info endpoint to fetch it later; if that callback fails to persist it, it is gone until the user revokes the
-  app in their Apple ID settings. `mapProfileToUser` must persist on the first pass and tolerate its absence on
-  every later one.
-- 9.4 A third button on `SignIn.tsx`.
-- 9.5 Hard rule 2 and PRD §1 extended to Apple.
-- 9.6 Walkthrough on deployed staging, not locally.
-
-**Done when:** `pnpm check` green and a real Apple sign-in verified on staging.
-
----
+**The Auth phase ends here, at A8.**
 
 ## Walkthrough record
 
@@ -373,7 +361,7 @@ Filled as each gate runs, the way every plan since M3 carries one.
 | A4 | | Google and Meta sign-in creating rows | |
 | A6 | | sign in, land on the queue, use the product | |
 | A7 | | the swap, incl. a Meta account with no email | |
-| A9 | | Apple, on deployed staging | |
+| ~~A9~~ | — | ~~Apple, on deployed staging~~ | withdrawn 2026-09-21 |
 
 ## Record
 
