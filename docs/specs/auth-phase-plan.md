@@ -3,9 +3,9 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** approved 2026-09-20. **A0, A1, A2–A3, A4, A5 and A6 complete** the same day — the Registry re-key landed in
+**Status:** approved 2026-09-20. **A0 through A7 complete** the same day — the Registry re-key landed in
 seven commits with its own spec and plan (`auth-2-registry-rekey.md`), 395 tests, and a `wrangler dev` walkthrough
-on a real channel. **A6 is complete too**: the web signs in and holds a token while the API still reads the header. **Next is A7, the swap** — the irreversible one. Nothing is installed in the repo yet: A0 ran entirely in a
+on a real channel. **A7 is complete**: the product is behind a real sign-in, and `X-User-Email` is gone. **Next is A8, authorization** — the 403s, and the two PRD §8 criteria that finally get tests. Nothing is installed in the repo yet: A0 ran entirely in a
 scratch directory, and A4 is where `better-auth` actually enters the tree.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
@@ -297,6 +297,19 @@ The irreversible one.
 
 **Tests:** spec §7 criteria 1, 2, 3, 6, 7, 13, 17, 20.
 **Done when:** `pnpm check` green and the walkthrough recorded.
+
+**Complete 2026-09-20.** The owner signed out, signed in with Google, and found the product as they left it:
+still `owner`, with their channel, episodes and read receipts intact. **That is the evidence for
+`ensureIdentity`'s middle branch** — the dev Registry held an owner row seeded from `OWNER_EMAIL` with
+`auth_user_id` null, and better-auth held a separate user with the same address. Arriving as the owner rather
+than as a stranger with an empty queue is that branch attaching the id to the row already there, on real data
+rather than in a fixture.
+
+**A7 also landed eleven stale comments**, swept in the commit after it. `index.ts` said "everything below
+requires X-User-Email" above the middleware that no longer read it, and `AGENTS.md`'s Identity plumbing — the
+section that tells a future agent how identity works — still described normalizing the header. The documents were
+swept and the code was not. A step that deletes a concept should grep for the concept, not for the files the plan
+happened to name.
 
 ---
 
