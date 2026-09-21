@@ -100,9 +100,9 @@ function SettingsScreen() {
             class="btn btn-quiet ml-auto"
             onClick={() => {
               signOut();
-              // `/sign-in` until step 4 makes `/` a page worth landing on, at which point signing
-              // out should leave you on the landing page rather than at a door you just left.
-              route("/sign-in");
+              // The landing page, not the door: signing out should leave you somewhere worth
+              // being, and `/` is that since step 4 of docs/specs/public-reading-plan.md.
+              route("/");
             }}
           >
             Switch account

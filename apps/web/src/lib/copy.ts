@@ -61,6 +61,10 @@ export function episodeCountCopy(counts: EpisodeCounts): string {
 
 export function summaryCountCopy(counts: EpisodeCounts): string {
   const n = counts.available;
+  // "Nothing yet" rather than "0 summaries": an approved channel that has published nothing is
+  // listed on purpose (docs/specs/public-reading.md §3, decision 3), and a zero there reads as a
+  // failure where it is only an absence.
+  if (n === 0) return "Nothing yet";
   return `${n} ${n === 1 ? "summary" : "summaries"}`;
 }
 
@@ -534,3 +538,19 @@ export function staleCopy(loadedAt: number | null, now = Date.now()): string {
   const minutes = Math.max(1, Math.round((now - loadedAt) / 60_000));
   return `These numbers could not be refreshed. They are from ${minutes} min ago.`;
 }
+
+/**
+ * The signed-out surface (docs/specs/public-reading.md §4.1, §4.2). The band's line is the whole
+ * pitch on every page but the landing one, so it names the three things an account adds rather
+ * than saying "sign in" twice.
+ */
+export const PUBLIC_BAND_COPY =
+  "Follow channels · keep a queue · ask about any episode";
+export const PUBLIC_BAND_COPY_SHORT = "Follow · queue · ask";
+export const PUBLIC_SIGN_IN_COPY = "Sign in";
+
+export const LANDING_PROMISE =
+  "What was said on the air, in text, with the minute it was said.";
+export const LANDING_CHANNELS_HEADING = "Channels";
+export const LANDING_EMPTY_COPY =
+  "No channels yet. The catalog is where they will appear.";

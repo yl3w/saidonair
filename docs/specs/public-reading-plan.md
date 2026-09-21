@@ -2,8 +2,9 @@
 
 **Implements:** `docs/specs/public-reading.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **IN PROGRESS.** Steps 1–3 complete 2026-09-21; steps 4–10 outstanding. Step 3's browser
-walkthrough is the owner's — it needs a real Google round trip.
+**Status:** **IN PROGRESS.** Steps 1–4 complete 2026-09-21; steps 5–10 outstanding. Two walkthroughs are the
+owner's and are owed: step 3's Google round trip, and step 4's look at the landing page — this machine has no
+headless browser and installing one for a screenshot was not worth a dependency.
 **Shape:** ten steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
 product running**. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 

@@ -1,5 +1,7 @@
 import type { ComponentChildren } from "preact";
+import { useSession } from "../session";
 import { Nav } from "./Nav";
+import { PublicShell } from "./PublicShell";
 
 /**
  * The frame every screen arrives into: the bar, then one centred column. The three measures are the
@@ -67,7 +69,7 @@ export function Page({
   );
   return (
     <div class="min-h-dvh">
-      {bar ?? <Nav />}
+      {bar ?? <Frame />}
       <div class="mx-auto w-full px-5 pt-6 pb-28 md:px-8 md:pt-8 md:pb-16 lg:w-fit">
         {rail === undefined ? (
           <div class={`mx-auto ${MEASURES[measure]}`}>{column}</div>
@@ -86,4 +88,18 @@ export function Page({
       </div>
     </div>
   );
+}
+
+/**
+ * Which frame a screen arrives into, decided in the one place that already owns the frame rather
+ * than threaded through four screens as a prop (docs/specs/public-reading.md §4.2).
+ *
+ * **Only a settled absence of session gets the public shell.** A reader's session begins as
+ * `loading` while `GET /me` is in flight, and showing them the visitor's band for that moment —
+ * then replacing it — would be a flicker that says the wrong thing about who they are. A visitor
+ * has no stored session at all, so `none` is theirs immediately, with nothing to wait for.
+ */
+function Frame() {
+  const { state } = useSession();
+  return state.status === "none" ? <PublicShell /> : <Nav />;
 }

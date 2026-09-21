@@ -9,6 +9,7 @@ import { Chats } from "./screens/Chats";
 import { Curate } from "./screens/Curate";
 import { CurateChannel } from "./screens/CurateChannel";
 import { History } from "./screens/History";
+import { Landing } from "./screens/Landing";
 import { Queue } from "./screens/Queue";
 import { Reading } from "./screens/Reading";
 import { Settings } from "./screens/Settings";
@@ -24,7 +25,7 @@ function TrackNavigation() {
   return null;
 }
 
-/** Unknown paths go to the queue; the session guard sends anyone without an account to `/`. */
+/** Unknown paths go to the queue; the session guard sends anyone without a session to `/sign-in`. */
 function NotFound() {
   const { route } = useLocation();
   useEffect(() => route("/queue", true), [route]);
@@ -35,14 +36,16 @@ function NotFound() {
  * The reader's spine (docs/specs/design-phase.md §4.2): sign in — really sign in, since
  * 2026-09-20 — then the queue, one summary at a
  * time, history, sources, account — and Curate for the owner, one extra destination rather than a
- * mode. The paths M2 and M3 used are gone rather than redirected: `/home`, `/channel/:id`,
+ * mode. Since 2026-09-21 four of these are reachable without a session, and the screens themselves
+ * decide what a visitor is shown (docs/specs/public-reading.md). The paths M2 and M3 used are gone rather than redirected: `/home`, `/channel/:id`,
  * `/owner` and `/owner/channels/:id` named a shape the product no longer has.
  *
  * `/chats` became a route when M4 built the screen; the comment here said otherwise until
  * 2026-09-20, three lines above the route itself.
  *
- * History-mode routing: Pages serves index.html for unknown paths, so deep links and reloads work.
- * Verify both under `wrangler pages dev` when a route is added.
+ * History-mode routing: the Worker's assets binding answers an unknown path with index.html
+ * (`not_found_handling: "single-page-application"`), so deep links and reloads work. Verify both
+ * under `wrangler dev` when a route is added.
  */
 export function App() {
   return (
@@ -50,10 +53,9 @@ export function App() {
       <SessionProvider>
         <TrackNavigation />
         <Router>
-          {/* `/sign-in` is the door since 2026-09-21 (docs/specs/public-reading.md §4.3). `/` still
-              renders it TEMPORARILY, until step 4 of `public-reading-plan.md` puts the landing page
-              there; that route goes with the same commit. */}
-          <Route path="/" component={SignIn} />
+          {/* `/` is the landing page a stranger browses, and `/sign-in` is the door
+              (docs/specs/public-reading.md §4.1, §4.3). Until 2026-09-21 `/` was the door itself. */}
+          <Route path="/" component={Landing} />
           <Route path="/sign-in" component={SignIn} />
           {/* Where the sign-in handoff lands with its one-time code. It must be a real route: the
               fallback below replaces the URL, which would discard the fragment and lose the code
