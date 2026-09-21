@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   ALICE,
+  approveAs,
   CHANNEL_A,
   CHANNEL_B,
   CHANNEL_C,
+  declineAs,
   expectDomainError,
+  identityOf,
   OWNER,
   registry,
   seedApprovedChannel,
@@ -37,8 +40,10 @@ describe("registry channels", () => {
 
   it("approve sets approved_at once, records whoever approved, and reports whether the import should start", async () => {
     const stub = registry();
+    const owner = await identityOf(OWNER);
+    const alice = await identityOf(ALICE);
     await stub.createChannel({ channelId: CHANNEL_A, title: "A" });
-    const first = await stub.approveChannel(OWNER, CHANNEL_A, {
+    const first = await approveAs(OWNER, CHANNEL_A, {
       title: "Better",
       explanation: "ok",
     });
@@ -47,14 +52,11 @@ describe("registry channels", () => {
       status: "approved",
       title: "Better",
       reviewNote: "ok",
-      reviewedByEmail: OWNER,
+      reviewedByUserId: owner,
     });
-    await expectDomainError(
-      stub.approveChannel(OWNER, CHANNEL_A),
-      "INVALID_STATE",
-    );
+    await expectDomainError(approveAs(OWNER, CHANNEL_A), "INVALID_STATE");
 
-    const declined = await stub.declineChannel(OWNER, CHANNEL_A, {
+    const declined = await declineAs(OWNER, CHANNEL_A, {
       explanation: "withdrawn",
     });
     expect(declined).toMatchObject({
@@ -63,31 +65,29 @@ describe("registry channels", () => {
       pausedBy: null,
     });
     // No role is checked: any identity may approve and is recorded as the reviewer (PRD §9).
-    const again = await stub.approveChannel(ALICE, CHANNEL_A);
+    const again = await approveAs(ALICE, CHANNEL_A);
     expect(again.importStarts).toBe(false);
     expect(again.channel.approvedAt).toBe(first.channel.approvedAt);
-    expect(again.channel.reviewedByEmail).toBe(ALICE);
+    expect(again.channel.reviewedByUserId).toBe(alice);
   });
 
   it("decline from requested records the note; request again reopens and keeps it", async () => {
     const stub = registry();
+    const owner = await identityOf(OWNER);
     await stub.createChannel({ channelId: CHANNEL_A, title: "A" });
-    const declined = await stub.declineChannel(OWNER, CHANNEL_A, {
+    const declined = await declineAs(OWNER, CHANNEL_A, {
       explanation: "no",
     });
     expect(declined).toMatchObject({
       status: "declined",
       reviewNote: "no",
     });
-    await expectDomainError(
-      stub.declineChannel(OWNER, CHANNEL_A),
-      "INVALID_STATE",
-    );
+    await expectDomainError(declineAs(OWNER, CHANNEL_A), "INVALID_STATE");
     const reopened = await stub.requestChannel(CHANNEL_A);
     expect(reopened).toMatchObject({
       status: "requested",
       reviewNote: "no",
-      reviewedByEmail: OWNER,
+      reviewedByUserId: owner,
     });
     await expectDomainError(stub.requestChannel(CHANNEL_A), "INVALID_STATE");
   });
@@ -109,7 +109,7 @@ describe("registry channels", () => {
     await stub.createChannel({ channelId: CHANNEL_A, title: "A" });
     await seedApprovedChannel(CHANNEL_B, "B");
     await stub.createChannel({ channelId: CHANNEL_C, title: "C" });
-    await stub.declineChannel(OWNER, CHANNEL_C);
+    await declineAs(OWNER, CHANNEL_C);
     expect((await stub.listCatalogChannels()).map((c) => c.channelId)).toEqual([
       CHANNEL_A,
       CHANNEL_B,
@@ -140,11 +140,10 @@ describe("registry channels", () => {
       }),
       "INVALID_INPUT",
     );
-    await expectDomainError(stub.approveChannel(OWNER, CHANNEL_B), "NOT_FOUND");
-    // Whoever acts must at least be an email.
-    await expectDomainError(
-      stub.approveChannel("not an email", CHANNEL_A),
-      "INVALID_INPUT",
-    );
+    await expectDomainError(approveAs(OWNER, CHANNEL_B), "NOT_FOUND");
+    // An actor must be a registered identity before they can act, and the address is validated
+    // when it is registered rather than when it reviews. That a review by an unknown id is refused
+    // is the foreign key's job, asserted once in registry-migrations.test.ts.
+    await expectDomainError(identityOf("not an email"), "INVALID_INPUT");
   });
 });

@@ -5,6 +5,7 @@ import {
   CHANNEL_C,
   CHANNEL_D,
   CHANNEL_E,
+  declineAs,
   EPISODE_A,
   EPISODE_B,
   EPISODE_C,
@@ -85,7 +86,7 @@ describe("registry catalog summary and management", () => {
     // Declining stops discovery, not recovery (PRD §4.2 rule 28), so the episode stays failed and
     // keeps counting in `episodes.failed` — but it is no longer work anyone should be nudged to do,
     // and Curate's Needs you has always filtered to approved channels.
-    await stub.declineChannel(OWNER, CHANNEL_A);
+    await declineAs(OWNER, CHANNEL_A);
 
     const after = await stub.getCatalogSummary();
     expect(after.episodes.failed).toBe(1);

@@ -264,7 +264,7 @@ export const channelRoutes = new Hono<AppEnv>()
     validate("json", ApproveChannelBodySchema),
     async (c) => {
       const { channel, importStarts } = await c.var.registry.approveChannel(
-        c.var.identity.email,
+        c.var.identity.userId,
         c.req.valid("param").id,
         c.req.valid("json"),
       );
@@ -305,7 +305,7 @@ export const channelRoutes = new Hono<AppEnv>()
     validate("json", DeclineChannelBodySchema),
     async (c) => {
       const channel = await c.var.registry.declineChannel(
-        c.var.identity.email,
+        c.var.identity.userId,
         c.req.valid("param").id,
         c.req.valid("json"),
       );

@@ -27,6 +27,7 @@ import {
   CHANNEL_C,
   CHANNEL_D,
   CHANNEL_E,
+  declineAs,
   expectShape,
   OWNER,
   registry,
@@ -138,7 +139,7 @@ describe("discovery on approval", () => {
     expect(runs.json.runs).toHaveLength(1);
 
     // Re-approval after a decline starts nothing: the channel waits for the next scheduled discovery.
-    await stub.declineChannel(OWNER, CHANNEL_F);
+    await declineAs(OWNER, CHANNEL_F);
     const again = await call(
       OWNER,
       "POST",
@@ -230,7 +231,7 @@ describe("POST /channels/:id/runs", () => {
     expect(requested.status).toBe(409);
     expect(requested.json.code).toBe("INVALID_STATE");
     await seedApprovedChannel(CHANNEL_C, "C");
-    await stub.declineChannel(OWNER, CHANNEL_C);
+    await declineAs(OWNER, CHANNEL_C);
     expect(
       (await call(OWNER, "POST", `/channels/${CHANNEL_C}/runs`)).status,
     ).toBe(409);
@@ -326,7 +327,7 @@ describe("the discovery cron", () => {
     await seedApprovedChannel(CHANNEL_B, "B"); // stays system-paused
     await stub.createChannel({ channelId: CHANNEL_C, title: "C" }); // requested
     await seedApprovedChannel(CHANNEL_D, "D");
-    await stub.declineChannel(OWNER, CHANNEL_D);
+    await declineAs(OWNER, CHANNEL_D);
     await seedApprovedChannel(CHANNEL_E, "E"); // feed answers 404
     await stub.resumeChannel(CHANNEL_E);
 

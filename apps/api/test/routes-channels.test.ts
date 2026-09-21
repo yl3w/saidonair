@@ -21,6 +21,7 @@ import {
   CHANNEL_C,
   CHANNEL_D,
   CHANNEL_E,
+  declineAs,
   EPISODE_A,
   EPISODE_B,
   EPISODE_C,
@@ -69,7 +70,7 @@ async function seedCatalog() {
   await seedApprovedChannel(CHANNEL_A, "A");
   await stub.createChannel({ channelId: CHANNEL_B, title: "B" });
   await seedApprovedChannel(CHANNEL_C, "C");
-  await stub.declineChannel(OWNER, CHANNEL_C);
+  await declineAs(OWNER, CHANNEL_C);
   // Approval pauses a channel nobody follows yet (Ruling R4); these fixtures want A running.
   await stub.resumeChannel(CHANNEL_A);
   await seedEpisode(EPISODE_A, CHANNEL_A, { publishedAt: 3_000 });
@@ -511,9 +512,9 @@ describe("channel and catalog routes", () => {
   });
 
   it("returns a declined channel's summaries to a follower without read state", async () => {
-    const stub = await seedCatalog();
+    await seedCatalog();
     await follow(ALICE, CHANNEL_A);
-    await stub.declineChannel(OWNER, CHANNEL_A, { explanation: "withdrawn" });
+    await declineAs(OWNER, CHANNEL_A, { explanation: "withdrawn" });
 
     // The web hides these from readers (PRD §7); the API returns them, and a declined channel is
     // not eligible, so there is no read state to report and no receipt to write.
@@ -809,9 +810,7 @@ describe("channel and catalog routes", () => {
       followerCount: 2,
     });
 
-    await registry().declineChannel(OWNER, CHANNEL_A, {
-      explanation: "not now",
-    });
+    await declineAs(OWNER, CHANNEL_A, { explanation: "not now" });
     const declined = await call(BOB, "POST", "/channels", {
       channelId: CHANNEL_A,
     });

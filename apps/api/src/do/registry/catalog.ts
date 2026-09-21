@@ -11,6 +11,7 @@ import type {
   CatalogSummary,
   ChannelManagementRecord,
 } from "./types";
+import * as users from "./users";
 
 /**
  * The catalog's aggregate state for the attention card and health strip. An approved channel counts
@@ -67,6 +68,12 @@ export function withManagement(
   const counts = countByChannel(sql, ids);
   const latest = latestByChannel(sql, ids);
   const ingested = lastProcessedAtByChannel(sql, ids);
+  const reviewers = users.emailsByIds(
+    sql,
+    channels
+      .map((channel) => channel.reviewedByUserId)
+      .filter((id): id is string => id !== null),
+  );
   return channels.map((channel) => ({
     channel,
     episodes: counts[channel.channelId] ?? zeroCounts(),
@@ -74,5 +81,9 @@ export function withManagement(
     latestRun: latest[channel.channelId] ?? null,
     neverStarted:
       channel.status === "approved" && !(channel.channelId in latest),
+    reviewedByEmail:
+      channel.reviewedByUserId === null
+        ? null
+        : (reviewers[channel.reviewedByUserId] ?? null),
   }));
 }

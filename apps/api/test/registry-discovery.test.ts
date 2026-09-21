@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ChannelFeed, FeedEntry } from "../src/lib/youtube/rss";
 import {
+  approveAs,
   CHANNEL_A,
   CHANNEL_B,
   CHANNEL_C,
+  declineAs,
   expectDomainError,
   OWNER,
   registry,
@@ -225,12 +227,12 @@ describe("recordDiscovery", () => {
       stub.recordDiscovery(CHANNEL_A, feed),
       "INVALID_STATE",
     );
-    await stub.approveChannel(OWNER, CHANNEL_A);
+    await approveAs(OWNER, CHANNEL_A);
     await expectDomainError(
       stub.recordDiscovery(CHANNEL_A, feedOf(CHANNEL_B, feed.entries)),
       "INVALID_INPUT",
     );
-    await stub.declineChannel(OWNER, CHANNEL_A);
+    await declineAs(OWNER, CHANNEL_A);
     await expectDomainError(
       stub.recordDiscovery(CHANNEL_A, feed),
       "INVALID_STATE",

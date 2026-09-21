@@ -12,6 +12,7 @@ import {
   CHANNEL_A,
   CHANNEL_B,
   CHANNEL_C,
+  declineAs,
   EPISODE_A,
   EPISODE_B,
   EPISODE_C,
@@ -827,7 +828,7 @@ describe("the attempt ledger", () => {
     await seedApprovedChannel(CHANNEL_B, "B");
     await seedApprovedChannel(CHANNEL_C, "C"); // system-paused: nobody follows
     await setChannelState(CHANNEL_A, { status: "requested" });
-    await stub.declineChannel(OWNER, CHANNEL_B);
+    await declineAs(OWNER, CHANNEL_B);
     for (const channelId of [CHANNEL_A, CHANNEL_B, CHANNEL_C]) {
       const episodeId = `v${channelId.slice(2, 12)}`;
       await seedEpisode(episodeId, channelId, { status: "failed" });

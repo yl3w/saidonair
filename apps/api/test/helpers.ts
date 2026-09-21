@@ -60,6 +60,24 @@ export async function identityOf(email: string): Promise<string> {
   return (await registry().ensureUser(email)).userId;
 }
 
+/** Approve as an address: registers the identity first, exactly as a request would. */
+export async function approveAs(
+  email: string,
+  channelId: string,
+  input?: { title?: string; initialImportCount?: number; explanation?: string },
+) {
+  return registry().approveChannel(await identityOf(email), channelId, input);
+}
+
+/** Decline as an address. */
+export async function declineAs(
+  email: string,
+  channelId: string,
+  input?: { explanation?: string },
+) {
+  return registry().declineChannel(await identityOf(email), channelId, input);
+}
+
 /** Follow as an address: registers the identity first, exactly as a request would. */
 export async function follow(email: string, channelId: string) {
   return registry().recordFollow(await identityOf(email), channelId);
@@ -82,7 +100,7 @@ export async function seedApprovedChannel(
 ) {
   const stub = registry();
   await stub.createChannel({ channelId, title, ...input });
-  return (await stub.approveChannel(OWNER, channelId)).channel;
+  return (await approveAs(OWNER, channelId)).channel;
 }
 
 export function userDO(email: string) {
@@ -121,7 +139,8 @@ export async function setChannelState(
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `UPDATE channels SET status = ?, approved_at = ?, reviewed_at = COALESCE(reviewed_at, 1),
-         reviewed_by_email = COALESCE(reviewed_by_email, 'owner@example.com'),
+         reviewed_by_user_id = COALESCE(reviewed_by_user_id,
+           (SELECT user_id FROM global_users WHERE email = 'owner@example.com')),
          paused_by = CASE WHEN ? THEN paused_by ELSE NULL END,
          paused_at = CASE WHEN ? THEN paused_at ELSE NULL END
        WHERE channel_id = ?`,

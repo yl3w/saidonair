@@ -1,6 +1,7 @@
 import type { UserRole } from "@media-digest/shared";
 import { normalizeEmail } from "../../lib/email";
 import { DomainError } from "../../lib/errors";
+import { chunk, placeholders } from "../../lib/sql";
 import type { RegistryUser } from "./types";
 
 type UserRow = {
@@ -45,6 +46,27 @@ export function ensureUser(
     )
     .one();
   return toUser(row);
+}
+
+/**
+ * Addresses for a set of ids, for the screens that print who acted. Grouped, never one query per
+ * row, and chunked because the Registry's parameter budget is 100 (AGENTS.md → Data & schema).
+ * An id with no row, or a row with no address, is simply absent.
+ */
+export function emailsByIds(
+  sql: SqlStorage,
+  userIds: readonly string[],
+): Record<string, string> {
+  const found: Record<string, string> = {};
+  for (const batch of chunk(userIds)) {
+    for (const row of sql.exec<{ user_id: string; email: string | null }>(
+      `SELECT user_id, email FROM global_users WHERE user_id IN (${placeholders(batch.length)})`,
+      ...batch,
+    )) {
+      if (row.email !== null) found[row.user_id] = row.email;
+    }
+  }
+  return found;
 }
 
 export function getUser(sql: SqlStorage, email: string): RegistryUser | null {

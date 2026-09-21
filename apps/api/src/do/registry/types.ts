@@ -45,7 +45,8 @@ export type CatalogChannel = {
   initialImportCount: number;
   approvedAt: number | null;
   reviewedAt: number | null;
-  reviewedByEmail: string | null;
+  /** Who last reviewed it. The address a screen prints is resolved from this, never stored beside it. */
+  reviewedByUserId: string | null;
   reviewNote: string | null;
   pausedBy: PausedBy | null;
   pausedAt: number | null;
@@ -141,6 +142,8 @@ export type ChannelManagementRecord = {
   latestRun: IngestionRun | null;
   /** Approved and no run row exists at all. */
   neverStarted: boolean;
+  /** The reviewer's address, resolved from `channel.reviewedByUserId` when the record is built. */
+  reviewedByEmail: string | null;
 };
 
 // --- ingestion writes (docs/specs/m3-2-attempt-ledger.md §3) ---------------------------------

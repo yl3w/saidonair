@@ -12,6 +12,7 @@ import { FAKE_TRANSCRIPTS } from "./fixtures/transcripts";
 import {
   ALICE,
   CHANNEL_A,
+  declineAs,
   EPISODE_A,
   EPISODE_B,
   EPISODE_C,
@@ -188,7 +189,7 @@ describe("POST /channels/:id/episodes/:episodeId/retry", () => {
     await seedEpisode(EPISODE_A, CHANNEL_A, { status: "failed" });
     await seedEpisode(EPISODE_B, CHANNEL_A, { status: "available" });
     await seedSummary(EPISODE_B);
-    await stub.declineChannel(OWNER, CHANNEL_A);
+    await declineAs(OWNER, CHANNEL_A);
     const runsBefore = await stub.listRuns(CHANNEL_A);
 
     const retry = await call(

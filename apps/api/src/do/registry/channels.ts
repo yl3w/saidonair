@@ -12,7 +12,7 @@ export type ChannelRow = {
   initial_import_count: number;
   approved_at: number | null;
   reviewed_at: number | null;
-  reviewed_by_email: string | null;
+  reviewed_by_user_id: string | null;
   review_note: string | null;
   paused_by: string | null;
   paused_at: number | null;
@@ -22,7 +22,7 @@ export type ChannelRow = {
 };
 
 const CHANNEL_COLUMNS = `channel_id, title, canonical_url, status, initial_import_count, approved_at,
-  reviewed_at, reviewed_by_email, review_note, paused_by, paused_at, last_checked_at,
+  reviewed_at, reviewed_by_user_id, review_note, paused_by, paused_at, last_checked_at,
   created_at, updated_at`;
 
 export function canonicalChannelUrl(channelId: string): string {
@@ -136,7 +136,7 @@ export function approveChannel(
         `UPDATE channels
          SET status = 'approved', title = COALESCE(?, title),
              initial_import_count = COALESCE(?, initial_import_count),
-             approved_at = COALESCE(approved_at, ?), reviewed_at = ?, reviewed_by_email = ?,
+             approved_at = COALESCE(approved_at, ?), reviewed_at = ?, reviewed_by_user_id = ?,
              review_note = ?, paused_by = NULL, paused_at = NULL, updated_at = ?
          WHERE channel_id = ?
          RETURNING ${CHANNEL_COLUMNS}`,
@@ -173,7 +173,7 @@ export function declineChannel(
     sql
       .exec<ChannelRow>(
         `UPDATE channels
-         SET status = 'declined', reviewed_at = ?, reviewed_by_email = ?, review_note = ?,
+         SET status = 'declined', reviewed_at = ?, reviewed_by_user_id = ?, review_note = ?,
              paused_by = NULL, paused_at = NULL, updated_at = ?
          WHERE channel_id = ?
          RETURNING ${CHANNEL_COLUMNS}`,
@@ -314,7 +314,7 @@ export function toChannel(row: ChannelRow): CatalogChannel {
     initialImportCount: row.initial_import_count,
     approvedAt: row.approved_at,
     reviewedAt: row.reviewed_at,
-    reviewedByEmail: row.reviewed_by_email,
+    reviewedByUserId: row.reviewed_by_user_id,
     reviewNote: row.review_note,
     pausedBy: toPausedBy(row.paused_by),
     pausedAt: row.paused_at,

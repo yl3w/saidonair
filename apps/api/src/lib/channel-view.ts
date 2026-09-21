@@ -49,7 +49,7 @@ export function toManagement(
   const { channel } = record;
   return {
     initialImportCount: channel.initialImportCount,
-    reviewedByEmail: channel.reviewedByEmail,
+    reviewedByEmail: record.reviewedByEmail,
     pausedBy: channel.pausedBy,
     pausedAt: channel.pausedAt,
     lastCheckedAt: channel.lastCheckedAt,

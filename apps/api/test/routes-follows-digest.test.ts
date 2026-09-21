@@ -8,11 +8,13 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   ALICE,
+  approveAs,
   BOB,
   CHANNEL_A,
   CHANNEL_B,
   CHANNEL_C,
   CHANNEL_D,
+  declineAs,
   EPISODE_A,
   EPISODE_B,
   EPISODE_C,
@@ -58,7 +60,7 @@ async function seedCatalog(now: number) {
     await seedApprovedChannel(id, title);
   }
   await stub.createChannel({ channelId: CHANNEL_C, title: "C" });
-  await stub.declineChannel(OWNER, CHANNEL_D);
+  await declineAs(OWNER, CHANNEL_D);
 
   await seedEpisode(EPISODE_A, CHANNEL_A, { publishedAt: now - HOUR });
   await seedSummary(EPISODE_A, { relatedEpisodeIds: [EPISODE_D, EPISODE_B] });
@@ -78,7 +80,7 @@ async function seedCatalog(now: number) {
 describe("follow routes", () => {
   it("refuses only declined channels and lists follows with counts, unread, and status", async () => {
     const now = Date.now();
-    const stub = await seedCatalog(now);
+    await seedCatalog(now);
 
     const followed = await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
     expectShape(FollowResponseSchema, followed.json);
@@ -168,7 +170,7 @@ describe("follow routes", () => {
     ).toBe(3);
 
     // Declining keeps the follow row and shows the note; approving again brings the reads back.
-    await stub.declineChannel(OWNER, CHANNEL_A, { explanation: "withdrawn" });
+    await declineAs(OWNER, CHANNEL_A, { explanation: "withdrawn" });
     const declined = await call(ALICE, "GET", "/follows");
     expect((declined.json.follows as Json[])[0]).toMatchObject({
       channelId: CHANNEL_A,
@@ -181,7 +183,7 @@ describe("follow routes", () => {
       channelId: CHANNEL_A,
       unreadCount: 0,
     });
-    await stub.approveChannel(OWNER, CHANNEL_A);
+    await approveAs(OWNER, CHANNEL_A);
     expect(
       ((await call(BOB, "GET", "/follows")).json.follows as Json[])[0]
         ?.unreadCount,
@@ -295,7 +297,7 @@ describe("digest route", () => {
 
   it("bounds the range, filters unread and by channel, pages by cursor, and answers compact rows", async () => {
     const now = Date.now();
-    const stub = await seedCatalog(now);
+    await seedCatalog(now);
     await call(ALICE, "PUT", `/follows/${CHANNEL_A}`);
     await call(ALICE, "PUT", `/follows/${CHANNEL_B}`);
     const ids = async (query: string) =>
@@ -453,7 +455,7 @@ describe("digest route", () => {
 
     // A declined channel leaves every past day, and a caller with nothing eligible gets an
     // empty page of the shape they asked for.
-    await stub.declineChannel(OWNER, CHANNEL_A);
+    await declineAs(OWNER, CHANNEL_A);
     expect(await ids("")).toEqual([EPISODE_D]);
     expect((await call(BOB, "GET", "/digest")).json).toEqual({
       compact: false,

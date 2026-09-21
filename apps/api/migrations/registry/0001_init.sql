@@ -44,7 +44,7 @@ CREATE TABLE channels (
   approved_at INTEGER CHECK (approved_at IS NULL OR approved_at >= 0),
   -- Latest review only: approve and decline write these. Kept when a declined channel is re-requested.
   reviewed_at INTEGER CHECK (reviewed_at IS NULL OR reviewed_at >= 0),
-  reviewed_by_email TEXT REFERENCES global_users (email),
+  reviewed_by_user_id TEXT REFERENCES global_users (user_id),
   review_note TEXT,
   -- Pause stops scheduled discovery on an approved channel. `system` = no active followers; `owner` =
   -- explicit and cleared only by resume.
@@ -55,7 +55,7 @@ CREATE TABLE channels (
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
   CHECK (status <> 'approved' OR approved_at IS NOT NULL),
-  CHECK (status = 'requested' OR (reviewed_at IS NOT NULL AND reviewed_by_email IS NOT NULL)),
+  CHECK (status = 'requested' OR (reviewed_at IS NOT NULL AND reviewed_by_user_id IS NOT NULL)),
   CHECK ((paused_by IS NULL) = (paused_at IS NULL)),
   CHECK (paused_by IS NULL OR status = 'approved')
 );

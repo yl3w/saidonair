@@ -6,11 +6,13 @@ import {
 } from "../src/do/registry/followers";
 import {
   ALICE,
+  approveAs,
   BOB,
   CHANNEL_A,
   CHANNEL_B,
   CHANNEL_C,
   CHANNEL_D,
+  declineAs,
   expectDomainError,
   follow,
   identityOf,
@@ -92,7 +94,7 @@ describe("registry follows", () => {
     for (const id of [CHANNEL_A, CHANNEL_B, CHANNEL_C, CHANNEL_D]) {
       await follow(ALICE, id);
     }
-    await stub.declineChannel(OWNER, CHANNEL_C);
+    await declineAs(OWNER, CHANNEL_C);
     await unfollow(ALICE, CHANNEL_D);
     await follow(BOB, CHANNEL_D);
     await stub.pauseChannel(CHANNEL_A);
@@ -110,7 +112,7 @@ describe("registry follows", () => {
     ).toEqual([CHANNEL_D]);
     expect(await stub.listEligibleChannels("no-such-user-id")).toEqual([]);
     // Approving C again makes it eligible for its remaining follower without any follow write.
-    await stub.approveChannel(OWNER, CHANNEL_C);
+    await approveAs(OWNER, CHANNEL_C);
     expect(
       (await stub.listEligibleChannels(await identityOf(ALICE))).map(
         (c) => c.channelId,
@@ -146,7 +148,7 @@ describe("registry follows", () => {
   it("recomputes pause on approve: a channel nobody follows reads pausedBy system, and a follow resumes it", async () => {
     const stub = registry();
     await stub.createChannel({ channelId: CHANNEL_B, title: "B" });
-    const approved = await stub.approveChannel(OWNER, CHANNEL_B);
+    const approved = await approveAs(OWNER, CHANNEL_B);
     expect(approved.channel.pausedBy).toBe("system");
     await follow(ALICE, CHANNEL_B);
     expect((await stub.getChannel(CHANNEL_B))?.pausedBy).toBeNull();

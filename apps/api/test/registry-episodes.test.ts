@@ -5,6 +5,7 @@ import {
   CHANNEL_A,
   CHANNEL_B,
   channelIds,
+  declineAs,
   EPISODE_A,
   EPISODE_B,
   EPISODE_C,
@@ -400,7 +401,7 @@ describe("registry episodes", () => {
       stub.retryEpisode(CHANNEL_A, "ddddddddddd"),
       "INVALID_STATE",
     );
-    await stub.declineChannel(OWNER, CHANNEL_A);
+    await declineAs(OWNER, CHANNEL_A);
     expect(
       (await stub.skipEpisode(OWNER, CHANNEL_A, "ddddddddddd")).status,
     ).toBe("skipped");

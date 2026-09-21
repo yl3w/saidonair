@@ -134,14 +134,13 @@ export class RegistryDO extends DurableObject<Env> {
    * so approving one with no followers never leaves it running unattended (Ruling R4).
    */
   approveChannel(
-    actorEmail: string,
+    actorUserId: string,
     channelId: string,
     input: ReviewInput = {},
   ): { channel: CatalogChannel; importStarts: boolean } {
-    const reviewer = users.requireEmail(actorEmail);
+    const reviewer = actorUserId;
     return this.#transaction(() => {
       const now = Date.now();
-      users.ensureUser(this.#sql, reviewer, now);
       const before = channels.requireChannel(
         this.#sql,
         requireChannelId(channelId),
@@ -170,14 +169,13 @@ export class RegistryDO extends DurableObject<Env> {
 
   /** `requested | approved → declined`, recording the caller as reviewer. Existing episode recovery continues. */
   declineChannel(
-    actorEmail: string,
+    actorUserId: string,
     channelId: string,
     input: ReviewInput = {},
   ): CatalogChannel {
-    const reviewer = users.requireEmail(actorEmail);
+    const reviewer = actorUserId;
     return this.#transaction(() => {
       const now = Date.now();
-      users.ensureUser(this.#sql, reviewer, now);
       return channels.declineChannel(
         this.#sql,
         channelId,

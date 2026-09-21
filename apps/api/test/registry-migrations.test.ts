@@ -115,8 +115,8 @@ describe("registry migrations", () => {
       expect(() =>
         insert(
           "UCy",
-          "status, reviewed_at, reviewed_by_email",
-          "'approved', 1, 'alice@example.com'",
+          "status, reviewed_at, reviewed_by_user_id",
+          "'approved', 1, NULL",
         ),
       ).toThrow(/CHECK/i);
       insert("UCx", "status", "'requested'");
@@ -127,8 +127,8 @@ describe("registry migrations", () => {
       ).toThrow(/CHECK/i);
       insert(
         "UCz",
-        "status, approved_at, reviewed_at, reviewed_by_email",
-        "'approved', 1, 1, 'alice@example.com'",
+        "status, approved_at, reviewed_at, reviewed_by_user_id",
+        "'approved', 1, 1, (SELECT user_id FROM global_users LIMIT 1)",
       );
       expect(() =>
         sql.exec(
