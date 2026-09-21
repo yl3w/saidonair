@@ -27,6 +27,14 @@
   "vectorize": [
     { "binding": "VECTORS", "index_name": "media-rag-staging", "remote": true }
   ],
+  // TODO(owner): create with `wrangler d1 create media-digest-auth-staging` and paste its id.
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "media-digest-auth-staging",
+      "database_id": "TODO-create-and-paste-the-id"
+    }
+  ],
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "durable_objects": {
     "bindings": [
@@ -43,7 +51,11 @@
       // Local development: `pnpm dev`. Secrets come from .dev.vars.dev, falling back to .dev.vars.
       "name": "media-digest-api-dev",
       "vars": {
-        "WEB_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173"
+        "WEB_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
+        // `localhost`, not `127.0.0.1`: better-auth builds each provider's redirect_uri from this,
+        // and it must match the URI registered with Google and Meta exactly or they refuse the
+        // callback. The A0 spike registered `http://localhost:8787/auth/callback/google`.
+        "API_BASE_URL": "http://localhost:8787"
       },
       "ai": { "binding": "AI", "remote": true },
       "workflows": [
@@ -55,6 +67,15 @@
       ],
       "vectorize": [
         { "binding": "VECTORS", "index_name": "media-rag-dev", "remote": true }
+      ],
+      // Local only: `wrangler dev` keeps this database on disk under .wrangler/state, so the id is
+      // a placeholder and nothing is provisioned on Cloudflare (proved by the A0 spike).
+      "d1_databases": [
+        {
+          "binding": "AUTH_DB",
+          "database_name": "media-digest-auth-dev",
+          "database_id": "local"
+        }
       ],
       "durable_objects": {
         "bindings": [
@@ -78,6 +99,14 @@
       ],
       "vectorize": [
         { "binding": "VECTORS", "index_name": "media-rag", "remote": true }
+      ],
+      // TODO(owner): create with `wrangler d1 create media-digest-auth` and paste its id.
+      "d1_databases": [
+        {
+          "binding": "AUTH_DB",
+          "database_name": "media-digest-auth",
+          "database_id": "TODO-create-and-paste-the-id"
+        }
       ],
       "durable_objects": {
         "bindings": [

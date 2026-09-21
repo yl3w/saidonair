@@ -50,13 +50,17 @@ deployment, and general admin dashboards beyond owner catalog management.
 
 ### External services and privacy constraints
 
-- The only external services called are YouTube's public RSS feed, Cloudflare services, and DownSub's API for
-  transcripts (owner decision 2026-09-08). DownSub receives nothing but a public YouTube video URL and is
+- The only external services called are YouTube's public RSS feed, Cloudflare services, DownSub's API for
+  transcripts (owner decision 2026-09-08), and — from the Auth phase (§10, decided 2026-09-20) — the OAuth
+  endpoints of **Google** and **Meta**, and of **Apple** when A9 lands. Those are reached server-side over the
+  redirect flow and receive nothing but the flow itself; no provider SDK or third-party script is loaded into the
+  page, and nothing is sent to them about what anyone reads. DownSub receives nothing but a public YouTube video URL and is
   authenticated with the `DOWNSUB_API_KEY` secret. No other YouTube endpoint is used: no InnerTube calls, no
   watch-page scraping, no YouTube Data API or API keys. The feed endpoint
   `https://www.youtube.com/feeds/videos.xml` is read with either `channel_id=` (channel verification, §4.1) or
   `playlist_id=` (discovery, §4.2); both are the same public, unauthenticated endpoint, and neither is a new service.
-  No other AI providers, scraping services, analytics SDKs, or proxies.
+  No other AI providers, scraping services, analytics SDKs, or proxies, and no transactional email
+  vendor — this product sends no email at all.
 - Transcript text and chat content are never logged. Private user data (chats, preferences, read receipts) never
   leaves the user's own Durable Object except in that user's own responses.
 - Shared episode vectors live in one Vectorize namespace, `shared-catalog`, never in a per-user namespace. Every
@@ -130,6 +134,7 @@ Chat query: current follows ∩ approved channels, narrowed to one episode when 
 | Toolchain | Volta-pinned Node 22; `packageManager`-pinned pnpm |
 | Runtime | Cloudflare Workers on the Workers Paid plan (decided 2026-09-11); `compatibility_date` pinned; `nodejs_compat`; three environments, dev, staging, production, each its own Worker with its own Durable Objects, index, and Workflow (decided 2026-09-13; `AGENTS.md` → Environments) |
 | API | Hono, strict TypeScript, ESM only |
+| Authentication | `better-auth` inside the same Worker at `/auth/*`, over a D1 database per environment (`media-digest-auth`, `-staging`, `-dev`, bound `AUTH_DB`); Google and Meta as providers, Apple once a deployed origin exists. The binding is passed to better-auth directly — no Kysely, no dialect, no wrapper (Auth phase A0, 2026-09-20) |
 | Validation and API document | Zod 4 schemas in `packages/shared` with the types inferred from them; `hono-openapi` generates OpenAPI 3.1 at `GET /openapi.json`; Scalar test client at `GET /docs` |
 | State | One SQLite Registry DO; one SQLite User DO per identity, named by its `user_id` |
 | Orchestration | Cloudflare Workflows, one instance per episode attempt; two Cron Triggers in the same Worker: discovery `0 */6 * * *` and recovery `30 */6 * * *` (UTC) |

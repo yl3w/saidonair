@@ -29,6 +29,25 @@ declare namespace Cloudflare {
      */
     DOWNSUB_API_KEY?: string;
     /**
+     * The `better-auth` store of this environment (`media-digest-auth`, `-staging`, `-dev`), a D1
+     * database that holds `user`, `session`, `account` and `verification` and nothing of the domain.
+     * `lib/auth.ts` is the only caller, and it passes this binding to better-auth directly.
+     */
+    AUTH_DB: D1Database;
+    /** Secret: better-auth's signing secret. Absent means sign-in cannot work. */
+    BETTER_AUTH_SECRET?: string;
+    /** Secret: Google OAuth client, redirect `<API_BASE_URL>/auth/callback/google`. */
+    GOOGLE_CLIENT_ID?: string;
+    GOOGLE_CLIENT_SECRET?: string;
+    /** Secret: Meta app credentials, redirect `<API_BASE_URL>/auth/callback/facebook`. */
+    FACEBOOK_CLIENT_ID?: string;
+    FACEBOOK_CLIENT_SECRET?: string;
+    /**
+     * `vars`: this Worker's own public origin, which better-auth builds provider redirect URIs
+     * from. Must match what is registered with each provider.
+     */
+    API_BASE_URL?: string;
+    /**
      * `vars` in wrangler.jsonc, overridable in `.dev.vars`: comma-separated browser origins allowed
      * by CORS; `scheme://*.host` matches any subdomain (Pages previews). Unset means the local Vite
      * origins (lib/cors.ts).

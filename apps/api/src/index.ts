@@ -5,6 +5,7 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import type { AppEnv, Env } from "./env";
+import { makeAuth } from "./lib/auth";
 import { corsMiddleware } from "./lib/cors";
 import { runScheduled } from "./lib/ingestion";
 import { jsonResponse, openApiDocument } from "./lib/openapi";
@@ -58,6 +59,15 @@ app.get("/openapi.json", describeRoute({ hide: true }), async (context) =>
 // The browser test client (routes/docs.ts): this API's one HTML response, the owner's exception of
 // 2026-09-07 to "JSON everywhere".
 app.get("/docs", describeRoute({ hide: true }), docsPage);
+
+// better-auth owns /auth/* entirely (lib/auth.ts, basePath "/auth"). Public, and registered before
+// the identity middleware for the same reason /health is: signing in cannot require being signed
+// in. Hidden from the API document — these routes are the library's, described by its own docs, and
+// openapi.test.ts asserts this one exclusion rather than letting it drift (docs/specs/auth-phase.md
+// §4.7). Nothing consumes the session yet; chunk A7 is where it becomes the identity.
+app.all("/auth/*", describeRoute({ hide: true }), (context) =>
+  makeAuth(context.env).handler(context.req.raw),
+);
 
 // Everything below requires X-User-Email. Routes are named after entities, and none checks a
 // role: the API enforces no authorization (docs/PRD.md §9).

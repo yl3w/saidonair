@@ -14,6 +14,7 @@ type Named = {
   binding?: string;
   index_name?: string;
   class_name?: string;
+  database_name?: string;
 };
 type WranglerEnv = {
   name?: string;
@@ -21,6 +22,7 @@ type WranglerEnv = {
   durable_objects?: { bindings: Named[] };
   migrations?: unknown[];
   vectorize?: Named[];
+  d1_databases?: Named[];
   ai?: { binding: string; remote?: boolean };
   workflows?: Named[];
   triggers?: { crons?: string[] };
@@ -90,6 +92,10 @@ describe("wrangler.jsonc environments", () => {
       ...(env?.workflows ?? []).map((w) => ({
         binding: w.binding,
         name: w.name,
+      })),
+      ...(env?.d1_databases ?? []).map((d) => ({
+        binding: d.binding,
+        name: d.database_name,
       })),
     ];
     const prod = named(production);
