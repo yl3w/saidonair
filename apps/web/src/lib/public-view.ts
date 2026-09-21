@@ -1,4 +1,4 @@
-import type { Channel } from "@media-digest/shared";
+import type { Channel, Episode } from "@media-digest/shared";
 
 /**
  * What a signed-out visitor is shown, filtered in the web rather than the API
@@ -18,3 +18,17 @@ import type { Channel } from "@media-digest/shared";
  */
 export const publicChannels = (channels: readonly Channel[]): Channel[] =>
   channels.filter((channel) => channel.status === "approved");
+
+/**
+ * A channel page's rows for a visitor: **readable now, or being worked on**. A `pending` episode
+ * earns its place by saying why it is not summarised yet — `waitReason` is the reader-safe
+ * projection of an attempt (`docs/PRD.md` §4.2 rule 11) and it is what makes the archive look alive
+ * rather than stale.
+ *
+ * `failed` and `skipped` are a reader's business and not a stranger's: the first advertises a
+ * failure rate, and the second is a row that will never become readable.
+ */
+export const publicEpisodes = (episodes: readonly Episode[]): Episode[] =>
+  episodes.filter(
+    (episode) => episode.status === "available" || episode.status === "pending",
+  );

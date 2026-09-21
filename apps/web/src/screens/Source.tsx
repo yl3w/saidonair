@@ -28,24 +28,22 @@ import {
   episodeCountCopy,
   episodePhrase,
   followerCountCopy,
+  NOT_IN_CATALOG_COPY,
   reviewCopy,
   summaryCountCopy,
 } from "../lib/copy";
+import { publicEpisodes } from "../lib/public-view";
 import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { relativeTime } from "../lib/time";
 import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
-import { Guard, useReadySession } from "../session";
+import { useSession } from "../session";
 
 /** Two hundred is the API's ceiling; a longer history pages by year from what came back. */
 const EPISODE_LIMIT = 200;
 
 export function Source() {
-  return (
-    <Guard>
-      <SourceScreen />
-    </Guard>
-  );
+  return <SourceScreen />;
 }
 
 /**
@@ -56,10 +54,23 @@ export function Source() {
  *
  * The owner's controls sit beside the channel they govern rather than at a separate destination
  * (docs/design.md principle 2); Curate is for the dense work, not the five-second decisions.
+ *
+ * **Public since 2026-09-21** (docs/specs/public-reading.md §4.1). A channel is one of the two
+ * things a shared link names, so this screen renders for a visitor: the channel, and its episodes
+ * that can be read or are being worked on. Three things are a reader's and are added rather than
+ * hidden — the Follow control, the owner's controls, and the read state on a row.
+ *
+ * **A hidden channel still renders here** (spec §3, decisions 5 and 6): a requested or declined
+ * channel is absent from the catalog but reachable by link, because its summaries stay readable and
+ * the channel name on one of them has to lead somewhere. What a visitor never sees is
+ * `reviewNote` — the owner's own words about a channel they turned down. That is the one thing on
+ * this screen that must not reach a stranger, and it is guarded twice: here, and in `Header`.
  */
 function SourceScreen() {
   const { params } = useRoute();
-  const { role } = useReadySession();
+  const { state } = useSession();
+  const signedIn = state.status === "ready";
+  const role = state.status === "ready" ? state.role : null;
   const channelId = params.id ?? "";
   const [year, setYear] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -105,7 +116,7 @@ function SourceScreen() {
 
   if (channel.status === "error") {
     return (
-      <Page bar={<SourceBar channel={null} />}>
+      <Page bar={<SourceBar channel={null} signedIn={signedIn} />}>
         <p class="text-ui text-consequence">
           Couldn't load this channel: {actionErrorCopy(channel.error)}.{" "}
           <a
@@ -120,7 +131,8 @@ function SourceScreen() {
   }
 
   const record = channel.status === "ready" ? channel.data.channel : null;
-  const rows = episodes.status === "ready" ? episodes.data.episodes : [];
+  const all = episodes.status === "ready" ? episodes.data.episodes : [];
+  const rows = signedIn ? all : publicEpisodes(all);
   const years = [
     ...new Set(rows.map((row) => new Date(row.publishedAt).getFullYear())),
   ].sort((a, b) => b - a);
@@ -137,6 +149,7 @@ function SourceScreen() {
       bar={
         <SourceBar
           channel={record}
+          signedIn={signedIn}
           isOwner={role === "owner"}
           busy={busy}
           act={act}
@@ -149,6 +162,7 @@ function SourceScreen() {
       ) : (
         <Header
           channel={record}
+          signedIn={signedIn}
           isOwner={role === "owner"}
           busy={busy}
           act={act}
@@ -241,12 +255,14 @@ function SourceScreen() {
  */
 function SourceBar({
   channel,
+  signedIn,
   isOwner = false,
   busy = false,
   act,
   onFollow,
 }: {
   channel: Channel | null;
+  signedIn: boolean;
   isOwner?: boolean;
   busy?: boolean;
   act?: ChannelAct;
@@ -261,7 +277,9 @@ function SourceBar({
         <button
           type="button"
           class="btn btn-ghost btn-square"
-          onClick={() => goBack(() => route("/sources"))}
+          // A visitor has no Sources to go back to — it is the reader's screen and guarded — so
+          // their way out is the landing page, which is the catalog they came from.
+          onClick={() => goBack(() => route(signedIn ? "/sources" : "/"))}
         >
           <Icon of={ArrowLeft} size={20} label={BACK_COPY} />
         </button>
@@ -270,7 +288,7 @@ function SourceBar({
           <div class="ml-auto flex items-center gap-3">
             {/* The acts join the bar from md up; below it they are in the header, where there is
                 room for them (see ChannelActs). */}
-            {act !== undefined && onFollow !== undefined && (
+            {signedIn && act !== undefined && onFollow !== undefined && (
               <div class="hidden items-center gap-3 md:flex">
                 <ChannelActs
                   channel={channel}
@@ -350,22 +368,34 @@ function ChannelActs({
 
 function Header({
   channel,
+  signedIn,
   isOwner,
   busy,
   act,
   onFollow,
 }: {
   channel: Channel;
+  signedIn: boolean;
   isOwner: boolean;
   busy: boolean;
   act: ChannelAct;
   onFollow: () => void;
 }) {
-  const review = reviewCopy(channel);
+  // **Never to a visitor.** `reviewCopy` is the owner's decline note, and a hidden channel's page
+  // is reachable by link (docs/specs/public-reading.md §3, decision 5). This is the second of the
+  // two guards named in this screen's comment; the first is that a visitor cannot arrive here from
+  // any list the product draws.
+  const review = signedIn ? reviewCopy(channel) : null;
   // Silence means approved and running — the page's own existence says that — so only the states a
   // reader cannot infer are printed. Assembled, so the separator belongs to the line and the first
   // item dropping out leaves no stray dot.
-  const exception = channelExceptionCopy(channel);
+  // "Withdrawn" and "Awaiting approval" are the owner's vocabulary for a decision a stranger was
+  // not party to. A visitor gets the consequence instead, below, and keeps "Paused" — which is
+  // about the archive rather than about a judgement.
+  const exception =
+    signedIn || channel.status === "approved"
+      ? channelExceptionCopy(channel)
+      : null;
   const meta = [
     exception,
     episodeCountCopy(channel.episodes),
@@ -393,6 +423,15 @@ function Header({
 
       {review !== null && (
         <p class="mt-3 font-reading text-excerpt text-ink-2">{review}</p>
+      )}
+
+      {/* The consequence, without the reason: this channel is not in the catalog and nothing new
+          is coming, which is what a visitor needs in order to read what is here without wondering
+          why it stops (spec §3, decision 5). */}
+      {!signedIn && channel.status !== "approved" && (
+        <p class="mt-3 font-reading text-excerpt text-ink-2">
+          {NOT_IN_CATALOG_COPY}
+        </p>
       )}
 
       {/* Below md the acts stay here: in the bar they would come to about 430 px of controls in

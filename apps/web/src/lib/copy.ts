@@ -555,6 +555,13 @@ export const FIND_CHANNEL_COPY = "Find a channel";
 export const NO_CHANNEL_BY_THAT_NAME = "No channel by that name.";
 
 /**
+ * A visitor on a channel the catalog does not list. The consequence, never the reason: the reason
+ * is the owner's review note and it is theirs (docs/specs/public-reading.md §3, decision 5).
+ */
+export const NOT_IN_CATALOG_COPY =
+  "Not in the catalog — no new episodes are being added.";
+
+/**
  * The two counts a channel row carries that had no phrase of their own yet. `followerCountCopy`
  * already exists above, and says "No followers" at zero, which a row does not render at all.
  */

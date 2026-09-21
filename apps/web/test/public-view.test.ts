@@ -1,6 +1,6 @@
-import type { Channel } from "@media-digest/shared";
+import type { Channel, Episode, EpisodeStatus } from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
-import { publicChannels } from "../src/lib/public-view";
+import { publicChannels, publicEpisodes } from "../src/lib/public-view";
 
 function channel(over: Partial<Channel> = {}): Channel {
   return {
@@ -61,5 +61,54 @@ describe("publicChannels", () => {
       "First",
       "Third",
     ]);
+  });
+});
+
+function episode(status: EpisodeStatus, over: Partial<Episode> = {}): Episode {
+  return {
+    episodeId: `e-${status}`,
+    channelId: "UC1",
+    channelTitle: "A channel",
+    title: `An ${status} episode`,
+    publishedAt: 1,
+    status,
+    skipReason: null,
+    waitReason: null,
+    summaryAvailableAt: null,
+    summary: null,
+    related: [],
+    ...over,
+  };
+}
+
+describe("publicEpisodes", () => {
+  it("keeps what can be read and what is being worked on", () => {
+    const rows = publicEpisodes([episode("available"), episode("pending")]);
+    expect(rows.map((e) => e.status)).toEqual(["available", "pending"]);
+  });
+
+  it("drops failed and skipped", () => {
+    // `failed` advertises a failure rate to strangers and `skipped` is a row that will never be
+    // readable (docs/specs/public-reading.md §3, decision 7).
+    const rows = publicEpisodes([
+      episode("failed"),
+      episode("skipped"),
+      episode("available"),
+    ]);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("keeps a pending episode's waitReason, which is the reason the row is shown at all", () => {
+    const waiting = episode("pending", { waitReason: "CAPTIONS" });
+    expect(publicEpisodes([waiting])[0]?.waitReason).toBe("CAPTIONS");
+  });
+
+  it("preserves the order it was given", () => {
+    const rows = publicEpisodes([
+      episode("available", { episodeId: "first" }),
+      episode("failed"),
+      episode("available", { episodeId: "third" }),
+    ]);
+    expect(rows.map((e) => e.episodeId)).toEqual(["first", "third"]);
   });
 });
