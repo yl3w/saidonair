@@ -31,8 +31,10 @@ import {
 } from "@media-digest/shared";
 import { type Context, Hono } from "hono";
 import { describeRoute } from "hono-openapi";
-import type { CatalogChannel } from "../do/registry/types";
-import type { AppEnv } from "../env";
+import type { RegistryDO } from "../do/registry";
+import type { CatalogChannel, RegistryUser } from "../do/registry/types";
+import type { UserDO } from "../do/user";
+import type { AppEnv, PublicEnv } from "../env";
 import { toChannel } from "../lib/channel-view";
 import { eligibleChannelIds } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
@@ -55,41 +57,136 @@ import {
   fetchLongFormFeed,
 } from "../lib/youtube/rss";
 import { requireOwner } from "../middleware/owner";
+import { optionalIdentity, requireIdentity } from "../middleware/user";
 
 type Ctx = Context<AppEnv>;
+type Registry = DurableObjectStub<RegistryDO>;
 
 /**
- * Channels are the catalog's members. Every caller receives the same representation, `management`
- * included. The seven operations that change the catalog are the owner's, refused with 403 for
- * anybody else since A8 (docs/PRD.md §2, §9), and so is the follower list since 2026-09-21: it
- * hands one reader another reader's address (docs/specs/route-visibility.md §3). The rest of
- * reading is open to every identity; the web offers review, pause, retry, and skip to the owner
- * role. Sub-resources: episodes, discovery runs, followers.
+ * Channels are the catalog's members, in **three routers** because a channel route can want three
+ * different things of its caller, and `index.ts` registers them in that order (its comment carries
+ * the whole ordering):
+ *
+ * - `channelFeedRoutes` — `GET /channels/feed`, which needs a session and has to be registered
+ *   first so the public `/{id}` cannot swallow it.
+ * - `channelPublicRoutes` — four reads that answer with or without a session, richer with one.
+ * - `channelRoutes` — everything else, below `requireIdentity`.
+ *
+ * Nine operations are the owner's: the seven that change the catalog, refused with 403 for anybody
+ * else since A8 (docs/PRD.md §2, §9), and — since 2026-09-21 — `GET /catalog` and the follower
+ * list, which hands one reader another reader's address (docs/specs/route-visibility.md §3). The
+ * web offers review, pause, retry, and skip to the owner role. Sub-resources: episodes, discovery
+ * runs, followers.
  */
-export const channelRoutes = new Hono<AppEnv>()
+
+/**
+ * `GET /channels/feed` alone, and its own export only because of where it has to be registered.
+ * It is **not** public — it makes an outbound request to YouTube per call, so anonymous access
+ * would make it an unmetered proxy (docs/specs/route-visibility.md §3, decision 6) — so it mounts
+ * `requireIdentity` itself. It must be registered ahead of the public `GET /channels/{id}`:
+ * `ChannelParamsSchema` validates an id as any non-empty string, so `feed` passes validation and
+ * the id route would answer 404 for it. Verified against Hono before the split, not assumed.
+ */
+
+export const channelFeedRoutes = new Hono<AppEnv>().get(
+  "/feed",
+  describeRoute({
+    tags: ["channels"],
+    summary: "Read a channel id's feeds",
+    description:
+      "What YouTube's two public feeds say about an id right now, and whatever the catalog already holds for it. Nothing is created and nothing is stored: this is the middle of the three steps that add a channel, so a reader can see the title and how much long-form the channel actually publishes before deciding. Discovery reads the long-form feed alone, so `longFormCount` is the number that matters — a channel whose newest fifteen are all Shorts makes no episodes. A handle or an id with no feed is 400. Registered before `/{id}`, and `feed` is not a shape a channel id can take.",
+    responses: {
+      200: jsonResponse(
+        ChannelFeedResponseSchema,
+        "What the feeds say, and what the catalog holds.",
+      ),
+      ...errorResponses({ upstream: true }),
+    },
+  }),
+  requireIdentity,
+  validate("query", ChannelFeedQuerySchema),
+  async (c) => {
+    const channelId = extractChannelId(c.req.valid("query").channelId);
+    const fetcher = feedFetcher(c.env);
+    const [channelFeed, longForm] = await Promise.all([
+      fetchChannelFeed(channelId, fetcher),
+      fetchLongFormFeed(channelId, fetcher),
+    ]);
+    if (!channelFeed) {
+      throw new DomainError("INVALID_INPUT", "no YouTube channel has that id");
+    }
+    // The long-form feed is an exact subset of the channel feed (docs/specs/
+    // discovery-long-form-feed.md), so "how many of the newest fifteen are long-form" is the
+    // overlap; a 404 on that feed means none at all.
+    const longFormIds = new Set(
+      (longForm?.entries ?? []).map((entry) => entry.videoId),
+    );
+    const existing = await c.var.registry.getChannel(channelId);
+    return c.json<ChannelFeedResponse>({
+      feed: {
+        channelId,
+        title: channelFeed.title,
+        entryCount: channelFeed.entries.length,
+        longFormCount: channelFeed.entries.filter((entry) =>
+          longFormIds.has(entry.videoId),
+        ).length,
+        newestLongFormAt:
+          longForm?.entries.reduce<number | null>(
+            (newest, entry) =>
+              newest === null || entry.publishedAt > newest
+                ? entry.publishedAt
+                : newest,
+            null,
+          ) ?? null,
+      },
+      channel:
+        existing === null
+          ? null
+          : await fullChannel(c.var.registry, channelId, c.var.identity),
+    });
+  },
+);
+
+/**
+ * The four channel reads a signed-out caller may make (docs/specs/route-visibility.md §3). Mounted
+ * above `requireIdentity`, so they answer whether or not a session was presented, and typed
+ * `PublicEnv`, so the compiler makes each one say what it does without a caller: `management`
+ * omitted, `following` false, `related` empty and `read` absent, with the summary, `status`,
+ * `skipReason` and `waitReason` the same for everyone (§4.3).
+ */
+
+export const channelPublicRoutes = new Hono<PublicEnv>()
+  // Once for the router rather than four times: a read added here is public by default, which is
+  // the right default for a file whose only members are public reads.
+  .use("*", optionalIdentity)
   .get(
     "/",
     describeRoute({
       tags: ["channels"],
       summary: "List channels",
       description:
-        "Requested and approved channels, each with `following`, `followerCount`, `episodes`, and `management`. With `?scope=all`, every status including declined.",
+        "Requested and approved channels, each with `following`, `followerCount` and `episodes`; `?scope=all` adds every status including declined. **Public**: a caller with a session also receives `management` and their own `following`, and an anonymous one receives neither — `management` is absent and `following` is `false`. `followerCount` is present either way.",
+      security: [],
       responses: {
         200: jsonResponse(ChannelsResponseSchema, "The channels."),
-        ...errorResponses(),
+        ...errorResponses({ public: true }),
       },
     }),
     validate("query", ScopeQuerySchema),
     async (c) => {
       const { scope } = c.req.valid("query");
+      const registry = c.var.registry;
+      const identity = c.var.identity;
       const following = new Set(
-        await c.var.registry.activeChannelIds(c.var.identity.userId),
+        identity === undefined
+          ? []
+          : await registry.activeChannelIds(identity.userId),
       );
       const rows =
         scope === "all"
-          ? await c.var.registry.listChannelManagement()
-          : await c.var.registry.listCatalogManagement();
-      const followers = await c.var.registry.countFollowers(
+          ? await registry.listChannelManagement()
+          : await registry.listCatalogManagement();
+      const followers = await registry.countFollowers(
         rows.map((row) => row.channel.channelId),
       );
       return c.json<ChannelsResponse>({
@@ -97,13 +194,123 @@ export const channelRoutes = new Hono<AppEnv>()
           toChannel(row, {
             following: following.has(row.channel.channelId),
             followerCount: followers[row.channel.channelId] ?? 0,
-            management: true,
+            management: identity !== undefined,
           }),
         ),
       });
     },
   )
 
+  .get(
+    "/:id",
+    describeRoute({
+      tags: ["channels"],
+      summary: "Get a channel",
+      description:
+        "One channel in any status, so a declined one can show its note. **Public**: `management` accompanies it for a caller with a session and is absent without one.",
+      security: [],
+      responses: {
+        200: jsonResponse(ChannelResponseSchema, "The channel."),
+        ...errorResponses({ public: true, notFound: true }),
+      },
+    }),
+    validate("param", ChannelParamsSchema),
+    async (c) => {
+      const registry = c.var.registry;
+      const channel = await requireChannel(registry, c.req.valid("param").id);
+      return c.json<ChannelResponse>({
+        channel: await fullChannel(registry, channel.channelId, c.var.identity),
+      });
+    },
+  )
+
+  .get(
+    "/:id/episodes",
+    describeRoute({
+      tags: ["episodes"],
+      summary: "List a channel's episodes",
+      description:
+        "Newest first, each with its summary, `status`, `skipReason` and `waitReason` on a pending one. A pure read: no receipt is recorded here or anywhere else a route only reads (docs/PRD.md §4.4). **Public**: a caller with a session also receives `processing` — the open window (intent, start, deadline, next attempt) and the latest attempt — and related titles filtered to their eligible channels, and an eligible caller, an active follower of an approved channel, also receives `read` per summary. An anonymous caller receives the summaries with `processing` absent, `related` empty and no `read`.",
+      security: [],
+      responses: {
+        200: jsonResponse(EpisodesResponseSchema, "Episodes, newest first."),
+        ...errorResponses({ public: true, notFound: true }),
+      },
+    }),
+    validate("param", ChannelParamsSchema),
+    validate("query", LimitQuerySchema),
+    async (c) => {
+      const registry = c.var.registry;
+      const identity = c.var.identity;
+      const channel = await requireChannel(registry, c.req.valid("param").id);
+      const { limit } = c.req.valid("query");
+      const eligible = await eligibleChannelIds(registry, identity);
+      const records = await registry.listEpisodes(channel.channelId, {
+        limit,
+        relatedScope: [...eligible],
+      });
+
+      // Read state belongs to eligible callers only (docs/PRD.md §4.4); everyone else receives the
+      // same summaries with no receipt of their own to report. An anonymous caller is eligible for
+      // nothing, so this is empty and the User DO is never addressed.
+      const summaries = eligible.has(channel.channelId)
+        ? records.filter((record) => record.summary !== null)
+        : [];
+      const read = await readSubset(
+        c.var.user,
+        summaries.map((record) => record.episodeId),
+      );
+
+      return c.json<EpisodesResponse>({
+        episodes: records.map((record) =>
+          toEpisode(record, {
+            read:
+              eligible.has(channel.channelId) && record.summary !== null
+                ? read.has(record.episodeId)
+                : undefined,
+            processing: identity !== undefined,
+          }),
+        ),
+      });
+    },
+  )
+
+  .get(
+    "/:id/episodes/:episodeId",
+    describeRoute({
+      tags: ["episodes"],
+      summary: "Get one episode",
+      description:
+        "One episode of a channel with its summary — the reading view's deep link, answering on a cold load. A pure read: it records nothing. **Public**, and it degrades exactly as the list above does: `processing` and the related titles need a session, and `read` an eligible caller.",
+      security: [],
+      responses: {
+        200: jsonResponse(EpisodeResponseSchema, "The episode."),
+        ...errorResponses({ public: true, notFound: true }),
+      },
+    }),
+    validate("param", EpisodeParamsSchema),
+    async (c) => {
+      const { id, episodeId } = c.req.valid("param");
+      const registry = c.var.registry;
+      const identity = c.var.identity;
+      await requireChannel(registry, id);
+      const eligible = await eligibleChannelIds(registry, identity);
+      const record = await registry.getEpisode(id, episodeId, [...eligible]);
+      if (!record) throw new DomainError("NOT_FOUND", "episode not found");
+      const reports = eligible.has(id) && record.summary !== null;
+      const read = reports
+        ? (await readSubset(c.var.user, [episodeId])).has(episodeId)
+        : undefined;
+      return c.json<EpisodeResponse>({
+        episode: toEpisode(record, {
+          read,
+          processing: identity !== undefined,
+        }),
+      });
+    },
+  );
+
+export const channelRoutes = new Hono<AppEnv>()
   .post(
     "/",
     describeRoute({
@@ -162,64 +369,6 @@ export const channelRoutes = new Hono<AppEnv>()
         return followAndView(c, channelId, false);
       }
       return followAndView(c, channelId, true);
-    },
-  )
-
-  .get(
-    "/feed",
-    describeRoute({
-      tags: ["channels"],
-      summary: "Read a channel id's feeds",
-      description:
-        "What YouTube's two public feeds say about an id right now, and whatever the catalog already holds for it. Nothing is created and nothing is stored: this is the middle of the three steps that add a channel, so a reader can see the title and how much long-form the channel actually publishes before deciding. Discovery reads the long-form feed alone, so `longFormCount` is the number that matters — a channel whose newest fifteen are all Shorts makes no episodes. A handle or an id with no feed is 400. Registered before `/{id}`, and `feed` is not a shape a channel id can take.",
-      responses: {
-        200: jsonResponse(
-          ChannelFeedResponseSchema,
-          "What the feeds say, and what the catalog holds.",
-        ),
-        ...errorResponses({ upstream: true }),
-      },
-    }),
-    validate("query", ChannelFeedQuerySchema),
-    async (c) => {
-      const channelId = extractChannelId(c.req.valid("query").channelId);
-      const fetcher = feedFetcher(c.env);
-      const [channelFeed, longForm] = await Promise.all([
-        fetchChannelFeed(channelId, fetcher),
-        fetchLongFormFeed(channelId, fetcher),
-      ]);
-      if (!channelFeed) {
-        throw new DomainError(
-          "INVALID_INPUT",
-          "no YouTube channel has that id",
-        );
-      }
-      // The long-form feed is an exact subset of the channel feed (docs/specs/
-      // discovery-long-form-feed.md), so "how many of the newest fifteen are long-form" is the
-      // overlap; a 404 on that feed means none at all.
-      const longFormIds = new Set(
-        (longForm?.entries ?? []).map((entry) => entry.videoId),
-      );
-      const existing = await c.var.registry.getChannel(channelId);
-      return c.json<ChannelFeedResponse>({
-        feed: {
-          channelId,
-          title: channelFeed.title,
-          entryCount: channelFeed.entries.length,
-          longFormCount: channelFeed.entries.filter((entry) =>
-            longFormIds.has(entry.videoId),
-          ).length,
-          newestLongFormAt:
-            longForm?.entries.reduce<number | null>(
-              (newest, entry) =>
-                newest === null || entry.publishedAt > newest
-                  ? entry.publishedAt
-                  : newest,
-              null,
-            ) ?? null,
-        },
-        channel: existing === null ? null : await fullChannel(c, channelId),
-      });
     },
   )
 
@@ -287,7 +436,11 @@ export const channelRoutes = new Hono<AppEnv>()
         }
       }
       return c.json<ChannelResponse>({
-        channel: await fullChannel(c, channel.channelId),
+        channel: await fullChannel(
+          c.var.registry,
+          channel.channelId,
+          c.var.identity,
+        ),
       });
     },
   )
@@ -318,7 +471,11 @@ export const channelRoutes = new Hono<AppEnv>()
         c.req.valid("json"),
       );
       return c.json<ChannelResponse>({
-        channel: await fullChannel(c, channel.channelId),
+        channel: await fullChannel(
+          c.var.registry,
+          channel.channelId,
+          c.var.identity,
+        ),
       });
     },
   )
@@ -346,7 +503,11 @@ export const channelRoutes = new Hono<AppEnv>()
         c.req.valid("param").id,
       );
       return c.json<ChannelResponse>({
-        channel: await fullChannel(c, channel.channelId),
+        channel: await fullChannel(
+          c.var.registry,
+          channel.channelId,
+          c.var.identity,
+        ),
       });
     },
   )
@@ -374,106 +535,11 @@ export const channelRoutes = new Hono<AppEnv>()
         c.req.valid("param").id,
       );
       return c.json<ChannelResponse>({
-        channel: await fullChannel(c, channel.channelId),
-      });
-    },
-  )
-
-  .get(
-    "/:id",
-    describeRoute({
-      tags: ["channels"],
-      summary: "Get a channel",
-      description:
-        "One channel in any status, so a declined one can show its note, with `management`.",
-      responses: {
-        200: jsonResponse(ChannelResponseSchema, "The channel."),
-        ...errorResponses({ notFound: true }),
-      },
-    }),
-    validate("param", ChannelParamsSchema),
-    async (c) => {
-      const channel = await requireChannel(c, c.req.valid("param").id);
-      return c.json<ChannelResponse>({
-        channel: await fullChannel(c, channel.channelId),
-      });
-    },
-  )
-
-  .get(
-    "/:id/episodes",
-    describeRoute({
-      tags: ["episodes"],
-      summary: "List a channel's episodes",
-      description:
-        "Newest first, each with its summary, related titles filtered to the caller's eligible channels, `waitReason` on a pending one, and `processing` with the open window (intent, start, deadline, next attempt) and the latest attempt. A pure read: an eligible caller, an active follower of an approved channel, also receives `read` per summary, and no receipt is recorded here or anywhere else a route only reads (docs/PRD.md §4.4).",
-      responses: {
-        200: jsonResponse(EpisodesResponseSchema, "Episodes, newest first."),
-        ...errorResponses({ notFound: true }),
-      },
-    }),
-    validate("param", ChannelParamsSchema),
-    validate("query", LimitQuerySchema),
-    async (c) => {
-      const channel = await requireChannel(c, c.req.valid("param").id);
-      const { limit } = c.req.valid("query");
-      const eligible = await eligibleChannelIds(c.var.registry, c.var.identity);
-      const records = await c.var.registry.listEpisodes(channel.channelId, {
-        limit,
-        relatedScope: [...eligible],
-      });
-
-      // Read state belongs to eligible callers only (docs/PRD.md §4.4); everyone else receives the
-      // same summaries with no receipt of their own to report.
-      const summaries = eligible.has(channel.channelId)
-        ? records.filter((record) => record.summary !== null)
-        : [];
-      const read = await readSubset(
-        c,
-        summaries.map((record) => record.episodeId),
-      );
-
-      return c.json<EpisodesResponse>({
-        episodes: records.map((record) =>
-          toEpisode(record, {
-            read:
-              eligible.has(channel.channelId) && record.summary !== null
-                ? read.has(record.episodeId)
-                : undefined,
-            processing: true,
-          }),
+        channel: await fullChannel(
+          c.var.registry,
+          channel.channelId,
+          c.var.identity,
         ),
-      });
-    },
-  )
-
-  .get(
-    "/:id/episodes/:episodeId",
-    describeRoute({
-      tags: ["episodes"],
-      summary: "Get one episode",
-      description:
-        "One episode of a channel with its summary, related titles filtered to the caller's eligible channels, and `processing` — the reading view's deep link, answering on a cold load. An eligible caller also receives `read`. A pure read: it records nothing.",
-      responses: {
-        200: jsonResponse(EpisodeResponseSchema, "The episode."),
-        ...errorResponses({ notFound: true }),
-      },
-    }),
-    validate("param", EpisodeParamsSchema),
-    async (c) => {
-      const { id, episodeId } = c.req.valid("param");
-      await requireChannel(c, id);
-      const eligible = await eligibleChannelIds(c.var.registry, c.var.identity);
-      const record = await c.var.registry.getEpisode(id, episodeId, [
-        ...eligible,
-      ]);
-      if (!record) throw new DomainError("NOT_FOUND", "episode not found");
-      const reports = eligible.has(id) && record.summary !== null;
-      const read = reports
-        ? (await readSubset(c, [episodeId])).has(episodeId)
-        : undefined;
-      return c.json<EpisodeResponse>({
-        episode: toEpisode(record, { read, processing: true }),
       });
     },
   )
@@ -678,7 +744,10 @@ export const channelRoutes = new Hono<AppEnv>()
     requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {
-      const channel = await requireChannel(c, c.req.valid("param").id);
+      const channel = await requireChannel(
+        c.var.registry,
+        c.req.valid("param").id,
+      );
       if (channel.status !== "approved") {
         throw new DomainError(
           "INVALID_STATE",
@@ -716,23 +785,31 @@ export const channelRoutes = new Hono<AppEnv>()
       }),
   );
 
-/** Every caller sees a channel in any status; only an unknown id is 404. */
+/**
+ * Every caller sees a channel in any status; only an unknown id is 404. Takes the stub rather than
+ * the context because both the public and the guarded routers call it, and they do not share a
+ * context type.
+ */
+
 async function requireChannel(
-  c: Ctx,
+  registry: Registry,
   channelId: string,
 ): Promise<CatalogChannel> {
-  const channel = await c.var.registry.getChannel(channelId);
+  const channel = await registry.getChannel(channelId);
   if (!channel) throw new DomainError("NOT_FOUND", "channel not found");
   return channel;
 }
 
-/** The caller's receipts among the given summaries; the empty list never crosses to the User DO. */
+/**
+ * The caller's receipts among the given summaries; the empty list never crosses to the User DO,
+ * and neither does an anonymous caller — they have no stub, and no receipts to find.
+ */
 async function readSubset(
-  c: Ctx,
+  user: DurableObjectStub<UserDO> | undefined,
   episodeIds: string[],
 ): Promise<ReadonlySet<string>> {
-  if (episodeIds.length === 0) return new Set<string>();
-  return new Set(await c.var.user.readEpisodeIds(episodeIds));
+  if (user === undefined || episodeIds.length === 0) return new Set<string>();
+  return new Set(await user.readEpisodeIds(episodeIds));
 }
 
 /**
@@ -762,21 +839,32 @@ async function requireReadableSummary(
   return record;
 }
 
-async function isFollowing(c: Ctx, channelId: string): Promise<boolean> {
-  return (
-    await c.var.registry.activeChannelIds(c.var.identity.userId)
-  ).includes(channelId);
+/** An anonymous caller follows nothing, so the question never reaches the Registry. */
+async function isFollowing(
+  registry: Registry,
+  identity: RegistryUser | undefined,
+  channelId: string,
+): Promise<boolean> {
+  if (identity === undefined) return false;
+  return (await registry.activeChannelIds(identity.userId)).includes(channelId);
 }
 
-/** One channel as every caller sees it: the shared fields, `management`, and the caller's own `following`. */
-async function fullChannel(c: Ctx, channelId: string): Promise<Channel> {
-  const [record] = await c.var.registry.listChannelManagement([channelId]);
+/**
+ * One channel as this caller sees it: the shared fields, their own `following`, and `management`
+ * whenever there is a caller at all (docs/specs/route-visibility.md §4.3).
+ */
+async function fullChannel(
+  registry: Registry,
+  channelId: string,
+  identity: RegistryUser | undefined,
+): Promise<Channel> {
+  const [record] = await registry.listChannelManagement([channelId]);
   if (!record) throw new DomainError("NOT_FOUND", "channel not found");
-  const followers = await c.var.registry.countFollowers([channelId]);
+  const followers = await registry.countFollowers([channelId]);
   return toChannel(record, {
-    following: await isFollowing(c, channelId),
+    following: await isFollowing(registry, identity, channelId),
     followerCount: followers[channelId] ?? 0,
-    management: true,
+    management: identity !== undefined,
   });
 }
 
@@ -784,7 +872,7 @@ async function fullChannel(c: Ctx, channelId: string): Promise<Channel> {
 async function followAndView(c: Ctx, channelId: string, created: boolean) {
   await c.var.registry.recordFollow(c.var.identity.userId, channelId);
   return c.json<ChannelResponse>(
-    { channel: await fullChannel(c, channelId) },
+    { channel: await fullChannel(c.var.registry, channelId, c.var.identity) },
     created ? 201 : 200,
   );
 }

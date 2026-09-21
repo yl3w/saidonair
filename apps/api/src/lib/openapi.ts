@@ -30,10 +30,11 @@ export function jsonResponse(
 }
 
 /**
- * The error responses an operation can produce. 401 and 400 are always possible: the session may be
- * missing or refused, and the input may be invalid. Lookups add 404; state rules add 409 with the
- * rule spelled out; operations that call YouTube add 502. `owner` adds 403, and only the seven
- * catalog operations pass it (docs/PRD.md §2, §9, 2026-09-20).
+ * The error responses an operation can produce. 400 is always possible — the input may be invalid —
+ * and so is 401, unless the operation is `public`, where a missing session stops being an error at
+ * all (docs/specs/route-visibility.md §4.5); those five keep their 400 and lose their 401. Lookups
+ * add 404; state rules add 409 with the rule spelled out; operations that call YouTube add 502.
+ * `owner` adds 403, and only the nine owner operations pass it (docs/PRD.md §2, §9).
  */
 export function errorResponses(
   options: {
@@ -41,15 +42,18 @@ export function errorResponses(
     conflict?: string;
     upstream?: boolean;
     owner?: boolean;
+    public?: boolean;
   } = {},
 ): Responses {
   const responses: Responses = {
-    401: jsonResponse(
-      ErrorResponseSchema,
-      "No session, or one this API does not accept (`UNAUTHENTICATED`).",
-    ),
     400: jsonResponse(ErrorResponseSchema, "Invalid input (`INVALID_INPUT`)."),
   };
+  if (!options.public) {
+    responses[401] = jsonResponse(
+      ErrorResponseSchema,
+      "No session, or one this API does not accept (`UNAUTHENTICATED`).",
+    );
+  }
   if (options.owner) {
     responses[403] = jsonResponse(
       ErrorResponseSchema,

@@ -23,17 +23,35 @@ type Document = {
 const HIDDEN = new Set(["/openapi.json", "/docs"]);
 
 /**
- * Public by necessity, and the list is short on purpose. `/health` touches no storage; the three
- * `/session/*` routes are how a caller *obtains* a token, so none of them can require one
- * (docs/specs/auth-phase.md §4.5). better-auth's own `/auth/*` is the document's one declared
- * exclusion — it carries `hide`, so it never appears here at all.
+ * Public by necessity. `/health` touches no storage; the three `/session/*` routes are how a caller
+ * *obtains* a token, so none of them can require one (docs/specs/auth-phase.md §4.5). better-auth's
+ * own `/auth/*` is the document's one declared exclusion — it carries `hide`, so it never appears
+ * here at all. These may still answer 401: `/session/exchange` refuses a spent code with one.
  */
-const PUBLIC = new Set([
-  "/health",
-  "/session/start",
-  "/session/handoff",
-  "/session/exchange",
+const PUBLIC_BY_NECESSITY = new Set([
+  "get /health",
+  "get /session/start",
+  "get /session/handoff",
+  "post /session/exchange",
 ]);
+
+/**
+ * Public by decision, 2026-09-21 (docs/specs/route-visibility.md §3): the catalog and the summaries
+ * can be read before joining. Unlike the four above, a missing session is not an error on these at
+ * all, so they keep their 400 and lose their 401 (§4.5).
+ *
+ * Keyed by method and path, not path alone: `/channels` now holds a public `get` beside a guarded
+ * `post`, and a path-keyed set would demand `security: []` of the write too.
+ */
+const PUBLIC_READS = new Set([
+  "get /channels",
+  "get /channels/{id}",
+  "get /channels/{id}/episodes",
+  "get /channels/{id}/episodes/{episodeId}",
+  "get /episodes/{episodeId}",
+]);
+
+const PUBLIC = new Set([...PUBLIC_BY_NECESSITY, ...PUBLIC_READS]);
 
 /**
  * Every operation registered so far, as docs/specs/api-reference.md §3.3 lists it. Adding or removing
@@ -188,7 +206,7 @@ describe("GET /openapi.json", () => {
           statuses.some((status) => /^[23]/.test(status)),
           `${where} has a success response`,
         ).toBe(true);
-        if (PUBLIC.has(path)) {
+        if (PUBLIC.has(where)) {
           expect(operation.security, `${where} is public`).toEqual([]);
         } else {
           // The global `security` applies; the header can always be missing.
@@ -197,6 +215,13 @@ describe("GET /openapi.json", () => {
             `${where} uses the default`,
           ).toBeUndefined();
           expect(statuses, `${where} documents 400`).toContain("400");
+          expect(statuses, `${where} documents 401`).toContain("401");
+        }
+        // The five keep their 400 — the input can still be wrong — and lose their 401, because a
+        // missing session stopped being a failure on them (docs/specs/route-visibility.md §4.5).
+        if (PUBLIC_READS.has(where)) {
+          expect(statuses, `${where} documents 400`).toContain("400");
+          expect(statuses, `${where} answers no 401`).not.toContain("401");
         }
       }
     }

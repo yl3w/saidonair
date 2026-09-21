@@ -12,7 +12,11 @@ import { jsonResponse, openApiDocument } from "./lib/openapi";
 import { onError } from "./middleware/errors";
 import { requireIdentity } from "./middleware/user";
 import { catalogRoutes } from "./routes/catalog";
-import { channelRoutes } from "./routes/channels";
+import {
+  channelFeedRoutes,
+  channelPublicRoutes,
+  channelRoutes,
+} from "./routes/channels";
 import { chatRoutes } from "./routes/chats";
 import { digestRoutes } from "./routes/digest";
 import { docsPage } from "./routes/docs";
@@ -75,13 +79,27 @@ app.all("/auth/*", describeRoute({ hide: true }), (context) =>
 // §4.5). Nothing consumes the session yet; A7 is where it becomes the identity.
 app.route("/session", sessionRoutes);
 
-// Everything below requires a verified session. Routes are named after entities, and none checks
-// a role yet: authentication is not authorization, and the 403s arrive in A8 (docs/PRD.md §9).
+// The reads a signed-out caller may make (docs/specs/route-visibility.md §4.2). Registration order
+// IS the mechanism here, and two lines of it are load-bearing:
+//
+//   1. `/channels/feed` first. It is not public — it calls YouTube per request — but it must be
+//      registered ahead of the public `GET /channels/{id}` or that route matches `feed` as an id
+//      and answers 404. `ChannelParamsSchema` accepts any non-empty string, so validation does not
+//      save it. The route carries `requireIdentity` itself, which is why it can sit up here.
+//   2. Everything public comes before `app.use("*", requireIdentity)`. A handler that answers
+//      without calling `next()` ends the chain, so the guard below never runs for them.
+//
+// Both are asserted in openapi.test.ts rather than left to whoever edits this next.
+app.route("/channels", channelFeedRoutes);
+app.route("/channels", channelPublicRoutes);
+app.route("/episodes", episodeRoutes);
+
+// Everything below requires a verified session. Routes are named after entities; nine of them also
+// require the owner, which `middleware/owner.ts` decides per route (docs/PRD.md §2, §9).
 app.use("*", requireIdentity);
 app.route("/me", meRoutes);
 app.route("/catalog", catalogRoutes);
 app.route("/channels", channelRoutes);
-app.route("/episodes", episodeRoutes);
 app.route("/follows", followRoutes);
 app.route("/digest", digestRoutes);
 app.route("/chats", chatRoutes);
