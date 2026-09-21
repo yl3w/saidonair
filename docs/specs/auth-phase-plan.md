@@ -3,8 +3,8 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** approved 2026-09-20. **A0 and A1 complete** the same day. A2 is next — the Registry schema and
-internals — and it is the first chunk that touches code. Nothing is installed in the repo yet: A0 ran entirely in a
+**Status:** approved 2026-09-20. **A0 and A1 complete** the same day. Next is **A2–A3, the Registry re-key**,
+which now has its own spec and plan (`auth-2-registry-rekey.md`) and is the first work that touches code. Nothing is installed in the repo yet: A0 ran entirely in a
 scratch directory, and A4 is where `better-auth` actually enters the tree.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
@@ -26,7 +26,7 @@ Spec §7, all twenty-five criteria, with A9 carrying 4-for-Apple only.
 | A0 | Google Cloud OAuth client for the spike, redirect `http://localhost:8787/auth/callback/google` |
 | A4 | `wrangler d1 create media-digest-auth{,-staging,-dev}` |
 | A4 | Google Cloud OAuth client + Meta app; `wrangler secret put` × 5 × 3 environments |
-| A2 | Run `/clean-local` when asked, after the migration edit |
+| A2–A3 | Run `/clean-local` when asked — **only if `pnpm dev` ran during the chunk** (see its plan, step 9) |
 | A9 | Apple Developer Program, Services ID, `.p8`; stand up the deployed staging web origin |
 
 ---
@@ -110,77 +110,24 @@ documents in `m6-section-8-sweep` did.
 
 ---
 
-### A2 — Registry schema and internals  (size: L)
+### A2–A3 — The Registry re-key  (own spec and plan)
 
-The re-key's first half. Callers still pass email; the Registry resolves internally. Nothing outside
-`src/do/registry/` changes.
+**Withdrawn as two chunks and delivered as one, owner instruction 2026-09-20:**
+`docs/specs/auth-2-registry-rekey.md` and `-plan.md`, nine steps, every one S or M. A4–A9 keep their labels, so
+nothing downstream is renumbered.
 
-**Files:** `apps/api/migrations/registry/0001_init.sql`, `apps/api/src/do/registry/users.ts`,
-`apps/api/src/do/registry/types.ts`, `apps/api/src/do/registry/followers.ts`,
-`apps/api/src/do/registry/channels.ts`, `apps/api/src/do/registry/episodes.ts`,
-`apps/api/src/do/registry/attempts.ts`, `apps/api/test/registry-users.test.ts`,
-`apps/api/test/registry-followers.test.ts`, `apps/api/test/registry-migrations.test.ts`.
+**Why the split was wrong.** A2 moved the schema while callers still passed email; A3 moved the callers. A2's own
+step 2.4 recorded a **plan decision** that `followers.ts` and the three audit writers would resolve email →
+`user_id` internally in A2 and take `user_id` in A3 — resolution code written, reviewed, tested and deleted one
+chunk later. The better seam is **by table**, and one property of the schema makes it available: `email` stays
+`UNIQUE` on `global_users`, and SQLite foreign keys may reference any unique column, so every
+`REFERENCES global_users (email)` survives the primary key moving. Each table therefore converts on its own —
+column, module and callers together, once — with `pnpm check` green after each.
 
-- 2.1 `0001_init.sql`, edited in place under the open migration governance of PRD §5.4 — a further in-place edit,
-  after the 2026-09-13 M3.7 one the file's own header records. Note that the registry has a **second** migration,
-  `0002_episode_duration.sql`; it adds `episodes.duration_sec` and touches no re-keyed column, and it replays
-  normally after the wipe. Changes to `0001_init.sql`:
-  - `global_users`: `user_id TEXT PRIMARY KEY`, `email TEXT UNIQUE` (nullable), `auth_user_id TEXT UNIQUE`
-    (nullable), `role`, `last_seen_at`, `created_at` unchanged.
-  - `channel_followers`: `user_email` → `user_id`, in the composite PK, the FK, and
-    `channel_followers_user_email_unfollowed_at` → `channel_followers_user_id_unfollowed_at`.
-  - `channels.reviewed_by_email` → `reviewed_by_user_id`, and its CHECK.
-  - `episodes.skipped_by_email` → `skipped_by_user_id`, and its CHECK.
-  - `episode_ingestion_attempts.requested_by_email` → `requested_by_user_id`, and its CHECK.
-  - Header comment gains the 2026-09-20 edit line, as the 2026-09-13 one did.
-- 2.2 `users.ts`: `ensureUser` mints `crypto.randomUUID()` on insert — the generator this repo already uses for
-  run, attempt, generation, chat and message ids — and keeps `ON CONFLICT (email) DO UPDATE SET last_seen_at`.
-  `getUser` gains a by-`user_id` form. `seedOwner` unchanged in behaviour: it mints an id, sets `role = 'owner'`,
-  leaves `auth_user_id` null.
-- 2.3 `types.ts`: `RegistryUser` gains `userId` and `authUserId: string | null`.
-- 2.4 `followers.ts` and the three audit writers resolve email → `user_id` internally. **Plan decision:** they take
-  email in A2 and `user_id` in A3, rather than both at once — a module whose signature changes twice is easier to
-  review than one that accepts either.
-- 2.5 Tests: `registry-users.test.ts` covers a minted id, the unique email, many null emails, many null
-  `auth_user_id`, and `seedOwner` promoting an existing row without creating a second.
-  `registry-migrations.test.ts` covers idempotent apply on a fresh DO and every re-keyed CHECK still rejecting.
-- 2.6 PRD §5.1 rewritten to the re-keyed schema, and §5.4 records this in-place edit of `0001_init.sql` — this
-  chunk's own first commit, per spec §9.
-- 2.7 Ask the owner to run `/clean-local`. The edited migration cannot apply over existing storage.
+**Also: no `/clean-local` inside the chunk.** Tests use in-memory storage and local dev storage was wiped on
+2026-09-20; one wipe is owed at the end only if `pnpm dev` ran in between.
 
-**Tests:** spec §7 criteria 8, 16, 18, 22, 23.
-**Done when:** `pnpm check` green.
-
----
-
-### A3 — Call sites, and the gate  (size: L)
-
-The re-key's second half, and the chunk that proves it is innocent.
-
-**Files:** `apps/api/src/do/user.ts`, `apps/api/src/middleware/user.ts`, `apps/api/src/do/registry.ts`,
-`apps/api/src/lib/eligibility.ts`, `apps/api/src/lib/channel-view.ts`, `apps/api/src/lib/episode-view.ts`,
-`apps/api/src/routes/*.ts`, `packages/shared/src/index.ts`, `apps/api/test/helpers.ts`, and every test that names a
-follower or an actor.
-
-- 3.1 `getUserDO(env, userId)`: the name becomes the id. Its docstring's claim that "the email is implicit in the
-  object's name and is never stored or logged here" becomes literally true — say so there.
-- 3.2 The Registry facade's public methods take `user_id`; `followers.ts` and the audit writers stop resolving
-  internally.
-- 3.3 `middleware/user.ts`: still reads `X-User-Email`, still calls `ensureUser(email)`, and now sets
-  `c.var.identity` carrying `{ userId, email, role }` and passes `identity.userId` to `getUserDO`.
-- 3.4 `channel-view.ts` and `episode-view.ts` resolve the reviewer's, skipper's and requester's email through
-  `global_users` for display, since the rows now carry ids. **Plan decision:** one batched lookup per view build,
-  not one per row — the Owner screens render up to fifty.
-- 3.5 `packages/shared`: `MeResponse` gains `userId`. `FollowersResponse` carries `userId` and `email`.
-- 3.6 Every affected test updated. `helpers.ts` gains a helper that creates an identity and returns its `user_id`.
-- 3.7 `AGENTS.md` hard rule 3 reworded: "user emails are never namespaces" becomes "user identifiers are never
-  namespaces". Unchanged in force; `lib/vectorize.ts` is not touched.
-- 3.8 **The gate.** Full `wrangler dev` walkthrough on the old identity: add a channel, approve, discover, ingest,
-  read a summary, mark it read, ask a question, and open every Curate screen. Record it below.
-
-**Tests:** spec §7 criterion 24.
-**Done when:** `pnpm check` green and the walkthrough recorded. **Stop here and get the owner's eyes on it** — this
-is the last point before a dependency enters the tree.
+**Ends with the product** working, on header identity, fully re-keyed.
 
 ---
 
