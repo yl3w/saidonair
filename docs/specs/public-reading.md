@@ -4,27 +4,27 @@
 **Status:** **SPECCED** — requirements gathered with the owner on 2026-09-21, question by question. Not yet
 approved for implementation; the plan is `public-reading-plan.md`.
 **PRD:** §2 (who may do what — a visitor is a new actor), §3 (architecture: the web's hosting changes), §7 (the
-screens, which gain four public renderings), §9, §10.
+screens, which gain three public renderings), §9, §10.
 **Depends on:** `route-visibility.md`, implemented 2026-09-21, which made five API reads public. This is the other
 half of that decision: until a signed-out visitor can reach a screen, those routes are correct, tested and invisible.
 
 ## 1. Summary
 
 A signed-out visitor can browse the catalog, open a channel, and read any summary **in full**, at the same URLs a
-reader uses. Three screens lose their session guard — `Sources`, `Source` and `Reading` — a fourth is new at `/`,
-and nine guarded routes keep theirs.
+reader uses. Two screens lose their session guard — `Source` and `Reading` — a third is new at `/`, and ten guarded
+routes keep theirs.
 
 | URL | Signed out | Signed in |
 |---|---|---|
 | `/` | Landing: the wordmark, the one-line promise, then every channel in the catalog | Redirects to `/queue`, as today |
-| `/sources` | The catalog: approved and paused channels, with search, sort and paging at 25 | Today's Sources screen, unchanged |
+| `/sources` | **Guarded** — a visitor is sent to `/sign-in?next=/sources` (revised 2026-09-21, §3 decision 2b) | Today's Sources screen, unchanged |
 | `/sources/:id` | A channel: title, counts, followers, then its `available` and `pending` episodes | Unchanged |
 | `/read/:episodeId` | The whole summary — lede, takeaways with their timestamps, topics | Unchanged |
 
 Nothing is truncated, teased or gated. The single call to action is a fixed band at the top of every public page.
 
 Two things this also does, because server rendering is what makes a shared link worth sharing: **`apps/web` becomes
-a Worker with static assets**, and the four public routes are rendered to HTML on the edge.
+a Worker with static assets**, and the three public routes are rendered to HTML on the edge.
 
 ## 2. Why this shape
 
@@ -46,8 +46,10 @@ A separate public namespace (`/browse`, `/e/:id`) was considered and rejected. O
 copies works for a stranger, a link a stranger opens works for a reader with no redirect, and there is exactly one
 canonical URL per channel and per episode — which is what indexing wants and what two namespaces cannot give.
 
-The cost is real and named: `Sources` is a heavy screen — three tabs, search, sort, paging, Add a channel, owner
-actions — and it grows a signed-out branch.
+The cost was expected to be `Sources`, a heavy screen — three tabs, search, sort, paging, Add a channel, owner
+actions — growing a signed-out branch. In the event it did not: the screen came back out of the public set
+(decision 2b), and what a link names is a channel or an episode, which is where this principle was earning its
+keep anyway.
 
 ### 2.3 Why server rendering, and why it forces the hosting question
 
@@ -55,7 +57,7 @@ The web is a client-rendered SPA: every URL serves the same empty shell. That is
 JavaScript and fatal for the two audiences this feature exists for — the crawler, and the link unfurler in Slack or
 iMessage, which never runs JavaScript at all. A shareable read that unfurls as a generic grey line is not shareable.
 
-Rendering the four public routes on the edge makes the summary text present in the first byte. That decision then
+Rendering the three public routes on the edge makes the summary text present in the first byte. That decision then
 forces a second: where it runs. `apps/web` moves from Pages to a **Worker with static assets** (§4.4), decided while
 nothing is deployed and the move is free.
 
@@ -79,7 +81,9 @@ All 2026-09-21, with the owner, unless stated.
 |---|---|---|
 | 1 | **The same URLs, with screens that degrade** | One canonical URL per object; a shared link works for everyone (§2.2) |
 | 2 | **`/` becomes the landing page**: wordmark, the promise, then the catalog. Signed in it redirects to `/queue`, as it does today | The first screen proves the claim rather than describing it, and it needs no API the public routes do not already answer. A front page of the newest episodes across channels was rejected with it: there is no public cross-channel episode read, and adding one is a separate decision |
-| 2a | **The landing page lists every channel, uncapped** (owner, 2026-09-21) | A cap and a *See all N channels* link were proposed and deferred together: the right number wants a real catalog on screen, and at today's size there is nothing to page. The link goes with the cap — the nav's **Channels** already reaches `/sources`, which is where search and sort live. Both return when paging does |
+| 2b | **`/sources` is not public after all** (owner, 2026-09-21, revising decision 1 for this one screen) | It was public for a few hours. Signed out it showed the same rows as the landing page, which lists every channel uncapped; its sort and paging — the whole difference — are what somebody *working through* a catalog needs, not somebody arriving at one. A visitor's catalog is `/`. The **API** route stays public: this is the web's gate. It also narrows "the same URLs" (decision 1) to the two objects a link actually names — a channel and an episode — which is where that principle was earning its keep anyway |
+| 2c | **The landing page carries `FindChannel`, and not the sort** (owner, 2026-09-21) | Narrowing answers "is my channel here?", which somebody arriving asks. Ordering answers "what do I read first?", which somebody with thirty channels asks, and that reader is signed in |
+| 2a | **The landing page lists every channel, uncapped** (owner, 2026-09-21) | A cap and a *See all N channels* link were proposed and deferred together: the right number wants a real catalog on screen, and at today's size there is nothing to page. The link goes with the cap, and with the nav's **Channels** item, which the one-bar shell dropped. Both return when paging does |
 | 3 | **The public catalog lists approved channels — with episodes or without — and paused ones** | An approved channel with nothing yet still says the archive is coming; a paused channel's existing summaries are real. Both are the product |
 | 4 | **Requested and declined channels are absent from the catalog list** | A stranger browsing a catalog should not be reading the owner's rejections, and a requested channel has nothing to show: the first import happens on approval |
 | 5 | **A hidden channel's page still renders by direct link, minus `reviewNote`** (reversed from a 404 the same day) | The first answer was 404, and the next decision made it incoherent: a declined channel's summaries stay readable, so a 404 on the channel left the channel name on a shared summary pointing into a wall. Hidden from the list, reachable by link, with the owner's note never sent to a visitor |
@@ -89,7 +93,7 @@ All 2026-09-21, with the owner, unless stated.
 | 9 | **The nav row returns only at the top of the page** | No scroll listener, no threshold to tune, nothing to feel twitchy. A visitor who wants the catalog scrolls up, which on a summary they are reading is where they are heading anyway |
 | 10 | **No visitor-facing controls anywhere** — no Follow, no Ask composer, no Add a channel — and therefore **no intent is stored across sign-in** | §2.4. Strikes two earlier decisions of the same day: "sign in, then resume the action" and "type the question, then sign in to send" |
 | 11 | **Sign-in moves to `/sign-in`**, and `Guard` redirects there | `SignIn.tsx` already exists and keeps its job at a new address, carrying `?next=`. The landing page cannot also be the sign-in screen, and an expired session deserves a page that explains itself rather than a marketing hero |
-| 12 | **The four public routes are server-rendered; `apps/web` becomes a Worker with static assets** | §2.3, §4.4 |
+| 12 | **The three public routes are server-rendered; `apps/web` becomes a Worker with static assets** | §2.3, §4.4 |
 | 13 | **`robots.txt`, a generated `sitemap.xml`, edge caching, and Cloudflare rate limiting all ship with the feature** | The first two are what turns "indexable" into "indexed". The cache is what makes a public archive affordable. Rate limiting has been named as a gap twice (`route-visibility.md` §5) and public pages are what make it matter |
 | 14 | **No link-preview image** | The obvious version — derive `https://i.ytimg.com/vi/<episodeId>/…` from the id — is correct only while YouTube is the only source, and fails as a *broken image* rather than an error the day a second source lands. The durable version is an `image_url` column filled by whatever ingests the episode, and that is a schema change this feature does not need. Unfurls carry title and description, which is most of their value |
 | 15 | **No shared secret between the web Worker and the API, and the five reads stay publicly reachable** | Asked directly by the owner once the service binding existed. A secret between two Workers is genuinely private, but it protects nothing while the same routes are open by decision — and locking them would force the web to proxy every public read, because after hydration the browser fetches them itself. The cache and the rate limit are the controls; nothing paid is reachable anonymously |
@@ -106,10 +110,9 @@ cap and no *See all* link (§3, decision 2a); the nav's **Channels** reaches `/s
 sign-in button in the body — the band above carries it. Signed in, this route redirects to `/queue` exactly as
 `SignIn.tsx` does today.
 
-**`/sources` — the catalog.** Approved and paused channels, keeping the search, the sort and the paging at 25 that
-the reader's screen has, because a list elegant at six is four screens of scrolling at thirty (`docs/design.md` §5).
-Each row: title, summary count, newest summary, follower count. No Follow control, no Add a channel, no tabs — the
-reader's three-tab split (following / catalog / declined) has no meaning without a session.
+**`/sources` — the reader's catalog, guarded.** A visitor who reaches it lands on `/sign-in?next=/sources` and,
+having signed in, arrives at the screen itself. Its three tabs, Follow, Add a channel and unread counts are all a
+reader's, and the sort and the paging are for working through a long list rather than arriving at one.
 
 **`/sources/:id` — a channel.** Title, summary count, follower count, newest date; then episodes newest first, each
 with title, date, runtime and the summary's opening as an excerpt. A `pending` episode renders its `waitReason` in
@@ -219,23 +222,23 @@ is identical for everyone, so the edge absorbs crawlers and unfurls without touc
 
 ## 6. Acceptance criteria
 
-1. With no session, `/`, `/sources`, `/sources/:id` and `/read/:episodeId` all render content — not a redirect to
-   `/sign-in`, and not an empty shell.
-2. `curl` on each of the four returns HTML containing the page's real text: a channel title, an episode title, the
-   executive summary.
-3. Each of the four carries its own `<title>`, `<meta name="description">`, `og:title`, `og:description` and
+1. With no session, `/`, `/sources/:id` and `/read/:episodeId` all render content — not a redirect to
+   `/sign-in`, and not an empty shell. `/sources` **does** redirect to `/sign-in`, carrying `next`.
+2. `curl` on each of the three returns HTML containing the page's real text: a channel title, an episode title,
+   the executive summary.
+3. Each of the three carries its own `<title>`, `<meta name="description">`, `og:title`, `og:description` and
    `<link rel="canonical">`, and no two pages share a title.
 4. No rendered page contains `management`, `processing`, a `reviewNote`, or a follower's email address.
-5. `/sources` lists approved and paused channels only; a requested or declined channel is absent.
+5. `/` lists approved and paused channels only; a requested or declined channel is absent.
 6. `/sources/:id` for a requested or declined channel returns 200 with its episodes and no `reviewNote`.
 7. `/read/:episodeId` for an episode of a declined channel returns 200 with the summary.
 8. A channel page lists `available` and `pending` episodes, and no `failed` or `skipped` one.
 9. An unknown episode id returns **404** with a rendered body, not 200 with the shell.
 10. With the API binding made to fail, a public URL returns 200 with the shell and the client shows its own error
     and retry.
-11. The guarded routes — `/queue`, `/history`, `/chats`, `/account`, `/curate` — return the shell from the Worker
-    and redirect to `/sign-in` in the browser with no session.
-12. The invitation band is present on all four public pages and absent for a signed-in reader.
+11. The guarded routes — `/sources`, `/queue`, `/history`, `/chats`, `/account`, `/curate` — return the shell from
+    the Worker and redirect to `/sign-in` in the browser with no session.
+12. The invitation band is present on all three public pages and absent for a signed-in reader.
 13. Signing in from `/read/:episodeId` returns to that episode, now with the reader's nav, `Done` and `Ask`.
 14. A signed-in reader loading `/` is sent to `/queue`.
 15. `/robots.txt` disallows every guarded path; `/sitemap.xml` lists every public channel and every available
@@ -247,7 +250,8 @@ is identical for everyone, so the edge absorbs crawlers and unfurls without touc
     filters, the head-tag builder's escaping, and the loader's three outcomes.
 20. A render test asserts the returned HTML contains the episode title and the executive summary, which is also the
     check that would fail if the server bundle reached for `window`.
-21. The landing page renders every channel the catalog holds, with no cap and no *See all* link.
+21. The landing page renders every channel the catalog holds, with no cap and no *See all* link, and narrows on
+    `FindChannel`.
 
 ## 7. Out of scope
 

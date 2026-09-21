@@ -7,9 +7,8 @@ import { matchPublicRoute } from "../src/lib/public-routes";
  * tests are what stop the list itself drifting.
  */
 describe("matchPublicRoute", () => {
-  it("matches the four public paths", () => {
+  it("matches the three public paths", () => {
     expect(matchPublicRoute("/")).toEqual({ name: "landing" });
-    expect(matchPublicRoute("/sources")).toEqual({ name: "sources" });
     expect(matchPublicRoute("/sources/UC123")).toEqual({
       name: "channel",
       channelId: "UC123",
@@ -22,6 +21,9 @@ describe("matchPublicRoute", () => {
 
   it("does not match a guarded path", () => {
     for (const path of [
+      // `/sources` is the reader's catalog: public for a few hours on 2026-09-21, then withdrawn
+      // because signed out it repeated the landing page (docs/specs/public-reading.md §3).
+      "/sources",
       "/queue",
       "/history",
       "/history/2026-09-21",

@@ -13,9 +13,10 @@ route — each verifiable on its own, each leaving the product working exactly a
 reader. Server rendering (step 8) lands *after* the screens already work client-rendered, so that if the render has
 to be reverted the feature still functions for humans and only loses its crawlability.
 
-**The four public screens are four steps (4–7), one per screen**, taken in the order a visitor meets them: landing,
-catalog, channel, summary. Each is separately reviewable and separately revertable, and each ends with one more
-link in the chain working signed out.
+**The public screens are one step each (4–7)**, taken in the order a visitor meets them: landing, catalog, channel,
+summary. Each is separately reviewable and separately revertable, and each ends with one more link in the chain
+working signed out. **Step 5 ended as a deletion** — the owner withdrew the signed-out catalog on 2026-09-21, so the
+public set is three screens and `/sources` stays a reader's.
 
 **The intermediate state that is not a bug.** Between steps 4 and 7 a visitor can reach a screen that is still
 guarded — a channel row on the landing page before step 6, an episode row before step 7 — and lands on `/sign-in`.
@@ -177,9 +178,8 @@ Test-first, because this step exists to establish that tests run here at all.
   import { matchPublicRoute } from "../src/lib/public-routes";
 
   describe("matchPublicRoute", () => {
-    it("matches the four public paths", () => {
+    it("matches the three public paths", () => {
       expect(matchPublicRoute("/")).toEqual({ name: "landing" });
-      expect(matchPublicRoute("/sources")).toEqual({ name: "sources" });
       expect(matchPublicRoute("/sources/UC123")).toEqual({ name: "channel", channelId: "UC123" });
       expect(matchPublicRoute("/read/abc_123")).toEqual({ name: "episode", episodeId: "abc_123" });
     });
@@ -289,7 +289,7 @@ even though the summary is the screen that matters most.
   redirects to `/queue` — lift that effect out of `SignIn.tsx`, do not reinvent it. Remove the temporary `/` route
   from 3.5 in the same commit.
 - 4.5 Sign-out lands on `/`, which is now a page worth landing on (closing 3.4).
-- 4.6 `docs/design.md` gains the signed-out shell section: the band, the nav beneath it, the four states each public
+- 4.6 `docs/design.md` gains the signed-out shell section: the band, the four states each public
   screen owes, and the rule that a visitor is shown no control they cannot use.
 
 **Done when:** `pnpm check` green; a private window at `/` shows the landing page with the real catalog and the
@@ -312,6 +312,11 @@ step 6.
   confirmed follower counts are fine for strangers on 2026-09-21). The sort options that depend on a session —
   "Most unread" — are absent from a visitor's control rather than present and inert.
 - 5.4 The heading is *Channels*, and `useDocumentTitle` gives the page its own title for a visitor as for a reader.
+- 5.6 **Reverted in review, 2026-09-21, after a browser walkthrough.** The owner's ruling: *"we also do not need a
+  sources logged out experience"*. Everything above from 5.1 to 5.3 is undone — `/sources` keeps its `Guard` and
+  its reader-only shape — and `/sources` leaves `matchPublicRoute`, so the public set is three screens, not four.
+  What survives is 5.5's extraction, which the landing page uses. **Step 5 is therefore a net deletion**, and the
+  screen a visitor browses is the landing page alone.
 - 5.5 **Added in review, 2026-09-21.** The owner asked why a visitor needs `/sources` at all when the landing page
   lists every channel, which was the right question: signed out the two showed the same rows, and `/sources` added
   only search, sort and paging. **Both stay**, and the landing gains the search — reusing the control rather than
@@ -358,7 +363,7 @@ from today; and an episode row still leads to `/sign-in`.
 
 ### Step 7 — The public summary, `/read/:episodeId`  (size: M)
 
-**The screen the feature exists for.** Last of the four because everything it links to now works.
+**The screen the feature exists for.** Last because everything it links to now works.
 
 **Files:** `apps/web/src/screens/Reading.tsx`, `apps/web/src/lib/reading-origin.ts`, `apps/web/src/lib/copy.ts`.
 
@@ -395,7 +400,7 @@ spends the most time in.
 - 8.2 `wrangler.jsonc`: add `"run_worker_first": ["/"]` to each environment's assets block, with a comment naming
   risk 1 — `/` matches `index.html` and would otherwise never reach the Worker.
 - 8.3 `src/server/load.ts` in spec §4.4's shape: `Loaded` as `ok | missing | unavailable`, one `get` helper over
-  `env.API.fetch` with **no `Authorization` header**, and the four route cases. Its doc comment states both reasons
+  `env.API.fetch` with **no `Authorization` header**, and the three route cases. Its doc comment states both reasons
   the header is absent — the anonymous shape is what a visitor must get, and it is what makes the response
   cacheable — and that this is the second and only other `fetch` call site in the web (risk 6).
   `test/load.test.ts` drives it with a stub `Fetcher`: a 200 becomes `ok`, a 404 becomes `missing`, a 500 becomes
@@ -416,7 +421,7 @@ spends the most time in.
   `env.ASSETS`, the three outcomes with their three cache policies, and `renderToString` inside `LocationProvider`
   and `Bootstrap`. `test/render.test.tsx` asserts the rendered markup of an episode contains its title and its
   executive summary, which is also the check that fails if the server bundle reaches for `window` (criterion 20).
-- 8.8 Verify under `wrangler dev`: `curl` each of the four public URLs and read the HTML; `curl` an unknown episode
+- 8.8 Verify under `wrangler dev`: `curl` each of the three public URLs and read the HTML; `curl` an unknown episode
   id and see a 404 with a body; stop the API and see the shell with `no-store`; `curl` a guarded path and see the
   shell, not a render; then load a shared summary link in a dark-theme browser and watch for a flash. Confirm a
   built asset (`/assets/index-*.js`) is served **without** invoking the Worker — a `console.log` at the top of

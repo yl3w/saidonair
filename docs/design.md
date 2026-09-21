@@ -643,9 +643,10 @@ with the utilities that also cancelled its hover. The cursor was a symptom of ha
 
 ## 9b. The signed-out shell
 
-Added 2026-09-21 with the public reading experience (`docs/specs/public-reading.md`). Four screens —
-`/`, `/sources`, `/sources/:id` and `/read/:episodeId` — render for a visitor with no session, at the same URLs a
-reader uses. This section is the frame they arrive into; the screens themselves are §3 and §5 as before, with the
+Added 2026-09-21 with the public reading experience (`docs/specs/public-reading.md`). Three screens —
+`/`, `/sources/:id` and `/read/:episodeId` — render for a visitor with no session, at the same URLs a reader uses.
+`/sources` is **not** among them: signed out it repeated the landing page, and its sort and paging are for working
+through a long list rather than arriving at one. This section is the frame they arrive into; the screens themselves are §3 and §5 as before, with the
 reader's controls absent.
 
 **One bar, fixed, inverted.** The wordmark, a line naming what an account is *for*, and **Sign in**. It never
