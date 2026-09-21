@@ -858,6 +858,55 @@ export const FollowersResponseSchema = z
   });
 export type FollowersResponse = z.infer<typeof FollowersResponseSchema>;
 
+// --- the session handoff (docs/specs/auth-phase.md §4.5) ----------------------------------------
+
+export const SessionStartQuerySchema = z
+  .object({
+    provider: z
+      .string()
+      .describe("A configured social provider, e.g. `google`."),
+    next: z
+      .string()
+      .describe(
+        "Where to return the reader after sign-in. Must be inside an origin `WEB_ORIGINS` allows, or the request is refused and nothing is minted.",
+      ),
+  })
+  .meta({ id: "SessionStartQuery", description: "`GET /session/start`" });
+
+export const SessionExchangeBodySchema = z
+  .object({
+    code: z
+      .string()
+      .min(1)
+      .describe("The single-use code the callback put in the URL fragment."),
+  })
+  .meta({ id: "SessionExchangeBody", description: "`POST /session/exchange`" });
+export type SessionExchangeBody = z.infer<typeof SessionExchangeBodySchema>;
+
+export const SessionExchangeResponseSchema = z
+  .object({
+    token: z
+      .string()
+      .describe(
+        "The session token, to be sent as `Authorization: Bearer`. Returned in this body and nowhere else: it never enters a URL, a redirect, or browser history.",
+      ),
+    expiresAt: UnixMs.describe("When the session stops being accepted."),
+    userId: z.string().describe("better-auth's user id for this session."),
+    email: z
+      .string()
+      .nullable()
+      .describe(
+        "The address on the account, or null for a provider that returned none.",
+      ),
+  })
+  .meta({
+    id: "SessionExchangeResponse",
+    description: "`POST /session/exchange` — the session, once, for a code.",
+  });
+export type SessionExchangeResponse = z.infer<
+  typeof SessionExchangeResponseSchema
+>;
+
 // --- catalog (PRD §7 `GET /catalog`) --------------------------------------------------------------
 
 /** The transcript provider's health, from its status endpoint, cached for five minutes per isolate. */

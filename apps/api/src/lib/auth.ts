@@ -45,6 +45,22 @@ export function makeAuth(env: Env) {
 }
 
 /**
+ * The providers this environment can actually sign somebody in with: configured in `makeAuth`
+ * above *and* holding credentials. Meta is configured with none until an App ID exists (owner
+ * decision 2026-09-20), so it is absent here, `GET /session/start` refuses it with a 400 rather
+ * than a 500 from the provider, and A6 renders one button instead of two.
+ */
+export function configuredProviders(env: Env): string[] {
+  const available: string[] = [];
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)
+    available.push("google");
+  if (env.FACEBOOK_CLIENT_ID && env.FACEBOOK_CLIENT_SECRET) {
+    available.push("facebook");
+  }
+  return available;
+}
+
+/**
  * better-auth's `user.email` is `not null unique`, and a provider can return an account with no
  * address at all — Meta, for a phone-only signup or revoked consent. Such a user gets a synthesized
  * placeholder here while `global_users.email` stays null, so the Registry remains the source of

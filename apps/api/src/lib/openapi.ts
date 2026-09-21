@@ -88,6 +88,11 @@ const documentation: GenerateSpecOptions["documentation"] = {
   },
   tags: [
     { name: "health", description: "Liveness. Public." },
+    {
+      name: "session",
+      description:
+        "Signing in and carrying the session to the web. Public: these are how a caller obtains a token, so none of them can require one.",
+    },
     { name: "me", description: "Who the caller is." },
     {
       name: "catalog",

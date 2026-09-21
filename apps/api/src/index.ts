@@ -20,6 +20,7 @@ import { episodeRoutes } from "./routes/episodes";
 import { followRoutes } from "./routes/follows";
 import { meRoutes } from "./routes/me";
 import { preferenceRoutes } from "./routes/preferences";
+import { sessionRoutes } from "./routes/session";
 
 // Durable Object and Workflow classes must be exported from the Worker entry.
 export { RegistryDO } from "./do/registry";
@@ -68,6 +69,11 @@ app.get("/docs", describeRoute({ hide: true }), docsPage);
 app.all("/auth/*", describeRoute({ hide: true }), (context) =>
   makeAuth(context.env).handler(context.req.raw),
 );
+
+// Ours, beside better-auth's: begin a sign-in, hand the session to the web, exchange the code for
+// it. Public for the same reason — obtaining a token cannot require one (docs/specs/auth-phase.md
+// §4.5). Nothing consumes the session yet; A7 is where it becomes the identity.
+app.route("/session", sessionRoutes);
 
 // Everything below requires X-User-Email. Routes are named after entities, and none checks a
 // role: the API enforces no authorization (docs/PRD.md §9).

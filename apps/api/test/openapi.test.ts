@@ -23,12 +23,28 @@ type Document = {
 const HIDDEN = new Set(["/openapi.json", "/docs"]);
 
 /**
+ * Public by necessity, and the list is short on purpose. `/health` touches no storage; the three
+ * `/session/*` routes are how a caller *obtains* a token, so none of them can require one
+ * (docs/specs/auth-phase.md §4.5). better-auth's own `/auth/*` is the document's one declared
+ * exclusion — it carries `hide`, so it never appears here at all.
+ */
+const PUBLIC = new Set([
+  "/health",
+  "/session/start",
+  "/session/handoff",
+  "/session/exchange",
+]);
+
+/**
  * Every operation registered so far, as docs/specs/api-reference.md §3.3 lists it. Adding or removing
  * a route is a deliberate edit here, and a PRD row that never registered is visible.
  */
 const OPERATIONS = [
   "get /health",
   "get /me",
+  "get /session/start",
+  "get /session/handoff",
+  "post /session/exchange",
   "get /catalog",
   "get /channels",
   "post /channels",
@@ -148,10 +164,11 @@ describe("GET /openapi.json", () => {
         const statuses = Object.keys(operation.responses);
         expect(operation.tags?.length, `${where} has one tag`).toBe(1);
         expect(
-          statuses.some((status) => status.startsWith("2")),
+          // A redirect is an outcome, not a failure: two of the session routes answer only 302.
+          statuses.some((status) => /^[23]/.test(status)),
           `${where} has a success response`,
         ).toBe(true);
-        if (path === "/health") {
+        if (PUBLIC.has(path)) {
           expect(operation.security, `${where} is public`).toEqual([]);
         } else {
           // The global `security` applies; the header can always be missing.
