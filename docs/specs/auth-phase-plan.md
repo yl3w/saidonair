@@ -3,9 +3,9 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** approved 2026-09-20. **A0, A1, A2–A3, A4 and A5 complete** the same day — the Registry re-key landed in
+**Status:** approved 2026-09-20. **A0, A1, A2–A3, A4, A5 and A6 complete** the same day — the Registry re-key landed in
 seven commits with its own spec and plan (`auth-2-registry-rekey.md`), 395 tests, and a `wrangler dev` walkthrough
-on a real channel. **A5 is complete too**, walked end to end in a browser. **Next is A6**, the web. Nothing is installed in the repo yet: A0 ran entirely in a
+on a real channel. **A6 is complete too**: the web signs in and holds a token while the API still reads the header. **Next is A7, the swap** — the irreversible one. Nothing is installed in the repo yet: A0 ran entirely in a
 scratch directory, and A4 is where `better-auth` actually enters the tree.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
@@ -255,6 +255,19 @@ header. The A6 walkthrough uses Google.
 **Tests:** the web is typecheck and lint only (`AGENTS.md` → Web UI code). Spec §7 criterion 25 is the walkthrough.
 **Done when:** `pnpm check` green and a reader can sign in, land on the queue, and use the product.
 
+**Complete 2026-09-20.** The owner signed in through the front door and the product worked — criterion 25, and
+the state it leaves behind is the one this chunk was for: the web holds a token, the API still reads the header,
+and neither half of the swap is load-bearing yet.
+
+**It failed once first, and the cause is worth keeping.** The screen showed *"Couldn't load your account:
+NetworkError when attempting to fetch resource"*. That was CORS: A6 had begun sending `Authorization` while
+`lib/cors.ts` still allowed only `Content-Type` and `X-User-Email`, so the browser refused the request before
+making it. **This plan put that line in A7**, with the rest of the header swap; it belongs with the first request
+that sends the header. The symptom names nothing useful — no mention of CORS in the console, and an empty Worker
+log, because the request never arrived — so the preflight's `Access-Control-Allow-Headers` is the first thing to
+check when a request dies before arrival. `cors.test.ts` now asks for `authorization` so the list cannot lose it
+again.
+
 ---
 
 ### A7 — The swap  (size: L)
@@ -272,8 +285,9 @@ The irreversible one.
   A7, to the account they later sign in with.
 - 7.3 `packages/shared`: `ErrorCodeSchema` gains `UNAUTHENTICATED`; its description loses "including a missing or
   malformed `X-User-Email`".
-- 7.4 `X-User-Email` deleted everywhere: the middleware constant, `lib/cors.ts` `allowHeaders` (which gains
-  `Authorization`), `apps/web/src/api.ts`, and every test helper.
+- 7.4 `X-User-Email` deleted everywhere: the middleware constant, `lib/cors.ts` `allowHeaders` (which **already
+  gained `Authorization` in A6** — it had to, since that is the chunk that began sending it), `apps/web/src/api.ts`
+  where it rides beside the bearer token, and every test helper.
 - 7.5 `helpers.ts`: a test identity is minted by inserting `user` and `session` rows into local D1 and returning
   `session.token` — **A0 proved the bearer token is that column's raw value**. Timestamps are ISO 8601 strings. **No route in any environment mints a session** — a bypass behind a flag is still a bypass that
   shipped, and this is the deliberate departure from the env-selected-fake precedent recorded in spec §3.
