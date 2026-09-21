@@ -157,12 +157,7 @@ function List({
 }) {
   return (
     <>
-      <FindChannel
-        variant="ghost"
-        class="w-full"
-        value={query}
-        onChange={onQuery}
-      />
+      <FindChannel variant="ghost" value={query} onChange={onQuery} />
 
       <ul class="menu max-h-72 w-full flex-nowrap overflow-y-auto border-t border-rule">
         {channels.map((channel) => {

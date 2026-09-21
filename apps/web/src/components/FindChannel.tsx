@@ -10,22 +10,27 @@ import { Icon } from "./Icon";
  * It holds no state: the caller owns the needle, because the caller is also doing the filtering and
  * a search box that remembered its own text while the list ignored it would be a lie
  * (docs/design.md §4).
+ *
+ * **It owns its own width, and no caller can set it.** It shipped with a `class` prop for a few
+ * minutes and immediately became two controls — 16 rem tucked beside a heading on one screen, the
+ * full column on another — which is a shared template with local overrides rather than one control.
+ * A component that can be resized at the call site will be, and then the product has two of it.
+ * `variant` stays because it is a real difference: inside a popover or sheet the edge is already
+ * drawn.
  */
 export function FindChannel({
   value,
   onChange,
   variant = "bordered",
-  class: className = "",
 }: {
   value: string;
   onChange: (value: string) => void;
   /** `ghost` sits inside a popover or sheet that already draws the edge. */
   variant?: "bordered" | "ghost";
-  class?: string;
 }) {
   return (
     <label
-      class={`input ${variant === "ghost" ? "input-ghost" : ""} ${className}`}
+      class={`input w-full flex-1 ${variant === "ghost" ? "input-ghost" : ""}`}
     >
       <Icon of={Search} size={16} class="text-ink-3" />
       <input

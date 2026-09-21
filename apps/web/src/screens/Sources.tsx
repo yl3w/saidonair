@@ -180,7 +180,6 @@ function SourcesScreen() {
 
       <div class="mt-4 flex flex-wrap items-center gap-3">
         <FindChannel
-          class="flex-1"
           value={needle}
           onChange={(next) => {
             setNeedle(next);

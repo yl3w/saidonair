@@ -54,20 +54,17 @@ export function Landing() {
       </h1>
       <p class="mt-2 font-reading text-lede text-ink-2">{LANDING_PROMISE}</p>
 
-      <div class="mt-10 flex flex-wrap items-center gap-3">
-        <h2 class="text-label uppercase text-ink-3">
-          {LANDING_CHANNELS_HEADING}
-        </h2>
-        {/* The same control the catalog and the queue's filter use (components/FindChannel.tsx).
-            Narrowing only — the sort and the paging stay on `/sources`, which is the screen for
-            working through a long list rather than arriving at one. */}
-        <FindChannel
-          class="ml-auto w-full sm:w-64"
-          value={needle}
-          onChange={setNeedle}
-        />
+      <h2 class="mt-10 text-label uppercase text-ink-3">
+        {LANDING_CHANNELS_HEADING}
+      </h2>
+
+      {/* Arranged exactly as the catalog arranges it — the same control, the same row, the same
+          rule under it — so the two screens do not read as two products. Narrowing only: the sort
+          and the paging stay on `/sources`, which is the screen for working through a long list
+          rather than arriving at one. */}
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <FindChannel value={needle} onChange={setNeedle} />
       </div>
-      <div class="mt-3 border-b border-rule" />
 
       {load.status === "loading" && (
         <>
@@ -101,13 +98,17 @@ export function Landing() {
               </p>
             );
           }
-          return channels.map((channel) => (
-            <ChannelRow
-              key={channel.channelId}
-              channel={channel}
-              signedIn={false}
-            />
-          ));
+          return (
+            <div class="mt-4 border-t border-rule">
+              {channels.map((channel) => (
+                <ChannelRow
+                  key={channel.channelId}
+                  channel={channel}
+                  signedIn={false}
+                />
+              ))}
+            </div>
+          );
         })()}
     </Page>
   );
