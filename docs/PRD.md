@@ -131,7 +131,7 @@ Chat query: current follows ∩ approved channels, narrowed to one episode when 
 | Runtime | Cloudflare Workers on the Workers Paid plan (decided 2026-09-11); `compatibility_date` pinned; `nodejs_compat`; three environments, dev, staging, production, each its own Worker with its own Durable Objects, index, and Workflow (decided 2026-09-13; `AGENTS.md` → Environments) |
 | API | Hono, strict TypeScript, ESM only |
 | Validation and API document | Zod 4 schemas in `packages/shared` with the types inferred from them; `hono-openapi` generates OpenAPI 3.1 at `GET /openapi.json`; Scalar test client at `GET /docs` |
-| State | One SQLite Registry DO; one SQLite User DO per normalized email |
+| State | One SQLite Registry DO; one SQLite User DO per identity, named by its `user_id` |
 | Orchestration | Cloudflare Workflows, one instance per episode attempt; two Cron Triggers in the same Worker: discovery `0 */6 * * *` and recovery `30 */6 * * *` (UTC) |
 | LLM | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
 | Embeddings | Workers AI `@cf/baai/bge-base-en-v1.5`, 768 dimensions, 512-token input cap (the deployed model id carries `.5`, corrected 2026-09-08) |
@@ -513,15 +513,15 @@ Tables and columns are `snake_case`.
 
 | Table | Columns in addition to `created_at` | Keys and relationships |
 |---|---|---|
-| `global_users` | `email`, `role DEFAULT 'user'`, `last_seen_at` | PK `email`, normalized |
-| `channels` | `channel_id`, `title`, `canonical_url`, `status`, `initial_import_count DEFAULT 5`, `approved_at?`, `reviewed_at?`, `reviewed_by_email?`, `review_note?`, `paused_by?`, `paused_at?`, `last_checked_at?`, `updated_at` | PK `channel_id` (YouTube `UC…` ID); FK `reviewed_by_email → global_users.email`; API `lastIngestedAt` is derived from episodes; there is no `last_ingested_at` column |
-| `channel_followers` | `channel_id`, `user_email`, `followed_at`, `unfollowed_at?`, `updated_at` | Composite PK `(channel_id, user_email)`; FKs to `channels.channel_id` and `global_users.email`; an active follow is `unfollowed_at IS NULL` |
-| `episodes` | `episode_id`, `channel_id`, `discovered_by_run_id`, `title`, `published_at`, `status`, `intent?`, `window_started_at?`, `window_deadline_at?`, `next_attempt_at?`, `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, `skip_reason?`, `skipped_at?`, `skipped_by_email?`, `transcript_checked_at?`, `chunk_count?`, `vectorized_at?`, `processed_at?`, `active_vector_generation?`, `staged_vector_generation?`, `updated_at` | PK `episode_id`; FKs to channel, discovery run, and skipping owner |
+| `global_users` | `user_id`, `email?`, `auth_user_id?`, `role DEFAULT 'user'`, `last_seen_at` | PK `user_id`, generated; `email` UNIQUE and nullable, normalized — a provider can return an account with no address; `auth_user_id` UNIQUE and nullable, written at first sign-in (Auth phase A7) |
+| `channels` | `channel_id`, `title`, `canonical_url`, `status`, `initial_import_count DEFAULT 5`, `approved_at?`, `reviewed_at?`, `reviewed_by_user_id?`, `review_note?`, `paused_by?`, `paused_at?`, `last_checked_at?`, `updated_at` | PK `channel_id` (YouTube `UC…` ID); FK `reviewed_by_user_id → global_users.user_id`; API `lastIngestedAt` is derived from episodes; there is no `last_ingested_at` column |
+| `channel_followers` | `channel_id`, `user_id`, `followed_at`, `unfollowed_at?`, `updated_at` | Composite PK `(channel_id, user_id)`; FKs to `channels.channel_id` and `global_users.user_id`; an active follow is `unfollowed_at IS NULL` |
+| `episodes` | `episode_id`, `channel_id`, `discovered_by_run_id`, `title`, `published_at`, `status`, `intent?`, `window_started_at?`, `window_deadline_at?`, `next_attempt_at?`, `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, `skip_reason?`, `skipped_at?`, `skipped_by_user_id?`, `transcript_checked_at?`, `chunk_count?`, `vectorized_at?`, `processed_at?`, `active_vector_generation?`, `staged_vector_generation?`, `updated_at` | PK `episode_id`; FKs to channel, discovery run, and skipping owner |
 | `episode_summaries` | `episode_id`, `format`, `executive_summary?`, `takeaways_json?`, `topic_tags_json?`, `raw_text?`, `related_episode_ids_json`, `model`, `prompt_version` | PK/FK `episode_id → episodes.episode_id`; `prompt_version` is a TEXT identifier |
 | `ingestion_runs` | `run_id`, `channel_id`, `kind`, `feed_status`, `discovered_count DEFAULT 0`, `episode_limit?`, `started_at`, `finished_at` | PK `run_id`; FK `channel_id → channels.channel_id`; a completed feed-discovery record, so no status or Workflow columns |
-| `episode_ingestion_attempts` | `attempt_id`, `episode_id`, `trigger`, `intent`, `generation_id?`, `staged_chunk_count?`, `workflow_id?`, `requested_by_email?`, `status`, `outcome_code?`, `failure_detail?`, `started_at`, `finished_at?` | PK `attempt_id`; unique nullable `workflow_id`; FKs to episode and optional owner; all episode executions |
+| `episode_ingestion_attempts` | `attempt_id`, `episode_id`, `trigger`, `intent`, `generation_id?`, `staged_chunk_count?`, `workflow_id?`, `requested_by_user_id?`, `status`, `outcome_code?`, `failure_detail?`, `started_at`, `finished_at?` | PK `attempt_id`; unique nullable `workflow_id`; FKs to episode and optional owner; all episode executions |
 
-`channel_followers` is the only record of follows: a user's own list is `WHERE user_email = ? AND unfollowed_at IS
+`channel_followers` is the only record of follows: a user's own list is `WHERE user_id = ? AND unfollowed_at IS
 NULL`, eligibility joins it to approved channels, and the same rows count followers, list who is waiting on a
 requested channel, and pause a channel nobody follows.
 `approved_at` is set at the first approval and never reset; the review fields hold the latest review only and are kept
@@ -595,13 +595,13 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
 - Positive import limits; nonnegative timestamps, attempt/chunk counts, sequence/position values,
   and source offsets. An available episode requires positive `chunk_count`, `vectorized_at`, and `processed_at`.
 - Channel checks: an approved channel requires `approved_at`; any status other than `requested` requires `reviewed_at`
-  and `reviewed_by_email`; `paused_by` and `paused_at` are both set or both null, and only on an approved channel.
+  and `reviewed_by_user_id`; `paused_by` and `paused_at` are both set or both null, and only on an approved channel.
 - Episode checks, all table checks in the rewritten `0001` (2026-09-12): `failure_code` is `INGESTION_TIMEOUT`
   exactly when `failed` and null otherwise, with the latest attempt's reason as `failure_detail`; intent and its
   three scheduling timestamps are all set or all null; a `publish` window requires `pending` and a `replace`
   window requires `available`; `staged_vector_generation` is set only while a window is open; an available
   episode also requires `active_vector_generation`; `skipped` and `skip_reason` imply each other, a skipped episode
-  requires `skipped_at`, and `skipped_by_email` is present exactly for an `OWNER` skip. There is no waiting code on
+  requires `skipped_at`, and `skipped_by_user_id` is present exactly for an `OWNER` skip. There is no waiting code on
   the episode; reasons live on attempts. Attempt checks: `running` has no `finished_at` and every other status has
   one; `blocked` has no `workflow_id`; `owner_retry` has a requester and the other triggers none.
 - Structured summaries require executive summary, takeaways, and tags; raw fallback requires `raw_text`. Validate JSON
@@ -609,7 +609,7 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
   transaction after vector completion. SQLite cannot atomically commit with Vectorize.
 - Registry indexes: `channels(status, paused_by)` for cron selection;
   `channel_followers(channel_id, unfollowed_at)` for follower counts and the owner queue;
-  `channel_followers(user_email, unfollowed_at)` for a user's own list and eligibility;
+  `channel_followers(user_id, unfollowed_at)` for a user's own list and eligibility;
   `episodes(channel_id, status, published_at)`; `episodes(next_attempt_at)` for recovery;
   `episodes(discovered_by_run_id)`; `episodes(channel_id, processed_at)` for the derived ingestion time;
   `ingestion_runs(channel_id, created_at)`; `episode_ingestion_attempts(episode_id, created_at)` and
@@ -631,9 +631,12 @@ through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constra
 - Both `0001_init.sql` files were rewritten on 2026-09-10 before first deployment, and the Registry's again on
   2026-09-12, when the owner chose to start over on the schema, the Registry DO's store modules, and the API contract
   for M3 rather than carry deprecated tables, columns, and enum values (`docs/specs/api-reference-plan.md` Step 4);
-  `0002_drop_lifecycle_version.sql` of 2026-09-11 was folded into that rewrite and deleted. The Registry lists
-  `0001_init` alone; the User DO's file was edited on 2026-09-13 to drop `channel_follows` (§9). No rule prevents a
-  further edit.
+  `0002_drop_lifecycle_version.sql` of 2026-09-11 was folded into that rewrite and deleted. The User DO's file was
+  edited on 2026-09-13 to drop `channel_follows` (§9). No rule prevents a further edit, and two have happened since:
+  the Registry's `0001_init.sql` was edited on 2026-09-13 to add the `outcome_code` CHECK, and again on
+  **2026-09-20** to key identity by a generated `user_id` (`docs/specs/auth-2-registry-rekey.md`) — five columns
+  across four tables, plus the nullable unique `email` and the new `auth_user_id`. The Registry now lists
+  `0001_init` and `0002_episode_duration`.
 - Retention: chats, messages, follow tombstones, episodes, summaries, and vectors are all retained. Deletion is soft
   where it exists at all; channels are never deleted.
 

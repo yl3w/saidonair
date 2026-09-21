@@ -49,7 +49,7 @@ This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainabl
    API or API keys. No OpenAI, no Anthropic, no other scraping services, no analytics SDKs, no proxies. The product
    constraint and its reasoning are `docs/PRD.md` §1 and §4.2.
 3. **Never query, upsert, or delete in Vectorize without an explicit namespace scope.** Shared episode vectors use
-   `shared-catalog`, never a user's email. Chat retrieval must filter to the user's eligible channels and validate
+   `shared-catalog`, never a user identifier of any kind — not an address, not a `user_id`. Chat retrieval must filter to the user's eligible channels and validate
    results before using them; never fall back to an unfiltered query. Enforce namespace ownership in
    `lib/vectorize.ts` for ID-based operations too; do not assume the underlying API accepts a namespace argument for
    every operation. Retrieval rules: `docs/PRD.md` §6.
@@ -334,7 +334,9 @@ generated `user_id` — plus the owner role and what lives in which DO, is `docs
 today:
 
 - `middleware/user.ts` normalizes `X-User-Email` with `lib/email.ts`, auto-registers it in the Registry, and attaches
-  the identity as `c.var.identity` and the per-user DO stub (`env.USER_DO.idFromName(email)`) as `c.var.user`.
+  the identity as `c.var.identity` — `{ userId, email, role }` — and the per-user DO stub as `c.var.user`. **The
+  User DO is named by `user_id`, not by the address** (`getUserDO(env, identity.userId)`, since 2026-09-20,
+  `docs/specs/auth-2-registry-rekey.md`), so `apps/api/src/do/user.ts` imports nothing from `lib/email.ts`.
 - ~~Never add login, sessions, JWTs, or Cloudflare Access.~~ **Reversed 2026-09-20** (`docs/PRD.md` §9). The
   **Auth phase** replaces the header with a verified `better-auth` session over consumer OAuth and keys the
   User DO by a generated `user_id`: `docs/specs/auth-phase.md`, plan `auth-phase-plan.md`. Everything above
@@ -343,7 +345,8 @@ today:
   environment when deployed (Environments); the Registry seeds the role from it on start. The email is never committed.
 - The API enforces no authorization (PRD §2, §9, decided 2026-09-12): no route or Registry method checks the role, and
   there is no 403. `GET /me` returns the role for the web, whose Owner screens and controls are the only gate. Where
-  the schema asks for a reviewer, skipper, or requester, record the acting email whoever it is.
+  the schema asks for a reviewer, skipper, or requester, record the acting `user_id` whoever it is; the address a
+  screen prints is resolved from that id when the view is built, never stored beside the record.
 - `WEB_ORIGINS` lives in `wrangler.jsonc` `vars`, overridable in `.dev.vars`; `lib/cors.ts` runs before the identity
   middleware so preflights never reach it.
 
