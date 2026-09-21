@@ -183,15 +183,19 @@ export function listActive(
   channelId: string,
 ): FollowerRecord[] {
   return sql
-    .exec<{ email: string; followed_at: number }>(
-      `SELECT u.email AS email, f.followed_at FROM channel_followers f
+    .exec<{ user_id: string; email: string; followed_at: number }>(
+      `SELECT f.user_id, u.email AS email, f.followed_at FROM channel_followers f
        JOIN global_users u ON u.user_id = f.user_id
        WHERE f.channel_id = ? AND f.unfollowed_at IS NULL
        ORDER BY f.followed_at, u.email`,
       channelId,
     )
     .toArray()
-    .map((row) => ({ email: row.email, followedAt: row.followed_at }));
+    .map((row) => ({
+      userId: row.user_id,
+      email: row.email,
+      followedAt: row.followed_at,
+    }));
 }
 
 function toFollow(row: FollowRow): FollowRecord {

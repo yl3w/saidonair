@@ -18,7 +18,7 @@ export const meRoutes = new Hono<AppEnv>().get(
     },
   }),
   (c) => {
-    const { email, role } = c.var.identity;
-    return c.json<MeResponse>({ email, role });
+    const { userId, email, role } = c.var.identity;
+    return c.json<MeResponse>({ userId, email, role });
   },
 );

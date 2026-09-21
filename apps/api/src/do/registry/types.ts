@@ -69,7 +69,11 @@ export type ReviewInput = {
 };
 
 /** One active follower of a channel, as the owner's queue shows it. */
-export type FollowerRecord = { email: string; followedAt: number };
+export type FollowerRecord = {
+  userId: string;
+  email: string;
+  followedAt: number;
+};
 
 /** One user's follow of one channel: active while `unfollowedAt` is null, a retained tombstone otherwise. */
 export type FollowRecord = {

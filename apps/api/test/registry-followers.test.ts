@@ -185,7 +185,7 @@ describe("registry follows", () => {
     expect(await stub.countFollowers([CHANNEL_A])).toEqual({ [CHANNEL_A]: 1 });
     expect((await stub.getChannel(CHANNEL_A))?.pausedBy).toBeNull();
     expect(await stub.listFollowers(CHANNEL_A)).toEqual([
-      { email: ALICE, followedAt: 3_000 },
+      { userId: alice, email: ALICE, followedAt: 3_000 },
     ]);
   });
 });

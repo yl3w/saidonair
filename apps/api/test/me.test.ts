@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { MeResponseSchema } from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
-import { ALICE, expectShape, OWNER } from "./helpers";
+import { ALICE, expectShape, identityOf, OWNER } from "./helpers";
 
 function me(email?: string) {
   const headers: Record<string, string> =
@@ -31,11 +31,19 @@ describe("identity middleware via GET /me", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expectShape(MeResponseSchema, body);
-    expect(body).toEqual({ email: ALICE, role: "user" });
+    expect(body).toEqual({
+      userId: await identityOf(ALICE),
+      email: ALICE,
+      role: "user",
+    });
   });
 
   it("reports the seeded owner", async () => {
     const response = await me(OWNER);
-    expect(await response.json()).toEqual({ email: OWNER, role: "owner" });
+    expect(await response.json()).toEqual({
+      userId: await identityOf(OWNER),
+      email: OWNER,
+      role: "owner",
+    });
   });
 });
