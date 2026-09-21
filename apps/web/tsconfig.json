@@ -7,8 +7,8 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  // `src/server` is the Worker's, and it compiles under tsconfig.worker.json instead: its globals
-  // are workerd's, not a browser's (docs/specs/public-reading-plan.md step 1.1).
-  "include": ["src", "vite.config.ts"],
+  // `src/server` is the Worker's, and it compiles under `src/server/tsconfig.json` instead: its
+  // globals are workerd's, not a browser's (docs/specs/public-reading-plan.md step 1.1).
+  "include": ["src", "test", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["src/server"]
 }

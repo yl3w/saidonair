@@ -2,7 +2,7 @@
 
 **Implements:** `docs/specs/public-reading.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **IN PROGRESS.** Step 1 complete 2026-09-21; steps 2–10 outstanding.
+**Status:** **IN PROGRESS.** Steps 1–2 complete 2026-09-21; steps 3–10 outstanding.
 **Shape:** ten steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
 product running**. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 
@@ -210,7 +210,7 @@ Test-first, because this step exists to establish that tests run here at all.
   environment over pure modules and the server render; components still verified by hand under `pnpm dev`; the
   `node --experimental-strip-types` note retired.
 
-**Done when:** `pnpm check` runs web tests and they pass, and `pnpm test --filter web` names three suites.
+**Done when:** `pnpm check` runs web tests and they pass, and `pnpm test --filter web` names two suites — `public-routes` and `wrangler-config`. (`public-view` is step 4's: nothing is built a step before something needs it.)
 
 ---
 

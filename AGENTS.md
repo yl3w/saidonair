@@ -579,12 +579,12 @@ design are `docs/specs/design-phase.md`. In code:
 - **Day boundaries are the browser's**, worked out once in `lib/day.ts`: the API takes instants and never a
   timezone (`docs/PRD.md` §4.4). Build a day's end from the next local midnight, never `from + 24 h`, which is an
   hour out on the two days a year the clocks move.
-- Because daisyUI is CSS only, component behaviour is ours to get right, and the web has no tests (see Testing), so
-  every interactive component is verified by hand under `pnpm dev` before its commit. A cheap check that does not
-  need a runner: after `pnpm build`, every `class=` token in `apps/web/src` should resolve to a rule in the built
-  CSS — a typo'd utility is silently nothing, and that scan is what caught `input-bordered`, which daisyUI 5
-  dropped. Pure modules under `lib/` can be exercised directly with
-  `node --experimental-strip-types <scratch>.mts`.
+- Because daisyUI is CSS only, component behaviour is ours to get right and the web's tests deliberately stop short
+  of components (see Testing), so every interactive component is verified by hand under `pnpm dev` before its
+  commit. A cheap check that does not need a runner: after `pnpm build`, every `class=` token in `apps/web/src`
+  should resolve to a rule in the built CSS — a typo'd utility is silently nothing, and that scan is what caught
+  `input-bordered`, which daisyUI 5 dropped. Pure modules under `lib/` now belong in `apps/web/test/` rather than in
+  a scratch file.
 - `zod` reaches the web only through `packages/shared`, and only as types: import from shared with `import type`, and
   keep Zod out of the web bundle (`grep -ril zod apps/web/dist` after `pnpm build` must find nothing).
 - `src/api.ts` is the only place `fetch` is called; it sends the session token `session.tsx` binds into it
@@ -609,7 +609,15 @@ design are `docs/specs/design-phase.md`. In code:
 ## Testing
 
 Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`; bindings come from `wrangler.jsonc`.
-`apps/web` has typecheck and lint only.
+
+**`apps/web` has Vitest too, since 2026-09-21** (owner decision, `docs/specs/public-reading.md` §3, decisions
+16–17), reversing the typecheck-and-lint-only rule it had until then. A plain Node environment in its own
+`vitest.config.ts` — **no pool-workers**, because nothing there needs a binding and the Worker's own behaviour is
+proven under `wrangler dev`; **no jsdom and no component tests**, because daisyUI is CSS only and a jsdom test of a
+Preact component mostly asserts that the component is the component. What it covers is pure modules — the public
+route matcher, the list filters, the head-tag builder — the `wrangler.jsonc` drift test, and from step 8 of
+`public-reading-plan.md` the server render, which is also the check that catches browser globals reaching the
+server bundle. Components stay hand-verified under `pnpm dev`.
 
 - Workers AI, Vectorize, DownSub, Workflows, and YouTube's feed are not available locally. Fakes are selected by
   test-only env bindings — `AI_FAKE` (`{ embedThrows? }`; prompt markers `[[invalid-once]]`, `[[invalid]]`,

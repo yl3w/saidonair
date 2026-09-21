@@ -9,6 +9,7 @@
     "deploy:production": "CLOUDFLARE_ENV=production vite build && wrangler deploy",
     "dev": "CLOUDFLARE_ENV=dev vite",
     "lint": "biome check .",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json && tsc -p src/server/tsconfig.json"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
     "daisyui": "^5.7.38",
     "tailwindcss": "^4.3.3",
     "vite": "^8.2.2",
+    "vitest": "^4.1.11",
     "wrangler": "^4.136.1"
   }
 }
