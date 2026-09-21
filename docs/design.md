@@ -641,13 +641,47 @@ with the utilities that also cancelled its hover. The cursor was a symptom of ha
 
 ---
 
+## 9b. The signed-out shell
+
+Added 2026-09-21 with the public reading experience (`docs/specs/public-reading.md`). Four screens —
+`/`, `/sources`, `/sources/:id` and `/read/:episodeId` — render for a visitor with no session, at the same URLs a
+reader uses. This section is the frame they arrive into; the screens themselves are §3 and §5 as before, with the
+reader's controls absent.
+
+**One bar, fixed, inverted.** The wordmark, a line naming what an account is *for*, and **Sign in**. It never
+scrolls away, so a visitor four screens into a summary still has it, and inverting it marks the mode: a signed-out
+page should not read as a reader's page with pieces missing.
+
+It was built as **two** bars — a fixed invitation band above a wordmark row that scrolled away — and revised the
+same day, in a browser. Two rows put three different left edges on a wide window, and the second row's only content
+was a wordmark and a `Channels` link that the landing page, which lists every channel, had already made
+unnecessary. The revision costs the reader nothing and returns 56 px to the page.
+
+**A visitor is shown no control they cannot use.** No Follow, no Ask, no Add a channel, nothing disabled with a
+tooltip. This is principle 7 applied to a stranger: the page says what an account adds, in words, once, and the
+rest of the page is the thing itself. It also means the product never has to explain a dead button, and no intent
+has to survive a sign-in round trip.
+
+**The reading page keeps two bars, not three.** Beneath the shell, the reading column keeps its own bar — the way
+back, `Aa`, *Watch on YouTube* — minus `Done` and `Ask`, which need a session. A third row stacking the product's
+nav above the reading bar would put 150 px of chrome over a column whose standing rule (§3) is that it carries no
+chrome it can live without.
+
+**What a visitor does not get, and why it is absence rather than disablement:** `Done` (there is no receipt to
+write), `Ask` (there is no chat without a session), Related (the API filters related titles to the caller's
+eligible channels and an anonymous caller has none), and the bottom tab bar (it exists to put three reader
+destinations under a thumb, and a visitor has none). The type, size and theme controls **stay** — they live in this
+browser's storage and need nobody.
+
+---
+
 ## 10. Where things are
 
 | | |
 |---|---|
 | What the product does | `docs/PRD.md` — §4 behaviour, §5 schema, §7 screens and routes, §9 decisions |
 | How to work in the repo | `AGENTS.md` — hard rules, layout, toolchain, testing, code style |
-| Reasoning for a phase | `docs/specs/<name>.md` and its `-plan.md`; the current one is `design-phase` |
+| Reasoning for a phase | `docs/specs/<name>.md` and its `-plan.md`; the current one is `public-reading` |
 | The wireframes | `https://claude.ai/code/artifact/61ac5352-ede9-49ba-a5e2-792dbeb76557` |
 | Tokens and theme | `apps/web/src/styles.css` — the one stylesheet: Tailwind, the daisyUI theme, the tokens, the faces |
 | The two font files | `apps/web/public/fonts/` with their OFL licences and a README |

@@ -54,8 +54,20 @@ export class ApiError extends Error {
   }
 }
 
-/** Thrown before any request when no session is bound; the guard sends the reader to `/`. */
+/** Thrown before a request that needs a session when none is bound; the guard sends them to `/sign-in`. */
 export const NO_ACCOUNT = "NO_ACCOUNT";
+
+/**
+ * The five reads that answer a caller with no session at all (`docs/specs/route-visibility.md` §1,
+ * public since 2026-09-21): the channel list, a channel, a channel's episodes, an episode through
+ * its channel, and an episode by its own id. They are richer with a session and correct without
+ * one, so they are the only calls allowed past the guard below.
+ *
+ * Marked call by call rather than inferred from the path: the set is closed, it is the same five
+ * the API's own `openapi.test.ts` pins, and a sixth joining it should be a deliberate edit here.
+ */
+const PUBLIC = { anonymous: true } as const;
+type SendOptions = { anonymous?: boolean };
 
 /**
  * The session every request acts for. Only `SessionProvider` sets it, in the same effect that moves
@@ -77,8 +89,9 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  options?: SendOptions,
 ): Promise<T> {
-  return (await send(method, path, body)).json as T;
+  return (await send(method, path, body, options)).json as T;
 }
 
 /** One call, with the status kept: `addChannel` needs to know whether it created or followed. */
@@ -86,12 +99,18 @@ async function send(
   method: string,
   path: string,
   body?: unknown,
+  options?: SendOptions,
 ): Promise<{ status: number; json: unknown }> {
-  if (session === null) throw new ApiError(0, "not signed in", NO_ACCOUNT);
+  // Refusing every call without a session was right while every route needed one. Since the public
+  // reads landed it is wrong for exactly five of them, and a visitor browsing the catalog met
+  // "not signed in" from their own browser while the API was answering 200 to `curl`.
+  if (session === null && options?.anonymous !== true) {
+    throw new ApiError(0, "not signed in", NO_ACCOUNT);
+  }
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${session.token}`,
-  };
+  // No session, no header — which is what makes the API answer the anonymous shape.
+  const headers: Record<string, string> =
+    session === null ? {} : { Authorization: `Bearer ${session.token}` };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
@@ -137,6 +156,8 @@ export const api = {
     request<ChannelsResponse>(
       "GET",
       options.scope === "all" ? "/channels?scope=all" : "/channels",
+      undefined,
+      PUBLIC,
     ),
   /**
    * Step two of adding a channel: what YouTube's feeds say about an id, and what the catalog already
@@ -155,7 +176,12 @@ export const api = {
     return { ...(json as ChannelResponse), created: status === 201 };
   },
   getChannel: (channelId: string) =>
-    request<ChannelResponse>("GET", `/channels/${enc(channelId)}`),
+    request<ChannelResponse>(
+      "GET",
+      `/channels/${enc(channelId)}`,
+      undefined,
+      PUBLIC,
+    ),
   requestChannel: (channelId: string) =>
     request<ChannelResponse>("POST", `/channels/${enc(channelId)}/request`),
   approveChannel: (channelId: string, body: ApproveChannelBody) =>
@@ -178,18 +204,27 @@ export const api = {
     request<EpisodesResponse>(
       "GET",
       `/channels/${enc(channelId)}/episodes${limit === undefined ? "" : `?limit=${limit}`}`,
+      undefined,
+      PUBLIC,
     ),
   /**
    * One episode by its own id: what the reading view has on a cold load, since `/read/:episodeId`
    * names the episode and not its channel.
    */
   getEpisodeById: (episodeId: string) =>
-    request<EpisodeResponse>("GET", `/episodes/${enc(episodeId)}`),
+    request<EpisodeResponse>(
+      "GET",
+      `/episodes/${enc(episodeId)}`,
+      undefined,
+      PUBLIC,
+    ),
   /** The same episode through its channel, where a mismatch is a 404. */
   getEpisode: (channelId: string, episodeId: string) =>
     request<EpisodeResponse>(
       "GET",
       `/channels/${enc(channelId)}/episodes/${enc(episodeId)}`,
+      undefined,
+      PUBLIC,
     ),
   /** Done. The one write that marks a summary read (docs/PRD.md §4.4); nothing else records one. */
   markRead: (channelId: string, episodeId: string) =>
