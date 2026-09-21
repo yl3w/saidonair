@@ -111,7 +111,10 @@ export const digestRoutes = new Hono<AppEnv>().get(
     return c.json<DigestResponse>({
       compact: false,
       episodes: page.items.map((record) =>
-        toEpisode(record, { read: read.has(record.episodeId) }),
+        toEpisode(record, {
+          read: read.has(record.episodeId),
+          processing: true,
+        }),
       ),
       nextCursor: page.nextCursor,
     });

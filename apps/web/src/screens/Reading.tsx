@@ -210,7 +210,7 @@ function ReadingScreen() {
               abandoned Ask leaves no empty chat behind. */}
           {episode !== null &&
             summary !== null &&
-            episode.processing.vectorizedAt !== null &&
+            (episode.processing?.vectorizedAt ?? null) !== null &&
             episode.read !== undefined && (
               <a
                 class="flex min-h-11 items-center gap-1.5 px-2 text-ui link link-hover link-primary"
@@ -275,7 +275,7 @@ function ReadingScreen() {
               class="mt-3"
               items={[
                 longDate(episode.publishedAt),
-                runtimeCopy(episode.processing.durationSec),
+                runtimeCopy(episode.processing?.durationSec ?? null),
               ].filter((item): item is string => item !== null)}
             />
 

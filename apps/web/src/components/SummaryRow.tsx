@@ -71,7 +71,7 @@ export function SummaryRow({
       : (summary?.rawText ?? null);
   const takeaways =
     summary?.format === "structured" ? summary.takeaways.length : 0;
-  const runtime = runtimeCopy(episode.processing.durationSec);
+  const runtime = runtimeCopy(episode.processing?.durationSec ?? null);
 
   // No publication date here: it opens the row, and a row never states its date twice.
   const meta: string[] = [];

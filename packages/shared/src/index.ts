@@ -317,7 +317,11 @@ export const EpisodeCountsSchema = z
   });
 export type EpisodeCounts = z.infer<typeof EpisodeCountsSchema>;
 
-/** The management facts of a channel, present for every caller; the web shows them on the Owner screens. */
+/**
+ * The management facts of a channel. Present whenever a session was presented — any identity, not
+ * only the owner — and omitted entirely for an anonymous caller on a public route
+ * (docs/specs/route-visibility.md §4.3). The web shows them on the Owner screens.
+ */
 export const ChannelManagementSchema = z
   .object({
     initialImportCount: z
@@ -346,13 +350,16 @@ export const ChannelManagementSchema = z
   .meta({
     id: "ChannelManagement",
     description:
-      "The management facts of a channel, present for every caller: the API enforces no authorization, and the web shows them on the Owner screens.",
+      "The management facts of a channel: who reviewed it, the note, the pause, the last feed check, the latest run. Operational rather than reader-facing, so it is present for any caller with a session and **absent without one** on the public reads. The web shows it on the Owner screens.",
   });
 export type ChannelManagement = z.infer<typeof ChannelManagementSchema>;
 
 /**
- * A catalog channel as every caller sees it, `management` included. Only `following` depends on
- * who is asking.
+ * A catalog channel. Two shapes of one schema, not two schemas (docs/specs/route-visibility.md
+ * §4.3): a caller with a session receives `management` and their own `following`; an anonymous
+ * caller on a public read receives neither — `management` is absent and `following` is `false`,
+ * because there is nobody for it to be true of. `followerCount` is present either way: a fact
+ * about the channel, not about any reader.
  */
 export const ChannelSchema = z
   .object({
@@ -381,12 +388,14 @@ export const ChannelSchema = z
     followerCount: Count.describe(
       "Active followers, from the Registry's follower record.",
     ),
-    management: ChannelManagementSchema,
+    management: ChannelManagementSchema.describe(
+      "Present with a session, absent without one on the public reads.",
+    ).optional(),
   })
   .meta({
     id: "Channel",
     description:
-      "A catalog channel as every caller sees it, `management` included. Only `following` depends on who is asking.",
+      "A catalog channel. `management` is present for any caller with a session and absent for an anonymous one on the public reads; `following` is that caller's own relationship, and `false` when there is no caller.",
   });
 export type Channel = z.infer<typeof ChannelSchema>;
 
@@ -568,7 +577,12 @@ export type EpisodeIngestionAttempt = z.infer<
   typeof EpisodeIngestionAttemptSchema
 >;
 
-/** Processing detail of an episode, present for every caller; the web shows it on the Owner screens. */
+/**
+ * Processing detail of an episode. It carries attempt outcomes, failure detail and provider codes,
+ * which are operational rather than reader-facing, so it follows the same rule as a channel's
+ * `management`: present with a session, omitted without one (docs/specs/route-visibility.md §4.3).
+ * The reader's half of it is the episode's own `waitReason`, which is present either way.
+ */
 export const EpisodeProcessingSchema = z
   .object({
     discoveredByRunId: Id.describe(
@@ -609,15 +623,17 @@ export const EpisodeProcessingSchema = z
   .meta({
     id: "EpisodeProcessing",
     description:
-      "Processing detail of an episode, present for every caller; the web shows it on the Owner screens.",
+      "Processing detail of an episode: attempt outcomes, failure detail, provider codes. Operational rather than reader-facing, so it is present for any caller with a session and **absent without one** on the public reads. A reader's `waitReason` is on the episode itself and never omitted.",
   });
 export type EpisodeProcessing = z.infer<typeof EpisodeProcessingSchema>;
 
 /**
- * An episode of a catalog channel, the same for every caller: summary, related titles (filtered to
- * the caller's eligible channels), and `processing`. `read` accompanies a summary returned to an
- * eligible caller and describes the row, not the request: reading never records a receipt
- * (docs/PRD.md §4.4), so only `POST …/read` changes it.
+ * An episode of a catalog channel: the summary, its related titles, and — for a caller with a
+ * session — `processing`. An anonymous caller on a public read receives the summary, `status`,
+ * `skipReason` and `waitReason` as everyone does, with `processing` absent, `related` empty (the
+ * titles are filtered to the caller's eligible channels and an anonymous caller has none) and
+ * `read` absent (docs/specs/route-visibility.md §4.3). `read` describes the row, not the request:
+ * reading never records a receipt (docs/PRD.md §4.4), so only `POST …/read` changes it.
  */
 export const EpisodeSchema = z
   .object({
@@ -646,12 +662,14 @@ export const EpisodeSchema = z
         "For an eligible caller (active follower of an approved channel) with a returned summary: whether they have a read receipt for it. Absent for everyone else. No read route writes one; `POST /channels/{id}/episodes/{episodeId}/read` does.",
       )
       .optional(),
-    processing: EpisodeProcessingSchema,
+    processing: EpisodeProcessingSchema.describe(
+      "Present with a session, absent without one on the public reads.",
+    ).optional(),
   })
   .meta({
     id: "Episode",
     description:
-      "An episode of a catalog channel, the same for every caller: summary, related titles filtered to the caller's eligible channels, and `processing`. `read` accompanies a summary returned to an eligible caller.",
+      "An episode of a catalog channel: summary, related titles filtered to the caller's eligible channels, and `processing` for any caller with a session. An anonymous caller on a public read gets the summary and `waitReason` with `processing` absent and `related` empty; `read` accompanies a summary returned to an eligible caller.",
   });
 export type Episode = z.infer<typeof EpisodeSchema>;
 

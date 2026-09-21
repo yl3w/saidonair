@@ -122,7 +122,7 @@ export const chatRoutes = new Hono<AppEnv>()
           registry: c.var.registry,
           ai: ai(c.env),
           vectors: vectorStore(c.env),
-          eligible: await eligibleChannelIds(c),
+          eligible: await eligibleChannelIds(c.var.registry, c.var.identity),
         },
         { chatId: chat.chatId, message, aboutEpisodeId },
       );

@@ -97,6 +97,7 @@ export const channelRoutes = new Hono<AppEnv>()
           toChannel(row, {
             following: following.has(row.channel.channelId),
             followerCount: followers[row.channel.channelId] ?? 0,
+            management: true,
           }),
         ),
       });
@@ -416,7 +417,7 @@ export const channelRoutes = new Hono<AppEnv>()
     async (c) => {
       const channel = await requireChannel(c, c.req.valid("param").id);
       const { limit } = c.req.valid("query");
-      const eligible = await eligibleChannelIds(c);
+      const eligible = await eligibleChannelIds(c.var.registry, c.var.identity);
       const records = await c.var.registry.listEpisodes(channel.channelId, {
         limit,
         relatedScope: [...eligible],
@@ -439,6 +440,7 @@ export const channelRoutes = new Hono<AppEnv>()
               eligible.has(channel.channelId) && record.summary !== null
                 ? read.has(record.episodeId)
                 : undefined,
+            processing: true,
           }),
         ),
       });
@@ -461,7 +463,7 @@ export const channelRoutes = new Hono<AppEnv>()
     async (c) => {
       const { id, episodeId } = c.req.valid("param");
       await requireChannel(c, id);
-      const eligible = await eligibleChannelIds(c);
+      const eligible = await eligibleChannelIds(c.var.registry, c.var.identity);
       const record = await c.var.registry.getEpisode(id, episodeId, [
         ...eligible,
       ]);
@@ -470,7 +472,9 @@ export const channelRoutes = new Hono<AppEnv>()
       const read = reports
         ? (await readSubset(c, [episodeId])).has(episodeId)
         : undefined;
-      return c.json<EpisodeResponse>({ episode: toEpisode(record, { read }) });
+      return c.json<EpisodeResponse>({
+        episode: toEpisode(record, { read, processing: true }),
+      });
     },
   )
 
@@ -495,7 +499,7 @@ export const channelRoutes = new Hono<AppEnv>()
       const record = await requireReadableSummary(c, id, episodeId);
       await c.var.user.markRead([episodeId]);
       return c.json<EpisodeResponse>({
-        episode: toEpisode(record, { read: true }),
+        episode: toEpisode(record, { read: true, processing: true }),
       });
     },
   )
@@ -521,7 +525,7 @@ export const channelRoutes = new Hono<AppEnv>()
       const record = await requireReadableSummary(c, id, episodeId);
       await c.var.user.clearRead([episodeId]);
       return c.json<EpisodeResponse>({
-        episode: toEpisode(record, { read: false }),
+        episode: toEpisode(record, { read: false, processing: true }),
       });
     },
   )
@@ -577,7 +581,7 @@ export const channelRoutes = new Hono<AppEnv>()
           c.var.identity.userId,
         );
         return c.json<EpisodeRetryResponse>({
-          episode: toEpisode(blocked.episode),
+          episode: toEpisode(blocked.episode, { processing: true }),
           attempt: blocked.attempt,
         });
       }
@@ -595,7 +599,7 @@ export const channelRoutes = new Hono<AppEnv>()
         throw new Error("the starter answered nothing for one episode");
       const after = await registry.getEpisode(id, episodeId);
       return c.json<EpisodeRetryResponse>({
-        episode: toEpisode(after ?? reopened),
+        episode: toEpisode(after ?? reopened, { processing: true }),
         attempt: result.attempt,
       });
     },
@@ -626,7 +630,9 @@ export const channelRoutes = new Hono<AppEnv>()
         id,
         episodeId,
       );
-      return c.json<EpisodeResponse>({ episode: toEpisode(record) });
+      return c.json<EpisodeResponse>({
+        episode: toEpisode(record, { processing: true }),
+      });
     },
   )
 
@@ -739,7 +745,7 @@ async function requireReadableSummary(
   channelId: string,
   episodeId: string,
 ) {
-  const eligible = await eligibleChannelIds(c);
+  const eligible = await eligibleChannelIds(c.var.registry, c.var.identity);
   if (!eligible.has(channelId)) {
     throw new DomainError("NOT_FOUND", "episode not found");
   }
@@ -770,6 +776,7 @@ async function fullChannel(c: Ctx, channelId: string): Promise<Channel> {
   return toChannel(record, {
     following: await isFollowing(c, channelId),
     followerCount: followers[channelId] ?? 0,
+    management: true,
   });
 }
 

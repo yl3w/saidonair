@@ -105,7 +105,9 @@ function CurateChannelScreen() {
    */
   const anyRunning =
     episodes.status === "ready" &&
-    episodes.data.episodes.some((e) => isRunning(e.processing.latestAttempt));
+    episodes.data.episodes.some((e) =>
+      isRunning(e.processing?.latestAttempt ?? null),
+    );
   useEffect(() => {
     if (!anyRunning) return;
     const timer = setInterval(reloadEpisodes, REFRESH_MS);
@@ -387,6 +389,9 @@ function EpisodesTable({
 /** What the row does not show until it is asked: the window, the attempts, and the vector counts. */
 function Diagnostics({ episode: e }: { episode: Episode }) {
   const p = e.processing;
+  // Absent only for a caller with no session, which no screen behind the guard is
+  // (docs/specs/route-visibility.md §4.3). Nothing to diagnose without it.
+  if (p === undefined) return null;
   return (
     <dl class="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1">
       <Fact label="Window">
@@ -458,8 +463,8 @@ function EpisodeActions({
   busy: boolean;
   act: ChannelAct;
 }) {
-  const running = isRunning(e.processing.latestAttempt);
-  const takeover = attemptHoldCopy(e.processing.latestAttempt);
+  const running = isRunning(e.processing?.latestAttempt ?? null);
+  const takeover = attemptHoldCopy(e.processing?.latestAttempt ?? null);
   // Blue says "you can act on this" (docs/design.md §2.1), and on an episode that is already
   // summarised there is nothing to act on: Retry there replaces a working summary, costs a
   // transcript credit, and may return something no better. It stays on every row as §7 requires —
@@ -501,7 +506,7 @@ function EpisodeActions({
 function statusCopy(e: Episode): string {
   // What is happening now outranks what the episode last came to rest as: an episode being
   // re-processed is not "Summarised", whatever its stored status still says.
-  const latest = e.processing.latestAttempt;
+  const latest = e.processing?.latestAttempt ?? null;
   if (latest?.status === "running") {
     return `${inProgressCopy(e.status)} · ${runningForCopy(latest.startedAt)}`;
   }
@@ -511,7 +516,7 @@ function statusCopy(e: Episode): string {
   if (e.status === "skipped" && e.skipReason)
     return `${base} · ${SKIP_REASON_COPY[e.skipReason]}`;
   const p = e.processing;
-  if (e.status === "failed" && p.failureCode) {
+  if (e.status === "failed" && p?.failureCode) {
     return p.failureDetail
       ? `${base} · ${p.failureCode} · ${failureDetailCopy(p.failureDetail)}`
       : `${base} · ${p.failureCode}`;
@@ -524,7 +529,7 @@ function statusCopy(e: Episode): string {
 
 /** The latest attempt's phrase: how long it has run, its outcome, or its status when it has no code. */
 function latestAttemptCopy(e: Episode): string {
-  const latest = e.processing.latestAttempt;
+  const latest = e.processing?.latestAttempt;
   if (!latest) return "";
   if (latest.status === "running") return runningForCopy(latest.startedAt);
   const phrase = latest.outcomeCode

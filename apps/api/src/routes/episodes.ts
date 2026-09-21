@@ -6,6 +6,7 @@ import {
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import type { AppEnv } from "../env";
+import { eligibleChannelIds } from "../lib/eligibility";
 import { toEpisode } from "../lib/episode-view";
 import { DomainError } from "../lib/errors";
 import { errorResponses, jsonResponse } from "../lib/openapi";
@@ -32,11 +33,7 @@ export const episodeRoutes = new Hono<AppEnv>().get(
   validate("param", EpisodeIdParamsSchema),
   async (c) => {
     const { episodeId } = c.req.valid("param");
-    const eligible = new Set(
-      (await c.var.registry.listEligibleChannels(c.var.identity.userId)).map(
-        (channel) => channel.channelId,
-      ),
-    );
+    const eligible = await eligibleChannelIds(c.var.registry, c.var.identity);
     const record = await c.var.registry.getEpisodeById(episodeId, [
       ...eligible,
     ]);
@@ -45,6 +42,8 @@ export const episodeRoutes = new Hono<AppEnv>().get(
       eligible.has(record.channelId) && record.summary !== null
         ? (await c.var.user.readEpisodeIds([episodeId])).length > 0
         : undefined;
-    return c.json<EpisodeResponse>({ episode: toEpisode(record, { read }) });
+    return c.json<EpisodeResponse>({
+      episode: toEpisode(record, { read, processing: true }),
+    });
   },
 );

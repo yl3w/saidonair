@@ -212,6 +212,7 @@ function toFollow(
     channel: toChannel(record, {
       following: follow.unfollowedAt === null,
       followerCount: view.followerCount,
+      management: true,
     }),
     unreadCount: view.unreadCount,
   };

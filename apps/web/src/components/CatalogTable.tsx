@@ -163,9 +163,9 @@ export function CatalogTable({
                 </td>
                 <td class="py-2 pr-4 text-ink-2">{c.followerCount}</td>
                 <td class="py-2 pr-4 text-ink-2">
-                  {c.management.latestRun
+                  {c.management?.latestRun
                     ? `${c.management.latestRun.kind} · ${runResultCopy(c.management.latestRun)}`
-                    : c.management.neverStarted
+                    : c.management?.neverStarted
                       ? NEVER_STARTED_COPY
                       : "—"}
                 </td>

@@ -14,17 +14,22 @@ export type EpisodeView = {
    * (docs/PRD.md §4.4); omitted for everyone else.
    */
   read?: boolean;
+  /**
+   * Whether to attach the processing block. True whenever a session was presented — any identity,
+   * not only the owner — and false for an anonymous caller on a public read
+   * (docs/specs/route-visibility.md §4.3). Required rather than defaulted, so a new route states
+   * the decision instead of inheriting "include it" by silence.
+   */
+  processing: boolean;
 };
 
 /**
  * The one projection from the Registry's episode onto the shared `Episode`. Every caller receives
- * the summary, the related titles, and the `processing` block: reading is open to every caller
- * (docs/PRD.md §7, §9). The related titles arrive already filtered to the caller's eligible channels.
+ * the summary and `waitReason`, the reader-safe projection of an attempt; `processing` and `read`
+ * depend on who is asking. The related titles arrive already filtered to the caller's eligible
+ * channels, so an anonymous caller's arrive empty.
  */
-export function toEpisode(
-  record: EpisodeRecord,
-  view: EpisodeView = {},
-): Episode {
+export function toEpisode(record: EpisodeRecord, view: EpisodeView): Episode {
   const episode: Episode = {
     episodeId: record.episodeId,
     channelId: record.channelId,
@@ -37,8 +42,8 @@ export function toEpisode(
     summaryAvailableAt: record.summaryAvailableAt,
     summary: record.summary,
     related: record.related,
-    processing: record.processing,
   };
+  if (view.processing) episode.processing = record.processing;
   if (view.read !== undefined) episode.read = view.read;
   return episode;
 }

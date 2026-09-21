@@ -9,24 +9,30 @@ export function isApproved(channel: CatalogChannel): boolean {
   return channel.status === "approved";
 }
 
-/** What depends on who is asking: the caller's own relationship to the channel, nothing else. */
+/** What depends on who is asking: the caller's own relationship to the channel, and whether there is a caller. */
 export type ChannelView = {
   following: boolean;
   followerCount: number;
+  /**
+   * Whether to attach the management facts. True whenever a session was presented — any identity,
+   * not only the owner — and false for an anonymous caller on a public read
+   * (docs/specs/route-visibility.md §4.3). Required rather than defaulted, so a new route states
+   * the decision instead of inheriting "include it" by silence.
+   */
+  management: boolean;
 };
 
 /**
  * The one projection from the Registry's channel, with its management facts, onto the shared
- * `Channel`. Every caller receives the whole of it, `management` included: the API enforces no
- * authorization (docs/PRD.md §7, §9), and the web decides what to show. Listing fields here, rather
- * than spreading, means a new Registry column never reaches the API by accident.
+ * `Channel`. Listing fields here, rather than spreading, means a new Registry column never reaches
+ * the API by accident.
  */
 export function toChannel(
   record: ChannelManagementRecord,
   view: ChannelView,
 ): Channel {
   const { channel } = record;
-  return {
+  const result: Channel = {
     channelId: channel.channelId,
     title: channel.title,
     canonicalUrl: channel.canonicalUrl,
@@ -39,8 +45,9 @@ export function toChannel(
     episodes: record.episodes,
     following: view.following,
     followerCount: view.followerCount,
-    management: toManagement(record),
   };
+  if (view.management) result.management = toManagement(record);
+  return result;
 }
 
 export function toManagement(

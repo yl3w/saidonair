@@ -232,7 +232,8 @@ function EpisodeRow({
   busy: boolean;
   act: (work: () => Promise<unknown>) => Promise<void>;
 }) {
-  const latest = e.processing.latestAttempt;
+  const p = e.processing;
+  const latest = p?.latestAttempt ?? null;
   const running = isRunning(latest);
   const takeover = attemptHoldCopy(latest);
   return (
@@ -242,10 +243,10 @@ function EpisodeRow({
           {e.title}
         </a>
         <p class="text-meta text-ink-3">
-          {e.processing.failureCode ?? "unknown failure"}
-          {e.processing.failureDetail &&
-            ` · ${failureDetailCopy(e.processing.failureDetail)}`}
-          {` · ${attemptCountCopy(e.processing.attemptCount)} · failed ${relativeTime(e.processing.updatedAt)}`}
+          {p?.failureCode ?? "unknown failure"}
+          {p?.failureDetail && ` · ${failureDetailCopy(p.failureDetail)}`}
+          {p &&
+            ` · ${attemptCountCopy(p.attemptCount)} · failed ${relativeTime(p.updatedAt)}`}
           {running &&
             latest &&
             ` · retrying, ${runningForCopy(latest.startedAt)}`}
