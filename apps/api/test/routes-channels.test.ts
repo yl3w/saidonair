@@ -86,33 +86,35 @@ async function seedCatalog() {
 }
 
 describe("channel and catalog routes", () => {
-  it("serves every read to any identity: only the catalog operations are the owner's", async () => {
+  it("serves the catalog reads to any identity, and the two operational ones to the owner", async () => {
     await seedCatalog();
-    // Reading is open by design (docs/PRD.md §7): the whole catalog, every channel's management
-    // facts, its runs and its followers. What A8 closed is the seven operations that change them,
-    // and authorization.test.ts owns those — including that a refusal writes nothing. Skip and
-    // retry used to run here from a plain user, which is exactly what stopped being allowed.
+    // Most reading is open by design (docs/PRD.md §7): the whole catalog list, every channel's
+    // management facts and its runs. What A8 closed is the seven operations that change them, and
+    // what 2026-09-21 closed is two reads that are operational rather than reader-facing
+    // (docs/specs/route-visibility.md §3). authorization.test.ts owns the refusals — including that
+    // one writes nothing. Skip and retry used to run here from a plain user, which is exactly what
+    // stopped being allowed.
     const openToAll: [string, string, unknown?][] = [
-      ["GET", "/catalog"],
       ["GET", "/channels?scope=all"],
       ["GET", `/channels/${CHANNEL_A}/runs`],
-      ["GET", `/channels/${CHANNEL_A}/followers`],
     ];
     for (const [method, path, body] of openToAll) {
       const { status, json } = await call(ALICE, method, path, body);
       expect(status, `${method} ${path}`).toBe(200);
       expect(json).not.toHaveProperty("code");
     }
-    // The two that moved, now refused for the same caller.
-    for (const path of [
-      `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/skip`,
-      `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/retry`,
-    ]) {
-      expect((await call(ALICE, "POST", path)).status, path).toBe(403);
+    // The four that are the owner's here: two writes since A8, two reads since 2026-09-21.
+    for (const [method, path] of [
+      ["POST", `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/skip`],
+      ["POST", `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/retry`],
+      ["GET", "/catalog"],
+      ["GET", `/channels/${CHANNEL_A}/followers`],
+    ] as const) {
+      expect((await call(ALICE, method, path)).status, path).toBe(403);
     }
 
     const followers = await call(
-      ALICE,
+      OWNER,
       "GET",
       `/channels/${CHANNEL_A}/followers`,
     );
@@ -120,7 +122,7 @@ describe("channel and catalog routes", () => {
     expectShape(FollowersResponseSchema, followers.json);
     expect(followers.json.followers).toEqual([]);
 
-    const catalog = await call(ALICE, "GET", "/catalog");
+    const catalog = await call(OWNER, "GET", "/catalog");
     expectShape(CatalogResponseSchema, catalog.json);
     expect(catalog.status).toBe(200);
     // EPISODE_C stays `failed`: the skip and retry that used to move it through this test are the

@@ -136,16 +136,20 @@ describe("GET /openapi.json", () => {
     ).toContain("502");
   });
 
-  it("documents 403 on the seven catalog operations and nowhere else", async () => {
+  it("documents 403 on the nine owner operations and nowhere else", async () => {
     const doc = await fetchDocument();
     // The owner surface, listed rather than counted: a route that starts or stops requiring the
-    // owner is a deliberate edit here, exactly as OPERATIONS makes a new route one.
+    // owner is a deliberate edit here, exactly as OPERATIONS makes a new route one. The seven that
+    // change the catalog joined in A8; the two reads on 2026-09-21 (docs/specs/route-visibility.md
+    // §4.4) — an operations dashboard, and one reader's view of another reader's address.
     const OWNER_ONLY = new Set([
+      "get /catalog",
       "post /channels/{id}/approve",
       "post /channels/{id}/decline",
       "post /channels/{id}/pause",
       "post /channels/{id}/resume",
       "post /channels/{id}/runs",
+      "get /channels/{id}/followers",
       "post /channels/{id}/episodes/{episodeId}/retry",
       "post /channels/{id}/episodes/{episodeId}/skip",
     ]);

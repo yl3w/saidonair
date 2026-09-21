@@ -60,10 +60,11 @@ type Ctx = Context<AppEnv>;
 
 /**
  * Channels are the catalog's members. Every caller receives the same representation, `management`
- * included, and reading is open to every identity. The seven operations that change the catalog are
- * the owner's, refused with 403 for anybody else since A8
- * (docs/PRD.md §2, §9); the web offers review, pause, retry, and skip to the owner role. Sub-resources:
- * episodes, discovery runs, followers.
+ * included. The seven operations that change the catalog are the owner's, refused with 403 for
+ * anybody else since A8 (docs/PRD.md §2, §9), and so is the follower list since 2026-09-21: it
+ * hands one reader another reader's address (docs/specs/route-visibility.md §3). The rest of
+ * reading is open to every identity; the web offers review, pause, retry, and skip to the owner
+ * role. Sub-resources: episodes, discovery runs, followers.
  */
 export const channelRoutes = new Hono<AppEnv>()
   .get(
@@ -695,12 +696,13 @@ export const channelRoutes = new Hono<AppEnv>()
       tags: ["channels"],
       summary: "List a channel's active followers",
       description:
-        "Emails and follow times, oldest first. The web shows emails only in the owner's queue.",
+        "Emails and follow times, oldest first. The owner's: a list of who reads what is not something a reader would expect a stranger to browse, and PRD §8's carve-out for it was withdrawn on 2026-09-21. The owner still sees addresses; the web shows them in the owner's queue.",
       responses: {
         200: jsonResponse(FollowersResponseSchema, "Active followers."),
-        ...errorResponses({ notFound: true }),
+        ...errorResponses({ owner: true, notFound: true }),
       },
     }),
+    requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) =>
       c.json<FollowersResponse>({
