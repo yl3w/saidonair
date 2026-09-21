@@ -80,7 +80,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 ├── docs/specs/               # design reasoning and plans behind the PRD, each with its -plan.md: design-phase,
 │                             # home-read-experience,
 │                             # api-reference, channel-simplification, follows-single-owner, summary-json-mode,
-│                             # chat-origin-scope,
+│                             # chat-origin-scope, auth-phase, route-visibility,
 │                             # summary-quality, summary-coverage, and M3 as the decision record m3-ingestion (its
 │                             # -plan.md is the roadmap) plus seven child chunks m3-1-transcripts-chunking, m3-2-attempt-ledger,
 │                             # m3-3-ai-vectorize, m3-4-discovery, m3-5-episode-workflow, m3-6-recovery, m3-7-owner-ux
@@ -98,10 +98,13 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   ├── src/
 │   │   │   ├── index.ts              # Worker entry: fetch + scheduled handlers, Hono app
 │   │   │   ├── env.ts / bindings.d.ts # Hono AppEnv + hand-maintained Cloudflare.Env (no generated types)
-│   │   │   ├── middleware/user.ts    # bearer session → registry + per-user DO stub on context
+│   │   │   ├── middleware/user.ts    # bearer session → registry + per-user DO stub on context; requireIdentity
+│   │   │   │                         # and optionalIdentity (the five public reads) over one resolution
 │   │   │   ├── middleware/errors.ts  # typed DomainError (and Hono's malformed-JSON 400) → HTTP status
 │   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, chat, ...);
-│   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page
+│   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page.
+│   │   │   │                         # channels.ts exports three routers — registration order in index.ts is what
+│   │   │   │                         # makes four of its reads public (Identity plumbing)
 │   │   │   ├── do/registry.ts        # Global Registry Durable Object (RPC facade)
 │   │   │   ├── do/registry/          # Registry store modules: users, channels, followers (the one record of follows, and
 │   │   │   │                         # the one implementation of eligibility), episodes, runs (feed history and recordDiscovery),
@@ -338,7 +341,17 @@ The identity model — a verified session, a generated `user_id`, the owner role
 
 - `middleware/user.ts` resolves the bearer token to a `better-auth` session (`lib/auth.ts`), resolves that to a
   Registry identity, and attaches it as `c.var.identity` — `{ userId, email, role }` — with the per-user DO stub
-  as `c.var.user`. No session is `401 UNAUTHENTICATED`, and reaches neither Durable Object.
+  as `c.var.user`. Two middlewares over that one resolution:
+  - **`requireIdentity`** — everything but the five public reads. No session is `401 UNAUTHENTICATED`, and reaches
+    neither Durable Object.
+  - **`optionalIdentity`** — the five public reads (2026-09-21). With a token it does exactly what `requireIdentity`
+    does; with none, or one the API does not accept, **it continues anyway** with `registry` alone and
+    `c.var.identity` undefined. It never answers 401: a rejected *or malformed* token on a public route is anonymous
+    rather than refused, because a reader whose session quietly expired should meet a public page. Those routes are
+    typed `PublicEnv` (`env.ts`) rather than `AppEnv`, so the compiler makes each one say what it does without a
+    caller, and a guarded route cannot become anonymous by accident.
+  - The resolution deliberately has **no try/catch**: a caller's garbage already resolves to null, so a throw is the
+    auth store failing, and that is a 500 rather than a quiet "not signed in" on a route that would serve a body.
 - **The User DO is named by `user_id`, never by an address** (`getUserDO(env, identity.userId)`), so
   `apps/api/src/do/user.ts` imports nothing from `lib/email.ts` — that object does not know what an email is.
 - `ensureIdentity` links a session to an existing row **by `auth_user_id`, else by email, else inserts**. The
@@ -349,16 +362,27 @@ The identity model — a verified session, a generated `user_id`, the owner role
   anyone who knew an address could read that person's chats and receipts.
 - `OWNER_EMAIL` comes from `apps/api/.dev.vars` locally (copy `.dev.vars.example`) and `wrangler secret put` per
   environment when deployed (Environments); the Registry seeds the role from it on start. The email is never committed.
-- **The seven catalog operations are the owner's** (`middleware/owner.ts`, since 2026-09-20): approve, decline,
-  pause, resume, Start, episode retry, episode skip answer `403 FORBIDDEN` for anybody else. ~~The API enforces no
+- **Nine operations are the owner's** (`middleware/owner.ts`): the seven catalog operations since 2026-09-20 —
+  approve, decline, pause, resume, Start, episode retry, episode skip — and since 2026-09-21 two reads, `GET
+  /catalog` and `GET /channels/:id/followers`. All answer `403 FORBIDDEN` for anybody else. ~~The API enforces no
   authorization and there is no 403.~~ **Reversed** (PRD §2, §9): authentication alone left a stranger with a
-  valid session able to approve channels. Reading stays open to every caller — the whole catalog, management
-  facts and follower lists — which is §7's design, not an oversight. `GET /me` still returns the role, and the
+  valid session able to approve channels. ~~Reading stays open to every caller — the whole catalog, management
+  facts and follower lists.~~ Also reversed, in both directions on the same day: those two reads closed, and five
+  opened to callers with no session at all. `GET /me` still returns the role, and the
   web still uses it to decide what to draw. Where
   the schema asks for a reviewer, skipper, or requester, record the acting `user_id` whoever it is; the address a
   screen prints is resolved from that id when the view is built, never stored beside the record.
+- **Registration order in `index.ts` is the mechanism, and one line of it is a trap.** The order is CORS, the three
+  always-public routes, `/auth/*` and `/session/*`, then `channelFeedRoutes`, then `channelPublicRoutes` and
+  `episodeRoutes`, then `app.use("*", requireIdentity)`, then everything else. `GET /channels/feed` is **not** public
+  — it calls YouTube per request — but it must be registered **ahead of** the public `GET /channels/:id` or that
+  route matches `feed` as an id and answers 404: `ChannelParamsSchema` accepts any non-empty string, so validation
+  does not save it. It carries `requireIdentity` itself, which is why it can sit above the guard. `visibility.test.ts`
+  asserts both this and that every non-public route still answers 401, enumerated from `app.routes` rather than from
+  a list anyone keeps. `routes/channels.ts` exports three routers for this reason; nothing else does.
 - `WEB_ORIGINS` lives in `wrangler.jsonc` `vars`, overridable in `.dev.vars`; `lib/cors.ts` runs before the identity
-  middleware so preflights never reach it.
+  middleware so preflights never reach it. The five public reads sit behind it too, so they are public to any client
+  but not to another origin's JavaScript — a deliberate non-decision, revisited when a landing page needs it.
 
 ## Data & schema conventions
 

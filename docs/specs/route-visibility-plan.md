@@ -2,8 +2,10 @@
 
 **Implements:** `docs/specs/route-visibility.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `0b5006c`.
-**Status:** written, awaiting approval. The spec's own open questions were settled in review on 2026-09-21
-(below); nothing in this plan waits on the owner.
+**Status:** **COMPLETE 2026-09-21.** Step 1 `dea8705`, steps 2–3 `0550f95`, step 4 `4ad7e4a`, step 5 this commit.
+417 tests. The API half was exercised under `wrangler dev` against the real local catalog, anonymous and signed in;
+the browser click-through is the owner's. The spec's own open questions were settled in review on 2026-09-21
+(below).
 **Shape:** five steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
 product running**. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 
@@ -199,7 +201,7 @@ confirm nothing moved.
 
 ---
 
-### Step 5 — The documents  (size: S)
+### Step 5 — The documents  (size: S) — done
 
 Spec §8, and the spec's own status.
 
@@ -247,6 +249,22 @@ Spec §8, and the spec's own status.
    absence looks like the thing it is.
 6. **The summaries become scrapeable, and nothing is rate limited.** Accepted in spec §5, named not closed. Worth
    restating when the landing page is specced, since that is what will make the URLs findable.
+
+## What this leaves open
+
+1. **The landing page** — the only item with a forcing function. Until a signed-out visitor can reach a screen, all
+   of step 4 is correct, tested and invisible. It inherits three decisions the API already allows but does not make:
+   which statuses it presents, whether a withdrawn channel is browsable there, and what a visitor sees where a reader
+   sees `management`/`processing` (step 2.5's fallbacks already answer the last one).
+2. **The `?status=` filter** and the ordering question that lapsed with it (plan decision 1).
+3. **Rate limiting and caching** for the public reads — named in spec §5, not closed. The exposure is read bandwidth
+   rather than spend: nothing paid is reachable anonymously, since `/channels/feed`, retry and chat all still need a
+   session and `/catalog`, the only route that touched the transcript provider, is now the owner's.
+4. **CORS** (plan decision 3), which the landing page will force.
+5. **`AttentionList.tsx:45,48`** (plan decision 2), and **`CurateChannel.tsx`'s Followers section** — the owner
+   decided on 2026-09-21 to always list the addresses whatever the channel's status, deferred until this plan was
+   finished. Both carry `TODO(owner):` markers.
+6. **The browser click-through** of the five screens that render `management` or `processing`.
 
 ## Plan decisions
 

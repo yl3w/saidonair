@@ -1,7 +1,9 @@
 # Feature spec — Route visibility: a public catalog, and two reads that are the owner's
 
 **Written:** 2026-09-21, against `main` at `5d9f234`.
-**Status:** written, awaiting owner approval. **Not part of the Auth phase**, which owns authentication (A7) and
+**Status:** **IMPLEMENTED 2026-09-21** in five steps (`dea8705`, `0550f95`, `4ad7e4a`, + this), 417 tests, exercised
+under `wrangler dev` against the real local catalog. The plan is `route-visibility-plan.md`; five questions it left
+open were settled in review and are recorded there and in PRD §9. **Not part of the Auth phase**, which owns authentication (A7) and
 the owner's write operations (A8); this is the read side, and it is a product decision about what the world can
 see rather than a continuation of either.
 **PRD:** §2 (who may do what), §7 (the screens and the target contract — **reversed here**), §8 (whose second
@@ -191,7 +193,11 @@ richer shape without asking. The screens stay behind the guard until §7's open 
 
 Rate limiting. Caching or CDN rules for the public reads. Any change to the web.
 
-**TODO(owner): does a public catalog imply a public web?** The API change is inert until a signed-out visitor can
+**TODO(owner): does a public catalog imply a public web? — answered in principle 2026-09-21, open in detail.** The
+owner's answer in review: **yes, a landing page is coming** — channel → episodes → summaries, readable signed out —
+as a future iteration, and these five routes are its API. What it still needs is the shape: which statuses it
+presents (the API answers all three), whether a withdrawn channel is browsable there, the shell, the nav and the
+sign-in affordance for a reader who is not signed in. The API change is inert until a signed-out visitor can
 reach a screen. Making `/sources` and `/read/:episodeId` public in the web would turn this into a visible
 feature — a shareable summary, a browsable catalog, a reason to sign up — and would need the shell, the nav and
 the sign-in affordance designed for a reader who is not signed in (`docs/design.md`). That is a Design-phase-sized

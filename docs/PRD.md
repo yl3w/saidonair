@@ -752,7 +752,9 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   through everything", pointing at History; with no follows, pointing at Sources — and only once the range is
   exhausted, because `unread` is filtered outside the Registry, so a page can come back empty and still carry a
   cursor.
-- **Reading `/read/:episodeId`:** one 680 px column, and the only screen a reader is glad to be in. Channel, title,
+- **Reading `/read/:episodeId`:** one 680 px column, and the only screen a reader is glad to be in. **Its data is
+  public and its screen is not**, on the same terms as Sources above: the three episode reads answer a signed-out
+  caller, and the summaries are what a landing page would be for. Channel, title,
   a meta line, the executive summary as a lede set off by a rule, the takeaways as the body with their timestamps
   hanging in the left margin as `youtu.be/<episodeId>?t=<startSec>` links, tags, then related titles filtered to
   eligible channels. The lede is the opening and carries no heading; **Takeaways, Topics and Related are each named
@@ -778,7 +780,9 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
   a time, and a full accessible name on every cell — "12 September 2026, 3 summaries, 3 unread", never "12". On a
   phone the calendar is a bottom sheet whose primary button names where it will go. Counts come from `compact`
   digest reads over the window.
-- **Sources `/sources` and `/sources/:id`:** where channels come from. Following, Catalog and Declined as sections
+- **Sources `/sources` and `/sources/:id`:** where channels come from. **Its data is public and its screens are
+  not** (2026-09-21, §9): `GET /channels` and `GET /channels/:id` answer a signed-out caller, but every screen still
+  sits behind the session guard, so this is latent capability until a landing page spends it. Following, Catalog and Declined as sections
   with counts, addressed `?show=`, with a search field, a sort order (most unread, recently active, name, longest
   followed) and paging at 25. A follow of a declined channel files under Declined. **Adding a channel is three
   steps**: paste an id; read its feeds through `GET /channels/feed`, which reports the title, how many of its
@@ -871,23 +875,48 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
 
 ### Target resource contract
 
-All endpoints except `/health`, `/openapi.json`, `/docs`, `/auth/*` and `/session/*` require a **verified
-session** — `Authorization: Bearer`, from `POST /session/exchange` — and return 401 `UNAUTHENTICATED` without
-one. The four exceptions are public because they are how a caller obtains a session, or touch no storage at all. Everything exchanges JSON, with one exception: `GET /docs` serves the Scalar test client as HTML
-(owner decision 2026-09-07). No endpoint checks the caller's role: the API enforces no authorization (decided
-2026-09-12, §9), and the web offers owner controls to the owner role only. Resolve chats only inside the caller's User DO. Shared request/response types live in
-`packages/shared` as Zod schemas with their types inferred beside them; the web fetch wrapper remains the sole web
-`fetch` caller and imports types only.
+All endpoints except `/health`, `/openapi.json`, `/docs`, `/auth/*`, `/session/*` and **five reads** require a
+**verified session** — `Authorization: Bearer`, from `POST /session/exchange` — and return 401 `UNAUTHENTICATED`
+without one. Those first exceptions are public because they are how a caller obtains a session, or touch no storage
+at all. The five reads — `GET /channels`, `GET /channels/:id`, both channel-scoped episode reads and
+`GET /episodes/:episodeId` — are public **by decision** (2026-09-21, §9): the catalog and the summaries can be read
+before the product is joined. On those five a rejected or malformed token is treated exactly like an absent one — the
+anonymous view, never a 401 — because a reader whose session quietly expired should meet a public page rather than a
+refusal. Everything exchanges JSON, with one exception: `GET /docs` serves the Scalar test client as HTML
+(owner decision 2026-09-07).
 
-The API is modelled on entities, not roles: there is no owner namespace, no role-named type, and no 403. Every
-operation is accepted from any identity; `?scope=all` widens a collection for any caller; every channel carries its
-`management` block and every episode its `processing` block, summaries and related items included, for every caller.
-A representation differs per caller only through the caller's own relationships: `following`, `unreadCount`,
-`wasUnread`, and the read receipts recorded for an eligible caller (§4.4). The API is promiscuous about input too: it
-accepts optional fields from any caller. Which fields and controls a given user is offered is the UI's decision (§9).
+**Nine operations are the owner's** and answer `403 FORBIDDEN` to anybody else: the seven that change the catalog
+(2026-09-20), and `GET /catalog` and `GET /channels/:id/followers` (2026-09-21) — an operations dashboard, and one
+reader's view of another reader's address. ~~No endpoint checks the caller's role: the API enforces no
+authorization (decided 2026-09-12).~~ Resolve chats only inside the caller's User DO. Shared request/response types
+live in `packages/shared` as Zod schemas with their types inferred beside them; the web fetch wrapper remains the
+sole web `fetch` caller and imports types only.
 
-Typed domain errors map to HTTP: `INVALID_INPUT` 400, `NOT_FOUND` 404, `INVALID_STATE` 409,
-`UPSTREAM_UNAVAILABLE` 502. Optional text fields (`title`, `explanation`) are omitted or non-blank: an empty string,
+The API is modelled on entities, not roles: there is no owner namespace and no role-named type. `?scope=all` widens a
+collection for any caller, signed in or not. ~~The API returns the same representation to every identity.~~ **That
+rule was replaced on 2026-09-21** (§9), for the five public reads only. Everywhere else a representation still
+differs per caller only through the caller's own relationships — `following`, `unreadCount`, and the read receipts
+recorded for an eligible caller (§4.4). On the five, the shape also depends on **whether a session was presented at
+all**, and these are two shapes of one schema rather than two schemas — `management` and `processing` are optional on
+`Channel` and `Episode` for every client:
+
+| Field | With any session | Anonymous | Why |
+|---|---|---|---|
+| `management` | present | **omitted** | who reviewed, the note, pause reason, last feed check, latest run — operational |
+| `processing` | present | **omitted** | attempt outcomes, failure detail, provider codes — operational |
+| `following` | the caller's own | **`false`** | there is nobody for it to be true of |
+| `followerCount` | present | present | a fact about the channel, not about any reader |
+| `read` | for an eligible caller | **absent** | already absent for an ineligible caller; unchanged in kind |
+| `related` | filtered to eligible channels | **`[]`** | an anonymous caller has no eligible channels |
+| everything else | present | present | title, status, paused, counts, the summary, `waitReason`, `skipReason` |
+
+`waitReason` stays because it is already the reader-safe projection of an attempt (§4.2 rule 11) — the one piece of
+processing designed to be shown. The API is promiscuous about input too: it accepts optional fields from any caller.
+Which fields and controls a given user is offered is the UI's decision (§9).
+
+Typed domain errors map to HTTP: `UNAUTHENTICATED` 401, `FORBIDDEN` 403, `INVALID_INPUT` 400, `NOT_FOUND` 404,
+`INVALID_STATE` 409, `UPSTREAM_UNAVAILABLE` 502. The first two joined the enum in A7 and A8 and this line had not
+caught up. Optional text fields (`title`, `explanation`) are omitted or non-blank: an empty string,
 whitespace only, and `null` are `INVALID_INPUT`, never a silent default (owner decision 2026-09-08); the web app
 strips blanks before sending.
 
@@ -899,25 +928,25 @@ undocumented. Scalar's script is pinned to one version and its request proxy is 
 | Method and path | Who | Purpose |
 |---|---|---|
 | `GET /me` | anyone | Caller's normalized email and role (`owner` or `user`); the UI uses it to show owner controls |
-| `GET /catalog` | anyone; UI: owner | Aggregate catalog state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, failed, skipped }` (no `waiting` count; wait reasons live on episode rows), `attention { failedEpisodes (in approved channels only, §9), neverStarted, requested }`, `lastSuccessfulIngestionAt` (`MAX(episodes.processed_at)`), and `transcripts { remainingCredits, status: ok | auth_failed | unreachable }` |
-| `GET /channels` | anyone | Requested and approved channels, each with `status`, `paused`, `following`, `followerCount`, episode counts, and derived `lastIngestedAt`; every caller receives a `management` block whose `latestRun` reports the feed result and number of episodes discovered; `?scope=all` (any caller) adds declined ones |
+| `GET /catalog` | **owner** | Aggregate catalog state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, failed, skipped }` (no `waiting` count; wait reasons live on episode rows), `attention { failedEpisodes (in approved channels only, §9), neverStarted, requested }`, `lastSuccessfulIngestionAt` (`MAX(episodes.processed_at)`), and `transcripts { remainingCredits, status: ok | auth_failed | unreachable }` |
+| `GET /channels` | **public** | Requested and approved channels, each with `status`, `paused`, `following`, `followerCount`, episode counts, and derived `lastIngestedAt`; every caller receives a `management` block whose `latestRun` reports the feed result and number of episodes discovered; `?scope=all` (any caller) adds declined ones |
 | `POST /channels` `{ channelId, title?, initialImportCount? }` | anyone | Creates a `requested` channel and follows the caller (201), whoever calls; there is no owner shortcut (2026-09-12), the web's owner add follows with an approve. An existing `requested` or `approved` id is followed and returned (200); a `declined` id is 409 `ChannelDeclinedResponse` with the owner's note. A handle or an id with no feed is 400. `title` and `initialImportCount` are honoured from any caller; the UI offers them to the owner only |
-| `GET /channels/:id` | anyone | One channel in any status, so a declined one can show its note; the owner also gets `management` |
+| `GET /channels/:id` | **public** | One channel in any status, so a declined one can show its note; a caller with a session also gets `management` |
 | `GET /channels/feed?channelId=` | anyone | What YouTube's two public feeds say about an id right now — title, how many of its newest fifteen uploads are long-form, when the newest landed — and the catalog's channel when it already holds the id. Creates and stores nothing: the middle of the three-step add (§7 Screens). Takes a `UC…` id or a `/channel/UC…` URL; a handle or an id with no feed is 400 |
 | `POST /channels/:id/request` | anyone | `declined → requested`, keeping the review fields; follows the caller |
 | `POST /channels/:id/approve` `{ title?, initialImportCount?, explanation? }` | anyone; UI: owner | `requested → approved` with the one initial import, or `declined → approved` without one; recomputes pause from the follower count |
 | `POST /channels/:id/decline` `{ explanation? }` | anyone; UI: owner | `requested → declined`, or `approved → declined` with the pause cleared; stops new discovery, not existing episode recovery |
 | `POST /channels/:id/pause` / `POST /channels/:id/resume` | anyone; UI: owner | Owner pause; resume clears either kind of pause. Approved channels only |
-| `GET /channels/:id/episodes?limit=` | anyone | Episodes newest first; every caller gets `status`, a top-level `skipReason`, on a pending episode a top-level `waitReason` derived from its latest attempt (§4.2 rule 11), the available summary and related items, and the `processing` block with the active intent and window, next attempt, latest attempt, and diagnostic outcome; an eligible caller (active follower of an approved channel) also gets `read`. **A pure read: it records nothing** (§4.4, changed 2026-09-15) |
-| `GET /channels/:id/episodes/:episodeId` | anyone | The same episode alone, for a caller that already knows the channel and wants a mismatch to be a 404 |
-| `GET /episodes/:episodeId` | anyone | The same episode by its own id, which is a primary key across the catalog. What `/read/:episodeId` calls on a cold load, since that URL names the episode and not its channel |
+| `GET /channels/:id/episodes?limit=` | **public** | Episodes newest first; every caller gets `status`, a top-level `skipReason`, on a pending episode a top-level `waitReason` derived from its latest attempt (§4.2 rule 11), and the available summary; a caller with a session also gets related items and the `processing` block with the active intent and window, next attempt, latest attempt, and diagnostic outcome; an eligible caller (active follower of an approved channel) also gets `read`. **A pure read: it records nothing** (§4.4, changed 2026-09-15) |
+| `GET /channels/:id/episodes/:episodeId` | **public** | The same episode alone, for a caller that already knows the channel and wants a mismatch to be a 404 |
+| `GET /episodes/:episodeId` | **public** | The same episode by its own id, which is a primary key across the catalog. What `/read/:episodeId` calls on a cold load, since that URL names the episode and not its channel |
 | `POST /channels/:id/episodes/:episodeId/read` | anyone (own) | Records the caller's read receipt — **the one write that marks a summary read** (§4.4). Idempotent; an existing receipt keeps its time. Only an eligible caller has receipts; anyone else records nothing and gets 404, and an episode with no summary is 409 |
 | `DELETE /channels/:id/episodes/:episodeId/read` | anyone (own) | Removes it, so the summary returns to the queue. Idempotent. The web offers this from History, where the row is |
 | `POST /channels/:id/episodes/:episodeId/retry` | anyone; UI: owner | Any episode state in any channel status; opens a fresh 48-hour window when pre-flight permits and returns the new attempt, never a channel run. An available episode keeps its summary and active vector generation until replacement succeeds; a blocked Retry records a `blocked` attempt and leaves the episode unchanged; 409 while an attempt is running |
 | `POST /channels/:id/episodes/:episodeId/skip` | anyone; UI: owner | `failed → skipped OWNER`, regardless of channel status |
 | `GET /channels/:id/runs` | anyone; UI: owner | Initial and scheduled RSS discovery runs newest first with feed status and discovered count (each owner episode carries `discoveredByRunId`; there is no per-run episode list); all processing history lives on episode attempts |
 | `POST /channels/:id/runs` | anyone; UI: owner | Checks an approved channel's feed now, ignoring pause (409 `INVALID_STATE` for any other status): 200 with the completed discovery run, including nothing new; 502 `UPSTREAM_UNAVAILABLE` when YouTube does not answer, after the `feed unavailable` run is recorded |
-| `GET /channels/:id/followers` | anyone; UI: owner | Emails and follow times of the channel's active followers |
+| `GET /channels/:id/followers` | **owner** | Emails and follow times of the channel's active followers. The addresses are why: §8's privacy carve-out was withdrawn with this move (§9) |
 | `GET /follows` | anyone (own) | Own active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
 | `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for a declined one) / retain an unfollow tombstone on a channel in any status; the Registry's follower record is the follow |
 | `GET /digest` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt`, newest first. `from` (inclusive) and `to` (exclusive) bound the range and **there is no default window and no clamp — every day is kept** (§4.4); `unread=true` is the queue and omitting it is History; `channelId` repeats; `cursor` and `limit` page it (default 50, max 200); `compact=true` answers rows of `{ episodeId, channelId, summaryAvailableAt, read }` rather than episodes, which is how a calendar costs one small read. A pure read: it records nothing. The body is discriminated on `compact` and carries `nextCursor`. Day grouping is the client's, from its own local boundaries: the route takes instants and never a timezone |
@@ -933,9 +962,12 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 ## 8. Verification and success criteria
 
 - Two users following one channel produce one shared episode/summary/vector set with independent read receipts.
-- Users cannot inspect another user's chats, messages, preferences, or read receipts. Follow membership is shared with
-  the Registry so any caller can list a channel's followers and counts, which the web shows on the Owner screens only;
-  that is the explicit exception, not private conversation access.
+- Users cannot inspect another user's chats, messages, preferences, or read receipts — **with no exception, since
+  2026-09-21**. ~~Follow membership is shared with the Registry so any caller can list a channel's followers and
+  counts, which the web shows on the Owner screens only; that is the explicit exception, not private conversation
+  access.~~ A channel's `followerCount` is still a fact about the channel that any caller receives; the **addresses**
+  are the owner's (§9). The carve-out was written on 2026-09-10, when identity was a self-asserted header and
+  "private" meant almost nothing, and a verified session is what withdrew it.
 - Approve, decline, pause, resume, Start, episode retry, and skip are **the owner's**: the API answers `403
   FORBIDDEN` for any other identity and writes nothing, and the web offers them to the owner only. ~~Accepted
   from any identity.~~ The acting `user_id` is recorded; handles and ids with no feed are rejected. Requesters follow at the moment they request, so several followers share one ingestion pipeline and
@@ -989,10 +1021,56 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 - Real DO SQLite tests cover migrations and isolation. Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds
   are replaced by env-selected fakes so no test reaches the network; retain pure-function tests for chunking, RSS/URL
   parsing, and summary validation. Do not add tests for UI components, Hono plumbing, or Workflow step ordering.
+- **Route visibility (2026-09-21, §9).** With no `Authorization` header the five public reads answer 200; `management`
+  is absent from the channel list and detail, `processing` from every episode shape while `waitReason`, `status` and
+  `skipReason` stay, `following` is `false`, `followerCount` unchanged, `read` absent and `related` empty. With **any**
+  session all four reappear — `management` is not owner-only. A stale or malformed token on a public route gets the
+  anonymous view, not a 401 and not a 500. `GET /catalog` and `GET /channels/:id/followers` answer 403 to a signed-in
+  non-owner and 200 to the owner, writing nothing either way. `GET /openapi.json` marks exactly nine operations public
+  and exactly nine owner-only, both listed rather than counted. Every route that is not public still answers 401
+  without a session, enumerated from the router rather than from a list. And `GET /channels/feed` still reads the
+  feeds rather than being swallowed by the public `GET /channels/:id` registered near it.
 - `pnpm check` is the finish gate. Runtime behavior, especially transcript fetching, must also be exercised under
   `wrangler dev`. Follow the engineering constraints and setup commands in `AGENTS.md`.
 
 ## 9. Decisions and retention
+
+- **Route visibility: a public catalog, and two reads that are the owner's — decided and done 2026-09-21.** Every
+  route behind identity was reviewed one at a time with the owner. Twenty-four stayed. Seven moved, in both
+  directions, and each direction reverses something this document had promised.
+
+  **Two became the owner's.** `GET /catalog` is an operations dashboard — an `attention` block naming what needs the
+  owner, and the transcript provider's `remainingCredits`, a third party's billing state about the owner's account,
+  which was being served to anyone signed in. `GET /channels/:id/followers` hands one reader another reader's email
+  address; **§8's second criterion carved that out of its own privacy promise, and the carve-out is withdrawn**. It
+  was written on 2026-09-10, when identity was a self-asserted header and "private" meant almost nothing; a verified
+  session is what changed what a reader may reasonably expect. `followerCount` stays public — a fact about the
+  channel, not about any reader — and `FollowersResponse` is unchanged, so the owner still sees addresses.
+
+  **Five became public**: the channel list, the channel detail, and the three episode reads. The summaries are the
+  product and can be read before it is joined. This introduces a visibility the codebase did not have — **public, but
+  richer when signed in** — and **replaces §7's rule that the API returns the same representation to every identity**
+  with the table in §7. `management` and `processing` become optional on `Channel` and `Episode` for every client,
+  which is the cost worth naming: a bug that omits one for a signed-in caller reads as missing data rather than as an
+  error.
+
+  **What the owner settled in review.** A signed-out caller sees **all three channel statuses**, `?scope=all`
+  included, so a declined channel's `reviewNote` — the owner's own words — is world-readable; the cost was named and
+  taken. The episode reads filter on **no** channel status, so a withdrawn channel's summaries stay readable: a
+  signed-out landing page, channel → episodes → summaries, is a future iteration and these routes are its API. That
+  is parity rather than a reversal — §4.1's "the reader screens hide them" is only the eligibility-driven screens
+  (Queue, History, the calendar, and read receipts), and a signed-in reader can already open those summaries from
+  Sources. A repeatable `?status=` filter to replace `?scope=all` was proposed and **deferred**: it existed to make
+  the anonymous rule an intersection, and "all three statuses" left nothing to intersect.
+
+  **What this does not do by itself.** Nothing a reader can see changes until the web changes too — every screen sits
+  behind the session guard, so this is correct, tested and invisible until a landing page exists (§7 Screens).
+  Accepted with it: **the summaries become scrapeable**, and there is still **no rate limiting anywhere**. The
+  exposure is read bandwidth rather than spend — nothing paid is reachable anonymously, since `/channels/feed`,
+  retry and chat all still need a session and `/catalog`, the only route that touched the transcript provider, is now
+  the owner's. CORS is untouched, so the five are public to any client but not to another origin's JavaScript.
+
+  Reasoning and the route-by-route review are `docs/specs/route-visibility.md`; the five steps are its plan.
 
 - **Apple is not a sign-in provider — decided 2026-09-21.** It was planned as the Auth phase's last chunk and is
   withdrawn rather than deferred. The cost was never the code: `better-auth` supports it and the provider is three

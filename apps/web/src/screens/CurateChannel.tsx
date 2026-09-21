@@ -186,6 +186,19 @@ function CurateChannelScreen() {
         }
       </Section>
 
+      {/* TODO(owner): **always list the addresses**, whatever the channel's status — decided
+          2026-09-21, deferred until the route-visibility plan is finished.
+
+          Today they are fetched only for a `requested` channel, because they exist to answer "who
+          is waiting", which is what the review decision turns on (PRD §7). Every other status
+          falls through to a count the header line already prints six facts higher up —
+          "UC… · Approved · 3 followers" — so the heading and the section repeat one number.
+
+          Withholding them was never really a privacy rule, and since 2026-09-21 it cannot be one:
+          this route is the owner's (docs/specs/route-visibility.md §3). Listing them always gives
+          the section something the header cannot say — which three people a withdrawal would
+          actually affect, before Withdraw approval is pressed. The change is `showFollowers` and
+          the `requested` branch below; record it in docs/design.md when it lands. */}
       <h2 class="mt-8 font-reading text-section font-semibold text-ink">
         Followers
       </h2>
