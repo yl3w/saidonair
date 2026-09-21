@@ -101,7 +101,7 @@ deployment, and general admin dashboards beyond owner catalog management.
 
 ```text
 Cloudflare Pages: Vite + Preact + TypeScript, daisyUI over Tailwind
-    Sign in /  →  Queue /queue · History /history, /history/:day · Sources /sources, /sources/:id
+    Sign in /  →  /auth/callback  →  Queue /queue · History /history, /history/:day · Sources /sources, /sources/:id
                   Chats /chats · Account /account · Curate /curate, /curate/:id (owner rendering, desktop)
     A queue row, a day, or a source opens Reading /read/:episodeId, whose Ask is the only way into a chat
                          |
@@ -718,10 +718,18 @@ somewhere extra to go. **A screen prints its name only where the frame does not 
 and their own controls lead; History, which is in neither, keeps a visible title. Every route names itself in the
 browser tab — `Queue · Said on Air` — which is what a bookmark and a history entry read.
 
-- **Sign in `/`:** "Who is this for?" — an email and the ones this browser has used before. There is no password
-  because there is nothing to authenticate. An account already selected goes straight to `/queue`. The remembered
-  account is the default for the next page load, not the source of truth for requests: a tab sends exactly the
-  account it displays, and tabs do not synchronise, so two tabs may act as two people (decided 2026-09-08).
+- **Sign in `/`:** one button per provider this environment has credentials for — Google today, Meta when it has
+  an App ID (§10, Auth phase). ~~"Who is this for?" — an email and the ones this browser has used before. There is
+  no password because there is nothing to authenticate.~~ **Replaced 2026-09-20.** Each button is a **plain link**
+  to the API's `/session/start`, never a `fetch`: beginning a sign-in sets a `SameSite=Lax` cookie on the API's
+  origin, and a cookie set from a cross-origin fetch is refused, so a flow begun with `fetch` works locally and
+  fails deployed. A reader already signed in goes straight to `/queue`. A tab still sends exactly the session it
+  displays, and tabs do not synchronise (decided 2026-09-08, and unchanged by authentication).
+- **Sign-in callback `/auth/callback`:** where the handoff lands, with a single-use code in the URL fragment. It
+  reads the fragment and erases it before anything else, exchanges the code for the session, and routes to
+  `/queue`. It must be a real route: the router sends an unknown path to `/queue` with a `replaceState` that would
+  discard the fragment, so a sign-in would appear to succeed and silently arrive with no code (observed
+  2026-09-20).
 - **Queue `/queue`:** what still needs the reader, and nothing else. Summaries with no read receipt, grouped by the
   local day they became readable, newest day first; each row **opens with the episode's publication date**, then the
   title, the executive summary as the excerpt — never a takeaway — a meta line of takeaway count and runtime, and

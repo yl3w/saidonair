@@ -30,9 +30,15 @@ import type {
   UpdatePreferencesBody,
 } from "@media-digest/shared";
 
-const BASE_URL = (
-  import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8787"
+/**
+ * Where the API answers. `localhost`, not `127.0.0.1`: the sign-in flow sets a cookie on this
+ * origin and the provider's redirect returns to it, so it must be spelled the same way the Worker's
+ * own `API_BASE_URL` is or the callback arrives at a different origin and fails `state_mismatch`.
+ */
+export const API_BASE_URL = (
+  import.meta.env.VITE_API_URL ?? "http://localhost:8787"
 ).replace(/\/$/, "");
+const BASE_URL = API_BASE_URL;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -48,18 +54,24 @@ export class ApiError extends Error {
   }
 }
 
-/** Thrown before any request when no account is bound; the session guard sends the user to `/`. */
+/** Thrown before any request when no session is bound; the guard sends the reader to `/`. */
 export const NO_ACCOUNT = "NO_ACCOUNT";
 
 /**
- * The account every request acts for. Only `SessionProvider` sets it, in the same effect that
- * moves the session state, so what a tab displays and what it sends cannot drift apart. Another
- * tab changing the stored selection does not reach here; storage is read once, at startup.
+ * The session every request acts for. Only `SessionProvider` sets it, in the same effect that moves
+ * the session state, so what a tab displays and what it sends cannot drift apart. Another tab
+ * signing in or out does not reach here; storage is read once, at startup.
+ *
+ * Both are sent for the length of chunk A6: the bearer token is what the API will read from A7, and
+ * `X-User-Email` is what it still reads today. The redundancy is the whole cost of preparing the web
+ * before the swap, and it lasts one chunk.
  */
-let identity: string | null = null;
+let session: { token: string; email: string | null } | null = null;
 
-export function bindIdentity(email: string | null): void {
-  identity = email;
+export function bindSession(
+  next: { token: string; email: string | null } | null,
+): void {
+  session = next;
 }
 
 async function request<T>(
@@ -76,10 +88,14 @@ async function send(
   path: string,
   body?: unknown,
 ): Promise<{ status: number; json: unknown }> {
-  const email = identity;
-  if (email === null) throw new ApiError(0, "no account selected", NO_ACCOUNT);
+  if (session === null) throw new ApiError(0, "not signed in", NO_ACCOUNT);
 
-  const headers: Record<string, string> = { "X-User-Email": email };
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${session.token}`,
+  };
+  // Still the identity the API reads, until A7. A provider that returned no address cannot act
+  // until then, which is the transitional limitation this chunk accepts.
+  if (session.email !== null) headers["X-User-Email"] = session.email;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const response = await fetch(`${BASE_URL}${path}`, {
     method,

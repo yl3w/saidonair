@@ -3,7 +3,7 @@ import { useEffect } from "preact/hooks";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 import { useTrackNavigation } from "./lib/back";
 import { applyReaderSettings, readSettings } from "./lib/settings";
-import { Account } from "./screens/Account";
+import { AuthCallback } from "./screens/AuthCallback";
 import { Chat } from "./screens/Chat";
 import { Chats } from "./screens/Chats";
 import { Curate } from "./screens/Curate";
@@ -12,6 +12,7 @@ import { History } from "./screens/History";
 import { Queue } from "./screens/Queue";
 import { Reading } from "./screens/Reading";
 import { Settings } from "./screens/Settings";
+import { SignIn } from "./screens/SignIn";
 import { Source } from "./screens/Source";
 import { Sources } from "./screens/Sources";
 import { SessionProvider } from "./session";
@@ -31,13 +32,14 @@ function NotFound() {
 }
 
 /**
- * The reader's spine (docs/specs/design-phase.md §4.2): sign in, then the queue, one summary at a
+ * The reader's spine (docs/specs/design-phase.md §4.2): sign in — really sign in, since
+ * 2026-09-20 — then the queue, one summary at a
  * time, history, sources, account — and Curate for the owner, one extra destination rather than a
  * mode. The paths M2 and M3 used are gone rather than redirected: `/home`, `/channel/:id`,
  * `/owner` and `/owner/channels/:id` named a shape the product no longer has.
  *
- * `/chats` is not a route until M4 builds the screen, so it falls to the redirect above like any
- * other unknown path and a stale bookmark lands on the queue (owner decision 2026-09-15, PRD §9).
+ * `/chats` became a route when M4 built the screen; the comment here said otherwise until
+ * 2026-09-20, three lines above the route itself.
  *
  * History-mode routing: Pages serves index.html for unknown paths, so deep links and reloads work.
  * Verify both under `wrangler pages dev` when a route is added.
@@ -48,7 +50,11 @@ export function App() {
       <SessionProvider>
         <TrackNavigation />
         <Router>
-          <Route path="/" component={Account} />
+          <Route path="/" component={SignIn} />
+          {/* Where the sign-in handoff lands with its one-time code. It must be a real route: the
+              fallback below replaces the URL, which would discard the fragment and lose the code
+              (A5, docs/specs/auth-phase-plan.md). */}
+          <Route path="/auth/callback" component={AuthCallback} />
           <Route path="/queue" component={Queue} />
           <Route path="/read/:episodeId" component={Reading} />
           <Route path="/history" component={History} />
