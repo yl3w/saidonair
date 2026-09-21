@@ -211,7 +211,7 @@ describe("registry migrations", () => {
         ),
       ).toThrow(/CHECK/i);
       expect(() =>
-        insert("status, skipped_by_email", "'pending', 'alice@example.com'"),
+        insert("status, skipped_by_user_id", "'pending', 'no-such-user-id'"),
       ).toThrow(/CHECK/i);
       // The processing window: all four set or all null, `publish` on pending, `replace` on available.
       expect(() => insert("status, intent", "'pending', 'publish'")).toThrow(

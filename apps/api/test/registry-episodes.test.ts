@@ -17,6 +17,7 @@ import {
   seedAttempt,
   seedEpisode,
   seedSummary,
+  skipAs,
 } from "./helpers";
 
 async function twoChannels() {
@@ -341,7 +342,7 @@ describe("registry episodes", () => {
     await seedSummary(EPISODE_C);
 
     // No role is checked: whoever skips is recorded (PRD §9).
-    const skipped = await stub.skipEpisode(ALICE, CHANNEL_A, EPISODE_A);
+    const skipped = await skipAs(ALICE, CHANNEL_A, EPISODE_A);
     expect(skipped.status).toBe("skipped");
     expect(skipped.skipReason).toBe("OWNER");
     expect(skipped.processing).toMatchObject({ skippedByEmail: ALICE });
@@ -377,7 +378,7 @@ describe("registry episodes", () => {
       },
     });
     await expectDomainError(
-      stub.skipEpisode(OWNER, CHANNEL_A, EPISODE_C),
+      skipAs(OWNER, CHANNEL_A, EPISODE_C),
       "INVALID_STATE",
     );
     // Retry of an available episode opens a `replace` window and leaves its content in place.
@@ -402,9 +403,9 @@ describe("registry episodes", () => {
       "INVALID_STATE",
     );
     await declineAs(OWNER, CHANNEL_A);
-    expect(
-      (await stub.skipEpisode(OWNER, CHANNEL_A, "ddddddddddd")).status,
-    ).toBe("skipped");
+    expect((await skipAs(OWNER, CHANNEL_A, "ddddddddddd")).status).toBe(
+      "skipped",
+    );
     await seedEpisode("eeeeeeeeeee", CHANNEL_A, { status: "skipped" });
     expect((await stub.retryEpisode(CHANNEL_A, "eeeeeeeeeee")).status).toBe(
       "pending",

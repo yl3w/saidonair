@@ -335,20 +335,17 @@ export class RegistryDO extends DurableObject<Env> {
     );
   }
 
-  /** `failed → skipped OWNER`, recording the caller's email as the skipper. */
+  /** `failed → skipped OWNER`, recording the acting identity as the skipper. */
   skipEpisode(
-    actorEmail: string,
+    actorUserId: string,
     channelId: string,
     episodeId: string,
   ): EpisodeRecord {
-    const email = users.requireEmail(actorEmail);
     const id = requireChannelId(channelId);
     const video = requireEpisodeId(episodeId);
-    return this.#transaction(() => {
-      const now = Date.now();
-      users.ensureUser(this.#sql, email, now);
-      return episodes.skipEpisode(this.#sql, id, video, email, now);
-    });
+    return this.#transaction(() =>
+      episodes.skipEpisode(this.#sql, id, video, actorUserId, Date.now()),
+    );
   }
 
   // --- ingestion runs -------------------------------------------------------

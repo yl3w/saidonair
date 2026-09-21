@@ -124,7 +124,7 @@ CREATE TABLE episodes (
   failure_detail TEXT,
   skip_reason TEXT CHECK (skip_reason IS NULL OR skip_reason IN ('SHORT', 'NON_ENGLISH', 'UNPLAYABLE', 'OWNER')),
   skipped_at INTEGER CHECK (skipped_at IS NULL OR skipped_at >= 0),
-  skipped_by_email TEXT REFERENCES global_users (email),
+  skipped_by_user_id TEXT REFERENCES global_users (user_id),
   transcript_checked_at INTEGER CHECK (transcript_checked_at IS NULL OR transcript_checked_at >= 0),
   chunk_count INTEGER CHECK (chunk_count IS NULL OR chunk_count >= 0),
   vectorized_at INTEGER CHECK (vectorized_at IS NULL OR vectorized_at >= 0),
@@ -157,7 +157,7 @@ CREATE TABLE episodes (
   -- Skips: reason and status imply each other, a skipped episode is dated, and OWNER names who skipped.
   CHECK ((status = 'skipped') = (skip_reason IS NOT NULL)),
   CHECK (status <> 'skipped' OR skipped_at IS NOT NULL),
-  CHECK ((skip_reason IS 'OWNER') = (skipped_by_email IS NOT NULL))
+  CHECK ((skip_reason IS 'OWNER') = (skipped_by_user_id IS NOT NULL))
 );
 
 CREATE INDEX episodes_channel_id_status_published_at ON episodes (channel_id, status, published_at);

@@ -19,6 +19,7 @@ import type {
   EpisodeRecord,
   ListEpisodesOptions,
 } from "./types";
+import * as users from "./users";
 
 type EpisodeRow = {
   episode_id: string;
@@ -37,7 +38,7 @@ type EpisodeRow = {
   failure_detail: string | null;
   skip_reason: string | null;
   skipped_at: number | null;
-  skipped_by_email: string | null;
+  skipped_by_user_id: string | null;
   transcript_checked_at: number | null;
   duration_sec: number | null;
   chunk_count: number | null;
@@ -56,7 +57,7 @@ type EpisodeRow = {
 const EPISODE_SELECT = `SELECT e.episode_id, e.channel_id, c.title AS channel_title, e.title, e.published_at,
     e.status, e.discovered_by_run_id, e.intent, e.window_started_at, e.window_deadline_at,
     e.next_attempt_at, e.attempt_count, e.failure_code, e.failure_detail, e.skip_reason, e.skipped_at,
-    e.skipped_by_email, e.transcript_checked_at, e.duration_sec, e.chunk_count, e.vectorized_at, e.processed_at,
+    e.skipped_by_user_id, e.transcript_checked_at, e.duration_sec, e.chunk_count, e.vectorized_at, e.processed_at,
     e.created_at, e.updated_at,
     s.format AS summary_format, s.executive_summary, s.takeaways_json, s.topic_tags_json,
     s.raw_text, s.related_episode_ids_json
@@ -289,7 +290,7 @@ export function markSkipped(
   now: number,
 ): void {
   sql.exec(
-    `UPDATE episodes SET status = 'skipped', skip_reason = ?, skipped_at = ?, skipped_by_email = NULL,
+    `UPDATE episodes SET status = 'skipped', skip_reason = ?, skipped_at = ?, skipped_by_user_id = NULL,
        failure_code = NULL, failure_detail = NULL, ${CLOSE_WINDOW}, updated_at = ?
      WHERE episode_id = ?`,
     reason,
@@ -308,7 +309,7 @@ export function markTimedOut(
 ): void {
   sql.exec(
     `UPDATE episodes SET status = 'failed', failure_code = 'INGESTION_TIMEOUT', failure_detail = ?,
-       skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL, ${CLOSE_WINDOW}, updated_at = ?
+       skip_reason = NULL, skipped_at = NULL, skipped_by_user_id = NULL, ${CLOSE_WINDOW}, updated_at = ?
      WHERE episode_id = ?`,
     detail,
     now,
@@ -352,7 +353,7 @@ export function publish(
     `UPDATE episodes SET status = 'available', chunk_count = ?, vectorized_at = ?,
        processed_at = COALESCE(processed_at, ?), transcript_checked_at = ?,
        active_vector_generation = staged_vector_generation,
-       failure_code = NULL, failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL,
+       failure_code = NULL, failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_user_id = NULL,
        ${CLOSE_WINDOW}, updated_at = ?
      WHERE episode_id = ?`,
     chunkCount,
@@ -691,7 +692,7 @@ export function retryEpisode(
     sql.exec(
       `UPDATE episodes SET status = 'pending', intent = 'publish', window_started_at = ?,
          window_deadline_at = ?, next_attempt_at = ?, attempt_count = 0, failure_code = NULL,
-         failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_email = NULL,
+         failure_detail = NULL, skip_reason = NULL, skipped_at = NULL, skipped_by_user_id = NULL,
          staged_vector_generation = NULL, updated_at = ?
        WHERE episode_id = ?`,
       now,
@@ -709,7 +710,7 @@ export function skipEpisode(
   sql: SqlStorage,
   channelId: string,
   episodeId: string,
-  actorEmail: string,
+  actorUserId: string,
   now: number,
 ): EpisodeRecord {
   const episode = requireEpisode(sql, channelId, episodeId);
@@ -720,10 +721,10 @@ export function skipEpisode(
     );
   }
   sql.exec(
-    `UPDATE episodes SET status = 'skipped', skip_reason = 'OWNER', skipped_at = ?, skipped_by_email = ?,
+    `UPDATE episodes SET status = 'skipped', skip_reason = 'OWNER', skipped_at = ?, skipped_by_user_id = ?,
        failure_code = NULL, failure_detail = NULL, updated_at = ? WHERE episode_id = ?`,
     now,
-    actorEmail,
+    actorUserId,
     now,
     episodeId,
   );
@@ -831,6 +832,14 @@ function complete(
     sql,
     rows.map((row) => row.episode_id),
   );
+  // The address an owner skip shows is joined, never stored beside the skip, so a changed address
+  // cannot leave a stale one in history. One grouped query, as every other fact here is.
+  const skippers = users.emailsByIds(
+    sql,
+    rows
+      .map((row) => row.skipped_by_user_id)
+      .filter((id): id is string => id !== null),
+  );
 
   return rows.map((row) => {
     const related: RelatedEpisode[] = [];
@@ -840,7 +849,14 @@ function complete(
         related.push({ episodeId, title });
       }
     }
-    return toRecord(row, related, latest[row.episode_id] ?? null);
+    return toRecord(
+      row,
+      related,
+      latest[row.episode_id] ?? null,
+      row.skipped_by_user_id === null
+        ? null
+        : (skippers[row.skipped_by_user_id] ?? null),
+    );
   });
 }
 
@@ -848,6 +864,7 @@ function toRecord(
   row: EpisodeRow,
   related: RelatedEpisode[],
   latestAttempt: EpisodeRecord["processing"]["latestAttempt"],
+  skippedByEmail: string | null,
 ): EpisodeRecord {
   const status = toStatus(row.status);
   return {
@@ -873,7 +890,7 @@ function toRecord(
       failureCode: toFailureCode(row.failure_code),
       failureDetail: row.failure_detail,
       skippedAt: row.skipped_at,
-      skippedByEmail: row.skipped_by_email,
+      skippedByEmail,
       transcriptCheckedAt: row.transcript_checked_at,
       durationSec: row.duration_sec,
       chunkCount: row.chunk_count,

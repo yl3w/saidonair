@@ -78,6 +78,15 @@ export async function declineAs(
   return registry().declineChannel(await identityOf(email), channelId, input);
 }
 
+/** Owner-skip as an address. */
+export async function skipAs(
+  email: string,
+  channelId: string,
+  episodeId: string,
+) {
+  return registry().skipEpisode(await identityOf(email), channelId, episodeId);
+}
+
 /** Follow as an address: registers the identity first, exactly as a request would. */
 export async function follow(email: string, channelId: string) {
   return registry().recordFollow(await identityOf(email), channelId);
@@ -220,6 +229,7 @@ type EpisodeSeed = {
   publishedAt?: number;
   status?: "pending" | "available" | "failed" | "skipped";
   skipReason?: "SHORT" | "NON_ENGLISH" | "UNPLAYABLE" | "OWNER";
+  /** Who owner-skipped it, as an address; registered and resolved to an id before the insert. */
   skippedByEmail?: string;
   attemptCount?: number;
   /** The latest attempt's reason a timed-out publication keeps; `failed` only. */
@@ -251,12 +261,17 @@ export async function seedEpisode(
   const runId = seed.runId ?? (await seedRunFor(channelId));
   const window = seed.window ?? null;
   const windowStart = window ? (window.startedAt ?? at) : null;
+  // The column holds an id now, so the address a seed names has to become an identity first.
+  const skipper =
+    skipReason === "OWNER"
+      ? await identityOf(seed.skippedByEmail ?? OWNER)
+      : null;
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episodes
          (episode_id, channel_id, discovered_by_run_id, title, published_at, status,
           intent, window_started_at, window_deadline_at, next_attempt_at, attempt_count,
-          failure_code, failure_detail, skip_reason, skipped_at, skipped_by_email, transcript_checked_at,
+          failure_code, failure_detail, skip_reason, skipped_at, skipped_by_user_id, transcript_checked_at,
           chunk_count, vectorized_at, processed_at, active_vector_generation, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       episodeId,
@@ -276,7 +291,7 @@ export async function seedEpisode(
       failed ? (seed.failureDetail ?? "PROVIDER_HTTP") : null,
       skipReason,
       skipped ? at : null,
-      skipReason === "OWNER" ? (seed.skippedByEmail ?? OWNER) : null,
+      skipper,
       pending ? null : at,
       available ? (seed.chunkCount ?? 3) : null,
       available ? at : null,

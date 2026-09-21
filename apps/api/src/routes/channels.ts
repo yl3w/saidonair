@@ -607,7 +607,7 @@ export const channelRoutes = new Hono<AppEnv>()
     async (c) => {
       const { id, episodeId } = c.req.valid("param");
       const record = await c.var.registry.skipEpisode(
-        c.var.identity.email,
+        c.var.identity.userId,
         id,
         episodeId,
       );
