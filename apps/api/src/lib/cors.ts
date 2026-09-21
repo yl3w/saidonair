@@ -8,7 +8,8 @@ import { USER_EMAIL_HEADER } from "../middleware/user";
  * Browser clients live on another origin: the Pages web app, or Vite locally. Which origins may
  * call the API comes from `WEB_ORIGINS` (wrangler.jsonc `vars`, overridable in `.dev.vars`), a
  * comma-separated list where `scheme://*.host` matches any subdomain, for Pages previews. There are
- * no cookies and no authentication, so this is hygiene rather than a guard (docs/PRD.md §2).
+ * no cookies — the bearer token travels in a header, not a cookie — so this stays hygiene rather
+ * than a guard (docs/PRD.md §2).
  */
 
 /** What an unset `WEB_ORIGINS` means: the local Vite dev server, both spellings. */
@@ -51,7 +52,11 @@ export const corsMiddleware: MiddlewareHandler<AppEnv> =
     return cors({
       origin: (origin) => (isAllowedOrigin(origin, allowed) ? origin : null),
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", USER_EMAIL_HEADER],
+      // `Authorization` from chunk A6, when the web began sending a bearer token beside the
+      // header; `X-User-Email` until A7 deletes it. A header the browser may not send is a bare
+      // "NetworkError" in the console with nothing about CORS in it, so this list is the first
+      // place to look when a request dies before reaching the Worker.
+      allowHeaders: ["Authorization", "Content-Type", USER_EMAIL_HEADER],
       maxAge: 86_400,
     })(c, next);
   });

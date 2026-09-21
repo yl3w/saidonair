@@ -42,14 +42,19 @@ describe("CORS", () => {
       headers: {
         Origin: PREVIEW,
         "Access-Control-Request-Method": "GET",
-        "Access-Control-Request-Headers": "x-user-email",
+        "Access-Control-Request-Headers": "authorization,x-user-email",
       },
     });
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(PREVIEW);
-    expect(
-      response.headers.get("access-control-allow-headers")?.toLowerCase(),
-    ).toContain("x-user-email");
+    const allowedHeaders = response.headers
+      .get("access-control-allow-headers")
+      ?.toLowerCase();
+    expect(allowedHeaders).toContain("x-user-email");
+    // The web sends a bearer token from chunk A6. A header missing from this list is refused by
+    // the browser before the request is made, and surfaces as a bare "NetworkError" with nothing
+    // about CORS in it — which is how it was found.
+    expect(allowedHeaders).toContain("authorization");
     expect(response.headers.get("access-control-allow-methods")).toContain(
       "DELETE",
     );
