@@ -1,8 +1,9 @@
 import type { Channel } from "@media-digest/shared";
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
 import { Avatar } from "../components/Avatar";
+import { FindChannel } from "../components/FindChannel";
 import { Page } from "../components/Page";
 import { Retry } from "../components/Retry";
 import {
@@ -10,6 +11,7 @@ import {
   LANDING_CHANNELS_HEADING,
   LANDING_EMPTY_COPY,
   LANDING_PROMISE,
+  NO_CHANNEL_BY_THAT_NAME,
   summaryCountCopy,
 } from "../lib/copy";
 import { publicChannels } from "../lib/public-view";
@@ -45,6 +47,7 @@ export function Landing() {
     if (signedIn) route("/queue", true);
   }, [signedIn, route]);
 
+  const [needle, setNeedle] = useState("");
   const [load, reload] = useLoad(() => api.listChannels(), []);
 
   return (
@@ -54,9 +57,20 @@ export function Landing() {
       </h1>
       <p class="mt-2 font-reading text-lede text-ink-2">{LANDING_PROMISE}</p>
 
-      <h2 class="mt-10 border-b border-rule pb-2 text-label uppercase text-ink-3">
-        {LANDING_CHANNELS_HEADING}
-      </h2>
+      <div class="mt-10 flex flex-wrap items-center gap-3">
+        <h2 class="text-label uppercase text-ink-3">
+          {LANDING_CHANNELS_HEADING}
+        </h2>
+        {/* The same control the catalog and the queue's filter use (components/FindChannel.tsx).
+            Narrowing only — the sort and the paging stay on `/sources`, which is the screen for
+            working through a long list rather than arriving at one. */}
+        <FindChannel
+          class="ml-auto w-full sm:w-64"
+          value={needle}
+          onChange={setNeedle}
+        />
+      </div>
+      <div class="mt-3 border-b border-rule" />
 
       {load.status === "loading" && (
         <>
@@ -75,11 +89,18 @@ export function Landing() {
 
       {load.status === "ready" &&
         (() => {
-          const channels = publicChannels(load.data.channels);
+          const trimmed = needle.trim().toLowerCase();
+          const channels = publicChannels(load.data.channels).filter(
+            (channel) =>
+              trimmed.length === 0 ||
+              channel.title.toLowerCase().includes(trimmed),
+          );
           if (channels.length === 0) {
             return (
               <p class="mt-5 font-reading text-body text-ink-2">
-                {LANDING_EMPTY_COPY}
+                {trimmed.length > 0
+                  ? NO_CHANNEL_BY_THAT_NAME
+                  : LANDING_EMPTY_COPY}
               </p>
             );
           }

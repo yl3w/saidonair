@@ -1,7 +1,9 @@
-import { Check, ListFilter, Search, X } from "lucide-preact";
+import { Check, ListFilter, X } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { NO_CHANNEL_BY_THAT_NAME } from "../lib/copy";
 import { useMediaQuery, WIDE } from "../lib/use-media-query";
 import { Avatar } from "./Avatar";
+import { FindChannel } from "./FindChannel";
 import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
 
@@ -155,16 +157,12 @@ function List({
 }) {
   return (
     <>
-      <label class="input input-ghost w-full">
-        <Icon of={Search} size={16} class="text-ink-3" />
-        <input
-          type="search"
-          placeholder="Find a channel"
-          aria-label="Find a channel"
-          value={query}
-          onInput={(event) => onQuery(event.currentTarget.value)}
-        />
-      </label>
+      <FindChannel
+        variant="ghost"
+        class="w-full"
+        value={query}
+        onChange={onQuery}
+      />
 
       <ul class="menu max-h-72 w-full flex-nowrap overflow-y-auto border-t border-rule">
         {channels.map((channel) => {
@@ -189,7 +187,7 @@ function List({
         })}
         {channels.length === 0 && (
           <li class="px-3 py-3 font-reading text-excerpt text-ink-2">
-            No channel by that name.
+            {NO_CHANNEL_BY_THAT_NAME}
           </li>
         )}
       </ul>

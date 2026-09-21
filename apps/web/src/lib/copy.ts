@@ -549,6 +549,10 @@ export const PUBLIC_BAND_COPY =
 export const PUBLIC_BAND_COPY_SHORT = "Follow · queue · ask";
 export const PUBLIC_SIGN_IN_COPY = "Sign in";
 
+/** The one name for narrowing a channel list — placeholder and accessible name both. */
+export const FIND_CHANNEL_COPY = "Find a channel";
+export const NO_CHANNEL_BY_THAT_NAME = "No channel by that name.";
+
 export const LANDING_PROMISE =
   "What was said on the air, in text, with the minute it was said.";
 export const LANDING_CHANNELS_HEADING = "Channels";

@@ -1,18 +1,18 @@
 import type { Channel, Follow } from "@media-digest/shared";
-import { Search } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
 import { AddChannel } from "../components/AddChannel";
 import { Avatar } from "../components/Avatar";
+import { FindChannel } from "../components/FindChannel";
 import { FollowButton } from "../components/FollowButton";
-import { Icon } from "../components/Icon";
 import { Page } from "../components/Page";
 import {
   actionErrorCopy,
   channelStateCopy,
   LANDING_CHANNELS_HEADING,
   LANDING_EMPTY_COPY,
+  NO_CHANNEL_BY_THAT_NAME,
   reviewCopy,
   SOURCE_SORTS,
   SOURCES_TABS,
@@ -179,19 +179,14 @@ function SourcesScreen() {
       )}
 
       <div class="mt-4 flex flex-wrap items-center gap-3">
-        <label class="input flex-1">
-          <Icon of={Search} size={16} class="text-ink-3" />
-          <input
-            type="search"
-            placeholder="Find a channel"
-            aria-label="Find a channel"
-            value={needle}
-            onInput={(event) => {
-              setNeedle(event.currentTarget.value);
-              setShown(PAGE);
-            }}
-          />
-        </label>
+        <FindChannel
+          class="flex-1"
+          value={needle}
+          onChange={(next) => {
+            setNeedle(next);
+            setShown(PAGE);
+          }}
+        />
         <label class="flex cursor-pointer items-center gap-2 text-meta text-ink-3">
           Sort
           <select
@@ -395,7 +390,7 @@ function comparator(sort: Sort): (a: Row, b: Row) => number {
 }
 
 function emptyNote(tab: Tab, needle: string): string {
-  if (needle.trim().length > 0) return "No channel by that name.";
+  if (needle.trim().length > 0) return NO_CHANNEL_BY_THAT_NAME;
   if (tab === "following") {
     return "You follow nothing yet. Add a channel below, or take one from the catalog.";
   }
@@ -408,7 +403,7 @@ function emptyNote(tab: Tab, needle: string): string {
 /** A visitor has one list, so the reader's three-way empty note does not fit it. */
 function visitorEmptyNote(needle: string): string {
   return needle.trim().length > 0
-    ? "No channel by that name."
+    ? NO_CHANNEL_BY_THAT_NAME
     : LANDING_EMPTY_COPY;
 }
 

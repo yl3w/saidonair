@@ -312,6 +312,12 @@ step 6.
   confirmed follower counts are fine for strangers on 2026-09-21). The sort options that depend on a session —
   "Most unread" — are absent from a visitor's control rather than present and inert.
 - 5.4 The heading is *Channels*, and `useDocumentTitle` gives the page its own title for a visitor as for a reader.
+- 5.5 **Added in review, 2026-09-21.** The owner asked why a visitor needs `/sources` at all when the landing page
+  lists every channel, which was the right question: signed out the two showed the same rows, and `/sources` added
+  only search, sort and paging. **Both stay**, and the landing gains the search — reusing the control rather than
+  copying it. `components/FindChannel.tsx` now holds it, and the three call sites that had been three copies of the
+  same six lines — the catalog, the queue's channel filter, and the landing — share one. Sort and paging stay on
+  `/sources`, which is the screen for working through a long list rather than arriving at one.
 
 **Done when:** `pnpm check` green; a private window walks `/` → *Channels* → the catalog, searches and sorts it;
 a signed-in window shows the three tabs, Add a channel and Follow exactly as before; and a channel row still leads
