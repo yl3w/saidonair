@@ -3,10 +3,9 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** approved 2026-09-20. **A0, A1 and A2–A3 complete** the same day — the Registry re-key landed in
+**Status:** approved 2026-09-20. **A0, A1, A2–A3 and A4 complete** the same day — the Registry re-key landed in
 seven commits with its own spec and plan (`auth-2-registry-rekey.md`), 395 tests, and a `wrangler dev` walkthrough
-on a real channel. **Next is A4**, where `better-auth` finally enters the tree: one package, and the D1 binding in
-all three environments. Nothing is installed in the repo yet: A0 ran entirely in a
+on a real channel. **Next is A5**, the handoff — which A4's findings grew by one route, `GET /session/start`. Nothing is installed in the repo yet: A0 ran entirely in a
 scratch directory, and A4 is where `better-auth` actually enters the tree.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
@@ -184,6 +183,12 @@ The custom security code, reviewed alone because that is what it is.
 - 5.1 `lib/handoff.ts`: `mintCode(auth, sessionToken, now)` and `consumeCode(auth, code, now)`, over better-auth's
   `verification` table if A0 question 5 said yes, or a table of our own if it said no. Sixty-second life.
   `consumeCode` deletes and returns in one statement so a replay gets nothing.
+- 5.1a **`GET /session/start?provider=…`** — added by A4's finding, not in the original plan. It calls
+  better-auth's sign-in server-side and `302`s to the provider, carrying the `better-auth.state` cookie. It
+  exists because that cookie must be set by a **top-level navigation on the API origin**: set cross-site from a
+  `fetch` it is `SameSite=Lax` without `Secure`, which browsers reject, so a sign-in begun from the web's own
+  origin works on localhost and fails deployed with `state_mismatch`. Validates `provider` against the
+  configured set.
 - 5.2 `GET /session/handoff`: reads the first-party session cookie better-auth has just set — same origin, so it is
   sent — mints a code, and `302`s to the web. **The redirect target is validated with `isAllowedOrigin` against
   the parsed `WEB_ORIGINS`.** An unlisted target is `400 INVALID_INPUT` and no code is minted.
@@ -209,9 +214,11 @@ The chunk that removes the broken intermediate. The web can sign in and holds a 
 `apps/web/src/screens/Account.tsx`, `apps/web/src/components/Avatar.tsx`, `apps/web/src/lib/copy.ts`,
 `docs/design.md`, `docs/PRD.md` §7.
 
-- 6.1 `SignIn.tsx` replaces the "Who is this for?" screen at `/`: two provider buttons. **A0 settled the entry
-  and it is not an `href`** — each button does one `fetch`, `POST /auth/sign-in/social` with
-  `{provider, callbackURL: "…/session/handoff"}`, reads `url` from the JSON answer, and assigns `location.href`.
+- 6.1 `SignIn.tsx` replaces the "Who is this for?" screen at `/`: one button per configured provider.
+  **Corrected by A4:** each button is a **plain link** to `GET <API>/session/start?provider=…` — a top-level
+  navigation, no `fetch`, no credentials. A0's fetch-then-`location.href` shape sets the state cookie cross-site,
+  which works on localhost and fails deployed. **Google only until Meta has credentials** (owner decision
+  2026-09-20): the provider is configured in `lib/auth.ts` and its button ships when an App ID exists.
 - 6.2 `AuthCallback.tsx` at `/auth/callback`: read `location.hash`, **`history.replaceState` before anything
   else**, `POST /session/exchange`, store the token, route to `/queue`.
 - 6.3 `api.ts`: sends `Authorization: Bearer` **and** `X-User-Email`, the email taken from the exchange response.

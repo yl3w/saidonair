@@ -258,11 +258,27 @@ web /                →  POST api/auth/sign-in/social {provider, callbackURL}  
    thereafter:          Authorization: Bearer <token>
 ```
 
-**A0 established two things this design depended on.** The sign-in entry is **not** a navigable link: it is a
-`POST` that answers JSON, so the web makes one `fetch` and then assigns `location.href`. Still no client library
-(decision 9). And **the OAuth `state` and PKCE `code_verifier` live in the `verification` table**, keyed by the
-state parameter — the row's `identifier` *is* the state and its `value` is `{callbackURL, codeVerifier}`. Nothing
-about starting a sign-in depends on a cookie, which is the step most likely to have broken a two-origin design.
+**A0 established one thing and got another half wrong; A4 corrected it.** The sign-in entry is **not** a
+navigable link: `POST /auth/sign-in/social` answers JSON and there is no `GET` equivalent. And the PKCE
+`code_verifier` does live in the `verification` table, keyed by the state parameter.
+
+**But starting a sign-in also sets a cookie**, which A0 missed because its probe page was same-origin with the
+spike Worker and therefore could not fail:
+
+```
+Set-Cookie: better-auth.state=…; Max-Age=300; Path=/; HttpOnly; SameSite=Lax
+```
+
+The callback validates the returned `state` against that cookie, not against the table alone — a URL carrying a
+perfectly valid, unexpired state fails `state_mismatch` without it (observed 2026-09-20).
+
+**This is load-bearing for two origins.** A `fetch` from the web to the API would receive that `Set-Cookie`
+cross-site, where `SameSite=Lax` without `Secure` is rejected and Safari and Firefox block third-party cookie
+writes outright — so a sign-in begun by `fetch` works on localhost and fails deployed. **The fix: every
+cookie-touching step happens as a top-level navigation on the API origin.** A5 therefore adds
+`GET /session/start?provider=…`, which initiates sign-in server-side and `302`s to the provider, and A6's button
+becomes a plain link to it rather than a `fetch`. The bearer-over-two-origins design survives; what does not
+survive is starting the flow from the web's own origin.
 
 **Confirmed by A0 end to end.** A real Google sign-in completed on D1 — `POST /auth/sign-in/social` → `302` from
 `/auth/callback/google` → `user`, `account` and `session` rows written, no `unable_to_create_user`, no explicit
@@ -325,7 +341,7 @@ The cost of that second move is one redundant header sent by the web for the len
 | A0 | **Spike** (throwaway). `kysely` + `kysely-d1` versus `better-auth-cloudflare`, the D1 transaction workaround, one real Google sign-in on a scratch Worker. Output is a decision and the hard-rule-1 dependency proposal, not kept code. **First, because it is the only chunk that can invalidate the rest**, and it depends on nothing. Precedent: the DO-free spike Worker on `spike/transcript-remote` that settled DownSub. | unchanged |
 | A1 | **The authorizing document edit.** PRD §2's prohibition reversed, the §10 Auth phase line, and `AGENTS.md` → Identity plumbing losing "Never add login, sessions, JWTs, or Cloudflare Access." Small on purpose: everything after it is permitted rather than contradicting the PRD. | unchanged |
 | A2–A3 ✓ | **The Registry re-key** (complete 2026-09-20), with its own spec and plan (`auth-2-registry-rekey.md`, owner instruction 2026-09-20): nine S/M steps converting one identity-bearing table at a time — schema column, module and callers together — because `email` stays `UNIQUE` so every foreign key survives the primary key moving. Ends in a full `wrangler dev` walkthrough on the old identity, the gate that proves the re-key is innocent. | working, header identity |
-| A4 | **better-auth stood up.** D1 ×3 environments, mounted at `/auth/*`, Google and Meta configured, schema applied, `trustedOrigins` from `WEB_ORIGINS`. Sign-in works end to end and writes rows. Nothing consumes it. | working, sign-in creates rows |
+| A4 ✓ | **better-auth stood up** (complete 2026-09-20; Meta deferred for credentials, Google verified end to end). D1 ×3 environments, mounted at `/auth/*`, Google and Meta configured, schema applied, `trustedOrigins` from `WEB_ORIGINS`. Sign-in works end to end and writes rows. Nothing consumes it. | working, sign-in creates rows |
 | A5 | **The handoff.** `/session/handoff`, `/session/exchange`, the one-time code in better-auth's `verification` table, the open-redirect guard reusing `isAllowedOrigin`. Reviewed alone because it is the custom security code. | working, tokens issued but unused |
 | A6 | **Web.** Sign-in screen at `/`, `/auth/callback`, token stored and bound, 401 handling, sign-out, `account.ts` deleted. Still sends `X-User-Email`, which the API still honours. | working |
 | A7 | **The swap.** `requireIdentity` reads the bearer token and resolves through better-auth; `ensureUser` attaches `auth_user_id` by email; `X-User-Email` deleted from the Worker, the web, the CORS list and the tests; tests mint sessions in local D1. The irreversible one. | working, on sessions |
