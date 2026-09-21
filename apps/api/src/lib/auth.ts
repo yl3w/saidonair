@@ -9,8 +9,7 @@ import { DEFAULT_WEB_ORIGINS, parseOrigins } from "./cors";
  * dialect, no wrapper — and defaults `transaction` to false, which is what D1 needs; the A0 spike
  * completed a real Google sign-in on this configuration.
  *
- * Nothing consumes it yet. `requireIdentity` still reads `X-User-Email`, and chunk A7 is where the
- * session becomes the identity.
+ * `middleware/user.ts` resolves every request's session through this, since chunk A7.
  */
 export function makeAuth(env: Env) {
   return betterAuth({

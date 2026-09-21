@@ -97,7 +97,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   ├── src/
 │   │   │   ├── index.ts              # Worker entry: fetch + scheduled handlers, Hono app
 │   │   │   ├── env.ts / bindings.d.ts # Hono AppEnv + hand-maintained Cloudflare.Env (no generated types)
-│   │   │   ├── middleware/user.ts    # X-User-Email → registry + per-user DO stub on context
+│   │   │   ├── middleware/user.ts    # bearer session → registry + per-user DO stub on context
 │   │   │   ├── middleware/errors.ts  # typed DomainError (and Hono's malformed-JSON 400) → HTTP status
 │   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, chat, ...);
 │   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page
@@ -151,7 +151,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   └── web/                  # Cloudflare Pages: Vite + Preact + TypeScript text UI
 │       ├── src/
 │       │   ├── main.tsx              # mount + router
-│       │   ├── api.ts                # typed fetch wrapper; the only fetch caller; sets X-User-Email
+│       │   ├── api.ts                # typed fetch wrapper; the only fetch caller; sends the session
 │       │   ├── account.ts            # selected email + recent emails in localStorage
 │       │   ├── session.tsx           # GET /me once; role is for rendering only
 │       │   ├── lib/                  # time.ts (relative times), copy.ts (channel status, episode, skip and wait phrases),
@@ -332,18 +332,20 @@ exercised under `wrangler dev`, not only Node.
 
 ## Identity plumbing
 
-The identity model — today an email header and no authentication, from the Auth phase a verified session and a
-generated `user_id` — plus the owner role and what lives in which DO, is `docs/PRD.md` §2. In code, as built
-today:
+The identity model — a verified session, a generated `user_id`, the owner role, and what lives in which DO — is
+`docs/PRD.md` §2. In code:
 
-- `middleware/user.ts` normalizes `X-User-Email` with `lib/email.ts`, auto-registers it in the Registry, and attaches
-  the identity as `c.var.identity` — `{ userId, email, role }` — and the per-user DO stub as `c.var.user`. **The
-  User DO is named by `user_id`, not by the address** (`getUserDO(env, identity.userId)`, since 2026-09-20,
-  `docs/specs/auth-2-registry-rekey.md`), so `apps/api/src/do/user.ts` imports nothing from `lib/email.ts`.
-- ~~Never add login, sessions, JWTs, or Cloudflare Access.~~ **Reversed 2026-09-20** (`docs/PRD.md` §9). The
-  **Auth phase** replaces the header with a verified `better-auth` session over consumer OAuth and keys the
-  User DO by a generated `user_id`: `docs/specs/auth-phase.md`, plan `auth-phase-plan.md`. Everything above
-  describes what is built today and stays accurate until chunk A7 deletes the header.
+- `middleware/user.ts` resolves the bearer token to a `better-auth` session (`lib/auth.ts`), resolves that to a
+  Registry identity, and attaches it as `c.var.identity` — `{ userId, email, role }` — with the per-user DO stub
+  as `c.var.user`. No session is `401 UNAUTHENTICATED`, and reaches neither Durable Object.
+- **The User DO is named by `user_id`, never by an address** (`getUserDO(env, identity.userId)`), so
+  `apps/api/src/do/user.ts` imports nothing from `lib/email.ts` — that object does not know what an email is.
+- `ensureIdentity` links a session to an existing row **by `auth_user_id`, else by email, else inserts**. The
+  middle branch is what attaches a seeded owner, or anyone who predates the Auth phase, to the account they sign
+  in with. An address may be absent entirely: a provider can return an account without one.
+- ~~Never add login, sessions, JWTs, or Cloudflare Access.~~ ~~`X-User-Email` identifies the caller.~~
+  **Both reversed 2026-09-20** (`docs/PRD.md` §9, `docs/specs/auth-phase.md`). The header was self-asserted, so
+  anyone who knew an address could read that person's chats and receipts.
 - `OWNER_EMAIL` comes from `apps/api/.dev.vars` locally (copy `.dev.vars.example`) and `wrangler secret put` per
   environment when deployed (Environments); the Registry seeds the role from it on start. The email is never committed.
 - The API enforces no authorization (PRD §2, §9, decided 2026-09-12): no route or Registry method checks the role, and
@@ -545,7 +547,7 @@ design are `docs/specs/design-phase.md`. In code:
   `node --experimental-strip-types <scratch>.mts`.
 - `zod` reaches the web only through `packages/shared`, and only as types: import from shared with `import type`, and
   keep Zod out of the web bundle (`grep -ril zod apps/web/dist` after `pnpm build` must find nothing).
-- `src/api.ts` is the only place `fetch` is called; it sets `X-User-Email` from the identity `session.tsx` binds into it
+- `src/api.ts` is the only place `fetch` is called; it sends the session token `session.tsx` binds into it
   and the API base URL from `import.meta.env.VITE_API_URL`. `account.ts` (localStorage) is read once, when the session
   mounts, and written when an account is selected.
 - `lib/copy.ts` is the one home for channel-status, episode, skip, wait, attempt-outcome, window-intent, and run-result

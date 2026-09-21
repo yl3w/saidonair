@@ -1,8 +1,8 @@
 // What this browser holds after signing in. Replaces `account.ts`, which stored a typed-in address
 // because identity was self-asserted (docs/PRD.md §2, until 2026-09-20).
 //
-// The token is the credential; the address is carried beside it only so this chunk can keep sending
-// `X-User-Email` while the API still reads it. Chunk A7 deletes the header and the address with it.
+// The token is the credential. The address is kept beside it only so a reload can render the
+// account before `GET /me` answers; nothing is sent but the token.
 //
 // Every access is guarded: storage can be blocked or throw, and a reader in a private window should
 // meet the sign-in screen, not a crash.

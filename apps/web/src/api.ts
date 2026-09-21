@@ -1,6 +1,6 @@
-// The only place the web app calls fetch (AGENTS.md → Web UI code). Sets X-User-Email from the identity
-// the session has bound (never from storage, so a tab sends exactly the account it displays) and the
-// base URL from VITE_API_URL (default: local wrangler dev). One typed function per operation, named
+// The only place the web app calls fetch (AGENTS.md → Web UI code). Sends the session token the
+// provider has bound (never from storage, so a tab sends exactly the account it displays) and takes
+// the base URL from VITE_API_URL (default: local wrangler dev). One typed function per operation, named
 // after the entity it touches; every shape comes from @media-digest/shared.
 import type {
   ApproveChannelBody,

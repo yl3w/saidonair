@@ -38,10 +38,7 @@ export function errorResponses(
   options: { notFound?: boolean; conflict?: string; upstream?: boolean } = {},
 ): Responses {
   const responses: Responses = {
-    400: jsonResponse(
-      ErrorResponseSchema,
-      "`X-User-Email` missing or malformed, or invalid input (`INVALID_INPUT`).",
-    ),
+    400: jsonResponse(ErrorResponseSchema, "Invalid input (`INVALID_INPUT`)."),
   };
   if (options.notFound) {
     responses[404] = jsonResponse(
@@ -76,7 +73,7 @@ const documentation: GenerateSpecOptions["documentation"] = {
       "while follows, read receipts, and chats stay per user.",
       "",
       "**Identity, not authentication.** Every request except `/health`, `/openapi.json`, and `/docs`",
-      "carries `X-User-Email`, trimmed and lowercased. Unknown emails are registered on first use.",
+      "carries the session token as `Authorization: Bearer`. An unknown account is registered on first sign-in.",
       "`GET /me` reports the caller's role so the web can decide what to offer; the API itself enforces",
       "no authorization and accepts every operation from any identity.",
       "",

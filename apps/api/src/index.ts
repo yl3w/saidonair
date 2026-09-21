@@ -75,8 +75,8 @@ app.all("/auth/*", describeRoute({ hide: true }), (context) =>
 // §4.5). Nothing consumes the session yet; A7 is where it becomes the identity.
 app.route("/session", sessionRoutes);
 
-// Everything below requires X-User-Email. Routes are named after entities, and none checks a
-// role: the API enforces no authorization (docs/PRD.md §9).
+// Everything below requires a verified session. Routes are named after entities, and none checks
+// a role yet: authentication is not authorization, and the 403s arrive in A8 (docs/PRD.md §9).
 app.use("*", requireIdentity);
 app.route("/me", meRoutes);
 app.route("/catalog", catalogRoutes);

@@ -867,8 +867,9 @@ browser tab — `Queue · Said on Air` — which is what a bookmark and a histor
 
 ### Target resource contract
 
-All endpoints except `/health`, `/openapi.json`, and `/docs` require `X-User-Email` and return 400 `INVALID_INPUT` for a missing or
-malformed email. Everything exchanges JSON, with one exception: `GET /docs` serves the Scalar test client as HTML
+All endpoints except `/health`, `/openapi.json`, `/docs`, `/auth/*` and `/session/*` require a **verified
+session** — `Authorization: Bearer`, from `POST /session/exchange` — and return 401 `UNAUTHENTICATED` without
+one. The four exceptions are public because they are how a caller obtains a session, or touch no storage at all. Everything exchanges JSON, with one exception: `GET /docs` serves the Scalar test client as HTML
 (owner decision 2026-09-07). No endpoint checks the caller's role: the API enforces no authorization (decided
 2026-09-12, §9), and the web offers owner controls to the owner role only. Resolve chats only inside the caller's User DO. Shared request/response types live in
 `packages/shared` as Zod schemas with their types inferred beside them; the web fetch wrapper remains the sole web

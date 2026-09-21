@@ -4,7 +4,7 @@ import type { AppEnv } from "../env";
 /**
  * The browser test client, and this API's one HTML response: the owner's exception to "JSON
  * everywhere", 2026-09-07 (docs/specs/api-reference.md §2). Scalar renders `/openapi.json` with a
- * try-it panel whose auth field sends `X-User-Email`. The script comes from jsDelivr pinned to one
+ * try-it panel whose auth field sends the session as a bearer token. The script comes from jsDelivr pinned to one
  * version and Scalar's request proxy is off, so nothing leaves the browser except calls to this API.
  */
 
