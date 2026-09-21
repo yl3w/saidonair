@@ -3,8 +3,10 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** approved 2026-09-20. **A0 and A1 complete** the same day. Next is **A2–A3, the Registry re-key**,
-which now has its own spec and plan (`auth-2-registry-rekey.md`) and is the first work that touches code. Nothing is installed in the repo yet: A0 ran entirely in a
+**Status:** approved 2026-09-20. **A0, A1 and A2–A3 complete** the same day — the Registry re-key landed in
+seven commits with its own spec and plan (`auth-2-registry-rekey.md`), 395 tests, and a `wrangler dev` walkthrough
+on a real channel. **Next is A4**, where `better-auth` finally enters the tree: one package, and the D1 binding in
+all three environments. Nothing is installed in the repo yet: A0 ran entirely in a
 scratch directory, and A4 is where `better-auth` actually enters the tree.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
@@ -127,7 +129,7 @@ column, module and callers together, once — with `pnpm check` green after each
 **Also: no `/clean-local` inside the chunk.** Tests use in-memory storage and local dev storage was wiped on
 2026-09-20; one wipe is owed at the end only if `pnpm dev` ran in between.
 
-**Ends with the product** working, on header identity, fully re-keyed.
+**Ends with the product** working, on header identity, fully re-keyed. **Complete 2026-09-20.**
 
 ---
 

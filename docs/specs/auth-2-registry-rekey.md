@@ -6,7 +6,10 @@
 §5.4. Parent acceptance criteria 8, 16, 18, 22, 23 and 24.
 **Replaces:** the parent plan's chunks **A2 and A3**, which are withdrawn as separate chunks and delivered here as
 nine steps. A4–A9 keep their labels, so nothing downstream is renumbered.
-**Status:** written 2026-09-20, awaiting owner approval.
+**Status:** **implemented 2026-09-20** on `main` in seven commits (`ac28569`…`82d294f`), `pnpm check` green
+at each, 395 tests, and the `wrangler dev` walkthrough recorded in the plan. One open item is carried out of
+the chunk and is not the re-key: chat retrieval returned no sources while the dev Vectorize index had not
+processed the new vectors — the plan's walkthrough section states the evidence.
 
 ## 1. Summary
 

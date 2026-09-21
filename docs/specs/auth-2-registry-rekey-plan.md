@@ -3,7 +3,7 @@
 **Implements:** `docs/specs/auth-2-registry-rekey.md` under `AGENTS.md`; parent `docs/specs/auth-phase.md`;
 roadmap `docs/specs/auth-phase-plan.md`. Replaces that roadmap's chunks **A2 and A3**; A4–A9 keep their labels.
 **Written:** 2026-09-20, against `main` at `8b707a0`.
-**Status:** awaiting owner approval.
+**Status:** **complete 2026-09-20** on `main`, nine steps in seven commits (`ac28569`, `82ac3f7`, `4f67d43`, `da509ca`, `b4dfcba`, `f6c27a5`, `82d294f`), `pnpm check` green at each, 395 tests. The step 9 walkthrough ran against a real channel under `pnpm dev`; its record and one open item are below.
 **Shape:** nine steps, every one **S or M**, each one commit when the owner asks with `pnpm check` green.
 Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 
@@ -148,9 +148,74 @@ tests that build an identity.
 
 ## Walkthrough record
 
-| Step | Date | What was exercised | Result |
-|---|---|---|---|
-| 9 | | full product on `X-User-Email`, after the re-key | |
+Run 2026-09-20 under `pnpm dev` against a real channel (`UCLtTf_uKt0Itd0NG7txrwXA`), on `X-User-Email`, with
+better-auth nowhere in the picture.
+
+| What was exercised | Result |
+|---|---|
+| Add + approve a channel | approved; the CHECK requires `reviewed_by_user_id` non-null, so the foreign key and the constraint both accepted a generated id |
+| Initial discovery | one `initial` run, feed `read`, **5 episodes** — the §4.2 default |
+| Ingestion | **5 available**, 0 pending, 0 failed, 0 skipped, one attempt each |
+| A summary | structured, six takeaways |
+| `GET /me` | `role: owner` — `seedOwner` promoted the **generated-id** row, criterion 4 in the live environment |
+| Follows | following, `unreadCount: 5` |
+| Read receipt | `POST …/read` → 200, reads back `true`: the **id-named User DO**, criterion 9 |
+| Followers | **two identities**, distinct `user_id`s, addresses resolved by join, criterion 7 |
+| Channel management | `reviewedByEmail` resolved from `reviewed_by_user_id`, criterion 8 |
+| `GET /digest` | 5 episodes — eligibility by `user_id`, criterion 6 |
+| Ask a question | replied, stored with its scope — but **no sources**; see below |
+
+**Two followers of one channel with independent receipts is PRD §8's first criterion**, the one the M6 audit found
+untested, observed live.
+
+### Open item, carried out of this chunk
+
+**Chat retrieval returned no sources** — "Nothing in this episode covers that", scoped and unscoped. It is **not
+the re-key**, and the evidence is specific rather than a shrug:
+
+- `GET /digest` returns all five episodes, and it reads eligibility through the same
+  `listEligibleChannels(userId)` this chunk re-keyed. Eligibility is correct.
+- `media-rag-dev` holds 347 vectors, and it was verified empty earlier the same day, so these writes landed.
+- `pnpm verify:vectorize` passes: `channelId` and `episodeId` metadata indexes both present. That script exists
+  for exactly this symptom — a filter on a property with no metadata index returns zero matches and produces this
+  precise reply — and it rules that cause out.
+- The index's `processedUpToDatetime` is **01:14:21**, while the five episodes published between **01:15:36** and
+  **01:16:27**. Every chunk was written after the watermark, and it had not advanced twelve minutes later.
+
+The likeliest reading is that the dev index has accepted the vectors (they are counted) but has not finished
+processing them (they are not yet queryable) — `docs/specs/…`/memory records dev writes becoming readable in
+10–80 s, and this is longer. **Re-check before A4**, and if it is still empty once the watermark passes the
+publishes, it is a retrieval or generation-activation question for M3/M4 code this chunk never touched.
+
+## Record
+
+- **Step 1.** `getUser` did not gain a by-`user_id` form: nothing calls one. Steps 3–5 needed a *batched* lookup
+  instead, which is `users.emailsByIds`.
+- **Step 2.** The facade takes a `user_id`, not an address — reversed mid-step after starting the other way. An
+  email-addressed facade works today and breaks at A7, when a person may have no address and must still be able
+  to follow a channel. `recordFollow` therefore stopped auto-registering; the foreign key refuses an unknown id,
+  which `registry-migrations` already asserted.
+- **Step 3.** The plan said `channel-view.ts` would resolve the reviewer's address. It cannot: it is a pure
+  projection with no SQL. Resolution belongs in `catalog.withManagement`, which already gathers every other
+  channel fact in grouped queries. Same correction applied to step 4 in `episodes.ts`.
+- **Step 3.** A `FOREIGN KEY` assertion was added at the approve path and then removed: it duplicated
+  `registry-migrations`, and the RPC stub surfaces such a rejection twice, so `.rejects` consumed one and Vitest
+  failed the run on the other.
+- **Steps 4 and 5.** The fixtures, not the production paths, carried the blast radius: `seedEpisode` writing the
+  old column failed 110 tests at once, `seedAttempt` 16.
+- **Step 5.** `.map(attempts.toAttempt)` broke when the mapper gained a leading `sql` parameter — the hazard of
+  point-free style over a signature you do not own. And an `await` inside a synchronous `inRegistry` callback
+  fails a file at parse time, reported as one failing test in a file of twenty-six.
+- **Step 6.** `apps/api/src/do/user.ts` no longer imports `lib/email` at all. Criterion 9 got no new test:
+  `user-reads` and `user-chats` already assert receipts and chats stay with their owner, now against id-named
+  objects, and `registry-users` asserts one address resolves to one id.
+- **Step 7.** `apps/api` compiles against `packages/shared`'s **build output**, so a schema change needs
+  `pnpm --filter @media-digest/shared build` before the API typechecks.
+- **Step 8.** The plan named three document sites; there were fifteen. Two were already stale before this chunk:
+  PRD §3's stack table still described the User DO by address, and §5.4 claimed "The Registry lists `0001_init`
+  alone" after `0002_episode_duration` landed on 2026-09-14.
+- **No `/clean-local` was needed**, as the chunk predicted: dev was wiped before it began and the migration was
+  edited five times with nothing to clear.
 
 ## Record
 
