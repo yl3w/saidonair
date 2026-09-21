@@ -19,7 +19,15 @@ import type {
 export type CatalogSummary = Omit<Catalog, "transcripts">;
 
 export type RegistryUser = {
+  /** Generated here, never supplied by a caller. Names this identity's User DO. */
+  userId: string;
+  /**
+   * The column is nullable — a provider can return an account with no address — but nothing creates
+   * such a row until the Auth phase's A7, so this stays `string` until something can actually be null.
+   */
   email: string;
+  /** better-auth's `user.id`, attached at first sign-in (A7). Null for everyone until then. */
+  authUserId: string | null;
   role: UserRole;
   createdAt: number;
   lastSeenAt: number;

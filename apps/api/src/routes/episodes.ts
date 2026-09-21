@@ -33,7 +33,7 @@ export const episodeRoutes = new Hono<AppEnv>().get(
   async (c) => {
     const { episodeId } = c.req.valid("param");
     const eligible = new Set(
-      (await c.var.registry.listEligibleChannels(c.var.identity.email)).map(
+      (await c.var.registry.listEligibleChannels(c.var.identity.userId)).map(
         (channel) => channel.channelId,
       ),
     );

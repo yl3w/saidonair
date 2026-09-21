@@ -45,7 +45,7 @@ export const followRoutes = new Hono<AppEnv>()
       },
     }),
     async (c) => {
-      const follows = await c.var.registry.listFollows(c.var.identity.email);
+      const follows = await c.var.registry.listFollows(c.var.identity.userId);
       if (follows.length === 0) return c.json<FollowsResponse>({ follows: [] });
 
       const ids = follows.map((follow) => follow.channelId);
@@ -124,7 +124,7 @@ export const followRoutes = new Hono<AppEnv>()
         );
       }
       const follow = await c.var.registry.recordFollow(
-        c.var.identity.email,
+        c.var.identity.userId,
         channelId,
       );
       return c.json<FollowResponse>({
@@ -152,7 +152,7 @@ export const followRoutes = new Hono<AppEnv>()
     async (c) => {
       const { channelId } = c.req.valid("param");
       const follow = await c.var.registry.recordUnfollow(
-        c.var.identity.email,
+        c.var.identity.userId,
         channelId,
       );
       return c.json<FollowResponse>({

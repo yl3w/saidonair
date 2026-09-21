@@ -10,7 +10,7 @@ import type { CatalogChannel, FollowerRecord, FollowRecord } from "./types";
 
 /**
  * The one record of who follows what (docs/PRD.md §4.3, decided 2026-09-13): one row per channel
- * and email serves the user's own list, `following`, the follower count, the owner's queue, the
+ * and user serves the user's own list, `following`, the follower count, the owner's queue, the
  * automatic pause, and eligibility. Nothing is copied anywhere else, so nothing can drift.
  */
 
@@ -29,20 +29,20 @@ const FOLLOW_COLUMNS = "channel_id, followed_at, unfollowed_at";
 export function recordFollow(
   sql: SqlStorage,
   channelId: string,
-  email: string,
+  userId: string,
   now: number,
 ): FollowRecord {
   const channel = requireChannel(sql, channelId);
   const row = sql
     .exec<FollowRow>(
-      `INSERT INTO channel_followers (channel_id, user_email, followed_at, unfollowed_at, created_at, updated_at)
+      `INSERT INTO channel_followers (channel_id, user_id, followed_at, unfollowed_at, created_at, updated_at)
        VALUES (?, ?, ?, NULL, ?, ?)
-       ON CONFLICT (channel_id, user_email) DO UPDATE
+       ON CONFLICT (channel_id, user_id) DO UPDATE
          SET followed_at = CASE WHEN unfollowed_at IS NULL THEN followed_at ELSE excluded.followed_at END,
              unfollowed_at = NULL, updated_at = excluded.updated_at
        RETURNING ${FOLLOW_COLUMNS}`,
       channel.channelId,
-      email,
+      userId,
       now,
       now,
       now,
@@ -61,22 +61,22 @@ export function recordFollow(
 export function recordUnfollow(
   sql: SqlStorage,
   channelId: string,
-  email: string,
+  userId: string,
   now: number,
 ): FollowRecord {
   const channel = requireChannel(sql, channelId);
-  const existing = getFollow(sql, channel.channelId, email);
+  const existing = getFollow(sql, channel.channelId, userId);
   if (!existing) throw new DomainError("NOT_FOUND", "channel is not followed");
   if (existing.unfollowedAt !== null) return existing;
   const row = sql
     .exec<FollowRow>(
       `UPDATE channel_followers SET unfollowed_at = ?, updated_at = ?
-       WHERE channel_id = ? AND user_email = ?
+       WHERE channel_id = ? AND user_id = ?
        RETURNING ${FOLLOW_COLUMNS}`,
       now,
       now,
       channel.channelId,
-      email,
+      userId,
     )
     .one();
   const active =
@@ -95,38 +95,38 @@ export function recordUnfollow(
 export function getFollow(
   sql: SqlStorage,
   channelId: string,
-  email: string,
+  userId: string,
 ): FollowRecord | null {
   const row = sql
     .exec<FollowRow>(
-      `SELECT ${FOLLOW_COLUMNS} FROM channel_followers WHERE channel_id = ? AND user_email = ?`,
+      `SELECT ${FOLLOW_COLUMNS} FROM channel_followers WHERE channel_id = ? AND user_id = ?`,
       channelId,
-      email,
+      userId,
     )
     .toArray()[0];
   return row ? toFollow(row) : null;
 }
 
 /** A user's own list: active follows, newest first. */
-export function listByEmail(sql: SqlStorage, email: string): FollowRecord[] {
+export function listByUser(sql: SqlStorage, userId: string): FollowRecord[] {
   return sql
     .exec<FollowRow>(
       `SELECT ${FOLLOW_COLUMNS} FROM channel_followers
-       WHERE user_email = ? AND unfollowed_at IS NULL
+       WHERE user_id = ? AND unfollowed_at IS NULL
        ORDER BY followed_at DESC, channel_id`,
-      email,
+      userId,
     )
     .toArray()
     .map(toFollow);
 }
 
 /** The channel ids a user actively follows, sorted. */
-export function activeChannelIds(sql: SqlStorage, email: string): string[] {
+export function activeChannelIds(sql: SqlStorage, userId: string): string[] {
   return sql
     .exec<{ channel_id: string }>(
       `SELECT channel_id FROM channel_followers
-       WHERE user_email = ? AND unfollowed_at IS NULL ORDER BY channel_id`,
-      email,
+       WHERE user_id = ? AND unfollowed_at IS NULL ORDER BY channel_id`,
+      userId,
     )
     .toArray()
     .map((row) => row.channel_id);
@@ -137,14 +137,17 @@ export function activeChannelIds(sql: SqlStorage, email: string): string[] {
  * read from are their active follows that are approved, paused or not. Requested channels have no
  * content yet and declined ones are excluded by status. Title order, as the catalog lists.
  */
-export function listEligible(sql: SqlStorage, email: string): CatalogChannel[] {
+export function listEligible(
+  sql: SqlStorage,
+  userId: string,
+): CatalogChannel[] {
   return sql
     .exec<ChannelRow>(
       `SELECT c.* FROM channel_followers f
        JOIN channels c ON c.channel_id = f.channel_id
-       WHERE f.user_email = ? AND f.unfollowed_at IS NULL AND c.status = 'approved'
+       WHERE f.user_id = ? AND f.unfollowed_at IS NULL AND c.status = 'approved'
        ORDER BY c.title COLLATE NOCASE, c.channel_id`,
-      email,
+      userId,
     )
     .toArray()
     .map(toChannel);
@@ -169,19 +172,26 @@ export function countActiveByChannel(
   return counts;
 }
 
-/** Active followers of one channel, oldest first; the owner queue shows these. */
+/**
+ * Active followers of one channel, oldest first; the owner queue shows these. The row carries a
+ * `user_id`, so the address the screen prints is joined rather than stored — an address that
+ * changes cannot leave a stale copy behind here. The tiebreak is the email, not the id, because
+ * a random id would order the screen arbitrarily.
+ */
 export function listActive(
   sql: SqlStorage,
   channelId: string,
 ): FollowerRecord[] {
   return sql
-    .exec<{ user_email: string; followed_at: number }>(
-      `SELECT user_email, followed_at FROM channel_followers
-       WHERE channel_id = ? AND unfollowed_at IS NULL ORDER BY followed_at, user_email`,
+    .exec<{ email: string; followed_at: number }>(
+      `SELECT u.email AS email, f.followed_at FROM channel_followers f
+       JOIN global_users u ON u.user_id = f.user_id
+       WHERE f.channel_id = ? AND f.unfollowed_at IS NULL
+       ORDER BY f.followed_at, u.email`,
       channelId,
     )
     .toArray()
-    .map((row) => ({ email: row.user_email, followedAt: row.followed_at }));
+    .map((row) => ({ email: row.email, followedAt: row.followed_at }));
 }
 
 function toFollow(row: FollowRow): FollowRecord {

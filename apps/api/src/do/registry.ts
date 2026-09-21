@@ -498,44 +498,42 @@ export class RegistryDO extends DurableObject<Env> {
   // --- follows (the one record: docs/PRD.md §4.3, 2026-09-13) ----------------
 
   /**
-   * Follow or refollow. `ensureUser` runs first so the foreign key holds for a direct RPC caller
-   * that never went through the identity middleware. Lifts a system pause.
+   * Follow or refollow, by `user_id`: creating an identity is `ensureUser`'s job and the identity
+   * middleware's, and the foreign key refuses a follow for an id that does not exist. It must be an
+   * id rather than an address because from the Auth phase's A7 a person can have no address at all
+   * (docs/specs/auth-phase.md §4.2), and they can still follow a channel. Lifts a system pause.
    */
-  recordFollow(email: string, channelId: string): FollowRecord {
-    const actor = users.requireEmail(email);
+  recordFollow(userId: string, channelId: string): FollowRecord {
     const id = requireChannelId(channelId);
-    return this.#transaction(() => {
-      const now = Date.now();
-      users.ensureUser(this.#sql, actor, now);
-      return followers.recordFollow(this.#sql, id, actor, now);
-    });
+    return this.#transaction(() =>
+      followers.recordFollow(this.#sql, id, userId, Date.now()),
+    );
   }
 
   /**
    * Unfollow, retaining a tombstone: `NOT_FOUND` when the caller never followed the channel,
    * idempotent on a tombstone. The last follower leaving pauses an approved channel.
    */
-  recordUnfollow(email: string, channelId: string): FollowRecord {
-    const actor = users.requireEmail(email);
+  recordUnfollow(userId: string, channelId: string): FollowRecord {
     const id = requireChannelId(channelId);
     return this.#transaction(() =>
-      followers.recordUnfollow(this.#sql, id, actor, Date.now()),
+      followers.recordUnfollow(this.#sql, id, userId, Date.now()),
     );
   }
 
   /** The caller's own list: active follows, newest first. */
-  listFollows(email: string): FollowRecord[] {
-    return followers.listByEmail(this.#sql, users.requireEmail(email));
+  listFollows(userId: string): FollowRecord[] {
+    return followers.listByUser(this.#sql, userId);
   }
 
   /** The channel ids the caller actively follows, sorted. */
-  activeChannelIds(email: string): string[] {
-    return followers.activeChannelIds(this.#sql, users.requireEmail(email));
+  activeChannelIds(userId: string): string[] {
+    return followers.activeChannelIds(this.#sql, userId);
   }
 
   /** Eligibility: the caller's active follows that are approved (docs/PRD.md §4.3). */
-  listEligibleChannels(email: string): CatalogChannel[] {
-    return followers.listEligible(this.#sql, users.requireEmail(email));
+  listEligibleChannels(userId: string): CatalogChannel[] {
+    return followers.listEligible(this.#sql, userId);
   }
 
   /** Active followers per channel, zero-filled. */

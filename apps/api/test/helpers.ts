@@ -52,6 +52,25 @@ export function registry() {
 }
 
 /**
+ * Registers an address and returns its `user_id` — what the identity middleware does before any
+ * route runs. Follows are keyed by the id (docs/specs/auth-2-registry-rekey.md), so a test that
+ * wants to act as somebody has to become somebody first.
+ */
+export async function identityOf(email: string): Promise<string> {
+  return (await registry().ensureUser(email)).userId;
+}
+
+/** Follow as an address: registers the identity first, exactly as a request would. */
+export async function follow(email: string, channelId: string) {
+  return registry().recordFollow(await identityOf(email), channelId);
+}
+
+/** Unfollow as an address. */
+export async function unfollow(email: string, channelId: string) {
+  return registry().recordUnfollow(await identityOf(email), channelId);
+}
+
+/**
  * Creates a channel and approves it as the owner: what most fixtures want. There is no owner add
  * shortcut in the API (PRD §9), so this is the two calls the web makes. Approval pauses a channel
  * nobody follows yet (system), exactly as the facade does.

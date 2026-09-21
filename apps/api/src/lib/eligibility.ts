@@ -11,7 +11,7 @@ export async function eligibleChannelIds(
   c: Context<AppEnv>,
 ): Promise<Set<string>> {
   return new Set(
-    (await c.var.registry.listEligibleChannels(c.var.identity.email)).map(
+    (await c.var.registry.listEligibleChannels(c.var.identity.userId)).map(
       (channel) => channel.channelId,
     ),
   );

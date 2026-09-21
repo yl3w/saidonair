@@ -80,7 +80,7 @@ export const channelRoutes = new Hono<AppEnv>()
     async (c) => {
       const { scope } = c.req.valid("query");
       const following = new Set(
-        await c.var.registry.activeChannelIds(c.var.identity.email),
+        await c.var.registry.activeChannelIds(c.var.identity.userId),
       );
       const rows =
         scope === "all"
@@ -739,9 +739,9 @@ async function requireReadableSummary(
 }
 
 async function isFollowing(c: Ctx, channelId: string): Promise<boolean> {
-  return (await c.var.registry.activeChannelIds(c.var.identity.email)).includes(
-    channelId,
-  );
+  return (
+    await c.var.registry.activeChannelIds(c.var.identity.userId)
+  ).includes(channelId);
 }
 
 /** One channel as every caller sees it: the shared fields, `management`, and the caller's own `following`. */
@@ -757,7 +757,7 @@ async function fullChannel(c: Ctx, channelId: string): Promise<Channel> {
 
 /** Follows the caller onto a channel (one Registry write) and returns the channel as they see it. */
 async function followAndView(c: Ctx, channelId: string, created: boolean) {
-  await c.var.registry.recordFollow(c.var.identity.email, channelId);
+  await c.var.registry.recordFollow(c.var.identity.userId, channelId);
   return c.json<ChannelResponse>(
     { channel: await fullChannel(c, channelId) },
     created ? 201 : 200,

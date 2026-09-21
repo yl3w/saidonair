@@ -5,12 +5,25 @@
 -- (docs/PRD.md §5.4, 2026-09-12): this file may be edited in place; storage that already applied it must be
 -- wiped for an edit to run. Edited 2026-09-13 (M3.7): episode_ingestion_attempts.outcome_code gained the CHECK
 -- listing the fifteen AttemptOutcomeCode values, once every outcome had run for real or through the fakes.
+-- Edited 2026-09-20 (Auth phase, docs/specs/auth-2-registry-rekey.md): global_users is keyed by a generated
+-- `user_id`, `email` demotes to a nullable unique attribute, and `auth_user_id` is added for A7. The other
+-- tables' identity columns follow one per step, each still referencing the unique `email` until its own step.
 -- All timestamps are Unix milliseconds. Every table carries created_at.
 
--- Identities. `role` is read by GET /me for the web's rendering; the API itself enforces no authorization
+-- Identities, keyed by a `user_id` this Registry generates (docs/specs/auth-2-registry-rekey.md). `role` is read
+-- by GET /me for the web's rendering; the API itself enforces no authorization until the Auth phase's A8
 -- (docs/PRD.md §2, §9). The deployment seeds OWNER_EMAIL as `owner`; everyone else auto-registers as `user`.
 CREATE TABLE global_users (
-  email TEXT PRIMARY KEY,
+  user_id TEXT PRIMARY KEY,
+  -- Nullable, because a provider can return an account with no address at all, and UNIQUE, because one person is
+  -- one email. SQLite permits any number of NULLs under a UNIQUE index and exactly one row per non-null value,
+  -- so the schema enforces both. It stays UNIQUE for a second reason: every other table here still says
+  -- `REFERENCES global_users (email)`, and a foreign key may target any unique column, not only the primary key.
+  -- That is what lets the remaining tables be re-keyed one at a time rather than all at once.
+  email TEXT UNIQUE,
+  -- better-auth's `user.id`, attached at that person's first sign-in (Auth phase A7). Null for everyone until
+  -- then, and written by nobody before it.
+  auth_user_id TEXT UNIQUE,
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('owner', 'user')),
   last_seen_at INTEGER NOT NULL CHECK (last_seen_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0)
@@ -51,21 +64,22 @@ CREATE TABLE channels (
 CREATE INDEX channels_status_paused_by ON channels (status, paused_by);
 
 -- The one record of who follows what (docs/PRD.md §4.3, decided 2026-09-13): the user's own list, the follower
--- count, the owner's queue, the automatic pause, and eligibility all read these rows. An active follow is
+-- count, the owner's queue, the automatic pause, and eligibility all read these rows. Keyed by `user_id` since
+-- 2026-09-20, so an address change cannot orphan a follow. An active follow is
 -- unfollowed_at IS NULL; an unfollow keeps the row as a tombstone that an explicit refollow clears.
 CREATE TABLE channel_followers (
   channel_id TEXT NOT NULL REFERENCES channels (channel_id),
-  user_email TEXT NOT NULL REFERENCES global_users (email),
+  user_id TEXT NOT NULL REFERENCES global_users (user_id),
   followed_at INTEGER NOT NULL CHECK (followed_at >= 0),
   unfollowed_at INTEGER CHECK (unfollowed_at IS NULL OR unfollowed_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  PRIMARY KEY (channel_id, user_email)
+  PRIMARY KEY (channel_id, user_id)
 );
 
 CREATE INDEX channel_followers_channel_id_unfollowed_at ON channel_followers (channel_id, unfollowed_at);
 -- A user's own list and eligibility.
-CREATE INDEX channel_followers_user_email_unfollowed_at ON channel_followers (user_email, unfollowed_at);
+CREATE INDEX channel_followers_user_id_unfollowed_at ON channel_followers (user_id, unfollowed_at);
 
 -- Discovery runs: one completed RSS feed check of one channel (docs/PRD.md §4.2 rules 1–4). A run exists only
 -- once complete, so it has no status, Workflow, or failure columns; episode processing history is on

@@ -76,7 +76,7 @@ describe("registry migrations", () => {
     expect(indexes).toEqual(
       expect.arrayContaining([
         "channel_followers_channel_id_unfollowed_at",
-        "channel_followers_user_email_unfollowed_at",
+        "channel_followers_user_id_unfollowed_at",
       ]),
     );
     expect(runColumns).toEqual([
@@ -359,15 +359,15 @@ describe("registry migrations", () => {
       expect(() =>
         sql.exec(
           `INSERT INTO channel_followers
-             (channel_id, user_email, followed_at, created_at, updated_at)
-           VALUES (?, 'ghost@example.com', 1, 1, 1)`,
+             (channel_id, user_id, followed_at, created_at, updated_at)
+           VALUES (?, 'no-such-user-id', 1, 1, 1)`,
           CHANNEL_A,
         ),
       ).toThrow(/FOREIGN KEY/i);
       expect(() =>
         sql.exec(
-          `INSERT INTO global_users (email, role, created_at, last_seen_at)
-           VALUES ('x@example.com', 'superuser', 0, 0)`,
+          `INSERT INTO global_users (user_id, email, role, created_at, last_seen_at)
+           VALUES ('u-x', 'x@example.com', 'superuser', 0, 0)`,
         ),
       ).toThrow(/CHECK/i);
     });

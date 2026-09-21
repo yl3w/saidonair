@@ -25,6 +25,8 @@ import {
   EPISODE_B,
   EPISODE_C,
   expectShape,
+  follow,
+  identityOf,
   OWNER,
   registry,
   seedApprovedChannel,
@@ -128,7 +130,7 @@ describe("channel and catalog routes", () => {
 
   it("lists requested and approved channels for any caller, every status with ?scope=all, management on every row", async () => {
     await seedCatalog();
-    await registry().recordFollow(ALICE, CHANNEL_A);
+    await follow(ALICE, CHANNEL_A);
 
     const alice = await call(ALICE, "GET", "/channels");
     expectShape(ChannelsResponseSchema, alice.json);
@@ -382,7 +384,7 @@ describe("channel and catalog routes", () => {
 
   it("serves every caller the same episodes, reports read state, and records nothing", async () => {
     await seedCatalog();
-    await registry().recordFollow(ALICE, CHANNEL_A);
+    await follow(ALICE, CHANNEL_A);
 
     const bob = await call(BOB, "GET", `/channels/${CHANNEL_A}/episodes`);
     expect(bob.status).toBe(200);
@@ -445,7 +447,7 @@ describe("channel and catalog routes", () => {
     ]);
 
     // Bob's receipts are his own, and nobody's reading has touched them.
-    await registry().recordFollow(BOB, CHANNEL_A);
+    await follow(BOB, CHANNEL_A);
     const bobAgain = await call(BOB, "GET", `/channels/${CHANNEL_A}/episodes`);
     expect((bobAgain.json.episodes as Json[]).map((e) => e.read)).toEqual([
       false,
@@ -510,7 +512,7 @@ describe("channel and catalog routes", () => {
 
   it("returns a declined channel's summaries to a follower without read state", async () => {
     const stub = await seedCatalog();
-    await registry().recordFollow(ALICE, CHANNEL_A);
+    await follow(ALICE, CHANNEL_A);
     await stub.declineChannel(OWNER, CHANNEL_A, { explanation: "withdrawn" });
 
     // The web hides these from readers (PRD §7); the API returns them, and a declined channel is
@@ -538,7 +540,7 @@ describe("channel and catalog routes", () => {
 
   it("answers one episode, and records or undoes its receipt for an eligible caller only", async () => {
     await seedCatalog();
-    await registry().recordFollow(ALICE, CHANNEL_A);
+    await follow(ALICE, CHANNEL_A);
     const path = `/channels/${CHANNEL_A}/episodes/${EPISODE_A}`;
 
     // The reading view's deep link: one episode with its summary, related titles in the caller's
@@ -794,7 +796,9 @@ describe("channel and catalog routes", () => {
       following: true,
       followerCount: 1,
     });
-    expect(await registry().activeChannelIds(ALICE)).toEqual([CHANNEL_A]);
+    expect(await registry().activeChannelIds(await identityOf(ALICE))).toEqual([
+      CHANNEL_A,
+    ]);
 
     const existing = await call(BOB, "POST", "/channels", {
       channelId: CHANNEL_A,

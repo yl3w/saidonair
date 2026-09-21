@@ -64,7 +64,7 @@ export const digestRoutes = new Hono<AppEnv>().get(
     const compact = query.compact === true;
 
     const eligible = (
-      await c.var.registry.listEligibleChannels(c.var.identity.email)
+      await c.var.registry.listEligibleChannels(c.var.identity.userId)
     ).map((channel) => channel.channelId);
     const wanted = query.channelId;
     const channelIds =
