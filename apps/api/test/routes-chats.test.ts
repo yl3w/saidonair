@@ -53,7 +53,10 @@ describe("chat routes", () => {
       .chat as Json;
 
     // An exchange touches the chat, so the older one returns to the top.
-    await userDO(BOB).appendExchange(older.chatId as string, "wakes it");
+    await (await userDO(BOB)).appendExchange(
+      older.chatId as string,
+      "wakes it",
+    );
 
     const chats = (await call(BOB, "GET", "/chats")).json.chats as Json[];
     expect(chats.slice(0, 2).map((chat) => chat.chatId)).toEqual([
@@ -63,7 +66,7 @@ describe("chat routes", () => {
   });
 
   it("returns a chat's messages in order, with sources and the scope each was sent under", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat("Scoped");
     await stub.appendExchange(chat.chatId, "what did they say?", EPISODE_A);
 
@@ -86,7 +89,7 @@ describe("chat routes", () => {
   });
 
   it("honours limit and rejects one past the cap", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
     await stub.appendExchange(chat.chatId, "first");
     await stub.appendExchange(chat.chatId, "second");
@@ -109,7 +112,7 @@ describe("chat routes", () => {
   });
 
   it("keeps one caller's chats out of another's, hence 404 and never 403", async () => {
-    const alices = await userDO(ALICE).createChat("Alice's");
+    const alices = await (await userDO(ALICE)).createChat("Alice's");
 
     expect(
       (await call(BOB, "GET", `/chats/${alices.chatId}/messages`)).status,

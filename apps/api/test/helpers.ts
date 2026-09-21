@@ -112,8 +112,12 @@ export async function seedApprovedChannel(
   return (await approveAs(OWNER, channelId)).channel;
 }
 
-export function userDO(email: string) {
-  return getUserDO(env, email);
+/**
+ * The User DO for an address. The object is named by `user_id` now, so this registers the identity
+ * and resolves it first — which is what the identity middleware does before any route runs.
+ */
+export async function userDO(email: string) {
+  return getUserDO(env, await identityOf(email));
 }
 
 /** Asserts a DO RPC call fails with the given typed code, whatever crosses the RPC boundary. */

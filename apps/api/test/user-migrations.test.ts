@@ -6,7 +6,7 @@ import { ALICE, userDO } from "./helpers";
 
 describe("user migrations", () => {
   it("creates every per-user table on first access and records the version", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     await stub.getPreferences();
 
     const { tables, versions } = await runInDurableObject(stub, (_, state) => ({
@@ -39,7 +39,7 @@ describe("user migrations", () => {
   });
 
   it("is a no-op when run a second time", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     await stub.getPreferences();
 
     const applied = await runInDurableObject(stub, (_, state) =>
@@ -50,7 +50,7 @@ describe("user migrations", () => {
   });
 
   it("enforces the same-chat reply rule and the other CHECK constraints", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     await stub.getPreferences();
 
     await runInDurableObject(stub, (_, state) => {

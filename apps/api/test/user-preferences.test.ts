@@ -3,7 +3,7 @@ import { ALICE, BOB, expectDomainError, userDO } from "./helpers";
 
 describe("user preferences", () => {
   it("reads as empty until saved, then round-trips and overwrites", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     expect(await stub.getPreferences()).toEqual({
       systemRules: "",
       updatedAt: null,
@@ -16,7 +16,7 @@ describe("user preferences", () => {
 
     const replaced = await stub.setPreferences("Be brief.");
     expect(replaced.systemRules).toBe("Be brief.");
-    expect(await userDO(BOB).getPreferences()).toEqual({
+    expect(await (await userDO(BOB)).getPreferences()).toEqual({
       systemRules: "",
       updatedAt: null,
     });
@@ -24,7 +24,7 @@ describe("user preferences", () => {
 
   it("caps the length of the rules", async () => {
     await expectDomainError(
-      userDO(ALICE).setPreferences("x".repeat(4001)),
+      (await userDO(ALICE)).setPreferences("x".repeat(4001)),
       "INVALID_INPUT",
     );
   });

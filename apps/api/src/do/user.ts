@@ -1,7 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { userMigrations } from "../../migrations/user";
 import type { Env } from "../env";
-import { normalizeEmail } from "../lib/email";
 import { DomainError } from "../lib/errors";
 import { applyMigrations } from "./migrations";
 import * as chats from "./user/chats";
@@ -16,22 +15,26 @@ import type {
 } from "./user/types";
 
 /**
- * One object per normalized email. Normalizes defensively so a single identity can never
- * be split across two objects by caller casing.
+ * One object per identity, named by the Registry's `user_id`
+ * (docs/specs/auth-2-registry-rekey.md). It was the normalized email until 2026-09-20; naming it by
+ * an opaque id means a person who changes address keeps their chats and receipts, a person with no
+ * address can have them at all, and no address appears in a Durable Object's name.
  */
-export function getUserDO(env: Env, email: string): DurableObjectStub<UserDO> {
-  const normalized = normalizeEmail(email);
-  if (!normalized) throw new DomainError("INVALID_INPUT", "malformed email");
-  return env.USER_DO.getByName(normalized);
+export function getUserDO(env: Env, userId: string): DurableObjectStub<UserDO> {
+  if (userId.length === 0) {
+    throw new DomainError("INVALID_INPUT", "missing user id");
+  }
+  return env.USER_DO.getByName(userId);
 }
 
 /**
  * Per-user Durable Object: read receipts, chats with messages and citation snapshots, and
  * chat preferences, the state that is private to one user. Follows are not here: the
  * Registry's follower record is their one record (docs/specs/follows-single-owner.md), and
- * it answers the user's list, `following`, and eligibility. The email is implicit in the
- * object's name and is never stored or logged here. Every method is scoped to that one user
- * by construction, so a chat that belongs to someone else is simply NOT_FOUND.
+ * it answers the user's list, `following`, and eligibility. The object's name is a `user_id`, so
+ * no address is implicit in it and none is stored or logged here — this object does not know what
+ * an email is. Every method is scoped to that one user by construction, so a chat that belongs to
+ * someone else is simply NOT_FOUND.
  *
  * Cross-DO rules (unread counts, chat retrieval scope) are composed by the routes against
  * the Registry; this object owns row semantics only. Methods are synchronous;

@@ -259,9 +259,9 @@ describe("digest route", () => {
       false,
       false,
     ]);
-    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A, EPISODE_D])).toEqual(
-      [],
-    );
+    expect(
+      await (await userDO(ALICE)).readEpisodeIds([EPISODE_A, EPISODE_D]),
+    ).toEqual([]);
     await call(
       ALICE,
       "POST",

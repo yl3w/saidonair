@@ -572,7 +572,7 @@ describe("ingestAttempt", () => {
       await registry().getEpisode(CHANNEL_A, EPISODE_ENGLISH)
     )?.summaryAvailableAt;
 
-    await userDO(ALICE).markRead([EPISODE_ENGLISH]);
+    await (await userDO(ALICE)).markRead([EPISODE_ENGLISH]);
     await registry().retryEpisode(CHANNEL_A, EPISODE_ENGLISH);
     const attemptId = await begin(EPISODE_ENGLISH, "owner_retry");
     const { staged } = await generations(EPISODE_ENGLISH);
@@ -595,9 +595,9 @@ describe("ingestAttempt", () => {
     expect(fakeVectorIds().sort()).toEqual(
       generationIds(EPISODE_ENGLISH, staged ?? "", ENGLISH_CHUNKS).sort(),
     );
-    expect(await userDO(ALICE).readEpisodeIds([EPISODE_ENGLISH])).toEqual([
-      EPISODE_ENGLISH,
-    ]);
+    expect(
+      await (await userDO(ALICE)).readEpisodeIds([EPISODE_ENGLISH]),
+    ).toEqual([EPISODE_ENGLISH]);
   });
 
   it("deletes every generation a past cleanup left behind, each under its own step name", async () => {

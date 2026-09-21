@@ -31,7 +31,7 @@ const SOURCE_B = {
 
 describe("user chats", () => {
   it("creates chats with an optional title", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const untitled = await stub.createChat();
     const titled = await stub.createChat("  Planning  ");
 
@@ -43,7 +43,7 @@ describe("user chats", () => {
   // Criteria 3-6: the episode scope hint belongs to the question, never to the reply
   // (docs/PRD.md §4.5; docs/specs/chat-origin-scope.md §4.2).
   it("stores an episode scope hint on the question and never on the reply", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
     const scoped = await stub.appendExchange(
       chat.chatId,
@@ -62,7 +62,7 @@ describe("user chats", () => {
   });
 
   it("leaves both messages unscoped when no hint is given", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
     const global = await stub.appendExchange(chat.chatId, "anything at all");
 
@@ -73,7 +73,7 @@ describe("user chats", () => {
   // Criterion 5: a malformed hint is rejected before anything is written, so a bad
   // aboutEpisodeId cannot leave a half-written exchange behind.
   it("rejects a malformed episode hint and writes nothing", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
 
     await expectDomainError(
@@ -86,15 +86,18 @@ describe("user chats", () => {
 
   // Criterion 7: a chat from another user is simply absent in this object.
   it("returns one chat by id, and NOT_FOUND for anyone else's", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat("Alice's chat");
 
     expect(await stub.getChat(chat.chatId)).toEqual(chat);
-    await expectDomainError(userDO(BOB).getChat(chat.chatId), "NOT_FOUND");
+    await expectDomainError(
+      (await userDO(BOB)).getChat(chat.chatId),
+      "NOT_FOUND",
+    );
   });
 
   it("orders chats by most recent activity", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const ids = await runInDurableObject(stub, (_, state) => {
       const sql = state.storage.sql;
       const older = createChat(sql, "older", 1_000);
@@ -110,7 +113,7 @@ describe("user chats", () => {
   });
 
   it("appendExchange stores a completed question and a pending reply in sequence", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
 
     const first = await stub.appendExchange(
@@ -143,7 +146,7 @@ describe("user chats", () => {
   });
 
   it("completes a pending reply with ordered citation snapshots, exactly once", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
     const { assistantMessage, userMessage } = await stub.appendExchange(
       chat.chatId,
@@ -198,7 +201,7 @@ describe("user chats", () => {
   });
 
   it("fails a pending reply with a reason and leaves the question intact", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
     const { assistantMessage } = await stub.appendExchange(chat.chatId, "q");
 
@@ -228,7 +231,7 @@ describe("user chats", () => {
   });
 
   it("rejects an invalid source without persisting anything", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
     const { assistantMessage } = await stub.appendExchange(chat.chatId, "q");
 
@@ -252,7 +255,7 @@ describe("user chats", () => {
   });
 
   it("returns the last `limit` messages in conversation order", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
     for (const question of ["one", "two", "three"]) {
       await stub.appendExchange(chat.chatId, question);
@@ -270,7 +273,7 @@ describe("user chats", () => {
   });
 
   it("validates content and hides other users' chats", async () => {
-    const alice = userDO(ALICE);
+    const alice = await userDO(ALICE);
     const chat = await alice.createChat();
 
     await expectDomainError(
@@ -280,18 +283,21 @@ describe("user chats", () => {
     await expectDomainError(alice.appendExchange("missing", "q"), "NOT_FOUND");
     await expectDomainError(alice.createChat("x".repeat(201)), "INVALID_INPUT");
 
-    await expectDomainError(userDO(BOB).getMessages(chat.chatId), "NOT_FOUND");
     await expectDomainError(
-      userDO(BOB).appendExchange(chat.chatId, "q"),
+      (await userDO(BOB)).getMessages(chat.chatId),
       "NOT_FOUND",
     );
-    expect(await userDO(BOB).listChats()).toEqual([]);
+    await expectDomainError(
+      (await userDO(BOB)).appendExchange(chat.chatId, "q"),
+      "NOT_FOUND",
+    );
+    expect(await (await userDO(BOB)).listChats()).toEqual([]);
   });
 });
 
 describe("a reply that outlived its request", () => {
   it("reads as failed once past the budget, and stays pending before it", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const chat = await stub.createChat();
     const fresh = await stub.appendExchange(chat.chatId, "just asked");
 

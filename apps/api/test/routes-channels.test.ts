@@ -427,9 +427,9 @@ describe("channel and catalog routes", () => {
       false,
       undefined,
     ]);
-    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A, EPISODE_B])).toEqual(
-      [],
-    );
+    expect(
+      await (await userDO(ALICE)).readEpisodeIds([EPISODE_A, EPISODE_B]),
+    ).toEqual([]);
 
     await call(
       ALICE,
@@ -534,9 +534,9 @@ describe("channel and catalog routes", () => {
         )
       ).status,
     ).toBe(404);
-    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A, EPISODE_B])).toEqual(
-      [],
-    );
+    expect(
+      await (await userDO(ALICE)).readEpisodeIds([EPISODE_A, EPISODE_B]),
+    ).toEqual([]);
   });
 
   it("answers one episode, and records or undoes its receipt for an eligible caller only", async () => {
@@ -555,7 +555,7 @@ describe("channel and catalog routes", () => {
       related: [{ episodeId: EPISODE_B, title: `Episode ${EPISODE_B}` }],
       read: false,
     });
-    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A])).toEqual([]);
+    expect(await (await userDO(ALICE)).readEpisodeIds([EPISODE_A])).toEqual([]);
 
     const marked = await call(ALICE, "POST", `${path}/read`);
     expect(marked.status).toBe(200);
@@ -564,7 +564,7 @@ describe("channel and catalog routes", () => {
       episodeId: EPISODE_A,
       read: true,
     });
-    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A])).toEqual([
+    expect(await (await userDO(ALICE)).readEpisodeIds([EPISODE_A])).toEqual([
       EPISODE_A,
     ]);
     // Idempotent, and it keeps the original time.
@@ -576,7 +576,7 @@ describe("channel and catalog routes", () => {
     const undone = await call(ALICE, "DELETE", `${path}/read`);
     expect(undone.status).toBe(200);
     expect(undone.json.episode).toMatchObject({ read: false });
-    expect(await userDO(ALICE).readEpisodeIds([EPISODE_A])).toEqual([]);
+    expect(await (await userDO(ALICE)).readEpisodeIds([EPISODE_A])).toEqual([]);
     expect((await call(ALICE, "DELETE", `${path}/read`)).status).toBe(200);
 
     // Bob follows nothing: he reads the episode like everyone else, with no read state, and his
@@ -586,7 +586,7 @@ describe("channel and catalog routes", () => {
     expect(bob.json.episode).not.toHaveProperty("read");
     expect((await call(BOB, "POST", `${path}/read`)).status).toBe(404);
     expect((await call(BOB, "DELETE", `${path}/read`)).status).toBe(404);
-    expect(await userDO(BOB).readEpisodeIds([EPISODE_A])).toEqual([]);
+    expect(await (await userDO(BOB)).readEpisodeIds([EPISODE_A])).toEqual([]);
 
     // The reading view knows the episode, not its channel: `/episodes/:episodeId` answers the same
     // episode, and an id no channel holds is 404.

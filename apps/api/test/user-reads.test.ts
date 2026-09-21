@@ -15,7 +15,7 @@ import {
 
 describe("user read receipts", () => {
   it("records receipts once and reports the read subset", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
 
     expect(await stub.markRead([EPISODE_A, EPISODE_A, EPISODE_B])).toBe(2);
     expect(await stub.markRead([EPISODE_A])).toBe(0);
@@ -27,7 +27,7 @@ describe("user read receipts", () => {
   });
 
   it("handles id lists above the bound-parameter limit", async () => {
-    const stub = userDO(ALICE);
+    const stub = await userDO(ALICE);
     const ids = episodeIds(250);
 
     expect(await stub.markRead(ids)).toBe(250);
@@ -37,18 +37,18 @@ describe("user read receipts", () => {
   it("keeps receipts through unfollow and isolates them per user", async () => {
     // Follows live in the Registry; receipts stay here and outlive them.
     await seedApprovedChannel(CHANNEL_A, "Channel A");
-    const alice = userDO(ALICE);
+    const alice = await userDO(ALICE);
     await follow(ALICE, CHANNEL_A);
     await alice.markRead([EPISODE_A]);
     await unfollow(ALICE, CHANNEL_A);
 
     expect(await alice.readEpisodeIds([EPISODE_A])).toEqual([EPISODE_A]);
-    expect(await userDO(BOB).readEpisodeIds([EPISODE_A])).toEqual([]);
+    expect(await (await userDO(BOB)).readEpisodeIds([EPISODE_A])).toEqual([]);
   });
 
   it("rejects malformed episode ids", async () => {
     await expectDomainError(
-      userDO(ALICE).markRead(["too short"]),
+      (await userDO(ALICE)).markRead(["too short"]),
       "INVALID_INPUT",
     );
   });

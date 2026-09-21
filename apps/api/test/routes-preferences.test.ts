@@ -46,7 +46,7 @@ describe("preference routes", () => {
     expect((await call(BOB, "GET")).json.preferences).toMatchObject({
       systemRules: "",
     });
-    expect(await userDO(BOB).getPreferences()).toMatchObject({
+    expect(await (await userDO(BOB)).getPreferences()).toMatchObject({
       systemRules: "",
     });
 

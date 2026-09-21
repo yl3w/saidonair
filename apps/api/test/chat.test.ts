@@ -122,7 +122,7 @@ async function deps(
   await seed(store);
   const spy = spied(store, rerank);
   return {
-    user: userDO(ALICE),
+    user: await userDO(ALICE),
     registry: registry(),
     ai: spy.ai,
     vectors: spy.vectors,

@@ -24,8 +24,9 @@ export const requireIdentity = createMiddleware<AppEnv>(async (c, next) => {
     );
   }
   const registry = getRegistry(c.env);
-  c.set("identity", await registry.ensureUser(email));
+  const identity = await registry.ensureUser(email);
+  c.set("identity", identity);
   c.set("registry", registry);
-  c.set("user", getUserDO(c.env, email));
+  c.set("user", getUserDO(c.env, identity.userId));
   await next();
 });
