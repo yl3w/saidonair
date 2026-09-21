@@ -380,16 +380,12 @@ export class RegistryDO extends DurableObject<Env> {
   beginAttempt(
     episodeId: string,
     trigger: AttemptTrigger,
-    requestedByEmail?: string,
+    requestedByUserId?: string,
   ): AttemptStart {
     const video = requireEpisodeId(episodeId);
-    const requester =
-      requestedByEmail === undefined
-        ? null
-        : users.requireEmail(requestedByEmail);
+    const requester = requestedByUserId ?? null;
     return this.#transaction(() => {
       const now = Date.now();
-      if (requester) users.ensureUser(this.#sql, requester, now);
       return processing.beginAttempt(
         this.#sql,
         video,
@@ -407,7 +403,7 @@ export class RegistryDO extends DurableObject<Env> {
         this.#sql,
         requireTimestamp(startedBefore, "startedBefore"),
       )
-      .map(attempts.toAttempt);
+      .map((row) => attempts.toAttempt(this.#sql, row));
   }
 
   /** What an instance learns about its attempt before working: current or not, generation, episode facts. */
@@ -446,16 +442,12 @@ export class RegistryDO extends DurableObject<Env> {
     episodeId: string,
     trigger: AttemptTrigger,
     reason: BlockReason,
-    requestedByEmail?: string,
+    requestedByUserId?: string,
   ): AttemptResult {
     const video = requireEpisodeId(episodeId);
-    const requester =
-      requestedByEmail === undefined
-        ? null
-        : users.requireEmail(requestedByEmail);
+    const requester = requestedByUserId ?? null;
     return this.#transaction(() => {
       const now = Date.now();
-      if (requester) users.ensureUser(this.#sql, requester, now);
       return processing.recordBlockedAttempt(
         this.#sql,
         video,

@@ -18,6 +18,7 @@ import {
   EPISODE_C,
   episodeIds,
   expectDomainError,
+  identityOf,
   OWNER,
   registry,
   seedApprovedChannel,
@@ -347,12 +348,13 @@ describe("the attempt ledger", () => {
     await seedSummary(EPISODE_B);
     const replacing = await stub.retryEpisode(CHANNEL_A, EPISODE_B);
     const replaceDeadline = replacing.processing.windowDeadlineAt ?? 0;
+    const ownerId = await identityOf(OWNER);
     const attempt = await inRegistry((sql) =>
       processing.beginAttempt(
         sql,
         EPISODE_B,
         "owner_retry",
-        OWNER,
+        ownerId,
         replaceDeadline - HOUR,
       ),
     );
@@ -539,7 +541,7 @@ describe("the attempt ledger", () => {
       EPISODE_C,
       "owner_retry",
       "PROVIDER_AUTH",
-      ALICE,
+      await identityOf(ALICE),
     );
     expect(owner.attempt).toMatchObject({
       status: "blocked",
@@ -563,7 +565,7 @@ describe("the attempt ledger", () => {
       "ownerskip01",
       "owner_retry",
       "PROVIDER_LIMIT",
-      OWNER,
+      await identityOf(OWNER),
     );
     expect(reopen.attempt.intent).toBe("publish");
     expect(reopen.episode.status).toBe("skipped");
@@ -637,7 +639,11 @@ describe("the attempt ledger", () => {
     });
     await seedSummary(EPISODE_B);
     await stub.retryEpisode(CHANNEL_A, EPISODE_B);
-    const replacing = await stub.beginAttempt(EPISODE_B, "owner_retry", OWNER);
+    const replacing = await stub.beginAttempt(
+      EPISODE_B,
+      "owner_retry",
+      await identityOf(OWNER),
+    );
     if (replacing.kind !== "started") throw new Error("expected started");
     expect(replacing.attempt).toMatchObject({
       intent: "replace",
@@ -683,7 +689,11 @@ describe("the attempt ledger", () => {
     );
 
     await stub.retryEpisode(CHANNEL_A, EPISODE_A);
-    const start = await stub.beginAttempt(EPISODE_A, "owner_retry", OWNER);
+    const start = await stub.beginAttempt(
+      EPISODE_A,
+      "owner_retry",
+      await identityOf(OWNER),
+    );
     if (start.kind !== "started") throw new Error("expected started");
     const newGeneration = (await generations(EPISODE_A)).staged;
     await stub.markStaged(start.attempt.attemptId, 7, null);
@@ -733,7 +743,7 @@ describe("the attempt ledger", () => {
               const s = await stub.beginAttempt(
                 EPISODE_A,
                 "owner_retry",
-                OWNER,
+                await identityOf(OWNER),
               );
               if (s.kind !== "started") throw new Error("expected started");
               return s;
@@ -775,7 +785,11 @@ describe("the attempt ledger", () => {
       detail: "no transcript",
     });
 
-    const start = await stub.beginAttempt(EPISODE_A, "owner_retry", OWNER);
+    const start = await stub.beginAttempt(
+      EPISODE_A,
+      "owner_retry",
+      await identityOf(OWNER),
+    );
     if (start.kind !== "started") throw new Error("expected started");
     await stub.markStaged(start.attempt.attemptId, 4, null);
 
@@ -835,7 +849,11 @@ describe("the attempt ledger", () => {
       const channel = await stub.getChannel(channelId);
       const retried = await stub.retryEpisode(channelId, episodeId);
       expect(retried.status).toBe("pending");
-      const start = await stub.beginAttempt(episodeId, "owner_retry", OWNER);
+      const start = await stub.beginAttempt(
+        episodeId,
+        "owner_retry",
+        await identityOf(OWNER),
+      );
       expect(start.kind).toBe("started");
       const skipped = await stub.finishAttempt(
         start.kind === "started" ? start.attempt.attemptId : "",

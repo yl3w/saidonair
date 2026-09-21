@@ -7,6 +7,7 @@ import {
   type ProcessingIntent,
 } from "@media-digest/shared";
 import { chunk, placeholders } from "../../lib/sql";
+import * as users from "./users";
 
 /**
  * The episode attempt ledger (docs/PRD.md §4.2 rules 6–9): one row per execution, first processing,
@@ -24,7 +25,7 @@ export type AttemptRow = {
   generation_id: string | null;
   staged_chunk_count: number | null;
   workflow_id: string | null;
-  requested_by_email: string | null;
+  requested_by_user_id: string | null;
   status: string;
   outcome_code: string | null;
   failure_detail: string | null;
@@ -33,7 +34,7 @@ export type AttemptRow = {
 };
 
 const ATTEMPT_COLUMNS = `attempt_id, episode_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
-  requested_by_email, status, outcome_code, failure_detail, started_at, finished_at`;
+  requested_by_user_id, status, outcome_code, failure_detail, started_at, finished_at`;
 
 /** The latest attempt per episode (newest created_at, then attempt_id). Episodes with none are absent. */
 export function latestByEpisode(
@@ -41,6 +42,7 @@ export function latestByEpisode(
   episodeIds: readonly string[],
 ): Record<string, EpisodeIngestionAttempt> {
   const latest: Record<string, EpisodeIngestionAttempt> = {};
+  const rows: AttemptRow[] = [];
   for (const batch of chunk(episodeIds)) {
     for (const row of sql.exec<AttemptRow>(
       `SELECT ${ATTEMPT_COLUMNS} FROM (
@@ -51,10 +53,29 @@ export function latestByEpisode(
        ) WHERE rn = 1`,
       ...batch,
     )) {
-      latest[row.episode_id] = toAttempt(row);
+      rows.push(row);
     }
   }
+  const resolved = users.emailsByIds(
+    sql,
+    rows
+      .map((row) => row.requested_by_user_id)
+      .filter((id): id is string => id !== null),
+  );
+  for (const row of rows)
+    latest[row.episode_id] = toAttempt(sql, row, resolved);
   return latest;
+}
+
+/** One requester's address: from a precomputed map when a list built one, else a single lookup. */
+function requesterEmail(
+  sql: SqlStorage,
+  userId: string | null,
+  resolved?: Record<string, string>,
+): string | null {
+  if (userId === null) return null;
+  if (resolved) return resolved[userId] ?? null;
+  return users.emailsByIds(sql, [userId])[userId] ?? null;
 }
 
 /** Whether the episode has an attempt still running; Retry is refused while one does. */
@@ -184,7 +205,7 @@ export type RunningInsert = {
   trigger: AttemptTrigger;
   intent: ProcessingIntent;
   generationId: string;
-  requestedByEmail: string | null;
+  requestedByUserId: string | null;
   now: number;
 };
 
@@ -196,7 +217,7 @@ export function insertRunning(
   sql.exec(
     `INSERT INTO episode_ingestion_attempts
        (attempt_id, episode_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
-        requested_by_email, status, outcome_code, failure_detail, started_at, finished_at, created_at)
+        requested_by_user_id, status, outcome_code, failure_detail, started_at, finished_at, created_at)
      VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 'running', NULL, NULL, ?, NULL, ?)`,
     input.attemptId,
     input.episodeId,
@@ -204,7 +225,7 @@ export function insertRunning(
     input.intent,
     input.generationId,
     input.attemptId,
-    input.requestedByEmail,
+    input.requestedByUserId,
     input.now,
     input.now,
   );
@@ -217,7 +238,7 @@ export type BlockedInsert = {
   trigger: AttemptTrigger;
   intent: ProcessingIntent;
   reason: "PROVIDER_AUTH" | "PROVIDER_LIMIT";
-  requestedByEmail: string | null;
+  requestedByUserId: string | null;
   now: number;
 };
 
@@ -229,13 +250,13 @@ export function insertBlocked(
   sql.exec(
     `INSERT INTO episode_ingestion_attempts
        (attempt_id, episode_id, trigger, intent, generation_id, staged_chunk_count, workflow_id,
-        requested_by_email, status, outcome_code, failure_detail, started_at, finished_at, created_at)
+        requested_by_user_id, status, outcome_code, failure_detail, started_at, finished_at, created_at)
      VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, 'blocked', ?, NULL, ?, ?, ?)`,
     input.attemptId,
     input.episodeId,
     input.trigger,
     input.intent,
-    input.requestedByEmail,
+    input.requestedByUserId,
     input.reason,
     input.now,
     input.now,
@@ -286,12 +307,21 @@ function requireRow(sql: SqlStorage, attemptId: string): AttemptRow {
   return row;
 }
 
-export function toAttempt(row: AttemptRow): EpisodeIngestionAttempt {
+/**
+ * The wire still names the requester by address, because that is what a screen prints; the row
+ * holds an id. `resolved` lets a list resolve every address in one grouped query; a single attempt
+ * looks up the one it has, and only when it has one, which is owner retries alone.
+ */
+export function toAttempt(
+  sql: SqlStorage,
+  row: AttemptRow,
+  resolved?: Record<string, string>,
+): EpisodeIngestionAttempt {
   return {
     attemptId: row.attempt_id,
     episodeId: row.episode_id,
     trigger: toTrigger(row.trigger),
-    requestedByEmail: row.requested_by_email,
+    requestedByEmail: requesterEmail(sql, row.requested_by_user_id, resolved),
     intent: toIntent(row.intent),
     status: toStatus(row.status),
     outcomeCode: toOutcomeCode(row.outcome_code),

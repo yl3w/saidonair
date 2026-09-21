@@ -53,13 +53,14 @@ export function beginAttempt(
   sql: SqlStorage,
   episodeId: string,
   trigger: AttemptTrigger,
-  requestedByEmail: string | null,
+  requestedByUserId: string | null,
   now: number,
 ): AttemptStart {
   const episode = episodes.requireState(sql, episodeId);
-  const requester = requireRequester(trigger, requestedByEmail);
+  const requester = requireRequester(trigger, requestedByUserId);
   const running = attempts.runningFor(sql, episodeId);
-  if (running) return { kind: "running", attempt: attempts.toAttempt(running) };
+  if (running)
+    return { kind: "running", attempt: attempts.toAttempt(sql, running) };
   if (episode.intent === null) {
     throw new DomainError(
       "INVALID_STATE",
@@ -74,13 +75,13 @@ export function beginAttempt(
     trigger,
     intent: episode.intent,
     generationId,
-    requestedByEmail: requester,
+    requestedByUserId: requester,
     now,
   });
   episodes.openStaged(sql, episodeId, generationId, now);
   return {
     kind: "started",
-    attempt: attempts.toAttempt(row),
+    attempt: attempts.toAttempt(sql, row),
     abandonedGeneration: abandoned,
   };
 }
@@ -98,7 +99,7 @@ export function markStaged(
   attempts.setStagedChunkCount(sql, attempt.attempt_id, chunkCount);
   // The one point in the pipeline that has both the chunk count and the provider's runtime.
   episodes.markTranscriptChecked(sql, episode.episodeId, durationSec, now);
-  return attempts.toAttempt(requireAttempt(sql, attemptId));
+  return attempts.toAttempt(sql, requireAttempt(sql, attemptId));
 }
 
 /**
@@ -135,7 +136,7 @@ export function finishAttempt(
     settleUnfinished(sql, episode, checked.code, now);
   }
   return {
-    attempt: attempts.toAttempt(row),
+    attempt: attempts.toAttempt(sql, row),
     episode: requireRecord(sql, episode.episodeId),
   };
 }
@@ -150,11 +151,11 @@ export function recordBlockedAttempt(
   episodeId: string,
   trigger: AttemptTrigger,
   reason: BlockReason,
-  requestedByEmail: string | null,
+  requestedByUserId: string | null,
   now: number,
 ): AttemptResult {
   const episode = episodes.requireState(sql, episodeId);
-  const requester = requireRequester(trigger, requestedByEmail);
+  const requester = requireRequester(trigger, requestedByUserId);
   if (!BLOCK_REASONS.has(reason)) {
     throw new DomainError(
       "INVALID_INPUT",
@@ -182,12 +183,12 @@ export function recordBlockedAttempt(
       episode.intent ??
       (episode.status === "available" ? "replace" : "publish"),
     reason,
-    requestedByEmail: requester,
+    requestedByUserId: requester,
     now,
   });
   if (automatic) settleUnfinished(sql, episode, reason, now);
   return {
-    attempt: attempts.toAttempt(row),
+    attempt: attempts.toAttempt(sql, row),
     episode: requireRecord(sql, episodeId),
   };
 }
@@ -229,7 +230,7 @@ export function completeAttempt(
     now,
   );
   return {
-    attempt: attempts.toAttempt(row),
+    attempt: attempts.toAttempt(sql, row),
     episode: requireRecord(sql, episode.episodeId),
     supersededGenerations: superseded(sql, episode.episodeId),
   };
@@ -303,7 +304,7 @@ export function describeAttempt(
       : null;
   return {
     current,
-    attempt: attempts.toAttempt(attempt),
+    attempt: attempts.toAttempt(sql, attempt),
     generationId: attempt.generation_id,
     episode: {
       episodeId: record.episodeId,
@@ -439,17 +440,17 @@ function abandonedGeneration(
 /** Owner Retry names who asked; the automatic triggers name nobody (the ledger's CHECK). */
 function requireRequester(
   trigger: AttemptTrigger,
-  requestedByEmail: string | null,
+  requestedByUserId: string | null,
 ): string | null {
   requireTrigger(trigger);
   if (trigger === "owner_retry") {
-    if (!requestedByEmail) {
+    if (!requestedByUserId) {
       throw new DomainError(
         "INVALID_INPUT",
-        "owner_retry needs requestedByEmail",
+        "owner_retry needs requestedByUserId",
       );
     }
-    return requestedByEmail;
+    return requestedByUserId;
   }
   return null;
 }

@@ -561,7 +561,7 @@ export const channelRoutes = new Hono<AppEnv>()
           episodeId,
           "owner_retry",
           block,
-          c.var.identity.email,
+          c.var.identity.userId,
         );
         return c.json<EpisodeRetryResponse>({
           episode: toEpisode(blocked.episode),
@@ -575,7 +575,7 @@ export const channelRoutes = new Hono<AppEnv>()
         [reopened],
         "owner_retry",
         {
-          requestedByEmail: c.var.identity.email,
+          requestedByUserId: c.var.identity.userId,
         },
       );
       if (!result)

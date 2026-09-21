@@ -310,8 +310,8 @@ describe("registry migrations", () => {
       expect(() =>
         insert(
           "a1",
-          "trigger, status, finished_at, requested_by_email",
-          "'scheduled_recovery', 'waiting', 2, 'alice@example.com'",
+          "trigger, status, finished_at, requested_by_user_id",
+          "'scheduled_recovery', 'waiting', 2, 'no-such-user-id'",
         ),
       ).toThrow(/CHECK/i);
       expect(() =>
@@ -324,8 +324,8 @@ describe("registry migrations", () => {
       );
       insert(
         "a2",
-        "trigger, status, finished_at, requested_by_email",
-        "'owner_retry', 'blocked', 2, 'alice@example.com'",
+        "trigger, status, finished_at, requested_by_user_id",
+        "'owner_retry', 'blocked', 2, (SELECT user_id FROM global_users LIMIT 1)",
       );
       // outcome_code is the closed AttemptOutcomeCode set (PRD §5.3; the CHECK since M3.7).
       expect(() =>

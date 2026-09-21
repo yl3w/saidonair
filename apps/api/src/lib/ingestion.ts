@@ -93,7 +93,7 @@ export type AttemptStartResult = {
 
 export type StartOptions = {
   /** The owner behind an `owner_retry`; the automatic triggers pass nothing. */
-  requestedByEmail?: string;
+  requestedByUserId?: string;
 };
 
 /**
@@ -122,7 +122,7 @@ export async function startEpisodeAttempts(
           episodeId,
           trigger,
           block,
-          options.requestedByEmail,
+          options.requestedByUserId,
         );
         console.log({
           event: "ingestion.attempt_blocked",
@@ -137,7 +137,7 @@ export async function startEpisodeAttempts(
       const start = await registry.beginAttempt(
         episodeId,
         trigger,
-        options.requestedByEmail,
+        options.requestedByUserId,
       );
       if (start.kind === "running") {
         console.log({

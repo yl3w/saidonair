@@ -361,6 +361,7 @@ type AttemptSeed = {
   outcomeCode?: AttemptOutcomeCode | null;
   failureDetail?: string;
   workflowId?: string | null;
+  /** Who asked for an owner retry, as an address; registered and resolved to an id first. */
   requestedByEmail?: string;
   stagedChunkCount?: number;
   startedAt?: number;
@@ -386,11 +387,15 @@ export async function seedAttempt(
   const status = seed.status ?? "waiting";
   const trigger = seed.trigger ?? "channel_ingestion";
   const startedAt = seed.startedAt ?? 1;
+  const requester =
+    trigger === "owner_retry"
+      ? await identityOf(seed.requestedByEmail ?? OWNER)
+      : null;
   await runInDurableObject(registry(), (_, ctx) => {
     ctx.storage.sql.exec(
       `INSERT INTO episode_ingestion_attempts
          (attempt_id, episode_id, trigger, intent, staged_chunk_count, workflow_id,
-          requested_by_email, status, outcome_code, failure_detail, started_at, finished_at, created_at)
+          requested_by_user_id, status, outcome_code, failure_detail, started_at, finished_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       attemptId,
       episodeId,
@@ -402,7 +407,7 @@ export async function seedAttempt(
           ? null
           : `wf-${attemptId}`
         : seed.workflowId,
-      trigger === "owner_retry" ? (seed.requestedByEmail ?? OWNER) : null,
+      requester,
       status,
       seed.outcomeCode === undefined
         ? DEFAULT_OUTCOME[status]

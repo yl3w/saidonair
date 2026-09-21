@@ -40,6 +40,7 @@ import {
   ALICE,
   CHANNEL_A,
   EPISODE_B,
+  identityOf,
   OWNER,
   registry,
   seedApprovedChannel,
@@ -90,7 +91,7 @@ async function begin(
   const start = await registry().beginAttempt(
     episodeId,
     trigger,
-    trigger === "owner_retry" ? OWNER : undefined,
+    trigger === "owner_retry" ? await identityOf(OWNER) : undefined,
   );
   if (start.kind !== "started") throw new Error("expected a started attempt");
   return start.attempt.attemptId;

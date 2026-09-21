@@ -200,7 +200,7 @@ CREATE TABLE episode_ingestion_attempts (
   -- Set when embedding begins, so the next attempt can delete an abandoned staged generation.
   staged_chunk_count INTEGER CHECK (staged_chunk_count IS NULL OR staged_chunk_count >= 0),
   workflow_id TEXT UNIQUE,
-  requested_by_email TEXT REFERENCES global_users (email),
+  requested_by_user_id TEXT REFERENCES global_users (user_id),
   status TEXT NOT NULL CHECK (status IN ('running', 'available', 'waiting', 'failed', 'skipped', 'blocked')),
   outcome_code TEXT CHECK (outcome_code IS NULL OR outcome_code IN (
     'CAPTIONS', 'PROVIDER_LIMIT',
@@ -217,7 +217,7 @@ CREATE TABLE episode_ingestion_attempts (
   -- A blocked start never launched an instance.
   CHECK (status <> 'blocked' OR workflow_id IS NULL),
   -- Owner Retry names who asked; the automatic triggers name nobody.
-  CHECK ((trigger = 'owner_retry') = (requested_by_email IS NOT NULL))
+  CHECK ((trigger = 'owner_retry') = (requested_by_user_id IS NOT NULL))
 );
 
 CREATE INDEX episode_ingestion_attempts_episode_id_created_at ON episode_ingestion_attempts (episode_id, created_at);
