@@ -3,9 +3,9 @@
 **Implements:** `docs/specs/auth-phase.md` under `AGENTS.md`. The phase is unnumbered and sits between M5 and M6
 (PRD §10), so it consumes nothing M6 owns and adds criteria to the sweep M6 will run.
 **Written:** 2026-09-20, against `main` at `c675e5d`.
-**Status:** approved 2026-09-20. **A0, A1, A2–A3 and A4 complete** the same day — the Registry re-key landed in
+**Status:** approved 2026-09-20. **A0, A1, A2–A3, A4 and A5 complete** the same day — the Registry re-key landed in
 seven commits with its own spec and plan (`auth-2-registry-rekey.md`), 395 tests, and a `wrangler dev` walkthrough
-on a real channel. **Next is A5**, the handoff — which A4's findings grew by one route, `GET /session/start`. Nothing is installed in the repo yet: A0 ran entirely in a
+on a real channel. **A5 is complete too**, walked end to end in a browser. **Next is A6**, the web. Nothing is installed in the repo yet: A0 ran entirely in a
 scratch directory, and A4 is where `better-auth` actually enters the tree.
 **Shape:** nine chunks, A0–A9. A0 is a throwaway spike whose output is a decision and the hard rule 1 dependency
 proposal. Each later chunk is one or more commits when the owner asks, with `pnpm check` green. Decisions this plan
@@ -203,6 +203,20 @@ The custom security code, reviewed alone because that is what it is.
 **Tests:** spec §7 criteria 9, 10, 11, 12.
 **Done when:** `pnpm check` green.
 
+**Complete 2026-09-20**, and walked end to end in a browser against the real Worker:
+`/session/start` → Google → `/auth/callback/google` → `/session/handoff` → the web with
+`#code=7417bf4e…`; `POST /session/exchange` answered the session; the same code replayed answered
+`401`; and the token it returned resolved through `Authorization: Bearer` to the signed-in account.
+Every claim in §4.5 observed rather than argued — the state cookie survived because the flow began
+as a top-level navigation, and what crossed origins was a code, not a credential.
+
+**A constraint this handed to A6.** The first attempt appeared to fail: the reader landed on the
+queue with no code. It had worked — `apps/web/src/main.tsx` handles an unknown route with
+`route("/queue", true)`, a `replaceState` that discards the fragment along with the path. So
+**`/auth/callback` must read `location.hash` before any routing runs**, or the fallback eats the
+code. Repeating the sign-in against a static file Vite serves directly proved the redirect had been
+right all along.
+
 ---
 
 ### A6 — Web prepared, still on the old header  (size: L)
@@ -220,7 +234,10 @@ The chunk that removes the broken intermediate. The web can sign in and holds a 
   which works on localhost and fails deployed. **Google only until Meta has credentials** (owner decision
   2026-09-20): the provider is configured in `lib/auth.ts` and its button ships when an App ID exists.
 - 6.2 `AuthCallback.tsx` at `/auth/callback`: read `location.hash`, **`history.replaceState` before anything
-  else**, `POST /session/exchange`, store the token, route to `/queue`.
+  else**, `POST /session/exchange`, store the token, route to `/queue`. **A5 proved the hazard is real**: the
+  router's unknown-route fallback (`main.tsx`, `route("/queue", true)`) discards the fragment, so the route must
+  exist and must read the hash before any routing runs — a sign-in that silently lands on the queue with no code
+  is this, not a broken handoff.
 - 6.3 `api.ts`: sends `Authorization: Bearer` **and** `X-User-Email`, the email taken from the exchange response.
   The API ignores the former for now. This redundancy is the whole cost of the phasing and it lasts one chunk.
 - 6.4 `session.tsx`: keeps `Guard`, `useSession`, `useReadySession` and the bind-before-render rule; binds the
