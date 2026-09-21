@@ -11,14 +11,18 @@ import { Page } from "../components/Page";
 import {
   actionErrorCopy,
   channelStateCopy,
+  LANDING_CHANNELS_HEADING,
+  LANDING_EMPTY_COPY,
   reviewCopy,
   SOURCE_SORTS,
   SOURCES_TABS,
+  summaryCountCopy,
 } from "../lib/copy";
+import { publicChannels } from "../lib/public-view";
 import { relativeTime } from "../lib/time";
 import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
-import { Guard, useReadySession } from "../session";
+import { useSession } from "../session";
 
 type Tab = keyof typeof SOURCES_TABS;
 type Sort = keyof typeof SOURCE_SORTS;
@@ -26,11 +30,7 @@ const PAGE = 25;
 
 export function Sources() {
   useDocumentTitle("Sources");
-  return (
-    <Guard>
-      <SourcesScreen />
-    </Guard>
-  );
+  return <SourcesScreen />;
 }
 
 /** One row of any tab: a channel, with whatever the reader's relationship to it adds. */
@@ -43,9 +43,22 @@ type Row = { channel: Channel; unreadCount: number; followedAt: number | null };
  *
  * Search, a sort order and paging at 25 are part of the design, not a later fix: a list that is
  * elegant at six follows is four screens of scrolling at thirty (docs/design.md §5).
+ *
+ * **Public since 2026-09-21** (docs/specs/public-reading.md §4.1). A visitor sees the catalog: the
+ * approved and paused channels, with the same search, sort and paging. What they do not see is
+ * added here rather than forked into a second screen — the tabs (there is no "following" and no
+ * "declined" without a session), the Follow controls, and Add a channel. Two copies of this screen
+ * would drift, and the drift would only show on the half nobody had signed out of lately.
  */
 function SourcesScreen() {
-  const { role } = useReadySession();
+  const { state } = useSession();
+  const signedIn = state.status === "ready";
+  const role = state.status === "ready" ? state.role : null;
+  // A reader's session is `loading` before it is `ready`, and fetching on that first pass would
+  // show them the visitor's list for a moment and then replace it. A visitor is `none` at once,
+  // with nothing to wait for. `error` counts as settled: if `GET /me` failed there is no reader to
+  // identify, and the public catalog is the honest thing to show.
+  const waitingForSession = state.status === "loading";
   const { query } = useLocation();
   const tab: Tab = isTab(query.show) ? query.show : "following";
   const [sort, setSort] = useState<Sort>("unread");
@@ -54,10 +67,18 @@ function SourcesScreen() {
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
-  const [follows, reloadFollows] = useLoad(() => api.listFollows(), []);
+  // A visitor has no follows to ask for, and `?scope=all` exists to show the reader their declined
+  // channels — neither means anything without a session, and `listFollows` would be refused.
+  const [follows, reloadFollows] = useLoad(
+    () => api.listFollows(),
+    [signedIn],
+    {
+      enabled: signedIn,
+    },
+  );
   const [channels, reloadChannels] = useLoad(
-    () => api.listChannels({ scope: "all" }),
-    [],
+    () => api.listChannels(signedIn ? { scope: "all" } : {}),
+    [signedIn],
   );
 
   function reloadAll() {
@@ -82,18 +103,38 @@ function SourcesScreen() {
     }
   }
 
-  const ready = follows.status === "ready" && channels.status === "ready";
-  const rows = ready
-    ? partition(follows.data.follows, channels.data.channels)
-    : { following: [], catalog: [], declined: [] };
+  const ready = signedIn
+    ? follows.status === "ready" && channels.status === "ready"
+    : channels.status === "ready";
 
-  const filtered = rows[tab]
+  const rows =
+    signedIn && follows.status === "ready" && channels.status === "ready"
+      ? partition(follows.data.follows, channels.data.channels)
+      : { following: [], catalog: [], declined: [] };
+
+  /** A visitor's one list: the catalog, with no relationship to carry (lib/public-view.ts). */
+  const visitorRows: Row[] =
+    !signedIn && channels.status === "ready"
+      ? publicChannels(channels.data.channels).map((channel) => ({
+          channel,
+          unreadCount: 0,
+          followedAt: null,
+        }))
+      : [];
+
+  // "Most unread" and "Longest followed" describe a relationship a visitor does not have. The
+  // reader's default is left alone: their first render is `loading`, not signed out, and switching
+  // the stored default on the way through would change their screen for nobody's benefit.
+  const effectiveSort: Sort =
+    signedIn || (sort !== "unread" && sort !== "followed") ? sort : "name";
+
+  const filtered = (signedIn ? rows[tab] : visitorRows)
     .filter((row) =>
       needle.trim().length === 0
         ? true
         : row.channel.title.toLowerCase().includes(needle.trim().toLowerCase()),
     )
-    .sort(comparator(sort));
+    .sort(comparator(effectiveSort));
   const page = filtered.slice(0, shown);
 
   return (
@@ -102,29 +143,40 @@ function SourcesScreen() {
           (owner decision 2026-09-15, docs/PRD.md §9; the tab carries the name, lib/title.ts). */}
       <h1 class="sr-only">Sources</h1>
 
-      <nav
-        class="flex flex-wrap gap-4 border-b border-rule"
-        aria-label="Sections"
-      >
-        {(Object.keys(SOURCES_TABS) as Tab[]).map((name) => (
-          <a
-            key={name}
-            href={name === "following" ? "/sources" : `/sources?show=${name}`}
-            aria-current={tab === name ? "page" : undefined}
-            class={`flex min-h-11 items-center gap-1.5 border-b-2 text-ui hover:text-ink ${
-              tab === name
-                ? "border-ink font-semibold text-ink"
-                : "border-transparent text-ink-2"
-            }`}
-            onClick={() => setShown(PAGE)}
-          >
-            {SOURCES_TABS[name]}
-            {ready && (
-              <span class="text-meta text-ink-3">{rows[name].length}</span>
-            )}
-          </a>
-        ))}
-      </nav>
+      {/* A visitor gets the name in words: the bar above says "Said on Air" and nothing else, so
+          without this the page opens on a search box with no subject. A reader's nav already
+          marks Sources as current, which is why theirs stays sr-only. */}
+      {!signedIn && (
+        <h2 class="border-b border-rule pb-2 text-label uppercase text-ink-3">
+          {LANDING_CHANNELS_HEADING}
+        </h2>
+      )}
+
+      {signedIn && (
+        <nav
+          class="flex flex-wrap gap-4 border-b border-rule"
+          aria-label="Sections"
+        >
+          {(Object.keys(SOURCES_TABS) as Tab[]).map((name) => (
+            <a
+              key={name}
+              href={name === "following" ? "/sources" : `/sources?show=${name}`}
+              aria-current={tab === name ? "page" : undefined}
+              class={`flex min-h-11 items-center gap-1.5 border-b-2 text-ui hover:text-ink ${
+                tab === name
+                  ? "border-ink font-semibold text-ink"
+                  : "border-transparent text-ink-2"
+              }`}
+              onClick={() => setShown(PAGE)}
+            >
+              {SOURCES_TABS[name]}
+              {ready && (
+                <span class="text-meta text-ink-3">{rows[name].length}</span>
+              )}
+            </a>
+          ))}
+        </nav>
+      )}
 
       <div class="mt-4 flex flex-wrap items-center gap-3">
         <label class="input flex-1">
@@ -144,11 +196,15 @@ function SourcesScreen() {
           Sort
           <select
             class="select"
-            value={sort}
+            value={effectiveSort}
             onChange={(event) => setSort(event.currentTarget.value as Sort)}
           >
             {(Object.keys(SOURCE_SORTS) as Sort[])
-              .filter((name) => name !== "followed" || tab === "following")
+              .filter((name) =>
+                signedIn
+                  ? name !== "followed" || tab === "following"
+                  : name !== "unread" && name !== "followed",
+              )
               .map((name) => (
                 <option key={name} value={name}>
                   {SOURCE_SORTS[name]}
@@ -164,7 +220,7 @@ function SourcesScreen() {
 
       {ready && filtered.length === 0 && (
         <p class="mt-8 font-reading text-body text-ink-2">
-          {emptyNote(tab, needle)}
+          {signedIn ? emptyNote(tab, needle) : visitorEmptyNote(needle)}
         </p>
       )}
 
@@ -173,6 +229,7 @@ function SourcesScreen() {
           <SourceRow
             key={row.channel.channelId}
             row={row}
+            signedIn={signedIn}
             busy={busy.has(row.channel.channelId)}
             onFollow={() =>
               act(row.channel.channelId, () =>
@@ -203,28 +260,37 @@ function SourcesScreen() {
         </button>
       )}
 
-      <div class="mt-10">
-        <AddChannel isOwner={role === "owner"} onChanged={reloadAll} />
-      </div>
+      {/* Adding a channel is a write, and a visitor has no controls at all (spec §3, decision 10):
+          signing in returns them here, where the field is. */}
+      {signedIn && (
+        <div class="mt-10">
+          <AddChannel isOwner={role === "owner"} onChanged={reloadAll} />
+        </div>
+      )}
     </Page>
   );
 }
 
 function SourceRow({
   row,
+  signedIn,
   busy,
   onFollow,
   onUnfollow,
   onRequest,
 }: {
   row: Row;
+  signedIn: boolean;
   busy: boolean;
   onFollow: () => void;
   onUnfollow: () => void;
   onRequest: () => void;
 }) {
   const channel = row.channel;
-  const review = reviewCopy(channel);
+  // Never to a visitor: the note is the owner's own words about a channel they turned down
+  // (docs/specs/public-reading.md §3, decision 5). `publicChannels` keeps declined channels out of
+  // this list anyway, so this is the second lock on a door that should already be shut.
+  const review = signedIn ? reviewCopy(channel) : null;
   return (
     <article class="flex flex-wrap items-center gap-3 border-b border-rule py-[18px]">
       <Avatar id={channel.channelId} name={channel.title} size={34} />
@@ -233,12 +299,24 @@ function SourceRow({
           <a href={`/sources/${channel.channelId}`}>{channel.title}</a>
         </h3>
         <p class="mt-0.5 flex flex-wrap gap-x-2 text-meta text-ink-3">
-          <span>{channelStateCopy(channel)}</span>
-          {channel.following && row.unreadCount > 0 && (
+          {/* A visitor's list holds approved channels only, so "Approved" on every row would say
+              nothing; what varies for them is how much there is to read. */}
+          <span>
+            {signedIn
+              ? channelStateCopy(channel)
+              : summaryCountCopy(channel.episodes)}
+          </span>
+          {signedIn && channel.following && row.unreadCount > 0 && (
             <span>· {row.unreadCount} unread</span>
           )}
           {channel.lastIngestedAt !== null && (
             <span>· last summary {relativeTime(channel.lastIngestedAt)}</span>
+          )}
+          {!signedIn && channel.followerCount > 0 && (
+            <span>
+              · {channel.followerCount}{" "}
+              {channel.followerCount === 1 ? "follower" : "followers"}
+            </span>
           )}
         </p>
         {review !== null && (
@@ -246,23 +324,25 @@ function SourceRow({
         )}
       </div>
 
-      {channel.status === "declined" ? (
-        <button
-          type="button"
-          class="btn btn-quiet"
-          disabled={busy}
-          onClick={onRequest}
-        >
-          Request again
-        </button>
-      ) : (
-        <FollowButton
-          title={channel.title}
-          following={channel.following}
-          busy={busy}
-          onClick={channel.following ? onUnfollow : onFollow}
-        />
-      )}
+      {/* Nothing at all for a visitor — absent rather than disabled (docs/design.md §9b). */}
+      {signedIn &&
+        (channel.status === "declined" ? (
+          <button
+            type="button"
+            class="btn btn-quiet"
+            disabled={busy}
+            onClick={onRequest}
+          >
+            Request again
+          </button>
+        ) : (
+          <FollowButton
+            title={channel.title}
+            following={channel.following}
+            busy={busy}
+            onClick={channel.following ? onUnfollow : onFollow}
+          />
+        ))}
     </article>
   );
 }
@@ -323,6 +403,13 @@ function emptyNote(tab: Tab, needle: string): string {
     return "The catalog holds nothing you are not already following.";
   }
   return "Nothing has been declined.";
+}
+
+/** A visitor has one list, so the reader's three-way empty note does not fit it. */
+function visitorEmptyNote(needle: string): string {
+  return needle.trim().length > 0
+    ? "No channel by that name."
+    : LANDING_EMPTY_COPY;
 }
 
 function isTab(value: string | undefined): value is Tab {
