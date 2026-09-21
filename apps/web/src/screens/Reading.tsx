@@ -6,6 +6,7 @@ import { api } from "../api";
 import { Choice } from "../components/Choice";
 import { Icon } from "../components/Icon";
 import { MetaLine } from "../components/MetaLine";
+import { useBarTop } from "../components/Page";
 import { Retry } from "../components/Retry";
 import { Sheet } from "../components/Sheet";
 import { setAskScope } from "../lib/ask-scope";
@@ -13,6 +14,7 @@ import {
   ASK_COPY,
   ASK_HINT_COPY,
   actionErrorCopy,
+  BACK_TO_CHANNELS_COPY,
   backToCopy,
   EXTERNAL_EPISODE_COPY,
   EXTERNAL_HINT_COPY,
@@ -39,14 +41,10 @@ import {
 import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { useMediaQuery, WIDE } from "../lib/use-media-query";
-import { Guard } from "../session";
+import { useSession } from "../session";
 
 export function Reading() {
-  return (
-    <Guard>
-      <ReadingScreen />
-    </Guard>
-  );
+  return <ReadingScreen />;
 }
 
 /**
@@ -57,10 +55,24 @@ export function Reading() {
  * **Nothing here writes anything until Done.** Opening this screen, arriving by deep link, and
  * reading to the end all record nothing; Done records the receipt and hands the reader back to the
  * list they came from, at the row they left.
+ *
+ * **Public since 2026-09-21** (docs/specs/public-reading.md §4.1), and it is the screen the whole
+ * feature exists for: a shared summary is how this product travels. A visitor gets the summary
+ * entire — the lede, every takeaway with its timestamp into YouTube, the topics — and the type and
+ * theme controls, which live in their browser and need nobody.
+ *
+ * `Done`, `Ask` and Related need no new condition to disappear. Each already depends on something
+ * the API omits for an anonymous caller: `read` is absent, so both controls fall away, and
+ * `related` comes back empty because the API filters it to the caller's eligible channels. The
+ * shape of the response does the work, which is worth knowing before someone "fixes" it by adding
+ * a session check beside conditions that already say the same thing.
  */
 function ReadingScreen() {
   const { params } = useRoute();
   const { route } = useLocation();
+  const { state } = useSession();
+  const signedIn = state.status === "ready";
+  const barTop = useBarTop();
   const episodeId = params.episodeId ?? "";
   const [settings, setSettings] = useState<ReaderSettings>(readSettings);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -91,7 +103,6 @@ function ReadingScreen() {
   // Read once, on the way in: a related title moves within this column without changing where the
   // reader came from, so the way back stays the list they actually opened a summary from.
   const origin = useMemo(readOrigin, []);
-  const back = { href: origin?.href ?? "/queue", label: backToCopy(origin) };
 
   const [load, reload] = useLoad(
     () => api.getEpisodeById(episodeId),
@@ -161,6 +172,23 @@ function ReadingScreen() {
   const episode = load.status === "ready" ? load.data.episode : null;
   const summary = episode?.summary ?? null;
 
+  // A visitor arriving on a shared link has no origin and no queue to be sent to, so their way out
+  // is this episode's own channel — the most useful next page, and the one they can actually see
+  // (docs/specs/public-reading-plan.md, plan decision 8). A visitor who *did* come from a list
+  // keeps that list, exactly as a reader does.
+  const fallback = signedIn
+    ? { href: "/queue", label: backToCopy(null) }
+    : episode === null
+      ? { href: "/", label: BACK_TO_CHANNELS_COPY }
+      : {
+          href: `/sources/${episode.channelId}`,
+          label: `Back to ${episode.channelTitle}`,
+        };
+  const back =
+    origin === null
+      ? fallback
+      : { href: origin.href, label: backToCopy(origin) };
+
   return (
     <div class="min-h-dvh bg-ground text-ink">
       <div
@@ -169,7 +197,7 @@ function ReadingScreen() {
         role="presentation"
       />
 
-      <header class="sticky top-0 z-20 border-b border-rule bg-ground">
+      <header class={`sticky ${barTop} z-20 border-b border-rule bg-ground`}>
         <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
           <a href={back.href} class="btn btn-ghost btn-square">
             <Icon of={ArrowLeft} size={20} label={back.label} />

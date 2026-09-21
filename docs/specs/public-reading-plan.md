@@ -2,7 +2,8 @@
 
 **Implements:** `docs/specs/public-reading.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **IN PROGRESS.** Steps 1–6 complete 2026-09-21; steps 7–10 outstanding. Step 3's Google round trip
+**Status:** **IN PROGRESS.** Steps 1–7 complete 2026-09-21 — the feature works client-rendered; steps 8–10
+(server rendering, the crawl surface, the product record) outstanding. Step 3's Google round trip
 is the owner's to walk; step 4's landing page was walked by the owner in a browser and produced two changes — the
 client-side refusal of the public reads, and the shell collapsing from two bars to one.
 **Shape:** ten steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
@@ -380,6 +381,10 @@ from today; and an episode row still leads to `/sign-in`.
   renders nothing on its own. **Assert that rather than special-casing it** — a `session === null` check here would
   be a second rule saying what the data already says.
 - 7.5 The type and theme controls stay for a visitor: they are `localStorage` and need no session.
+- 7.6 **Found while doing this, and it was step 6's bug too.** `Page` rendered `bar ?? <Frame/>`, so a screen that
+  brings its own bar showed a visitor **no invitation band at all** — and those are precisely the two screens a
+  shared link lands on. The band now renders above a screen-owned bar, and `useBarTop` puts that bar at `top-14`
+  for a visitor so it sticks beneath the fixed band rather than under it.
 
 **Done when:** `pnpm check` green; a private window opens a shared summary link and reads the whole thing — lede,
 every takeaway, the timestamp links into YouTube, topics — with the band above and no `Done` or `Ask`; back goes to
