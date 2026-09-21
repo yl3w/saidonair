@@ -1,0 +1,45 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // The web, as a Worker with static assets (docs/specs/public-reading.md §2.3, §4.4; owner
+  // decision 2026-09-21). It was a Pages site until then; the move was made while nothing was
+  // deployed, so it cost nothing, and it buys one hosting model for the repo, a config file a
+  // reviewer can read, and — from step 8 — server rendering with the API called in-process.
+  //
+  // Three environments on the API's rule (AGENTS.md → Environments): the top level IS staging, so a
+  // bare `wrangler deploy` can never reach production. Wrangler does not inherit bindings into
+  // environments, so each one repeats `assets` and `services`; test/wrangler-config.test.ts fails
+  // when they drift.
+  "name": "media-digest-web-staging",
+  "main": "src/server/worker.ts",
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    // Deep links and reloads: a path with no file behind it is the SPA's to route, exactly as Pages
+    // served index.html for unknown paths (AGENTS.md → the web section).
+    "not_found_handling": "single-page-application"
+  },
+  // In-process calls to the API: no DNS, no TLS, no public hop, and no CORS. Unused until step 8.
+  "services": [{ "binding": "API", "service": "media-digest-api-staging" }],
+  "env": {
+    "dev": {
+      "name": "media-digest-web-dev",
+      "assets": {
+        "directory": "./dist/client",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application"
+      },
+      "services": [{ "binding": "API", "service": "media-digest-api-dev" }]
+    },
+    "production": {
+      "name": "media-digest-web",
+      "assets": {
+        "directory": "./dist/client",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application"
+      },
+      "services": [{ "binding": "API", "service": "media-digest-api" }]
+    }
+  }
+}

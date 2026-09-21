@@ -2,7 +2,7 @@
 
 **Implements:** `docs/specs/public-reading.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **NOT STARTED.** Awaiting the owner's go.
+**Status:** **IN PROGRESS.** Step 1 complete 2026-09-21; steps 2–10 outstanding.
 **Shape:** ten steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
 product running**. Decisions this plan makes are marked **plan decision** and stand unless vetoed.
 
@@ -41,7 +41,10 @@ that works today and none is visible in the spec's list:
 
 1. **Approve six dependency additions** (`AGENTS.md` → How to work with the owner: dependency changes are asked for
    first). In `apps/web`: `preact-render-to-string` as a dependency; `wrangler`, `@cloudflare/vite-plugin`,
-   `@cloudflare/workers-types`, `vitest` as devDependencies. Nothing is added to `apps/api` or the root.
+   `@cloudflare/workers-types`, `vitest` as devDependencies. ~~Nothing is added to `apps/api` or the root.~~
+   **Amended in step 1, 2026-09-21:** `@cloudflare/vite-plugin@1.57.1` requires `wrangler@^4.136.1` and the API
+   pinned `^4.129.0`, so `wrangler` and `@cloudflare/workers-types` were bumped **in both apps** to keep one
+   toolchain rather than two versions of it. The API's 417 tests pass on the new pins.
 2. **At first deploy only** — create the web Worker (`wrangler deploy` does it), and configure **rate limiting** on
    the public paths in the Cloudflare dashboard (spec §4.6). Neither is exercisable under `wrangler dev`, so both
    are recorded here and deferred to the first staging deploy rather than pretended to be done.
@@ -70,13 +73,14 @@ Durable Object, a migration file or a binding the API owns. This is the rare fea
 assets binding — which is what Pages does. This step exists to move the hosting and prove the dev loop.
 
 **Files:** `apps/web/package.json`, `apps/web/wrangler.jsonc` (new), `apps/web/vite.config.ts`,
-`apps/web/src/server/worker.ts` (new), `apps/web/tsconfig.json`, `apps/web/tsconfig.worker.json` (new),
-`turbo.json`, `AGENTS.md`.
+`apps/web/src/server/worker.ts` (new), `apps/web/tsconfig.json`, `apps/web/src/server/tsconfig.json` (new),
+`AGENTS.md`.
 
 - 1.1 Add the devDependencies `wrangler`, `@cloudflare/vite-plugin`, `@cloudflare/workers-types` (owner action 1).
   The Worker and the browser want different global types — `Fetcher` and `ExportedHandler` on one side, `window`
-  and `localStorage` on the other — so `src/server/` compiles under its own `tsconfig.worker.json` extending the
-  base with `"types": ["@cloudflare/workers-types"]` and no DOM lib. That separation is what makes risk 6 a
+  and `localStorage` on the other — so `src/server/` compiles under its own `tsconfig.json`, **placed inside
+  `src/server/` so an editor finds it as the nearest config for those files**, with
+  `"types": ["@cloudflare/workers-types"]` and no DOM lib. That separation is what makes risk 6 a
   typecheck error rather than a runtime surprise.
 - 1.2 `apps/web/wrangler.jsonc`, three environments on the same rule as the API — production `media-digest-web`,
   staging `media-digest-web-staging`, dev `media-digest-web-dev`, the top level being staging so a bare
@@ -90,7 +94,7 @@ assets binding — which is what Pages does. This step exists to move the hostin
     "compatibility_date": "2026-08-22",
     "compatibility_flags": ["nodejs_compat"],
     "assets": {
-      "directory": "./dist",
+      "directory": "./dist/client",
       "binding": "ASSETS",
       "not_found_handling": "single-page-application"
     },
@@ -98,12 +102,12 @@ assets binding — which is what Pages does. This step exists to move the hostin
     "env": {
       "dev": {
         "name": "media-digest-web-dev",
-        "assets": { "directory": "./dist", "binding": "ASSETS", "not_found_handling": "single-page-application" },
+        "assets": { "directory": "./dist/client", "binding": "ASSETS", "not_found_handling": "single-page-application" },
         "services": [{ "binding": "API", "service": "media-digest-api-dev" }]
       },
       "production": {
         "name": "media-digest-web",
-        "assets": { "directory": "./dist", "binding": "ASSETS", "not_found_handling": "single-page-application" },
+        "assets": { "directory": "./dist/client", "binding": "ASSETS", "not_found_handling": "single-page-application" },
         "services": [{ "binding": "API", "service": "media-digest-api" }]
       }
     }
@@ -138,9 +142,10 @@ assets binding — which is what Pages does. This step exists to move the hostin
 - 1.4 `vite.config.ts` gains the Cloudflare plugin beside the two that are there. If it fights either of them
   (risk 2), stop and report before working around it — the fallback changes the dev command and the owner should
   hear that from a person, not find it in a diff.
-- 1.5 Scripts in `apps/web/package.json`: `dev` becomes the Vite-plus-Worker dev command, `build` stays `vite build`,
-  and `deploy` / `deploy:production` appear mirroring the API's (`--env=""` and `--env production`). `turbo.json`
-  gains nothing: `dev`, `build`, `typecheck` and `lint` already fan out to every workspace.
+- 1.5 Scripts in `apps/web/package.json`. **Not** mirroring the API's `--env` flags: the environment is chosen by
+  `CLOUDFLARE_ENV` at build time and every deploy rebuilds (Walkthrough record → the trap). `dev` is
+  `CLOUDFLARE_ENV=dev vite`; `build` is a bare `vite build`, which is staging. `turbo.json` gains nothing: `dev`,
+  `build`, `typecheck` and `lint` already fan out to every workspace.
 - 1.6 **Verify the dev loop before moving on.** `pnpm dev` starts both Workers; the web serves the app at its port;
   a deep link (`/queue`) and a reload both work; HMR still applies a CSS change without a full reload. Then confirm
   the binding resolves by adding a temporary route that returns `await env.API.fetch(new Request("https://api/health"))`,
@@ -477,8 +482,26 @@ screen. Grep for both before calling it done.
 
 ## Walkthrough record
 
-*(Filled in as steps land. `CLAUDE.md`: Workers runtime behaviour is not proven by `vitest` alone, so every step
-that touches the Worker ends under `wrangler dev`.)*
+*(`CLAUDE.md`: Workers runtime behaviour is not proven by `vitest` alone, so every step that touches the Worker
+ends under `wrangler dev`.)*
+
+**Step 1, 2026-09-21.** `pnpm dev` from a clean process table — API on 8787, web on 5173. Six checks, all passing:
+`/` serves the shell with its title; `/queue` and `/read/abc123` both answer 200 with the app root, so deep links
+and the SPA fallback survive the move; `/fonts/source-serif-4-latin.woff2` is served as `font/woff2`;
+**`/__binding-probe` returned `{"service":"api","status":"ok"}`**, which is the API Worker answering in-process
+through the service binding (the probe was deleted in the same commit); and touching `src/styles.css` produced
+`[vite] (client) hmr update /src/styles.css` alongside an `(ssr) hmr update` of the worker entry, so hot reload
+survives too. Risk 2 did not materialise — the Cloudflare plugin, the Preact preset and the Tailwind plugin
+coexist. Risk 3 did not either, once the process table was clean.
+
+**A trap found by a dry run, not by reading** — and the reason step 1's scripts do not look like the API's.
+`@cloudflare/vite-plugin` flattens **one** environment into a generated config under `dist/ssr/`, and writes
+`.wrangler/deploy/config.json` to redirect `wrangler deploy` to it. So `wrangler deploy --env production` against a
+staging build deploys a **production Worker bound to the staging API**, and says nothing. Verified by dry run:
+`--env production` on a default build listed `env.API (media-digest-api-staging)`. The environment is therefore
+chosen at build time by `CLOUDFLARE_ENV`, confirmed for all three tiers, and every `deploy` script rebuilds. A bare
+`pnpm build` is still staging, so the "a bare deploy can never reach production" property survives — it now lives
+in the build rather than the deploy.
 
 ## Plan decisions
 

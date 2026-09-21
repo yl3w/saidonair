@@ -1,0 +1,20 @@
+{
+  // The Worker's own program, and it lives here rather than beside the app's tsconfig.json so an
+  // editor finds it as the nearest config for these files. `src/server/` runs in workerd, not a
+  // browser: it has `Request`, `Response`, `Fetcher` and `ExportedHandler` as globals from
+  // @cloudflare/workers-types, and no `window`, `document` or `localStorage` — DOM is deliberately
+  // absent from `lib`, which is the seam that keeps browser code out of the server bundle.
+  //
+  // Two programs rather than one because DOM and @cloudflare/workers-types both declare `Request`,
+  // `Response` and `fetch`: a single program holding both produces duplicate-identifier errors
+  // rather than useful types. `../../tsconfig.json` excludes this directory for the same reason.
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "lib": ["ES2022"],
+    "noEmit": true,
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["."]
+}

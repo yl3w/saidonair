@@ -152,8 +152,10 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   ├── wrangler.jsonc            # three environments: the top level is staging, env.dev is local, env.production
 │   │   │                             # is live; bindings repeat per environment (see Environments)
 │   │   └── vitest.config.ts
-│   └── web/                  # Cloudflare Pages: Vite + Preact + TypeScript text UI
+│   └── web/                  # Cloudflare Worker with static assets: Vite + Preact + TypeScript text UI
 │       ├── src/
+│       │   ├── server/               # the Worker: serves the built client, and from step 8 renders the public
+│       │   │                         # routes. Its own tsconfig.json — workerd's globals, no DOM
 │       │   ├── main.tsx              # mount + router
 │       │   ├── api.ts                # typed fetch wrapper; the only fetch caller; sends the session
 │       │   ├── account.ts            # selected email + recent emails in localStorage
@@ -164,6 +166,7 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │       │   └── components/           # Nav, Time, EpisodeItem, OwnerCard, Digest, ChannelList, RequestQueue, AttentionList,
 │       │                             # CatalogHealth, CatalogTable, AddChannel, Chat (M4)
 │       ├── index.html
+│       ├── wrangler.jsonc            # three environments, same rule as the API; assets + the API service binding
 │       └── vite.config.ts
 └── packages/
     └── shared/               # Zod schemas for every API request/response shape (XSchema) and the types inferred
@@ -194,10 +197,16 @@ The stack is fixed in `docs/PRD.md` §3. Engineering specifics that live here:
 
 ## Environments
 
-Three, in one `apps/api/wrangler.jsonc` (owner decision 2026-09-13, PRD §9): **dev** for local work, **staging** for a
-deployed preview, **production** for the live tool. Each is its own Worker, so each has its own Durable Object
-namespaces, and each names its own Vectorize index and Workflow. Per-environment resources follow one rule:
-production `x`, staging `x-staging`, dev `x-dev` (`media-digest-api`, `media-rag`, `media-digest-ingest`, …).
+Three, in `apps/api/wrangler.jsonc` and — since 2026-09-21 — three more in `apps/web/wrangler.jsonc` on the same
+rule (owner decision 2026-09-13, PRD §9): **dev** for local work, **staging** for a deployed preview, **production**
+for the live tool. Each is its own Worker, so each has its own Durable Object namespaces, and each names its own
+Vectorize index and Workflow. Per-environment resources follow one rule: production `x`, staging `x-staging`, dev
+`x-dev` (`media-digest-api`, `media-digest-web`, `media-rag`, `media-digest-ingest`, …).
+
+The web's three carry an `ASSETS` binding and a `services` binding to the API Worker of their own tier — dev to dev,
+staging to staging, production to production — so a server render calls the API in-process. Its environment is
+selected by `CLOUDFLARE_ENV` at build time rather than by `--env`; see the web section for why that difference
+exists and what it costs if ignored.
 
 - **The top level of the file is staging.** A bare `wrangler deploy` can therefore never reach production;
   `pnpm --filter api deploy` passes `--env=""` (wrangler's own idiom for "the top level, and I mean it") and
@@ -265,14 +274,16 @@ Run everything from the repo root through Turborepo. Workspace-level `pnpm --fil
 
 ```
 pnpm install
-pnpm dev            # turbo run dev --parallel: wrangler dev --env dev (api) + vite (web)
-pnpm build          # turbo run build: shared → web (vite) ; api has no build step
+pnpm dev            # turbo run dev --parallel: wrangler dev --env dev (api) + vite with the Worker (web)
+pnpm build          # turbo run build: shared → web (vite: dist/client + dist/ssr) ; api has no build step
 pnpm typecheck      # turbo run typecheck
 pnpm lint           # turbo run lint (biome check)
 pnpm test           # turbo run test
 pnpm check          # turbo run typecheck lint test — the pre-finish gate
 pnpm --filter api deploy               # staging (the top level of wrangler.jsonc)
 pnpm --filter api deploy:production    # production (--env production)
+pnpm --filter web deploy               # staging: vite build, then wrangler deploy
+pnpm --filter web deploy:production    # production: CLOUDFLARE_ENV=production vite build, then deploy
 pnpm skills:install --agent <agents…>   # copy skills/ into those agents' directories; see below
 pnpm skills:remove <name> -y            # prune a renamed or deleted skill from them
 pnpm skills:remove --all                # clear every installed skill (skills/ itself is protected)
@@ -582,11 +593,18 @@ design are `docs/specs/design-phase.md`. In code:
 - `lib/copy.ts` is the one home for channel-status, episode, skip, wait, attempt-outcome, window-intent, and run-result
   phrases (and the owner-action error phrase, "Feed unavailable" for a 502); `lib/time.ts` renders relative
   times; `lib/use-load.ts` holds per-section loading and error state.
-- Routing is `preact-iso` in history mode. Pages serves `index.html` for unknown paths when no `404.html` is deployed,
-  so verify deep links and reloads under `wrangler pages dev`. Section navigation within a page uses anchors, not
-  client-side tab state.
-- Pages build: root directory `/` (repo root, so pnpm workspaces resolve), command `pnpm build`, output
-  `apps/web/dist`. The API must list the web's origin in `WEB_ORIGINS` or the browser blocks the calls.
+- Routing is `preact-iso` in history mode. The Worker's assets binding answers a path with no file behind it with
+  `index.html` (`not_found_handling: "single-page-application"`), so verify deep links and reloads under
+  `wrangler dev`. Section navigation within a page uses anchors, not client-side tab state.
+- **The web is a Worker with static assets, not a Pages site** (owner decision 2026-09-21,
+  `docs/specs/public-reading.md` §2.3). `vite build` produces `dist/client` (served from the edge) and `dist/ssr`
+  (the Worker, plus the flattened wrangler config `wrangler deploy` is redirected to). The API must list the web's
+  origin in `WEB_ORIGINS` or the browser blocks the calls.
+- **The environment is chosen at build time by `CLOUDFLARE_ENV`, not by wrangler's `--env`** — the one real
+  difference from `apps/api`, and a trap: the plugin flattens a single environment into the generated config, so
+  `wrangler deploy --env production` against a staging build would deploy a production Worker bound to the
+  *staging* API without complaining. The `deploy` scripts therefore rebuild every time, and a bare `pnpm build` is
+  staging.
 
 ## Testing
 

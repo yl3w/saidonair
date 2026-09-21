@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite",
+    "deploy": "vite build && wrangler deploy",
+    "deploy:production": "CLOUDFLARE_ENV=production vite build && wrangler deploy",
+    "dev": "CLOUDFLARE_ENV=dev vite",
     "lint": "biome check .",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/server/tsconfig.json"
   },
   "dependencies": {
     "@media-digest/shared": "workspace:*",
@@ -16,10 +18,13 @@
     "preact-iso": "^2.12.2"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.57.1",
+    "@cloudflare/workers-types": "^5.20260921.1",
     "@preact/preset-vite": "^2.10.6",
     "@tailwindcss/vite": "^4.3.3",
     "daisyui": "^5.7.38",
     "tailwindcss": "^4.3.3",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "wrangler": "^4.136.1"
   }
 }
