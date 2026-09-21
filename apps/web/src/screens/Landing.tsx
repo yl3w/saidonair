@@ -1,8 +1,7 @@
-import type { Channel } from "@media-digest/shared";
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
-import { Avatar } from "../components/Avatar";
+import { ChannelRow } from "../components/ChannelRow";
 import { FindChannel } from "../components/FindChannel";
 import { Page } from "../components/Page";
 import { Retry } from "../components/Retry";
@@ -12,10 +11,8 @@ import {
   LANDING_EMPTY_COPY,
   LANDING_PROMISE,
   NO_CHANNEL_BY_THAT_NAME,
-  summaryCountCopy,
 } from "../lib/copy";
 import { publicChannels } from "../lib/public-view";
-import { relativeTime } from "../lib/time";
 import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { useSession } from "../session";
@@ -105,38 +102,13 @@ export function Landing() {
             );
           }
           return channels.map((channel) => (
-            <LandingRow key={channel.channelId} channel={channel} />
+            <ChannelRow
+              key={channel.channelId}
+              channel={channel}
+              signedIn={false}
+            />
           ));
         })()}
     </Page>
-  );
-}
-
-/**
- * One channel. A channel with nothing published yet is still listed — it says the archive is coming
- * (spec §3, decision 3) — and reads quieter than one you can go and read, which is the difference
- * the eye should catch before the words do.
- */
-function LandingRow({ channel }: { channel: Channel }) {
-  const published = channel.episodes.available > 0;
-  return (
-    <article class="flex items-center gap-3 border-b border-rule py-[18px]">
-      <Avatar id={channel.channelId} name={channel.title} size={34} />
-      <div class="min-w-0 flex-1">
-        <h3
-          class={`font-reading text-row-compact font-semibold ${
-            published ? "text-ink" : "text-ink-3"
-          }`}
-        >
-          <a href={`/sources/${channel.channelId}`}>{channel.title}</a>
-        </h3>
-        <p class="mt-0.5 flex flex-wrap gap-x-2 text-meta text-ink-3">
-          <span>{summaryCountCopy(channel.episodes)}</span>
-          {channel.lastIngestedAt !== null && (
-            <span>· newest {relativeTime(channel.lastIngestedAt)}</span>
-          )}
-        </p>
-      </div>
-    </article>
   );
 }

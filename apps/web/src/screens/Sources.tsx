@@ -3,7 +3,7 @@ import { useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { api } from "../api";
 import { AddChannel } from "../components/AddChannel";
-import { Avatar } from "../components/Avatar";
+import { ChannelRow } from "../components/ChannelRow";
 import { FindChannel } from "../components/FindChannel";
 import { FollowButton } from "../components/FollowButton";
 import { Page } from "../components/Page";
@@ -221,25 +221,34 @@ function SourcesScreen() {
 
       <div class="mt-4 border-t border-rule">
         {page.map((row) => (
-          <SourceRow
+          <ChannelRow
             key={row.channel.channelId}
-            row={row}
+            channel={row.channel}
             signedIn={signedIn}
-            busy={busy.has(row.channel.channelId)}
-            onFollow={() =>
-              act(row.channel.channelId, () =>
-                api.follow(row.channel.channelId),
-              )
-            }
-            onUnfollow={() =>
-              act(row.channel.channelId, () =>
-                api.unfollow(row.channel.channelId),
-              )
-            }
-            onRequest={() =>
-              act(row.channel.channelId, () =>
-                api.requestChannel(row.channel.channelId),
-              )
+            unreadCount={row.unreadCount}
+            note={signedIn ? reviewCopy(row.channel) : null}
+            action={
+              signedIn ? (
+                <RowAction
+                  channel={row.channel}
+                  busy={busy.has(row.channel.channelId)}
+                  onFollow={() =>
+                    act(row.channel.channelId, () =>
+                      api.follow(row.channel.channelId),
+                    )
+                  }
+                  onUnfollow={() =>
+                    act(row.channel.channelId, () =>
+                      api.unfollow(row.channel.channelId),
+                    )
+                  }
+                  onRequest={() =>
+                    act(row.channel.channelId, () =>
+                      api.requestChannel(row.channel.channelId),
+                    )
+                  }
+                />
+              ) : null
             }
           />
         ))}
@@ -266,79 +275,42 @@ function SourcesScreen() {
   );
 }
 
-function SourceRow({
-  row,
-  signedIn,
+/**
+ * A reader's control on a catalog row. A visitor gets none at all — absent rather than disabled
+ * (docs/design.md §9b) — which is why this is the row's `action` slot and not part of the row.
+ */
+function RowAction({
+  channel,
   busy,
   onFollow,
   onUnfollow,
   onRequest,
 }: {
-  row: Row;
-  signedIn: boolean;
+  channel: Channel;
   busy: boolean;
   onFollow: () => void;
   onUnfollow: () => void;
   onRequest: () => void;
 }) {
-  const channel = row.channel;
-  // Never to a visitor: the note is the owner's own words about a channel they turned down
-  // (docs/specs/public-reading.md §3, decision 5). `publicChannels` keeps declined channels out of
-  // this list anyway, so this is the second lock on a door that should already be shut.
-  const review = signedIn ? reviewCopy(channel) : null;
+  if (channel.status === "declined") {
+    return (
+      <button
+        type="button"
+        class="btn btn-quiet"
+        disabled={busy}
+        onClick={onRequest}
+      >
+        Request again
+      </button>
+    );
+  }
   return (
-    <article class="flex flex-wrap items-center gap-3 border-b border-rule py-[18px]">
-      <Avatar id={channel.channelId} name={channel.title} size={34} />
-      <div class="min-w-0 flex-1">
-        <h3 class="font-reading text-row-compact font-semibold text-ink">
-          <a href={`/sources/${channel.channelId}`}>{channel.title}</a>
-        </h3>
-        <p class="mt-0.5 flex flex-wrap gap-x-2 text-meta text-ink-3">
-          {/* A visitor's list holds approved channels only, so "Approved" on every row would say
-              nothing; what varies for them is how much there is to read. */}
-          <span>
-            {signedIn
-              ? channelStateCopy(channel)
-              : summaryCountCopy(channel.episodes)}
-          </span>
-          {signedIn && channel.following && row.unreadCount > 0 && (
-            <span>· {row.unreadCount} unread</span>
-          )}
-          {channel.lastIngestedAt !== null && (
-            <span>· last summary {relativeTime(channel.lastIngestedAt)}</span>
-          )}
-          {!signedIn && channel.followerCount > 0 && (
-            <span>
-              · {channel.followerCount}{" "}
-              {channel.followerCount === 1 ? "follower" : "followers"}
-            </span>
-          )}
-        </p>
-        {review !== null && (
-          <p class="mt-1 font-reading text-excerpt text-ink-2">{review}</p>
-        )}
-      </div>
-
-      {/* Nothing at all for a visitor — absent rather than disabled (docs/design.md §9b). */}
-      {signedIn &&
-        (channel.status === "declined" ? (
-          <button
-            type="button"
-            class="btn btn-quiet"
-            disabled={busy}
-            onClick={onRequest}
-          >
-            Request again
-          </button>
-        ) : (
-          <FollowButton
-            title={channel.title}
-            following={channel.following}
-            busy={busy}
-            onClick={channel.following ? onUnfollow : onFollow}
-          />
-        ))}
-    </article>
+    <FollowButton
+      title={channel.title}
+      following={channel.following}
+      busy={busy}
+      onClick={channel.following ? onUnfollow : onFollow}
+    />
   );
 }
 

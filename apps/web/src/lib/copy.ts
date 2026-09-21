@@ -1,5 +1,6 @@
 // The user-facing phrases from docs/specs/channel-simplification.md §4 and §7, in one place so
 // screens never invent their own wording.
+
 import type {
   AttemptOutcomeCode,
   Channel,
@@ -18,7 +19,7 @@ import type {
 import { ApiError } from "../api";
 import type { ReadingOrigin } from "./reading-origin";
 import type { ReadingFont, ReadingSize, ReadingTheme } from "./settings";
-import { absoluteTime, HOUR, MINUTE } from "./time";
+import { absoluteTime, HOUR, MINUTE, relativeTime } from "./time";
 
 export const CHANNEL_STATUS_COPY: Record<ChannelStatus, string> = {
   requested: "Awaiting owner approval",
@@ -552,6 +553,14 @@ export const PUBLIC_SIGN_IN_COPY = "Sign in";
 /** The one name for narrowing a channel list — placeholder and accessible name both. */
 export const FIND_CHANNEL_COPY = "Find a channel";
 export const NO_CHANNEL_BY_THAT_NAME = "No channel by that name.";
+
+/**
+ * The two counts a channel row carries that had no phrase of their own yet. `followerCountCopy`
+ * already exists above, and says "No followers" at zero, which a row does not render at all.
+ */
+export const unreadCountCopy = (n: number): string => `${n} unread`;
+export const lastSummaryCopy = (at: number): string =>
+  `last summary ${relativeTime(at)}`;
 
 export const LANDING_PROMISE =
   "What was said on the air, in text, with the minute it was said.";
