@@ -6,7 +6,14 @@ import {
   ChatsResponseSchema,
 } from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
-import { ALICE, BOB, EPISODE_A, expectShape, userDO } from "./helpers";
+import {
+  ALICE,
+  BOB,
+  EPISODE_A,
+  expectShape,
+  signedIn,
+  userDO,
+} from "./helpers";
 
 type Json = Record<string, unknown>;
 
@@ -19,7 +26,7 @@ async function call(
   const response = await SELF.fetch(`http://api${path}`, {
     method,
     headers: {
-      "X-User-Email": email,
+      ...(await signedIn(email)),
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

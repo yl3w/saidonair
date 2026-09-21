@@ -24,7 +24,66 @@ export function requireEmail(raw: string): string {
 }
 
 /**
- * Insert-or-touch. Unknown emails become `user`; an existing role is preserved, and so is the
+ * Resolves the identity behind a verified session, in one order and only one:
+ *
+ * 1. **by `auth_user_id`**, when this account has signed in before;
+ * 2. **by `email`**, attaching the `auth_user_id` to the row already there — this is what links an
+ *    owner seeded from `OWNER_EMAIL`, or anyone who existed before the Auth phase, to the account
+ *    they later sign in with;
+ * 3. **insert**, for someone new.
+ *
+ * An account with no address skips branch 2, which is correct: there is nothing to match on, and
+ * two addressless accounts are two people.
+ */
+export function ensureIdentity(
+  sql: SqlStorage,
+  authUserId: string,
+  email: string | null,
+  now: number,
+): RegistryUser {
+  const linked = sql
+    .exec<UserRow>(
+      `UPDATE global_users SET last_seen_at = ? WHERE auth_user_id = ?
+       RETURNING ${USER_COLUMNS}`,
+      now,
+      authUserId,
+    )
+    .toArray()[0];
+  if (linked) return toUser(linked);
+
+  if (email !== null) {
+    const byEmail = sql
+      .exec<UserRow>(
+        `UPDATE global_users SET auth_user_id = ?, last_seen_at = ?
+         WHERE email = ? AND auth_user_id IS NULL
+         RETURNING ${USER_COLUMNS}`,
+        authUserId,
+        now,
+        email,
+      )
+      .toArray()[0];
+    if (byEmail) return toUser(byEmail);
+  }
+
+  return toUser(
+    sql
+      .exec<UserRow>(
+        `INSERT INTO global_users (user_id, email, auth_user_id, role, created_at, last_seen_at)
+         VALUES (?, ?, ?, 'user', ?, ?)
+         RETURNING ${USER_COLUMNS}`,
+        crypto.randomUUID(),
+        email,
+        authUserId,
+        now,
+        now,
+      )
+      .one(),
+  );
+}
+
+/**
+ * Insert-or-touch by address, with no session behind it: the owner seed, and tests that need an
+ * identity without one. Unknown emails become `user`; an existing role is preserved, and so is the
  * `user_id` minted on the first visit — `email` is still UNIQUE, so it remains the conflict target
  * even though it is no longer the primary key.
  */

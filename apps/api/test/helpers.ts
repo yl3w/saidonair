@@ -52,6 +52,32 @@ export function registry() {
 }
 
 /**
+ * A signed-in caller's headers. There is no route that mints a session — deliberately, because a
+ * bypass behind a flag is still a bypass that shipped (docs/specs/auth-phase.md §3) — so a test
+ * inserts the rows a real sign-in would have written and presents the session's own token, which
+ * A0 proved the bearer plugin accepts. Idempotent per address, so repeated calls are one identity.
+ */
+export async function signedIn(email: string): Promise<Record<string, string>> {
+  const slug = email.replace(/[^a-z0-9]/gi, "_");
+  const token = `test-token-${slug}`;
+  const now = new Date().toISOString();
+  const later = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
+  await env.AUTH_DB.prepare(
+    `INSERT OR IGNORE INTO user (id, name, email, emailVerified, createdAt, updatedAt)
+     VALUES (?, ?, ?, 1, ?, ?)`,
+  )
+    .bind(`auth_${slug}`, email, email, now, now)
+    .run();
+  await env.AUTH_DB.prepare(
+    `INSERT OR IGNORE INTO session (id, expiresAt, token, createdAt, updatedAt, userId)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(`sess_${slug}`, later, token, now, now, `auth_${slug}`)
+    .run();
+  return { Authorization: `Bearer ${token}` };
+}
+
+/**
  * Registers an address and returns its `user_id` — what the identity middleware does before any
  * route runs. Follows are keyed by the id (docs/specs/auth-2-registry-rekey.md), so a test that
  * wants to act as somebody has to become somebody first.

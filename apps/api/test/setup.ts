@@ -4,11 +4,31 @@ import {
   runInDurableObject,
 } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { afterEach } from "vitest";
+import { afterEach, beforeAll } from "vitest";
+import schema from "../migrations/auth/0001_better_auth.sql";
 import { getRegistry } from "../src/do/registry";
 import { resetAiFake } from "../src/lib/ai";
 import { resetVectorFake } from "../src/lib/vectorize";
 import { resetWorkflowFake } from "../src/lib/workflows";
+
+// better-auth's tables, once per test isolate. D1 is not a Durable Object, so `applyMigrations`
+// does not reach it and the pool does not create them: without this every authenticated request
+// fails with a schema mismatch rather than a 401. Applied statement by statement because D1's
+// `exec` cannot take the file's comments.
+beforeAll(async () => {
+  const statements = schema
+    .split("\n")
+    .filter((line) => !line.startsWith("--") && line.trim().length > 0)
+    .join("\n")
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+  for (const statement of statements) {
+    await env.AUTH_DB.prepare(
+      statement.replace(/^create (table|index) "/, 'create $1 if not exists "'),
+    ).run();
+  }
+});
 
 // Every test starts from an empty Registry and no User DOs. The pool's `reset()` does not clear this
 // SQLite-backed DO in the pinned version, so wipe it explicitly, then abort the instance so

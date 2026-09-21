@@ -55,11 +55,17 @@ export type HealthResponse = z.infer<typeof HealthResponseSchema>;
  * (PRD §9). `apps/api` infers its `DomainErrorCode` from this schema, so the two cannot drift.
  */
 export const ErrorCodeSchema = z
-  .enum(["INVALID_INPUT", "NOT_FOUND", "INVALID_STATE", "UPSTREAM_UNAVAILABLE"])
+  .enum([
+    "UNAUTHENTICATED",
+    "INVALID_INPUT",
+    "NOT_FOUND",
+    "INVALID_STATE",
+    "UPSTREAM_UNAVAILABLE",
+  ])
   .meta({
     id: "ErrorCode",
     description:
-      "INVALID_INPUT (400, including a missing or malformed `X-User-Email`), NOT_FOUND (404), INVALID_STATE (409), UPSTREAM_UNAVAILABLE (502: YouTube did not answer usably).",
+      "UNAUTHENTICATED (401: no session, or one the API does not accept), INVALID_INPUT (400), NOT_FOUND (404), INVALID_STATE (409), UPSTREAM_UNAVAILABLE (502: YouTube did not answer usably).",
   });
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 

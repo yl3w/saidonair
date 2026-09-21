@@ -24,6 +24,7 @@ import {
   seedApprovedChannel,
   seedEpisode,
   seedSummary,
+  signedIn,
   userDO,
 } from "./helpers";
 
@@ -36,7 +37,7 @@ async function call(
 ): Promise<{ status: number; json: Json }> {
   const response = await SELF.fetch(`http://api${path}`, {
     method,
-    headers: { "X-User-Email": email },
+    headers: await signedIn(email),
   });
   return { status: response.status, json: (await response.json()) as Json };
 }

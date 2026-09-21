@@ -69,10 +69,12 @@ deployment, and general admin dashboards beyond owner catalog management.
 
 ## 2. Users and ownership
 
-- Identity is normalized email (trimmed, lowercase), supplied through `X-User-Email`; the UI says "Who is this
-  for?", never "sign in"; unknown emails auto-register in the Registry DO. **That is what is built today, and the
-  Auth phase replaces all of it** (`docs/specs/auth-phase.md`, §10): a verified session over consumer OAuth, a
-  generated `user_id` rather than an email as the key, and the header deleted. ~~No authentication is added, and
+- Identity is a **verified session**, proved by a bearer token and resolved to a Registry `user_id`
+  (`docs/specs/auth-phase.md`). A caller with no session, or one this API does not accept, is `401
+  UNAUTHENTICATED` and reaches neither Durable Object. ~~Identity is normalized email, supplied through
+  `X-User-Email`; the UI says "Who is this for?", never "sign in"; unknown emails auto-register.~~ **Replaced
+  2026-09-20**: the header was self-asserted, so anyone who knew an address could read that person's chats and
+  receipts. An address is now an attribute of an identity, and may be absent entirely. ~~No authentication is added, and
   none should be: no login, sessions, JWTs, or Cloudflare Access.~~ **Reversed 2026-09-20** (§9). Cloudflare Access
   stays declined, now for a different reason than that sentence gave.
 - Browser clients on another origin (the Pages web app, Vite locally) are admitted by CORS from the `WEB_ORIGINS`
@@ -105,7 +107,7 @@ Cloudflare Pages: Vite + Preact + TypeScript, daisyUI over Tailwind
                   Chats /chats · Account /account · Curate /curate, /curate/:id (owner rendering, desktop)
     A queue row, a day, or a source opens Reading /read/:episodeId, whose Ask is the only way into a chat
                          |
-              Hono Worker + X-User-Email
+              Hono Worker + a verified session (Bearer)
                          |
        +-----------------+------------------+
        |                                    |

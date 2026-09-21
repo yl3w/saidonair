@@ -35,6 +35,7 @@ import {
   seedEpisode,
   seedRun,
   seedSummary,
+  signedIn,
   userDO,
 } from "./helpers";
 
@@ -52,7 +53,7 @@ async function call(
   const response = await SELF.fetch(`http://api${path}`, {
     method,
     headers: {
-      "X-User-Email": email,
+      ...(await signedIn(email)),
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -303,7 +304,10 @@ describe("channel and catalog routes", () => {
     // Not JSON at all: Hono's validator raises an HTTPException that must keep this API's 400 shape.
     const malformed = await SELF.fetch("http://api/channels", {
       method: "POST",
-      headers: { "X-User-Email": OWNER, "Content-Type": "application/json" },
+      headers: {
+        ...(await signedIn(OWNER)),
+        "Content-Type": "application/json",
+      },
       body: "not json",
     });
     expect(malformed.status).toBe(400);

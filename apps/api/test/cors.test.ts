@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { isAllowedOrigin, parseOrigins } from "../src/lib/cors";
-import { ALICE } from "./helpers";
+import { ALICE, signedIn } from "./helpers";
 
 // vitest.config.ts pins WEB_ORIGINS to an exact origin plus a subdomain wildcard.
 const ALLOWED = "http://localhost:5173";
@@ -42,19 +42,19 @@ describe("CORS", () => {
       headers: {
         Origin: PREVIEW,
         "Access-Control-Request-Method": "GET",
-        "Access-Control-Request-Headers": "authorization,x-user-email",
+        "Access-Control-Request-Headers": "authorization",
       },
     });
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(PREVIEW);
+    // A header missing from this list is refused by the browser before the request is made, and
+    // surfaces as a bare "NetworkError" with nothing about CORS in it — which is how it was found
+    // in A6. `x-user-email` is gone from it since A7, along with the header itself.
     const allowedHeaders = response.headers
       .get("access-control-allow-headers")
       ?.toLowerCase();
-    expect(allowedHeaders).toContain("x-user-email");
-    // The web sends a bearer token from chunk A6. A header missing from this list is refused by
-    // the browser before the request is made, and surfaces as a bare "NetworkError" with nothing
-    // about CORS in it — which is how it was found.
     expect(allowedHeaders).toContain("authorization");
+    expect(allowedHeaders).not.toContain("x-user-email");
     expect(response.headers.get("access-control-allow-methods")).toContain(
       "DELETE",
     );
@@ -63,14 +63,14 @@ describe("CORS", () => {
 
   it("marks actual responses for allowed origins only", async () => {
     const allowed = await SELF.fetch("http://api/me", {
-      headers: { Origin: ALLOWED, "X-User-Email": ALICE },
+      headers: { Origin: ALLOWED, ...(await signedIn(ALICE)) },
     });
     expect(allowed.status).toBe(200);
     expect(allowed.headers.get("access-control-allow-origin")).toBe(ALLOWED);
     expect(allowed.headers.get("vary")).toContain("Origin");
 
     const denied = await SELF.fetch("http://api/me", {
-      headers: { Origin: DENIED, "X-User-Email": ALICE },
+      headers: { Origin: DENIED, ...(await signedIn(ALICE)) },
     });
     expect(denied.status).toBe(200);
     expect(denied.headers.get("access-control-allow-origin")).toBeNull();

@@ -89,6 +89,19 @@ export class RegistryDO extends DurableObject<Env> {
     return users.ensureUser(this.#sql, users.requireEmail(email), Date.now());
   }
 
+  /**
+   * The identity behind a verified session (docs/specs/auth-phase.md §4.6). An address is
+   * normalized when there is one, and there may not be: a provider can return an account without.
+   */
+  ensureIdentity(authUserId: string, email: string | null): RegistryUser {
+    return users.ensureIdentity(
+      this.#sql,
+      authUserId,
+      email === null ? null : users.requireEmail(email),
+      Date.now(),
+    );
+  }
+
   getUser(email: string): RegistryUser | null {
     return users.getUser(this.#sql, users.requireEmail(email));
   }

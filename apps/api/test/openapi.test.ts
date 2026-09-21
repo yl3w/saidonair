@@ -136,7 +136,7 @@ describe("GET /openapi.json", () => {
     ).toContain("502");
   });
 
-  it("documents no 403 anywhere and a four-value ErrorCode: the API enforces no authorization", async () => {
+  it("documents no 403 anywhere: authentication is not yet authorization", async () => {
     const doc = await fetchDocument();
     for (const [path, operations] of Object.entries(doc.paths)) {
       for (const [method, operation] of Object.entries(operations)) {
@@ -146,8 +146,11 @@ describe("GET /openapi.json", () => {
         ).not.toContain("403");
       }
     }
+    // UNAUTHENTICATED joined in A7, when a caller began having to prove who they are. FORBIDDEN
+    // has not: knowing who someone is still decides nothing about what they may do, until A8.
     expect(doc.components.schemas.ErrorCode).toMatchObject({
       enum: [
+        "UNAUTHENTICATED",
         "INVALID_INPUT",
         "NOT_FOUND",
         "INVALID_STATE",
@@ -182,12 +185,11 @@ describe("GET /openapi.json", () => {
     }
   });
 
-  it("declares the identity header and the shared component schemas", async () => {
+  it("declares the session scheme and the shared component schemas", async () => {
     const doc = await fetchDocument();
-    expect(doc.components.securitySchemes.userEmail).toEqual({
-      type: "apiKey",
-      in: "header",
-      name: "X-User-Email",
+    expect(doc.components.securitySchemes.session).toEqual({
+      type: "http",
+      scheme: "bearer",
       description: expect.any(String),
     });
     // Zod extracts the schemas an operation's body refers to; the body's own root stays inline. So

@@ -1,6 +1,12 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { ALICE, CHANNEL_A, OWNER, seedApprovedChannel } from "./helpers";
+import {
+  ALICE,
+  CHANNEL_A,
+  OWNER,
+  seedApprovedChannel,
+  signedIn,
+} from "./helpers";
 
 /**
  * The 400 contract in one place (docs/specs/api-reference.md §6, §10.6): every rejection the API
@@ -15,7 +21,8 @@ async function send(
   init: { email?: string; body?: string } = {},
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   const headers: Record<string, string> = {};
-  if (init.email !== undefined) headers["X-User-Email"] = init.email;
+  if (init.email !== undefined)
+    Object.assign(headers, await signedIn(init.email));
   if (init.body !== undefined) headers["Content-Type"] = "application/json";
   const response = await SELF.fetch(`http://api${path}`, {
     method,
@@ -40,8 +47,10 @@ function expectInvalidInput(
 }
 
 describe("the 400 contract", () => {
-  it("a missing header", async () => {
-    expectInvalidInput(await send("GET", "/me"), "X-User-Email");
+  it("no session at all is 401, not 400", async () => {
+    const response = await send("GET", "/me");
+    expect(response.status).toBe(401);
+    expect(response.json).toMatchObject({ code: "UNAUTHENTICATED" });
   });
 
   it("a body that is not JSON", async () => {

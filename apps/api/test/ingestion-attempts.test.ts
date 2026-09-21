@@ -22,6 +22,7 @@ import {
   seedApprovedChannel,
   seedEpisode,
   seedSummary,
+  signedIn,
 } from "./helpers";
 
 type Json = Record<string, unknown>;
@@ -35,7 +36,7 @@ async function call(
   const response = await SELF.fetch(`http://api${path}`, {
     method,
     headers: {
-      "X-User-Email": email,
+      ...(await signedIn(email)),
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

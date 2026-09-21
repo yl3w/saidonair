@@ -1,11 +1,10 @@
 import { SELF } from "cloudflare:test";
 import { MeResponseSchema } from "@media-digest/shared";
 import { describe, expect, it } from "vitest";
-import { ALICE, expectShape, identityOf, OWNER } from "./helpers";
+import { ALICE, expectShape, identityOf, OWNER, signedIn } from "./helpers";
 
-function me(email?: string) {
-  const headers: Record<string, string> =
-    email === undefined ? {} : { "X-User-Email": email };
+async function me(email?: string) {
+  const headers = email === undefined ? {} : await signedIn(email);
   return SELF.fetch("http://api/me", { headers });
 }
 
@@ -15,13 +14,19 @@ describe("identity middleware via GET /me", () => {
     expect(response.status).toBe(200);
   });
 
-  it("returns 400 INVALID_INPUT when X-User-Email is missing or malformed", async () => {
-    for (const email of [undefined, "not-an-email", "   "]) {
-      const response = await me(email);
-      expect(response.status, String(email)).toBe(400);
+  it("returns 401 UNAUTHENTICATED without a session the API accepts", async () => {
+    // No header, a token that was never minted, and a malformed one: the same answer to all three,
+    // because a caller learns nothing from which of them it was.
+    const attempts: (Record<string, string> | undefined)[] = [
+      undefined,
+      { Authorization: "Bearer not-a-real-token" },
+      { Authorization: "nonsense" },
+    ];
+    for (const headers of attempts) {
+      const response = await SELF.fetch("http://api/me", { headers });
+      expect(response.status, JSON.stringify(headers)).toBe(401);
       expect(await response.json()).toMatchObject({
-        error: expect.stringContaining("X-User-Email"),
-        code: "INVALID_INPUT",
+        code: "UNAUTHENTICATED",
       });
     }
   });

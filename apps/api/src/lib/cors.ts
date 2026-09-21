@@ -2,7 +2,6 @@ import type { MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import type { AppEnv } from "../env";
-import { USER_EMAIL_HEADER } from "../middleware/user";
 
 /**
  * Browser clients live on another origin: the Pages web app, or Vite locally. Which origins may
@@ -52,11 +51,11 @@ export const corsMiddleware: MiddlewareHandler<AppEnv> =
     return cors({
       origin: (origin) => (isAllowedOrigin(origin, allowed) ? origin : null),
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      // `Authorization` from chunk A6, when the web began sending a bearer token beside the
-      // header; `X-User-Email` until A7 deletes it. A header the browser may not send is a bare
-      // "NetworkError" in the console with nothing about CORS in it, so this list is the first
-      // place to look when a request dies before reaching the Worker.
-      allowHeaders: ["Authorization", "Content-Type", USER_EMAIL_HEADER],
+      // A header the browser may not send is a bare "NetworkError" in the console with nothing
+      // about CORS in it, so this list is the first place to look when a request dies before
+      // reaching the Worker (found that way in A6).
+      // `Authorization` carries the session; nothing else identifies a caller any more.
+      allowHeaders: ["Authorization", "Content-Type"],
       maxAge: 86_400,
     })(c, next);
   });

@@ -9,7 +9,6 @@ import {
 import type { z } from "zod";
 import pkg from "../../package.json" with { type: "json" };
 import type { AppEnv } from "../env";
-import { USER_EMAIL_HEADER } from "../middleware/user";
 
 /**
  * The OpenAPI document's fixed parts and the helpers route files use in `describeRoute`, so every
@@ -131,16 +130,15 @@ const documentation: GenerateSpecOptions["documentation"] = {
   ],
   components: {
     securitySchemes: {
-      userEmail: {
-        type: "apiKey",
-        in: "header",
-        name: USER_EMAIL_HEADER,
+      session: {
+        type: "http",
+        scheme: "bearer",
         description:
-          "The caller's email. Trimmed and lowercased; unknown emails are registered as `user`. This identifies, it does not authenticate.",
+          "The session token from `POST /session/exchange`, after signing in through `GET /session/start`. Obtained once and sent on every request; there is no other way in.",
       },
     },
   },
-  security: [{ userEmail: [] }],
+  security: [{ session: [] }],
 };
 
 /**

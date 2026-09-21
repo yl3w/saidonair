@@ -10,6 +10,9 @@ import {
 } from "../lib/errors";
 
 const STATUS_BY_CODE: Record<DomainErrorCode, ContentfulStatusCode> = {
+  // The middleware answers this directly rather than throwing, but the map is exhaustive over the
+  // shared union on purpose: a new code cannot be added without deciding what it means in HTTP.
+  UNAUTHENTICATED: 401,
   INVALID_INPUT: 400,
   NOT_FOUND: 404,
   INVALID_STATE: 409,

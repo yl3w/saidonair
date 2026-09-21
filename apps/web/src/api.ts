@@ -62,9 +62,8 @@ export const NO_ACCOUNT = "NO_ACCOUNT";
  * the session state, so what a tab displays and what it sends cannot drift apart. Another tab
  * signing in or out does not reach here; storage is read once, at startup.
  *
- * Both are sent for the length of chunk A6: the bearer token is what the API will read from A7, and
- * `X-User-Email` is what it still reads today. The redundancy is the whole cost of preparing the web
- * before the swap, and it lasts one chunk.
+ * The token is the whole credential: `X-User-Email` was deleted in A7, and with it the last way to
+ * act as somebody by saying so.
  */
 let session: { token: string; email: string | null } | null = null;
 
@@ -93,9 +92,6 @@ async function send(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${session.token}`,
   };
-  // Still the identity the API reads, until A7. A provider that returned no address cannot act
-  // until then, which is the transitional limitation this chunk accepts.
-  if (session.email !== null) headers["X-User-Email"] = session.email;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
