@@ -935,8 +935,9 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 - Users cannot inspect another user's chats, messages, preferences, or read receipts. Follow membership is shared with
   the Registry so any caller can list a channel's followers and counts, which the web shows on the Owner screens only;
   that is the explicit exception, not private conversation access.
-- Approve, decline, pause, resume, episode retry, and skip are accepted from any identity and offered by the web to
-  the owner only; the acting email is recorded; handles and ids with no feed are rejected. Requesters follow at the moment they request, so several followers share one ingestion pipeline and
+- Approve, decline, pause, resume, Start, episode retry, and skip are **the owner's**: the API answers `403
+  FORBIDDEN` for any other identity and writes nothing, and the web offers them to the owner only. ~~Accepted
+  from any identity.~~ The acting `user_id` is recorded; handles and ids with no feed are rejected. Requesters follow at the moment they request, so several followers share one ingestion pipeline and
   nothing is auto-followed later. Adding an existing channel follows the caller and creates nothing; a declined id is
   409 with the note, and requesting again makes it requested and follows the caller. A follow is one Registry write, so
   `following`, `followerCount`, the owner's follower list, and eligibility always agree; there is no second store to

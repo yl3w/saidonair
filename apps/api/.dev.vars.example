@@ -8,3 +8,8 @@ OWNER_EMAIL=owner@example.com
 # DOWNSUB_API_KEY=
 # Optional: browser origins allowed by CORS, overriding vars.WEB_ORIGINS in wrangler.jsonc for local dev.
 # WEB_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+# Local-only secrets for `wrangler dev`. Gitignored — never commit this file.
+# BETTER_AUTH_SECRET=
+# BASE_URL=
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
