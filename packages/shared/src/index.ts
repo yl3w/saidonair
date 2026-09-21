@@ -57,6 +57,7 @@ export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export const ErrorCodeSchema = z
   .enum([
     "UNAUTHENTICATED",
+    "FORBIDDEN",
     "INVALID_INPUT",
     "NOT_FOUND",
     "INVALID_STATE",
@@ -65,7 +66,7 @@ export const ErrorCodeSchema = z
   .meta({
     id: "ErrorCode",
     description:
-      "UNAUTHENTICATED (401: no session, or one the API does not accept), INVALID_INPUT (400), NOT_FOUND (404), INVALID_STATE (409), UPSTREAM_UNAVAILABLE (502: YouTube did not answer usably).",
+      "UNAUTHENTICATED (401: no session, or one the API does not accept), FORBIDDEN (403: a session, but not the owner, on a catalog operation), INVALID_INPUT (400), NOT_FOUND (404), INVALID_STATE (409), UPSTREAM_UNAVAILABLE (502: YouTube did not answer usably).",
   });
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 

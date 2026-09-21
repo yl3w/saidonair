@@ -18,7 +18,7 @@ export type EpisodeView = {
 
 /**
  * The one projection from the Registry's episode onto the shared `Episode`. Every caller receives
- * the summary, the related titles, and the `processing` block: the API enforces no authorization
+ * the summary, the related titles, and the `processing` block: reading is open to every caller
  * (docs/PRD.md §7, §9). The related titles arrive already filtered to the caller's eligible channels.
  */
 export function toEpisode(

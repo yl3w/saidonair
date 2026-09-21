@@ -54,12 +54,14 @@ import {
   fetchChannelFeed,
   fetchLongFormFeed,
 } from "../lib/youtube/rss";
+import { requireOwner } from "../middleware/owner";
 
 type Ctx = Context<AppEnv>;
 
 /**
  * Channels are the catalog's members. Every caller receives the same representation, `management`
- * included, and every operation is accepted from any identity: the API enforces no authorization
+ * included, and reading is open to every identity. The seven operations that change the catalog are
+ * the owner's, refused with 403 for anybody else since A8
  * (docs/PRD.md §2, §9); the web offers review, pause, retry, and skip to the owner role. Sub-resources:
  * episodes, discovery runs, followers.
  */
@@ -255,11 +257,13 @@ export const channelRoutes = new Hono<AppEnv>()
       responses: {
         200: jsonResponse(ChannelResponseSchema, "The approved channel."),
         ...errorResponses({
+          owner: true,
           notFound: true,
           conflict: "The channel is already approved",
         }),
       },
     }),
+    requireOwner,
     validate("param", ChannelParamsSchema),
     validate("json", ApproveChannelBodySchema),
     async (c) => {
@@ -296,11 +300,13 @@ export const channelRoutes = new Hono<AppEnv>()
       responses: {
         200: jsonResponse(ChannelResponseSchema, "The declined channel."),
         ...errorResponses({
+          owner: true,
           notFound: true,
           conflict: "The channel is already declined",
         }),
       },
     }),
+    requireOwner,
     validate("param", ChannelParamsSchema),
     validate("json", DeclineChannelBodySchema),
     async (c) => {
@@ -325,11 +331,13 @@ export const channelRoutes = new Hono<AppEnv>()
       responses: {
         200: jsonResponse(ChannelResponseSchema, "The paused channel."),
         ...errorResponses({
+          owner: true,
           notFound: true,
           conflict: "Only approved channels can be paused or resumed",
         }),
       },
     }),
+    requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {
       const channel = await c.var.registry.pauseChannel(
@@ -351,11 +359,13 @@ export const channelRoutes = new Hono<AppEnv>()
       responses: {
         200: jsonResponse(ChannelResponseSchema, "The resumed channel."),
         ...errorResponses({
+          owner: true,
           notFound: true,
           conflict: "Only approved channels can be paused or resumed",
         }),
       },
     }),
+    requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {
       const channel = await c.var.registry.resumeChannel(
@@ -528,11 +538,13 @@ export const channelRoutes = new Hono<AppEnv>()
           "The episode and the attempt just started, or blocked.",
         ),
         ...errorResponses({
+          owner: true,
           notFound: true,
           conflict: "An attempt is running for this episode",
         }),
       },
     }),
+    requireOwner,
     validate("param", EpisodeParamsSchema),
     async (c) => {
       const { id, episodeId } = c.req.valid("param");
@@ -598,11 +610,13 @@ export const channelRoutes = new Hono<AppEnv>()
       responses: {
         200: jsonResponse(EpisodeResponseSchema, "The episode, now skipped."),
         ...errorResponses({
+          owner: true,
           notFound: true,
           conflict: "The episode is not failed",
         }),
       },
     }),
+    requireOwner,
     validate("param", EpisodeParamsSchema),
     async (c) => {
       const { id, episodeId } = c.req.valid("param");
@@ -647,12 +661,14 @@ export const channelRoutes = new Hono<AppEnv>()
           "The completed discovery run.",
         ),
         ...errorResponses({
+          owner: true,
           notFound: true,
           conflict: "Only an approved channel is checked",
           upstream: true,
         }),
       },
     }),
+    requireOwner,
     validate("param", ChannelParamsSchema),
     async (c) => {
       const channel = await requireChannel(c, c.req.valid("param").id);

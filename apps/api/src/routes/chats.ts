@@ -29,7 +29,7 @@ import { vectorStore } from "../lib/vectorize";
  * `POST /chats/{chatId}/messages`, which arrives with the answering path in M4.2.
  *
  * Creation stays open here while the web offers it only from a summary: a chat begins at a summary
- * and nowhere else, and the web is the only gate (docs/specs/chat-origin-scope.md §4.1, PRD §9).
+ * and nowhere else, so another caller's chat is simply NOT_FOUND (docs/specs/chat-origin-scope.md §4.1).
  */
 export const chatRoutes = new Hono<AppEnv>()
   .post(

@@ -83,16 +83,17 @@ deployment, and general admin dashboards beyond owner catalog management.
   reach the identity layer.
 - A user has zero or more follows and chats. Registration creates an identity, not an ingestion subscription: cron
   iterates shared catalog channels, not users, and registration triggers nothing.
-- The web offers approve, decline, pause, resume, episode retry, and skip to the owner only; the API accepts every
-  operation from any identity (decided 2026-09-12, §9). Anyone can add a channel to the catalog, request a declined
-  one again, follow any requested or approved channel, and unfollow their own follows.
+- Approve, decline, pause, resume, Start, episode retry, and skip are **the owner's, and the API refuses them**
+  with `403 FORBIDDEN` for anybody else (2026-09-20, §9). ~~The API accepts every operation from any identity
+  (decided 2026-09-12).~~ Anyone can still add a channel to the catalog, request a declined one again, follow any
+  requested or approved channel, and unfollow their own follows — and reading stays open to everyone.
 - The owner is the identity with `role = 'owner'` in the Registry's `global_users`, seeded from the `OWNER_EMAIL`
   secret each time the Registry DO starts. Seeding promotes and never demotes, so more owners can be granted later.
-  The API enforces no authorization (decided 2026-09-12, §9): no route or Registry method checks the role, `GET /me`
-  returns it for the web's rendering, and the acting email is recorded as reviewer, skipper, or requester whoever it
-  is. The owner email is never committed. The management interface is the Owner screens in §7, which the web shows
-  to the owner role only. ~~This does not introduce authentication.~~ **Superseded 2026-09-20** (§9): the Auth
-  phase introduces exactly that, and with it a `403` on those operations, so the web stops being the only gate.
+  `GET /me` returns the role, the web uses it to decide what to draw, and **the API now checks it too** on the
+  seven catalog operations. The acting `user_id` is recorded as reviewer, skipper, or requester. The owner email is
+  never committed. The management interface is the Owner screens in §7. ~~The API enforces no authorization: no
+  route or Registry method checks the role.~~ ~~This does not introduce authentication.~~ **Both reversed
+  2026-09-20** (§9).
 - Chats, preferences, and read receipts are private to the User DO. Global identity, the catalog, and every follow
   live in the Registry: one follower record per channel and email is the only record of who follows what (decided
   2026-09-13, replacing the two-store model of 2026-09-10), so the Registry can list a user's own follows, count a
@@ -708,8 +709,10 @@ Routing is history mode, and deep links and reloads must work. Section navigatio
 client-side tab state. Assistant messages render as plain text with newlines preserved; only `youtube.com` URLs are
 linkified, and a chat source with a start time links to `https://youtu.be/<episodeId>?t=<startSec>`. The owner label is
 "Owner" throughout. Owner controls render only when `GET /me` returns the owner role; the client's role is for
-rendering, and the web is the only gate: the API enforces no authorization (§9). Where this document says the owner
-sees something readers do not, that is the web's rendering; the API returns the same representation to every identity. The user-facing phrases for channel statuses, skip reasons, and
+rendering. Since 2026-09-20 the API refuses the seven catalog operations for anyone but the owner (§2, §9), so the
+web decides what is *shown* and the API decides what may be *done*. Where this document says the owner sees
+something readers do not, that is still the web's rendering: the API returns the same representation to every
+identity, because reading is open to all. The user-facing phrases for channel statuses, skip reasons, and
 wait reasons live in one place in the web app.
 
 The screens below are the ones the Design phase built (`docs/specs/design-phase.md`, 2026-09-15); how they look
@@ -988,6 +991,15 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   `wrangler dev`. Follow the engineering constraints and setup commands in `AGENTS.md`.
 
 ## 9. Decisions and retention
+
+- **The catalog operations became the owner's — done 2026-09-20**, the second half of the decision below. Seven
+  routes gained `403 FORBIDDEN`: approve, decline, pause, resume, Start, episode retry, episode skip. Nothing else
+  did, and that is deliberate — reading stays open to every caller, which is §7's design. The bug worth naming is
+  the one the tests pin: **a refusal must write nothing**, so `authorization.test.ts` compares the channel's
+  status and pause, the episodes' states and the run count before and after all seven refusals rather than only
+  reading status codes. PRD §8's first two criteria — one shared episode set for two followers, and no reader
+  reaching another's chats, messages, preferences or receipts — now have tests for the first time, which the M6
+  audit of 2026-09-17 said they never had.
 
 - **Authentication arrives, and the API starts refusing — decided 2026-09-20.** Two standing decisions are
   reversed together: §2's *"No authentication is added, and none should be"*, and the 2026-09-12 ruling that the

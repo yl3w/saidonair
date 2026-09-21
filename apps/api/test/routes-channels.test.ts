@@ -86,21 +86,29 @@ async function seedCatalog() {
 }
 
 describe("channel and catalog routes", () => {
-  it("accepts every operation from any identity: the API enforces no authorization", async () => {
+  it("serves every read to any identity: only the catalog operations are the owner's", async () => {
     await seedCatalog();
-    // Skip first (EPISODE_C is failed), then retry the skipped episode; both by a plain user.
-    const anyIdentity: [string, string, unknown?][] = [
+    // Reading is open by design (docs/PRD.md §7): the whole catalog, every channel's management
+    // facts, its runs and its followers. What A8 closed is the seven operations that change them,
+    // and authorization.test.ts owns those — including that a refusal writes nothing. Skip and
+    // retry used to run here from a plain user, which is exactly what stopped being allowed.
+    const openToAll: [string, string, unknown?][] = [
       ["GET", "/catalog"],
       ["GET", "/channels?scope=all"],
       ["GET", `/channels/${CHANNEL_A}/runs`],
       ["GET", `/channels/${CHANNEL_A}/followers`],
-      ["POST", `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/skip`],
-      ["POST", `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/retry`],
     ];
-    for (const [method, path, body] of anyIdentity) {
+    for (const [method, path, body] of openToAll) {
       const { status, json } = await call(ALICE, method, path, body);
       expect(status, `${method} ${path}`).toBe(200);
       expect(json).not.toHaveProperty("code");
+    }
+    // The two that moved, now refused for the same caller.
+    for (const path of [
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/skip`,
+      `/channels/${CHANNEL_A}/episodes/${EPISODE_C}/retry`,
+    ]) {
+      expect((await call(ALICE, "POST", path)).status, path).toBe(403);
     }
 
     const followers = await call(
@@ -115,12 +123,13 @@ describe("channel and catalog routes", () => {
     const catalog = await call(ALICE, "GET", "/catalog");
     expectShape(CatalogResponseSchema, catalog.json);
     expect(catalog.status).toBe(200);
-    // EPISODE_C went failed → skipped → pending through the calls above. A's episodes name a run, so
-    // nothing approved is "never started".
+    // EPISODE_C stays `failed`: the skip and retry that used to move it through this test are the
+    // owner's now and were refused above. A's episodes name a run, so nothing approved is
+    // "never started".
     expect(catalog.json.catalog).toMatchObject({
       channels: { requested: 1, approved: 1, paused: 0, declined: 1 },
-      episodes: { available: 2, pending: 1, failed: 0, skipped: 0 },
-      attention: { failedEpisodes: 0, neverStarted: 0, requested: 1 },
+      episodes: { available: 2, pending: 0, failed: 1, skipped: 0 },
+      attention: { failedEpisodes: 1, neverStarted: 0, requested: 1 },
       // vitest.config.ts pins the key empty and TRANSCRIPTS_FAKE answers the health: no test reaches DownSub.
       transcripts: { remainingCredits: 1000, status: "ok" },
     });
@@ -841,10 +850,14 @@ describe("channel and catalog routes", () => {
     ).toBe(400);
   });
 
-  it("approve, decline, pause, and resume are accepted from any identity and record who acted", async () => {
+  it("approve, decline, pause, and resume are the owner's, and record who acted", async () => {
+    // Adding a channel is still open to anyone; reviewing it is not (A8, docs/PRD.md §2). This
+    // test used three identities to show that whoever acted was recorded, because anyone could
+    // act. Only the owner can now, so what it still pins is the recording: the acting identity
+    // reaches the row, and the screens resolve an address from it.
     await call(ALICE, "POST", "/channels", { channelId: CHANNEL_A });
     const approved = await call(
-      ALICE,
+      OWNER,
       "POST",
       `/channels/${CHANNEL_A}/approve`,
       {
@@ -858,25 +871,30 @@ describe("channel and catalog routes", () => {
       title: "Renamed",
       reviewNote: "welcome",
       paused: false,
-      management: { reviewedByEmail: ALICE },
+      management: { reviewedByEmail: OWNER },
     });
     // The `paused` boolean and its reason travel together for every caller.
     expect(
-      (await call(BOB, "POST", `/channels/${CHANNEL_A}/pause`, {})).json
+      (await call(OWNER, "POST", `/channels/${CHANNEL_A}/pause`, {})).json
         .channel,
     ).toMatchObject({ paused: true, management: { pausedBy: "owner" } });
     expect(
-      (await call(BOB, "POST", `/channels/${CHANNEL_A}/resume`, {})).json
+      (await call(OWNER, "POST", `/channels/${CHANNEL_A}/resume`, {})).json
         .channel,
     ).toMatchObject({ paused: false, management: { pausedBy: null } });
-    const declined = await call(BOB, "POST", `/channels/${CHANNEL_A}/decline`, {
-      explanation: "withdrawn",
-    });
+    const declined = await call(
+      OWNER,
+      "POST",
+      `/channels/${CHANNEL_A}/decline`,
+      {
+        explanation: "withdrawn",
+      },
+    );
     expect(declined.json.channel).toMatchObject({
       status: "declined",
       reviewNote: "withdrawn",
       paused: false,
-      management: { reviewedByEmail: BOB },
+      management: { reviewedByEmail: OWNER },
     });
     expect(
       (await call(OWNER, "POST", `/channels/${CHANNEL_A}/pause`, {})).status,

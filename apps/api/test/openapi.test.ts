@@ -136,21 +136,34 @@ describe("GET /openapi.json", () => {
     ).toContain("502");
   });
 
-  it("documents no 403 anywhere: authentication is not yet authorization", async () => {
+  it("documents 403 on the seven catalog operations and nowhere else", async () => {
     const doc = await fetchDocument();
+    // The owner surface, listed rather than counted: a route that starts or stops requiring the
+    // owner is a deliberate edit here, exactly as OPERATIONS makes a new route one.
+    const OWNER_ONLY = new Set([
+      "post /channels/{id}/approve",
+      "post /channels/{id}/decline",
+      "post /channels/{id}/pause",
+      "post /channels/{id}/resume",
+      "post /channels/{id}/runs",
+      "post /channels/{id}/episodes/{episodeId}/retry",
+      "post /channels/{id}/episodes/{episodeId}/skip",
+    ]);
+    const documented = new Set<string>();
     for (const [path, operations] of Object.entries(doc.paths)) {
       for (const [method, operation] of Object.entries(operations)) {
-        expect(
-          Object.keys(operation.responses),
-          `${method} ${path}`,
-        ).not.toContain("403");
+        if (Object.keys(operation.responses).includes("403")) {
+          documented.add(`${method} ${path}`);
+        }
       }
     }
-    // UNAUTHENTICATED joined in A7, when a caller began having to prove who they are. FORBIDDEN
-    // has not: knowing who someone is still decides nothing about what they may do, until A8.
+    expect([...documented].sort()).toEqual([...OWNER_ONLY].sort());
+    // UNAUTHENTICATED joined in A7, when a caller began having to prove who they are, and
+    // FORBIDDEN in A8, when being someone stopped being the same as being allowed.
     expect(doc.components.schemas.ErrorCode).toMatchObject({
       enum: [
         "UNAUTHENTICATED",
+        "FORBIDDEN",
         "INVALID_INPUT",
         "NOT_FOUND",
         "INVALID_STATE",

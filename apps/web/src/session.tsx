@@ -1,5 +1,5 @@
 // Who this tab is acting for, resolved once through GET /me. The role decides what this tab
-// offers, and that is the only gate until chunk A8 (docs/PRD.md §2, §9). The stored session seeds
+// offers; since A8 the API refuses the catalog operations itself too (docs/PRD.md §2). The stored session seeds
 // the first render; after that this tab's session lives here and is bound into the API client, so
 // another tab signing in or out cannot change what this one sends.
 import type { UserRole } from "@media-digest/shared";
@@ -124,9 +124,10 @@ export function useReadySession(): { email: string; role: UserRole } {
 }
 
 /**
- * Renders its children only with a ready session (and, with `ownerOnly`, an owner). No account
- * goes back to `/`; a reader who is not the owner, on Curate, goes to the queue with a note. The
- * web is the only gate there is: the API enforces no authorization (docs/PRD.md §2, §9).
+ * Renders its children only with a ready session (and, with `ownerOnly`, an owner). No session
+ * goes back to `/`; a reader who is not the owner, on Curate, goes to the queue with a note. This
+ * decides what is *shown*: since A8 the API refuses the catalog operations on its own, so a reader
+ * who reaches one anyway meets a 403 rather than an unguarded write (docs/PRD.md §2).
  */
 export function Guard({
   children,

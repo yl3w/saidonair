@@ -30,16 +30,32 @@ export function jsonResponse(
 }
 
 /**
- * The error responses an operation can produce. 400 is always possible: the header may be missing
- * or the input invalid. Lookups add 404; state rules add 409 with the rule spelled out; operations
- * that call YouTube add 502. There is no 403: the API enforces no authorization (docs/PRD.md §9).
+ * The error responses an operation can produce. 401 and 400 are always possible: the session may be
+ * missing or refused, and the input may be invalid. Lookups add 404; state rules add 409 with the
+ * rule spelled out; operations that call YouTube add 502. `owner` adds 403, and only the seven
+ * catalog operations pass it (docs/PRD.md §2, §9, 2026-09-20).
  */
 export function errorResponses(
-  options: { notFound?: boolean; conflict?: string; upstream?: boolean } = {},
+  options: {
+    notFound?: boolean;
+    conflict?: string;
+    upstream?: boolean;
+    owner?: boolean;
+  } = {},
 ): Responses {
   const responses: Responses = {
+    401: jsonResponse(
+      ErrorResponseSchema,
+      "No session, or one this API does not accept (`UNAUTHENTICATED`).",
+    ),
     400: jsonResponse(ErrorResponseSchema, "Invalid input (`INVALID_INPUT`)."),
   };
+  if (options.owner) {
+    responses[403] = jsonResponse(
+      ErrorResponseSchema,
+      "A session, but not the owner's (`FORBIDDEN`).",
+    );
+  }
   if (options.notFound) {
     responses[404] = jsonResponse(
       ErrorResponseSchema,

@@ -10,7 +10,6 @@ import {
 import { createdInstances } from "../src/lib/workflows";
 import { FAKE_TRANSCRIPTS } from "./fixtures/transcripts";
 import {
-  ALICE,
   CHANNEL_A,
   declineAs,
   EPISODE_A,
@@ -194,7 +193,7 @@ describe("POST /channels/:id/episodes/:episodeId/retry", () => {
     const runsBefore = await stub.listRuns(CHANNEL_A);
 
     const retry = await call(
-      ALICE,
+      OWNER,
       "POST",
       `/channels/${CHANNEL_A}/episodes/${EPISODE_A}/retry`,
     );
@@ -211,7 +210,7 @@ describe("POST /channels/:id/episodes/:episodeId/retry", () => {
     expect(retry.json.attempt).toMatchObject({
       status: "running",
       trigger: "owner_retry",
-      requestedByEmail: ALICE,
+      requestedByEmail: OWNER,
       intent: "publish",
     });
     expect(createdInstances()).toEqual([

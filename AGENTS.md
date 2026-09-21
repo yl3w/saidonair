@@ -348,8 +348,12 @@ The identity model — a verified session, a generated `user_id`, the owner role
   anyone who knew an address could read that person's chats and receipts.
 - `OWNER_EMAIL` comes from `apps/api/.dev.vars` locally (copy `.dev.vars.example`) and `wrangler secret put` per
   environment when deployed (Environments); the Registry seeds the role from it on start. The email is never committed.
-- The API enforces no authorization (PRD §2, §9, decided 2026-09-12): no route or Registry method checks the role, and
-  there is no 403. `GET /me` returns the role for the web, whose Owner screens and controls are the only gate. Where
+- **The seven catalog operations are the owner's** (`middleware/owner.ts`, since 2026-09-20): approve, decline,
+  pause, resume, Start, episode retry, episode skip answer `403 FORBIDDEN` for anybody else. ~~The API enforces no
+  authorization and there is no 403.~~ **Reversed** (PRD §2, §9): authentication alone left a stranger with a
+  valid session able to approve channels. Reading stays open to every caller — the whole catalog, management
+  facts and follower lists — which is §7's design, not an oversight. `GET /me` still returns the role, and the
+  web still uses it to decide what to draw. Where
   the schema asks for a reviewer, skipper, or requester, record the acting `user_id` whoever it is; the address a
   screen prints is resolved from that id when the view is built, never stored beside the record.
 - `WEB_ORIGINS` lives in `wrangler.jsonc` `vars`, overridable in `.dev.vars`; `lib/cors.ts` runs before the identity

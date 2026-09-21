@@ -180,7 +180,7 @@ describe("POST /channels/:id/runs", () => {
     const stub = registry();
     await seedApprovedChannel(CHANNEL_F, "F"); // the facade: no discovery has run yet
 
-    const first = await call(ALICE, "POST", `/channels/${CHANNEL_F}/runs`);
+    const first = await call(OWNER, "POST", `/channels/${CHANNEL_F}/runs`);
     expectShape(IngestionRunResponseSchema, first.json);
     expect(first.status).toBe(200);
     expect(first.json.run).toMatchObject({
