@@ -190,7 +190,6 @@ function ReadingScreen() {
 
   return (
     <Page
-      measure="reading"
       overlay={
         <>
           <div

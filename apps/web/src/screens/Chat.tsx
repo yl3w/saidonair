@@ -143,7 +143,6 @@ function ChatScreen() {
 
   return (
     <Page
-      measure="reading"
       bar={
         /* A screen *about* one object takes its own bar (docs/design.md §3): a way back on the
            left, that object's own acts on the right, and no wordmark and no destinations. A chat

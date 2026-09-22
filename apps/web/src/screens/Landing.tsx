@@ -9,7 +9,6 @@ import {
   actionErrorCopy,
   LANDING_CHANNELS_HEADING,
   LANDING_EMPTY_COPY,
-  LANDING_PROMISE,
   NO_CHANNEL_BY_THAT_NAME,
 } from "../lib/copy";
 import { publicChannels } from "../lib/public-view";
@@ -49,12 +48,12 @@ export function Landing() {
 
   return (
     <Page>
-      <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
-        Said on Air
-      </h1>
-      <p class="mt-2 font-reading text-lede text-ink-2">{LANDING_PROMISE}</p>
+      {/* The name and the promise moved into the bar (owner, 2026-09-21), where a visitor meets
+          them on every page rather than on this one alone. The heading stays for the document's
+          outline, as Queue's and Sources' do — named by the frame, not by the page. */}
+      <h1 class="sr-only">Said on Air</h1>
 
-      <h2 class="mt-10 text-label uppercase text-ink-3">
+      <h2 class="mt-2 text-label uppercase text-ink-3">
         {LANDING_CHANNELS_HEADING}
       </h2>
 

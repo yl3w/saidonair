@@ -1,6 +1,7 @@
 import { useEffect } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { API_BASE_URL } from "../api";
+import { PRODUCT_TAGLINE } from "../lib/copy";
 import { safeNextPath } from "../lib/next-path";
 import { useDocumentTitle } from "../lib/title";
 import { useSession } from "../session";
@@ -42,9 +43,7 @@ export function SignIn() {
       <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
         Said on Air
       </h1>
-      <p class="mt-1 font-reading text-body text-ink-2">
-        What was said on the air, in text, with the minute it was said.
-      </p>
+      <p class="mt-1 font-reading text-body text-ink-2">{PRODUCT_TAGLINE}</p>
 
       <div class="mt-8">
         <a class="btn btn-quiet btn-block" href={start("google")}>

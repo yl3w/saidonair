@@ -79,7 +79,7 @@ function SettingsScreen() {
   }
 
   return (
-    <Page measure="reading">
+    <Page>
       {/* No visible heading, as Queue, Sources and Chats have none: the frame names this screen —
           the reader's own email and monogram sit in the bar and mark it current (owner decision
           2026-09-17, amending docs/design.md §2.2, which had listed Account among the screens the

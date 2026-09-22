@@ -572,7 +572,8 @@ export const unreadCountCopy = (n: number): string => `${n} unread`;
 export const lastSummaryCopy = (at: number): string =>
   `last summary ${relativeTime(at)}`;
 
-export const LANDING_PROMISE =
+/** The product's one-line promise. It sits in the visitor's bar and on the sign-in screen. */
+export const PRODUCT_TAGLINE =
   "What was said on the air, in text, with the minute it was said.";
 export const LANDING_CHANNELS_HEADING = "Channels";
 export const LANDING_EMPTY_COPY =
