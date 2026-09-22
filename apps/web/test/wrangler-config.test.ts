@@ -110,7 +110,14 @@ describe("apps/web/wrangler.jsonc", () => {
         // unmatched path with index.html *before* the Worker is invoked — so without this a
         // channel and a summary are served as the bare shell while `/` renders. `/sources` is
         // absent on purpose: it is the reader's screen and guarded.
-        run_worker_first: ["/", "/sources/*", "/read/*"],
+        run_worker_first: [
+          "/",
+          "/sources/*",
+          "/read/*",
+          // Both are built by the Worker from the request's own origin (src/server/crawl.ts).
+          "/robots.txt",
+          "/sitemap.xml",
+        ],
       });
     }
   });

@@ -25,7 +25,13 @@
     // index.html before the Worker is invoked, so a channel and a summary were served as the bare
     // shell while `/` rendered. `/sources` itself is absent on purpose — it is the reader's screen
     // and guarded (docs/specs/public-reading.md §3, decision 2b).
-    "run_worker_first": ["/", "/sources/*", "/read/*"]
+    "run_worker_first": [
+      "/",
+      "/sources/*",
+      "/read/*",
+      "/robots.txt",
+      "/sitemap.xml"
+    ]
   },
   // In-process calls to the API: no DNS, no TLS, no public hop, and no CORS. Unused until step 8.
   "services": [{ "binding": "API", "service": "media-digest-api-staging" }],
@@ -37,7 +43,13 @@
         "binding": "ASSETS",
         "not_found_handling": "single-page-application",
         // Every public route: the SPA fallback answers unmatched paths before the Worker runs.
-        "run_worker_first": ["/", "/sources/*", "/read/*"]
+        "run_worker_first": [
+          "/",
+          "/sources/*",
+          "/read/*",
+          "/robots.txt",
+          "/sitemap.xml"
+        ]
       },
       "services": [{ "binding": "API", "service": "media-digest-api-dev" }]
     },
@@ -48,7 +60,13 @@
         "binding": "ASSETS",
         "not_found_handling": "single-page-application",
         // Every public route: the SPA fallback answers unmatched paths before the Worker runs.
-        "run_worker_first": ["/", "/sources/*", "/read/*"]
+        "run_worker_first": [
+          "/",
+          "/sources/*",
+          "/read/*",
+          "/robots.txt",
+          "/sitemap.xml"
+        ]
       },
       "services": [{ "binding": "API", "service": "media-digest-api" }]
     }

@@ -4,6 +4,7 @@ import { renderToString } from "preact-render-to-string";
 import { App } from "../app";
 import { Bootstrap, type BootstrapData } from "../lib/bootstrap";
 import { matchPublicRoute } from "../lib/public-routes";
+import { robots, sitemap } from "./crawl";
 import { DEFAULT_HEAD, type Head, headFor, headTags } from "./head";
 import { type Bootstrapped, load } from "./load";
 
@@ -38,6 +39,27 @@ export default {
     // Only a page load can be rendered; anything else belongs to assets, which answers or 405s.
     if (request.method !== "GET" && request.method !== "HEAD") {
       return env.ASSETS.fetch(request);
+    }
+
+    // What a crawler asks for before anything else. Served from here, not `public/`, because both
+    // carry the origin they are served from and there are three of those (src/server/crawl.ts).
+    if (url.pathname === "/robots.txt") {
+      return new Response(robots(url.origin), {
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "public, max-age=3600",
+        },
+      });
+    }
+    if (url.pathname === "/sitemap.xml") {
+      return new Response(await sitemap(url.origin, env.API), {
+        headers: {
+          "content-type": "application/xml; charset=utf-8",
+          // One call per channel to build (crawl.ts), so it is cached harder than a page: a
+          // crawler re-reading it every few minutes should not cost the catalog each time.
+          "cache-control": "public, max-age=600, s-maxage=3600",
+        },
+      });
     }
 
     const route = matchPublicRoute(url.pathname);

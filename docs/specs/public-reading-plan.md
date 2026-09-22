@@ -2,8 +2,8 @@
 
 **Implements:** `docs/specs/public-reading.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **IN PROGRESS.** Steps 1–8 complete 2026-09-21 — the three public routes are rendered on the edge;
-steps 9–10 (the crawl surface, the product record) outstanding. Step 3's Google round trip
+**Status:** **IN PROGRESS.** Steps 1–9 complete 2026-09-21; step 10 (the product record) outstanding, and with
+it the owner's browser walkthrough and the two deploy-time owner actions. Step 3's Google round trip
 is the owner's to walk; step 4's landing page was walked by the owner in a browser and produced two changes — the
 client-side refusal of the public reads, and the shell collapsing from two bars to one.
 **Shape:** ten steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
@@ -516,6 +516,15 @@ through the service binding (the probe was deleted in the same commit); and touc
 `[vite] (client) hmr update /src/styles.css` alongside an `(ssr) hmr update` of the worker entry, so hot reload
 survives too. Risk 2 did not materialise — the Cloudflare plugin, the Preact preset and the Tailwind plugin
 coexist. Risk 3 did not either, once the process table was clean.
+
+**Step 9, 2026-09-21.** `/robots.txt` and `/sitemap.xml` answer from the Worker under `pnpm dev`, with their own
+content types and cache headers. The sitemap lists the landing page, the one public channel and its five readable
+episodes, each with a `lastmod`. **Both are built from the request's origin rather than shipped as files**: they
+each name an origin and there are three of them, and a staging `robots.txt` pointing at production's sitemap is a
+mistake nobody catches by reading it. Both also had to join `run_worker_first`, for the reason step 8 found.
+
+`Disallow: /sources$` carries the `$`, and the test pins it: a bare `Disallow: /sources` is a prefix match and
+would take every public channel page with it.
 
 **Step 8, 2026-09-21.** Under `pnpm dev`: `/`, a channel and a summary each answer with their own
 `<title>`, description, `og:*` and canonical; a summary's markup carries its lede and its takeaways, so a crawler
