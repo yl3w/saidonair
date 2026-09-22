@@ -196,7 +196,9 @@ recently active, name, longest followed — paging at 25. **Adding a channel is 
 against the long-form feed, which reports the title, how many of the newest fifteen are long-form, and when the
 newest landed; then decide. A reader files a request at step three; the owner gets title, import count and note in
 the same place, which is the one-step approval §7 already describes. One source shows its episodes newest-published
-with their phrases, paging by year on a long history.
+with their phrases. It showed the newest two hundred with a year filter over them; the filter was dropped on
+2026-09-22, because it could only ever offer the years already fetched. A long history now stops at two hundred
+and says so, until the episodes read carries a cursor.
 
 ### 4.7 Account
 

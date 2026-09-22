@@ -40,7 +40,13 @@ import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { useSession } from "../session";
 
-/** Two hundred is the API's ceiling; a longer history pages by year from what came back. */
+/**
+ * Two hundred is the API's ceiling, and the whole of what this screen shows: the episodes read
+ * exposes no cursor, so a longer history stops here and says so. The year filter that used to sit
+ * over these rows was dropped on 2026-09-22 — it was a facet over one fetched page, so it could
+ * only ever offer the years that happened to have loaded, and it would have gone quietly wrong the
+ * first time a channel crossed a year boundary or the list started paging.
+ */
 const EPISODE_LIMIT = 200;
 
 export function Source() {
@@ -73,7 +79,6 @@ function SourceScreen() {
   const signedIn = state.status === "ready";
   const role = state.status === "ready" ? state.role : null;
   const channelId = params.id ?? "";
-  const [year, setYear] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,16 +141,6 @@ function SourceScreen() {
   const record = channel.status === "ready" ? channel.data.channel : null;
   const all = episodes.status === "ready" ? episodes.data.episodes : [];
   const rows = signedIn ? all : publicEpisodes(all);
-  const years = [
-    ...new Set(rows.map((row) => new Date(row.publishedAt).getFullYear())),
-  ].sort((a, b) => b - a);
-  const currentYear = year ?? years[0] ?? null;
-  const shown =
-    currentYear === null
-      ? rows
-      : rows.filter(
-          (row) => new Date(row.publishedAt).getFullYear() === currentYear,
-        );
 
   return (
     <Page
@@ -176,30 +171,10 @@ function SourceScreen() {
       {error !== null && <p class="mt-3 text-ui text-consequence">{error}</p>}
 
       <section class="mt-8">
-        <div class="flex flex-wrap items-baseline gap-3">
-          <h2 class="mr-auto font-reading text-section font-semibold text-ink">
-            Episodes
-          </h2>
-          {years.length > 1 && (
-            <nav class="flex flex-wrap gap-2" aria-label="By year">
-              {years.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-current={option === currentYear ? "true" : undefined}
-                  class={`btn btn-ghost ${
-                    option === currentYear
-                      ? "underline decoration-1 underline-offset-4"
-                      : ""
-                  }`}
-                  onClick={() => setYear(option)}
-                >
-                  {option}
-                </button>
-              ))}
-            </nav>
-          )}
-        </div>
+        {/* Named by the page itself — a channel's own page is its episodes, and the rows say so
+            without a word over them (owner decision 2026-09-22). sr-only, so the list is still
+            announced and reachable by heading. */}
+        <h2 class="sr-only">Episodes</h2>
 
         {episodes.status === "loading" && (
           <div class="mt-3">
@@ -217,7 +192,7 @@ function SourceScreen() {
         )}
 
         <div class="mt-3 border-t border-rule">
-          {shown.map((episode) =>
+          {rows.map((episode) =>
             episode.summary === null ? (
               <WaitingRow key={episode.episodeId} episode={episode} />
             ) : (
