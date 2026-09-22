@@ -11,6 +11,7 @@ import { Retry } from "../components/Retry";
 import { Sheet } from "../components/Sheet";
 import { SignInAction } from "../components/SignInAction";
 import { setAskScope } from "../lib/ask-scope";
+import { goBack } from "../lib/back";
 import {
   ASK_COPY,
   ASK_HINT_COPY,
@@ -218,7 +219,24 @@ function ReadingScreen() {
       bar={
         <header class="sticky top-0 z-20 border-b border-rule bg-ground">
           <div class="bar-column flex h-14 items-center gap-2">
-            <a href={back.href} class="btn btn-ghost btn-square -ml-3">
+            {/* The browser's own back, like every other bar in the product (lib/back.ts) — with
+                `href` kept so the control is still a link a reader can open in a new tab, and the
+                plain left click intercepted.
+
+                It was an `href` alone, and that pushed a new entry instead of popping one: from
+                `/` → channel → summary, going back landed on the channel *ahead* of the summary in
+                history, so the channel's own back returned to the summary and a reader could not
+                reach `/` at all (2026-09-21). `back.href` is the fallback for a tab that arrived
+                on a shared link and has nothing to pop. */}
+            <a
+              href={back.href}
+              class="btn btn-ghost btn-square -ml-3"
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                event.preventDefault();
+                goBack(() => route(back.href));
+              }}
+            >
               <Icon of={ArrowLeft} size={20} label={back.label} />
             </a>
 
