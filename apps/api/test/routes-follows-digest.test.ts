@@ -193,6 +193,15 @@ describe("follow routes", () => {
     expect((restored.json.follows as Json[])[0]).toMatchObject({
       channel: { status: "approved" },
     });
+    // And Alice, who had read all three, still has: PRD §8 bullet 12, "declining and approving
+    // again keeps prior read status". Her receipts are rows in her own DO keyed by episode id, so
+    // a channel's status has no way to reach them — but the round trip above asserted only the
+    // unread side of that, and the M6 sweep found the already-read side untested
+    // (docs/specs/m6-hardening.md §6, G3).
+    expect(
+      ((await call(ALICE, "GET", "/follows")).json.follows as Json[])[0]
+        ?.unreadCount,
+    ).toBe(0);
 
     const unfollowed = await call(ALICE, "DELETE", `/follows/${CHANNEL_A}`);
     expect(unfollowed.status).toBe(200);

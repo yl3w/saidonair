@@ -1,3 +1,4 @@
+import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
   ALICE,
@@ -6,11 +7,15 @@ import {
   CHANNEL_B,
   CHANNEL_C,
   declineAs,
+  EPISODE_A,
+  EPISODE_B,
   expectDomainError,
   identityOf,
   OWNER,
   registry,
   seedApprovedChannel,
+  seedEpisode,
+  seedRun,
 } from "./helpers";
 
 describe("registry channels", () => {
@@ -120,6 +125,46 @@ describe("registry channels", () => {
       CHANNEL_C,
     ]);
     expect((await stub.getChannel(CHANNEL_C))?.status).toBe("declined");
+  });
+
+  /**
+   * PRD §8 bullet 6: "Declining an approved channel changes no run or episode row." The M6 sweep
+   * (docs/specs/m6-hardening.md §6, G2) found this asserted nowhere — decline was tested for what
+   * it *changes* and never for what it leaves. A criterion claiming an absence needs a test that
+   * looks at the absence, so this one snapshots both tables and compares them whole rather than
+   * checking a column somebody thought of.
+   *
+   * It matters because declining is a catalog decision and not an ingestion one: recovery keeps
+   * running for a declined channel (rule 15), its summaries stay readable to its followers, and
+   * approving it again restores them. All three break if decline reaches the episode rows.
+   */
+  it("declining is a catalog decision: not one run or episode row moves", async () => {
+    const stub = registry();
+    await seedApprovedChannel(CHANNEL_A, "A");
+    await seedRun(CHANNEL_A, { kind: "initial", discoveredCount: 2 });
+    await seedEpisode(EPISODE_A, CHANNEL_A, { status: "available" });
+    await seedEpisode(EPISODE_B, CHANNEL_A, { status: "pending" });
+
+    const snapshot = async () =>
+      runInDurableObject(stub, (_, ctx) => ({
+        runs: ctx.storage.sql
+          .exec("SELECT * FROM ingestion_runs ORDER BY run_id")
+          .toArray(),
+        episodes: ctx.storage.sql
+          .exec("SELECT * FROM episodes ORDER BY episode_id")
+          .toArray(),
+      }));
+
+    const before = await snapshot();
+    expect(before.runs.length).toBe(2); // the seeded run, plus the one every episode needs
+    expect(before.episodes.length).toBe(2);
+
+    const declined = await declineAs(OWNER, CHANNEL_A, {
+      explanation: "withdrawn",
+    });
+    expect(declined.status).toBe("declined");
+
+    expect(await snapshot()).toEqual(before);
   });
 
   it("validates configuration input", async () => {

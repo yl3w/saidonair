@@ -1057,6 +1057,36 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
+- **M6's sweep of §8 — done 2026-09-22.** §8's sixteen bullets split into **91 atomic claims**, each
+  marked with its evidence in `docs/specs/m6-hardening.md` §3. At the sweep: 75 tested, 8
+  structural, 4 to close, 3 accepted, and one (14.4) not a criterion but a standing instruction.
+  After the closures: **81 tested, 8 structural, 1 accepted.**
+
+  **The sweep's first finding was about the sweep.** §10 named §8's first line — two users, one
+  shared episode/summary/vector set — as M6's whole reason for existing, on the grounds that it had
+  no test. It had had one since the Auth phase: `isolation.test.ts` arrived in `5d9f234` and its
+  header says so plainly. That is the **fifth** document found to have outlived its work, after the
+  M4 unread-receipts line, the empty M5, `chat-origin-scope.md` §5's impossible criterion, and the
+  Chats nav item. The argument survived the correction — the *vector* third of that same line still
+  had nothing asserting it, and now does.
+
+  **The four gaps were one mistake repeated: nobody checked the thing next door.** Declining was
+  tested for what it changes and never for what it leaves; a receipt was tested through unfollow
+  and never through decline; response shapes were checked one route at a time with no list saying
+  which. The cure was already in the repo — `openapi.test.ts` enumerates from the router rather
+  than from a list someone keeps — and it was applied to the other three.
+
+  **One criterion described a column that does not exist** (§8 bullet 13's "an owner skip with no
+  email", `skipped_by_user_id` since the Auth rekey), and the same read turned up seven more
+  documents contradicting the code: §3's diagram against its own Stack table, §1's CORS paragraph
+  against the move off Pages, §7's sign-in bullet against §7's own prose, `AGENTS.md`'s repo layout
+  naming five screens that no longer exist, `wrangler.jsonc`, `index.ts`, and a `?about=` URL
+  parameter described in `ScopeChip.tsx` that was never built. All corrected the same day.
+
+  **What is still accepted:** the route-level owner gate and the scope chip's click, which need a
+  DOM the owner declined, and where the consequence is a bad screen rather than an unauthorized
+  write — the API answers 403 either way. And 16.2, the `wrangler dev` exercise, which no test can
+  assert.
 - **Component tests are allowed, and they are render tests — decided 2026-09-22.** The rule forbidding tests for UI
   components (§8) is reversed. It was written on 2026-09-21 with a good argument that turned out to cover only half
   the ground: daisyUI is CSS only, so a component test that asserts *appearance* mostly asserts that the component
@@ -1988,7 +2018,7 @@ M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunki
 M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations   ✓ 2026-09-17
 M5 UI            conversations                                                                  ✓ 2026-09-17
    Auth          better-auth sessions · Google/Meta · user_id keying · owner 403s        ✓ 2026-09-21
-M6 Hardening     a full sweep of §8: every criterion marked tested, structural, or unverified
+M6 Hardening     a full sweep of §8: every criterion marked tested, structural, or unverified  ✓ 2026-09-22
 ```
 
 **M4 no longer lists unread receipts — audited 2026-09-16.** The line carried them from the original plan, but the
@@ -2069,3 +2099,15 @@ rather than by running one. §8 is the largest such list left.
 
 Known to be unverified before the sweep starts: `chat-origin-scope.md` §5 criterion 19's second half, that
 `Try again` sends a new attempt and keeps the failed reply above it.
+
+**M6 is complete — 2026-09-22, and it is the last milestone.** The sweep is
+`docs/specs/m6-hardening.md` §3: 91 atomic claims, each with its evidence, ending at **81 tested, 8
+structural, 1 accepted** (§9 has the findings). Its first finding was the stale sentence three
+paragraphs above this one. Its most useful was that two of the three gaps it had accepted were
+accepted because of a rule in §8 rather than because of a risk — writing down *why* is what exposed
+it, the owner reversed the rule the same day, and the repo gained its first component tests.
+
+That leaves one criterion genuinely open, the same one this section has named since 2026-09-17:
+`chat-origin-scope.md` §5 criterion 19's second half. Nothing has yet provoked a failed reply, in a
+test or in use, so the control has never run. It is a UI interaction and falls under the boundary
+§9 drew on 2026-09-22 — render tests, no DOM — so it stays hand-verified.

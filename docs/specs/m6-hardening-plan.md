@@ -1,7 +1,8 @@
 # Implementation plan — M6 Hardening
 
 **Implements:** `docs/specs/m6-hardening.md`, under `AGENTS.md`.
-**Written:** 2026-09-22. **Status:** awaiting owner approval.
+**Written:** 2026-09-22. **Status:** complete 2026-09-22 — all four steps landed, and a fifth appeared
+when the owner reversed §8's rule against component tests, turning two accepted gaps into closures.
 
 The sweep itself is done and lives in the spec's §3 — 91 claims, each with a verdict. This plan is only what the
 sweep *owes*: four tests and four document edits. It is deliberately small. M6 is a read, and the read is the part
@@ -30,7 +31,7 @@ already selects.
 
 ---
 
-### Step 1 — The vector half of the first line  (size: S) — closes G1
+### Step 1 — The vector half of the first line  (size: S) — closes G1 — **done**
 
 `isolation.test.ts` already carries §8's first two criteria and says so in its header. The first is covered for the
 episode and the summary and not for the vector set, which is the third noun in a sentence of three.
@@ -51,7 +52,7 @@ reached it". Extend the file's header comment to say the third noun is now cover
 rather than by hand — `helpers.ts` already has the seam. And assert the *generation id*, not merely that both
 answers mention the episode, which would pass with two separate generations.
 
-### Step 2 — The two seams  (size: S) — closes G2 and G3
+### Step 2 — The two seams  (size: S) — closes G2 and G3 — **done**
 
 Two small absences, in two files that already set up everything needed.
 
@@ -69,7 +70,7 @@ claim.
 **Watch for:** G3 is one line in a test that is already long. Resist rewriting the test around it — the setup is
 correct and the assertion belongs where the round trip ends.
 
-### Step 3 — The shapes, enumerated  (size: M) — closes G4
+### Step 3 — The shapes, enumerated  (size: M) — closes G4 — **done, and the plan's shape for it was wrong**
 
 `expectShape` is called 34 times across seven files, and nothing says which routes that leaves uncovered. The fix is
 the one `openapi.test.ts` already uses for routes: enumerate, don't list.
@@ -90,7 +91,22 @@ gets its own decision, not a quiet fix inside a hardening milestone.
 on what the document actually contains before writing the matcher, and if inlining turns out to be the norm rather
 than the exception, say so and narrow the test to what it can honestly check.
 
-### Step 4 — The documents  (size: S)
+### Step 4 — The two the rule was hiding  (size: M) — closes G5 and G6 — **done, unplanned**
+
+Not in the plan as written. §6 had accepted A1 and A2 because §8 bullet 14 forbade component
+tests, and writing the reason down made it plain that the reason was the rule rather than the risk.
+The owner reversed the rule (PRD §9, 2026-09-22) and chose **render tests with no DOM**: 
+`preact-render-to-string` is already a dependency, so this cost no install; `happy-dom` and a
+testing library were offered and declined.
+
+- `apps/web/test/channel-actions.test.tsx` — `ChannelStatusActions` across status and scope.
+- `apps/web/test/scope-chip.test.tsx` — `ScopeChip` and `ScopeLine` across scoped and not.
+
+The boundary that makes these worth having: **test what a component decides, never how it looks.**
+An assertion on a Tailwind class is a test of daisyUI. Clicks and focus still have no DOM and stay
+hand-verified under `pnpm dev`.
+
+### Step 5 — The documents  (size: S) — **done**
 
 The four edits of spec §5:
 
@@ -102,6 +118,38 @@ The four edits of spec §5:
 - **E4** — §10: M6 complete, with what the sweep found rather than only that it ran.
 
 Then this plan gains a Record section, the way the other plans carry theirs.
+
+---
+
+## Record
+
+**Five steps, 2026-09-22, on `main`.** The sweep itself (spec §3) was the work; these were its debts.
+
+| Step | What landed | Tests |
+|---|---|---|
+| 1 | `isolation.test.ts` gains the vector case | +1 |
+| 2 | `registry-channels.test.ts` gains the decline snapshot; `routes-follows-digest.test.ts` gains one assertion | +1 |
+| 3 | `openapi.test.ts` gains the enumerated success-shape check | +1 |
+| 4 | `channel-actions.test.tsx`, `scope-chip.test.tsx` — the first component tests in the repo | +9 |
+| 5 | PRD §3, §7, §8, §9, §10; `AGENTS.md`; `wrangler.jsonc`; `index.ts`; `ScopeChip.tsx`; `app.tsx` | — |
+
+420 API tests and 60 web tests pass. **What the steps found that the plan did not predict:**
+
+- **Step 3's premise was wrong.** The document inlines each route's wrapper object and `$ref`s the
+  entities inside it, so "the success response is a shared component" is not true of anything. The
+  step was written with a `Watch for` anticipating exactly this, and the test became "every success
+  body is *built from* the shared schemas", with the two flat exceptions and the two redirect-only
+  routes listed rather than counted. Nothing was broken — the check is new coverage, not a fix.
+- **Step 4 existed because Step 5 was being written.** Recording *why* a gap was accepted is what
+  exposed that the reason was a rule nobody had re-examined. That is the whole method of this
+  milestone applied to the milestone itself.
+- **A flake, and a stale cache.** One `pnpm check` run failed with `no such table: global_users`
+  and passed on every run since; `test/setup.ts` wipes both Durable Objects after each test and
+  aborts their instances, and an aborted instance can touch storage mid-wipe. Separately, `pnpm
+  check` replayed a cached success while `biome` was reporting unused imports in `app.tsx`,
+  `History.tsx` and `Sources.tsx` — five warnings that predate M6 and remain. Both are noted rather
+  than fixed: neither is §8's, and a hardening milestone that quietly repairs what it audits is one
+  nobody can read afterwards.
 
 ---
 

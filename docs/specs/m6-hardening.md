@@ -1,6 +1,7 @@
 # Feature spec — M6 Hardening: a sweep of §8
 
-**Status:** written 2026-09-22, awaiting owner approval of the plan.
+**Status:** **complete 2026-09-22.** The sweep ran, the plan's steps landed, and §8's own rule against
+testing UI components was reversed mid-flight, which turned two accepted gaps into two more closures.
 **Owns:** the verdict on every criterion in `docs/PRD.md` §8, the gaps that sweep found, and the PRD edits it owes.
 **Depends on:** nothing. Every milestone it reads is complete.
 
@@ -14,13 +15,19 @@ marked **tested**, **structural**, or **unverified**, with its evidence named.
 Swept against the 417 tests `pnpm test` runs across `apps/api/test` and `apps/web/test`, and against the code
 that makes the rest true, they fall out as:
 
-| Verdict | Count | What it means |
-|---|---|---|
-| **tested** | 75 | A named test asserts it. The test is named in §3 so a rename is a visible edit here. |
-| **structural** | 8 | No test, and none is owed: the shape of the code makes the claim impossible to violate, and §3 says what shape. |
-| **unverified → close** | 4 | No test, and one is cheap and worth owning. §6 says which, and the plan writes them. |
-| **unverified → accept** | 3 | No test, and none will be written. §6 gives the reason each is accepted rather than closed. |
-| *not a criterion* | 1 | Claim 14.4 is a standing instruction — "do not add tests for UI components" — and has nothing to verify. |
+| Verdict | At the sweep | After the closures | What it means |
+|---|---|---|---|
+| **tested** | 75 | **81** | A named test asserts it. The test is named in §3 so a rename is a visible edit here. |
+| **structural** | 8 | 8 | No test, and none is owed: the shape of the code makes the claim impossible to violate, and §3 says what shape. |
+| **unverified → close** | 4 | 0 | All four closed; §6 says how each one's test is shaped. |
+| **unverified → accept** | 3 | **1** | Two of the three were accepted only because §8 forbade component tests. That rule was reversed on 2026-09-22 (PRD §9), so they were closed instead. One remains. |
+| *not a criterion* | 1 | 1 | Claim 14.4 was the standing instruction that accepted those two. Half of it is now withdrawn. |
+
+**The sweep changed the rules it was auditing.** Two gaps — the web offering the owner's operations
+to the owner alone, and the scope chip's dismissal — were marked *accept* for one reason only: §8
+bullet 14 forbade tests for UI components. Writing that down made it obvious that the reason was
+the rule rather than the risk, and the owner reversed the rule the same day. A list read against
+reality is supposed to produce that.
 
 **The sweep's headline is not a gap; it is a stale claim.** `docs/PRD.md` §10 says §8's first line — "two users
 following one channel produce one shared episode/summary/vector set with independent read receipts" — "has no
@@ -65,7 +72,7 @@ carries the edit.
 |---|---|---|---|
 | 1.1 | Two followers of one channel get one shared episode and summary | **tested** | `isolation.test.ts` "shares one episode and summary between followers, with receipts of their own" |
 | 1.2 | …with independent read receipts | **tested** | same; `user-reads.test.ts` "keeps receipts through unfollow and isolates them per user" |
-| 1.3 | …and one shared **vector** set | **unverified → close** | The episode and summary halves are tested; the vector half is not. See §6, G1. |
+| 1.3 | …and one shared **vector** set | **tested** (2026-09-22) | `isolation.test.ts` "retrieves both readers' answers from one shared vector set, keyed to no one" |
 
 ### 3.2 Bullet 2 — private state, and the one fact that is public
 
@@ -79,7 +86,7 @@ carries the edit.
 | # | Claim | Verdict | Evidence |
 |---|---|---|---|
 | 3.1 | The seven catalog operations answer 403 to a non-owner and write nothing | **tested** | `authorization.test.ts` "refuses all seven for a signed-in stranger, and writes nothing" / "allows the owner the same seven" |
-| 3.2 | The web offers them to the owner only | **unverified → accept** | Gated in `session.tsx` (`ownerOnly`) and by `isOwner` props, untested by the standing rule that §8 bullet 14 states. See §6, A1. |
+| 3.2 | The web offers them to the owner only | **tested in part** (2026-09-22) | `channel-actions.test.tsx`, four cases over `ChannelStatusActions` — the one component that renders these operations — pinning which of them each status and scope offers. The route-level gate (`Guard ownerOnly`) needs a DOM and stays hand-verified; see §6, A1. |
 | 3.3 | The acting `user_id` is recorded | **tested** | `registry-channels.test.ts` "records whoever approved"; `routes-channels.test.ts` "approve, decline, pause, and resume are the owner's, and record who acted"; `registry-episodes.test.ts` "records whoever skipped" |
 | 3.4 | Handles and ids with no feed are rejected | **tested** | `youtube-ids.test.ts` "rejects handles, other URLs, and junk with the copy-the-id instructions"; `routes-channels.test.ts` "creates a channel only for a real feed" |
 | 3.5 | Requesters follow at the moment they request; nothing is auto-followed later | **tested** | `routes-channels.test.ts` "a user's add creates a requested channel and follows them…" |
@@ -127,7 +134,7 @@ carries the edit.
 | 6.3 | An available Retry preserves summary, first availability, receipts and active generation until a replacement succeeds | **tested** | `registry-attempts.test.ts` "replaces content atomically, preserving first availability and handing back the previous generation"; `workflow-ingest.test.ts` "replaces content atomically: old summary and vectors stay until the new generation is verified, then only the new one remains" |
 | 6.4 | A deadline leaves it available | **tested** | `registry-attempts.test.ts` "schedules at deadline − 1 ms and times out at the deadline, for a publication and for a replacement" |
 | 6.5 | A replacement classified `UNPLAYABLE`/`NON_ENGLISH`/`SHORT` records a skipped attempt and closes the window | **tested** | `registry-attempts.test.ts` "skips a publication on a deterministic result and leaves a replacement's content alone" |
-| 6.6 | Declining an approved channel changes no run or episode row | **unverified → close** | `declineChannel`'s `UPDATE` names only `channels`, but nothing asserts the absence. See §6, G2. |
+| 6.6 | Declining an approved channel changes no run or episode row | **tested** (2026-09-22) | `registry-channels.test.ts` "declining is a catalog decision: not one run or episode row moves" — both tables snapshotted whole and compared, so any column changing fails it |
 | 6.7 | Channel and catalog ingestion times equal the relevant episode `processed_at` maximum | **tested** | `registry-management.test.ts` asserts `lastSuccessfulIngestionAt` and `lastIngestedAt` against seeded `processed_at`, including the null cases, in "summarizes the catalog" / "is empty-safe before anything exists" / "joins channels to their management facts" |
 | 6.8 | Owner overview and channel-health counts match the underlying episodes and runs | **tested** | `registry-management.test.ts` "summarizes the catalog" / "counts a failed episode as attention only while its channel is approved" |
 
@@ -158,7 +165,7 @@ carries the edit.
 | 9.1 | A scoped message retrieves only from its episode | **tested** | `chat.test.ts` "sizes the query by scope and never sends one unfiltered"; `vectorize.test.ts` "keeps only the named episode, across channels the caller also follows" |
 | 9.2 | …and only while that episode's channel stays eligible | **tested** | `chat.test.ts` "says an ineligible scope out loud rather than widening to everything" |
 | 9.3 | An ineligible hint produces §4.5's explicit reply and never a global answer | **tested** | same; `chat.test.ts` "answers the scoped sentence for a scoped question, naming the episode and not the follows" |
-| 9.4 | Dismissing the chip returns the next message to every eligible channel | **unverified → accept** | The API half is tested — `user-chats.test.ts` "leaves both messages unscoped when no hint is given" — and the chip is a component. See §6, A2. |
+| 9.4 | Dismissing the chip returns the next message to every eligible channel | **tested in part** (2026-09-22) | API half: `user-chats.test.ts` "leaves both messages unscoped when no hint is given". Rendered half: `scope-chip.test.tsx` — no chip at all without a scope, and the line naming every channel the reader follows. The click itself needs a DOM; see §6, A2. |
 | 9.5 | A stored hint is never rewritten by later follow changes | **tested** | `chat.test.ts` "a stored hint outlives the follow it was asked under" → "is unchanged after the reader unfollows and follows again" |
 
 ### 3.10 Bullet 10 — chats across follow changes
@@ -183,7 +190,7 @@ carries the edit.
 |---|---|---|---|
 | 12.1 | Receipts apply only to summaries returned to that user | **tested** | `routes-channels.test.ts` "answers one episode, and records or undoes its receipt for an eligible caller only" |
 | 12.2 | First-follow summaries start unread | **tested** | `routes-follows-digest.test.ts` "refuses only declined channels and lists follows with counts, unread, and status" — a fresh follow reads `unreadCount: 3` |
-| 12.3 | Declining and approving again keeps prior read status | **unverified → close** | The same test carries the *unread* side through decline and approve; nobody asserts the reader who had read them still has. See §6, G3. |
+| 12.3 | Declining and approving again keeps prior read status | **tested** (2026-09-22) | `routes-follows-digest.test.ts` "refuses only declined channels and lists follows with counts, unread, and status" — the round trip now ends by asserting the reader who had read all three still reads zero unread |
 | 12.4 | Digest windows use first availability, ordered strictly by it | **tested** | `registry-episodes.test.ts` "orders the digest by first availability, not publication, and bounds the range on it" |
 | 12.5 | Shared cross-references are filtered at display time | **tested** | `registry-episodes.test.ts` asserts `relatedScope` narrowing related titles to the caller's channels, and `[]` emptying them |
 
@@ -197,7 +204,7 @@ carries the edit.
 | 13.4 | A CHECK rejects a skipped episode with no reason | **tested** | `registry-migrations.test.ts` "ties episode columns to status and the processing window to itself" |
 | 13.5 | A CHECK rejects an owner skip with no **email** | **tested, wording stale** | The constraint is `(skip_reason IS 'OWNER') = (skipped_by_user_id IS NOT NULL)` and the test asserts it. There is no email column on that table and has not been since the Auth rekey. §5 carries the edit. |
 | 13.6 | `GET /openapi.json` lists exactly the registered routes | **tested** | `openapi.test.ts` "is public and describes every registered route, and nothing else" — enumerated from `app.routes` |
-| 13.7 | Each route's responses parse against the shared schemas | **unverified → close** | `expectShape` covers the route suites, but which routes it covers is nobody's list: unlike `OPERATIONS`, no enumeration says every route's success shape was checked once. See §6, G4. |
+| 13.7 | Each route's responses parse against the shared schemas | **tested** (2026-09-22) | `openapi.test.ts` "builds every success body from the shared schemas, with two flat exceptions" — enumerated from the document, not from a list |
 
 ### 3.14 Bullet 14 — what the suite is made of
 
@@ -257,57 +264,94 @@ sentence is wrong. It is a small edit and a familiar shape: the rekey's spec cla
 
 ## 5. The PRD edits this sweep owes
 
-| # | Where | Edit |
-|---|---|---|
-| E1 | §8 bullet 13 | "an owner skip with no email" → "an owner skip with nobody named", the column being `skipped_by_user_id` since the Auth rekey (2026-09-20) |
-| E2 | §10, the M6 paragraph | Strike "§8's **first line** has no test"; it has had one since `5d9f234`. Record it as the fifth document to outlive its work, and keep the argument — true by construction is what stops being true after a refactor — because it is still why 1.3 gets a test. |
-| E3 | §9 | Record the sweep: the four counts, the four gaps closed, the three accepted with their reasons, and the date. |
-| E4 | §10, the milestone block | Mark M6 complete when the plan's steps land. |
+| # | Where | Edit | Status |
+|---|---|---|---|
+| E1 | §8 bullet 13 | "an owner skip with no email" → wording naming a user, the column being `skipped_by_user_id` since the Auth rekey (2026-09-20) | **applied** 2026-09-22 |
+| E2 | §10, the M6 paragraph | Strike "§8's **first line** has no test"; it has had one since `5d9f234`. Recorded as the fifth document to outlive its work, keeping the argument — true by construction is what stops being true after a refactor — because it is still why 1.3 got a test. | **applied** 2026-09-22 |
+| E3 | §9 | Record the sweep: the counts, the gaps closed, the one accepted, and the date. | **applied** 2026-09-22 |
+| E4 | §10, the milestone block | Mark M6 complete. | **applied** 2026-09-22 |
+| E5 | §8 bullet 14, §9 | **Added mid-flight:** reverse "do not add tests for UI components". The sweep had accepted two gaps for that reason alone. | **applied** 2026-09-22 |
+
+**Seven more corrections came out of the same read**, once "feature development is complete" made
+every document fair game. They are not §8's and are recorded in the commit rather than here: PRD §3
+said "User DO per email" while its own Stack table said `user_id`; §1 still admitted "the Pages web
+app" through CORS a day after the web left Pages; §7 headed a bullet "Sign in `/`" against its own
+prose; `AGENTS.md`'s repo layout named five web screens that no longer exist and omitted eleven
+specs; `wrangler.jsonc` named "the Pages preview origin"; `index.ts` said twice that nothing
+consumes the session yet; and `ScopeChip.tsx` described a `?about=` URL parameter that appears
+nowhere in the codebase.
 
 ## 6. The gaps, and their disposition
 
-Four to close, three to accept. The disposition rule the owner set on 2026-09-22: close it with a test where
-closing is cheap; accept where a test would be theatre, and record the reason.
+Four to close and three to accept, at the sweep. Then §8 bullet 14 was reversed and two of the
+three became closures too: **six closed, one accepted.** The disposition rule the owner set on
+2026-09-22: close it with a test where closing is cheap; accept where a test would be theatre, and
+record the reason.
 
-### To close
+### Closed
 
-**G1 — 1.3, the vector half of §8's first line.** Two followers share one episode and one summary, both tested; the
-vector set is asserted nowhere. This is the line M6 was defined around, so it gets its test even though the
-namespace argument is strong. *Shape:* a third case in `isolation.test.ts` — two followers, one available episode,
-each asking a question that retrieves it, and the sources both receive naming the same episode out of the same
-active generation. The point of the assertion is that no vector id, namespace or filter carries a user.
+**G1 — 1.3, the vector half of §8's first line.** Two followers share one episode and one summary,
+both tested; the vector set was asserted nowhere. Closed by a third case in `isolation.test.ts`:
+both readers ask the same question, and the test wraps the store to capture every namespace and
+filter it is asked for. It asserts the sources match, the episode's one `activeVectorGeneration` is
+what both read, and — the point — that the filter names channels and contains neither reader's
+address. A per-user namespace would have given both of them answers too, and broken the promise
+silently.
 
-**G2 — 6.6, declining an approved channel changes no run or episode row.** `declineChannel` updates only
-`channels`, and nothing says so. *Shape:* a `registry-channels.test.ts` case that snapshots the channel's runs and
-episodes, declines, and asserts both are unchanged — the absence, which is what the criterion actually claims.
+**G2 — 6.6, declining changes no run or episode row.** Closed in `registry-channels.test.ts` by
+snapshotting `ingestion_runs` and `episodes` whole, declining, and comparing the whole snapshot.
+The criterion claims an absence, so the test looks at the absence rather than at a column somebody
+thought of; any change to any row fails it.
 
-**G3 — 12.3, read status across decline and approve.** `routes-follows-digest.test.ts` already carries the unread
-side of the round trip; the reader who *had* read them is never re-checked afterwards. *Shape:* extend that test
-with the assertion that Alice's `unreadCount` is still zero once the channel is approved again. One assertion, in
-a test that already sets everything up.
+**G3 — 12.3, read status across decline and approve.** One assertion, added where the existing
+round trip ends: the reader who had read all three still reads zero unread once the channel comes
+back. The unread side was already there.
 
-**G4 — 13.7, every route's success shape checked, enumerated.** `expectShape` is called 34 times across seven
-files and no list says which routes that leaves out. *Shape:* enumerate the registered routes the way `openapi.test.ts`
-does and assert each non-redirect operation's success response parses against its shared schema — reading the
-document's own response schema rather than re-listing it. This is the one gap whose fix is a new test rather than
-an extension, and it is the one most likely to find something.
+**G4 — 13.7, every success shape, enumerated.** **The plan's shape for this was wrong and the step
+found it**, which is why it was given a step of its own. The plan assumed each success response
+would be a `$ref` to a shared component; the document actually **inlines each route's wrapper
+object** — `{ channels: [...] }` — and `$ref`s the entities inside it. So the honest rule is not
+"the response is a component" but "the response is *built from* components", and it is enumerable:
+**31 operations reference a shared component, two are flat, two answer only 302.** The two flat
+ones still come from `packages/shared` — `HealthResponse` is a status string and
+`SessionExchangeResponse` is the token — they simply have no member worth a component. Both lists
+are named rather than counted, so a route that invents an entity shape inline appears as a new name
+somebody has to justify. The test also checks that every component a success body names is one the
+document declares.
 
-### To accept
+**G5 — 3.2, the web offers the owner's operations to the owner only.** Was A1; closed once the rule
+allowed it. `ChannelStatusActions` is the only component that renders approve, decline, pause,
+resume and Check feed, so what it offers *is* what the product offers.
+`apps/web/test/channel-actions.test.tsx` pins that across status and scope: nothing at all beside a
+channel that is not approved, the two reversible knobs beside an approved one, the decisions only
+where the scope is `everything`, and every glyph carrying its name. **Not covered:** the
+route-level `Guard ownerOnly` on Curate, which resolves through context and an effect and needs a
+DOM — see A1 below.
 
-**A1 — 3.2, the web offers the owner operations to the owner only.** §8 bullet 14 forbids tests for UI components,
-which is the rule that made this untestable, and it is a deliberate standing decision rather than an omission: the
-web is verified by hand under `pnpm dev` before each commit (`AGENTS.md` → Web UI code). The API half — which is
-where the security lives — is fully tested by `authorization.test.ts`. A web that wrongly *shows* a control calls
-an API that refuses it. **Accepted:** the consequence of the gap is a bad screen, not an unauthorized write.
+**G6 — 9.4, dismissing the scope chip.** Was A2. The API half was already tested; the rendered half
+is now `apps/web/test/scope-chip.test.tsx` — the chip renders to the empty string with no scope
+(the dismissed state is the *absence* of the control, not an empty one), it names its episode and
+offers a labelled way out, it escapes a title that is YouTube's rather than ours, and the line
+beneath the composer says which of the two searches is in force. **Not covered:** the click.
 
-**A2 — 9.4, dismissing the scope chip.** The same rule. The API half is tested; the chip is a component.
-**Accepted** on the same reasoning, with the same consequence: a message sent at the wrong scope, not a leak —
-retrieval is filtered by eligibility whatever the chip says.
+### Accepted
 
-**A3 — 16.2, the `wrangler dev` exercise.** This is a process claim about work already done, and the record is
-prose scattered across a dozen plans, several of which say the walkthrough was skipped. A test cannot assert it,
-and reconstructing the history would be archaeology with nothing at the end of it. **Accepted**, with the honest
-note that the claim is true of most chunks and not all, and that the plans say which.
+**A1 — the route-level owner gate, and interaction generally.** `Guard ownerOnly` redirects a
+non-owner through a `useEffect`, which render-to-string does not run, and `useSession` needs a
+context the module does not export. Testing it would mean either exporting internals for the test
+or taking the DOM dependency the owner declined on 2026-09-22. **Accepted:** the consequence is a
+bad screen, never an unauthorized write — the API answers 403 to anyone but the owner, and
+`authorization.test.ts` covers all nine operations. Interaction stays hand-verified under
+`pnpm dev`, which `AGENTS.md` → Web UI code has always required.
+
+**A2 — the chip's click, and the composer's state.** Same reason, same boundary. Retrieval is
+filtered by eligibility whatever the chip says, so the consequence is a message sent at the wrong
+scope, not a leak.
+
+**A3 — 16.2, the `wrangler dev` exercise.** A process claim about work already done. The record is
+prose across a dozen plans, several of which say the walkthrough was skipped. No test can assert
+it and reconstructing the history would be archaeology. **Accepted**, with the honest note that the
+claim is true of most chunks and not all, and that the plans say which.
 
 ## 7. Acceptance criteria
 

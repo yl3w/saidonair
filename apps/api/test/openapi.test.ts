@@ -194,6 +194,79 @@ describe("GET /openapi.json", () => {
     });
   });
 
+  /**
+   * PRD §8 bullet 13: "each route's responses parse against the shared schemas, so the document and
+   * the Worker cannot disagree about a shape." Route tests check that one response at a time with
+   * `expectShape`, and **which routes that leaves out was nobody's list** — the gap the M6 sweep
+   * found (docs/specs/m6-hardening.md §6, G4). Every other list in this file is enumerated from the
+   * router rather than kept by hand; this one was not kept at all.
+   *
+   * So: every success body is declared from a schema in `packages/shared`, and the document shows
+   * it by referencing that schema's component. A route that invents an entity shape inline — the
+   * drift this criterion exists to catch — appears here as a new name in `FLAT`, which is an edit
+   * somebody has to justify rather than a silence.
+   */
+  it("builds every success body from the shared schemas, with two flat exceptions", async () => {
+    const doc = await fetchDocument();
+
+    // The two whose shared schema has no member worth a component of its own: `HealthResponse` is
+    // a status string, `SessionExchangeResponse` is the token. Both still come from the shared
+    // package — they are flat, not ad-hoc.
+    const FLAT = new Set(["get /health", "post /session/exchange"]);
+    // The two that answer only 302: a redirect has no body to shape (they are `/session/start`
+    // and `/session/handoff`, and the success-response check above already allows their 3xx).
+    const REDIRECT_ONLY = new Set([
+      "get /session/start",
+      "get /session/handoff",
+    ]);
+
+    const referencing: string[] = [];
+    const flat: string[] = [];
+    const bodiless: string[] = [];
+
+    for (const [path, operations] of Object.entries(doc.paths)) {
+      for (const [method, operation] of Object.entries(operations)) {
+        const where = `${method} ${path}`;
+        const success = Object.entries(operation.responses).find(([status]) =>
+          /^2/.test(status),
+        );
+        const schema = (
+          success?.[1] as
+            | { content?: { "application/json"?: { schema?: unknown } } }
+            | undefined
+        )?.content?.["application/json"]?.schema;
+        if (schema === undefined) {
+          bodiless.push(where);
+        } else if (JSON.stringify(schema).includes('"$ref"')) {
+          referencing.push(where);
+        } else {
+          flat.push(where);
+        }
+      }
+    }
+
+    expect(new Set(bodiless)).toEqual(REDIRECT_ONLY);
+    expect(new Set(flat)).toEqual(FLAT);
+    // Everything else — every operation that returns an entity — names a shared component.
+    expect(referencing.length).toBe(
+      Object.values(doc.paths).reduce(
+        (total, operations) => total + Object.keys(operations).length,
+        0,
+      ) -
+        FLAT.size -
+        REDIRECT_ONLY.size,
+    );
+    // And each component a success body names is one the shared package declares.
+    for (const reference of JSON.stringify(doc.paths).matchAll(
+      /#\/components\/schemas\/([A-Za-z0-9_]+)/g,
+    )) {
+      expect(
+        doc.components.schemas,
+        `${reference[1]} is declared`,
+      ).toHaveProperty(reference[1] as string);
+    }
+  });
+
   it("gives every operation one tag, a success response, and the identity requirement", async () => {
     const doc = await fetchDocument();
     for (const [path, operations] of Object.entries(doc.paths)) {
