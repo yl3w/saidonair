@@ -54,9 +54,9 @@ export function Page({
 }) {
   const column = (
     <main class={`w-full min-w-0 ${MEASURES[measure]} ${COLUMNS[measure]}`}>
-      {/* On every public page, in one place, so no screen can be the one that forgets it
-          (docs/specs/public-reading.md §4.2). A reader gets nothing. */}
-      <Invitation />
+      {/* On every public page that comes through here; `Reading` renders its own
+          (docs/specs/public-reading.md §4.2). It renders nothing for a reader. */}
+      <JoinAlert />
       {desktopOnly && (
         <p class="font-reading text-body text-ink-2 lg:hidden">
           Curate needs a wider screen than this one. What is waiting is on your
@@ -106,10 +106,4 @@ export function Page({
 function Frame() {
   const { state } = useSession();
   return state.status === "none" ? <PublicShell /> : <Nav />;
-}
-
-/** The invitation, for a visitor, wherever a column is drawn. */
-function Invitation() {
-  const { state } = useSession();
-  return state.status === "none" ? <JoinAlert /> : null;
 }

@@ -5,6 +5,7 @@ import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
 import { Choice } from "../components/Choice";
 import { Icon } from "../components/Icon";
+import { JoinAlert } from "../components/JoinAlert";
 import { MetaLine } from "../components/MetaLine";
 import { Retry } from "../components/Retry";
 import { Sheet } from "../components/Sheet";
@@ -266,6 +267,9 @@ function ReadingScreen() {
       </header>
 
       <main class="mx-auto max-w-reading px-5 pb-28 pt-8 md:px-8 md:pb-24">
+        {/* This screen builds its own frame rather than going through `Page`, so it carries the
+            invitation itself. It renders nothing for a reader. */}
+        <JoinAlert />
         {load.status === "loading" && (
           <>
             <div class="skeleton h-4 w-40" />

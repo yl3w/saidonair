@@ -1,5 +1,6 @@
 import { useLocation } from "preact-iso";
 import { PUBLIC_INVITE_COPY, PUBLIC_JOIN_COPY } from "../lib/copy";
+import { useSession } from "../session";
 
 /**
  * What an account adds, on every page a signed-out visitor can reach (owner decision 2026-09-21,
@@ -16,9 +17,15 @@ import { PUBLIC_INVITE_COPY, PUBLIC_JOIN_COPY } from "../lib/copy";
  *
  * The long form always (owner, 2026-09-21). The shortened phrasing existed because a fixed bar had
  * one line to spend on a phone; in the column the sentence wraps instead.
+ *
+ * **It decides for itself whether to render.** A caller that had to ask the session first would be
+ * a caller that can forget to, and one did within minutes: `Page` renders this for every screen
+ * that goes through it, and `Reading` builds its own frame and goes through nothing.
  */
 export function JoinAlert() {
   const { path } = useLocation();
+  const { state } = useSession();
+  if (state.status !== "none") return null;
   return (
     <div class="alert alert-vertical mb-8 sm:alert-horizontal">
       <span class="font-reading text-body text-ink">{PUBLIC_INVITE_COPY}</span>
