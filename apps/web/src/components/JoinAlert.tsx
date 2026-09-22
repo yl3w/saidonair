@@ -26,11 +26,16 @@ export function JoinAlert() {
   const { path } = useLocation();
   const { state } = useSession();
   if (state.status !== "none") return null;
+  // Side by side only from `md`. At `sm` the sentence and the button share 640 px and the result
+  // is a cramped row; below that they stack, which reads better than either folding.
   return (
-    <div class="alert alert-vertical mb-8 sm:alert-horizontal">
+    <div class="alert alert-vertical mb-8 md:alert-horizontal">
       <span class="font-reading text-body text-ink">{PUBLIC_INVITE_COPY}</span>
+      {/* `shrink-0` and `whitespace-nowrap` together: in the horizontal layout the sentence takes
+          the free space and the button is what gives, which folded "Sign up / Sign in" onto two
+          lines. The sentence may wrap — it is prose; the control may not. */}
       <a
-        class="btn btn-quiet"
+        class="btn btn-quiet shrink-0 whitespace-nowrap"
         href={`/sign-in?next=${encodeURIComponent(path)}`}
       >
         {PUBLIC_JOIN_COPY}
