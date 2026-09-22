@@ -40,7 +40,11 @@ export function Nav() {
   return (
     <>
       <header class="sticky top-0 z-20 border-b border-rule bg-panel">
-        <div class="mx-auto flex h-14 w-full items-center gap-6 px-5 md:px-8">
+        {/* `bar-column`, like every other bar: one measure for the product means the wordmark
+            lands on the same left edge as the column beneath it (owner decision 2026-09-21). This
+            bar holds the most of any — wordmark, three destinations, Curate, and the reader — so
+            it is the one where 680 px is tightest; the email below truncates rather than wraps. */}
+        <div class="bar-column flex h-14 items-center gap-6">
           <a
             href="/queue"
             class="flex min-h-11 items-center font-serif text-section font-semibold tracking-tight text-ink"
@@ -81,7 +85,7 @@ export function Nav() {
               }`}
               aria-current={isCurrent(path, "/account") ? "page" : undefined}
             >
-              <span class="hidden lg:inline">{email}</span>
+              <span class="hidden max-w-48 truncate lg:inline">{email}</span>
               <Avatar id={email} name={localPart(email)} size={28} />
               <span class="sr-only">Account</span>
             </a>

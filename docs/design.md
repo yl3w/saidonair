@@ -649,6 +649,12 @@ Added 2026-09-21 with the public reading experience (`docs/specs/public-reading.
 through a long list rather than arriving at one. This section is the frame they arrive into; the screens themselves are §3 and §5 as before, with the
 reader's controls absent.
 
+**Every bar is `bar-column`** (`apps/web/src/styles.css`). A bar belongs to the column beneath it, not to the
+window, and the two are measured the same way: the utility carries the page padding inside its own max-width, so a
+bar's content box is exactly one measure wide and shares the column's left edge at every width. Writing
+`max-w-reading px-8` instead puts the padding *inside* the measure, which is 32 px of drift and 64 px of lost width
+— the bug that produced three left edges on the channel screen and, an hour later, on the landing page.
+
 **The leading control in a bar aligns by its glyph, not its box.** A square button is 44 px with no horizontal
 padding and its icon is 20 px, so the arrow sits 12 px inside the button's edge and reads as indented against the
 column below it. Those buttons carry `-ml-3` to put the glyph on the column's own edge; the 44 px target is
