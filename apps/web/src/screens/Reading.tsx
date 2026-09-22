@@ -219,43 +219,21 @@ function ReadingScreen() {
       bar={
         <header class="sticky top-0 z-20 border-b border-rule bg-ground">
           <div class="bar-column flex h-14 items-center gap-2">
-            {/* The browser's own back, like every other bar in the product (lib/back.ts) — with
-                `href` kept so the control is still a link a reader can open in a new tab, and the
-                plain left click intercepted.
-
-                It was an `href` alone, and that pushed a new entry instead of popping one: from
-                `/` → channel → summary, going back landed on the channel *ahead* of the summary in
-                history, so the channel's own back returned to the summary and a reader could not
-                reach `/` at all (2026-09-21). `back.href` is the fallback for a tab that arrived
-                on a shared link and has nothing to pop. */}
-            <a
-              href={back.href}
+            {/* The browser's own back, with a named fallback for a tab that arrived on a shared
+                link and has nothing to pop (lib/back.ts). A button, exactly as the channel's and
+                the conversation's are: it was an anchor until 2026-09-21, which pushed a history
+                entry instead of popping one and made `/` unreachable, and then an anchor whose
+                click was intercepted — which needed `stopPropagation` because preact-iso listens
+                on `window` and ignores `defaultPrevented`. A back arrow has nothing worth opening
+                in a new tab, so the link bought an affordance nobody wants at the price of knowing
+                the router's internals. */}
+            <button
+              type="button"
               class="btn btn-ghost btn-square -ml-3"
-              onClick={(event) => {
-                // Let the browser have the clicks it owns: a new tab, a new window, a download.
-                // `preact-iso` ignores these too (its `handleNav` returns early on any modifier or
-                // a non-primary button), so nothing else acts on them either.
-                if (
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.altKey ||
-                  event.shiftKey ||
-                  event.button !== 0
-                ) {
-                  return;
-                }
-                // **`stopPropagation`, not just `preventDefault`.** preact-iso listens for clicks
-                // on `window` and its handler never checks `defaultPrevented` — it finds the `<a>`
-                // in the composed path and calls `pushState` regardless. Preventing the default
-                // alone left both happening: this popped an entry and the router pushed one, which
-                // is why `/` stayed unreachable after the first attempt at this fix (2026-09-21).
-                event.stopPropagation();
-                event.preventDefault();
-                goBack(() => route(back.href));
-              }}
+              onClick={() => goBack(() => route(back.href))}
             >
               <Icon of={ArrowLeft} size={20} label={back.label} />
-            </a>
+            </button>
 
             <div class="relative ml-auto" ref={panel}>
               <button
