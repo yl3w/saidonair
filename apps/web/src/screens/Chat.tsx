@@ -154,7 +154,7 @@ function ChatScreen() {
           {/* Constrained to the reading measure, as the reading column's bar is: the arrow and the
               name line up with the conversation beneath rather than with the window. Every screen
               is one measure since 2026-09-21, so every bar is capped the same way. */}
-          <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
+          <div class="bar-column flex h-14 items-center gap-2">
             <button
               type="button"
               class="btn btn-ghost btn-square -ml-3"

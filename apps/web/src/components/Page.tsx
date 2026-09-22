@@ -35,6 +35,7 @@ export function Page({
   railMeasure = "rail",
   desktopOnly = false,
   bar,
+  overlay,
   children,
 }: {
   measure?: keyof typeof MEASURES;
@@ -48,6 +49,15 @@ export function Page({
    * *about* one object takes it; a destination a reader navigates to keeps the nav.
    */
   bar?: ComponentChildren;
+  /**
+   * Whatever has to sit *beside* the column rather than in it: a fixed progress rule, a phone
+   * sheet, anything positioned against the screen. It exists because the reading screen needed
+   * two such things and, lacking a slot, built its own frame instead — which then measured itself
+   * differently from every other column, missed the invitation this component renders, and had to
+   * be told each rule a second time (three bugs, 2026-09-21). One column implementation is worth
+   * one prop.
+   */
+  overlay?: ComponentChildren;
   children: ComponentChildren;
 }) {
   const column = (
@@ -70,7 +80,8 @@ export function Page({
     </main>
   );
   return (
-    <div class="min-h-dvh">
+    <div class="min-h-dvh bg-ground text-ink">
+      {overlay}
       {bar ?? <Frame />}
       <div class="mx-auto w-full px-5 pt-6 pb-28 md:px-8 md:pt-8 md:pb-16 lg:w-fit">
         {rail === undefined ? (

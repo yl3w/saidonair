@@ -276,7 +276,7 @@ function SourceBar({
       {/* The same measure as the column beneath it — a bar belongs to its column, not to the
           window (docs/design.md §3), and the column became the reading measure when the public
           surface was given one width (2026-09-21). */}
-      <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
+      <div class="bar-column flex h-14 items-center gap-2">
         <button
           type="button"
           class="btn btn-ghost btn-square -ml-3"

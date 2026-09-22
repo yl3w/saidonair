@@ -285,6 +285,27 @@
   border: var(--border) solid var(--edge);
 }
 
+/* A screen's own bar, laid out over the column beneath it (docs/design.md §3). It exists because
+ * the two were measured differently and it showed: `Page` puts the page padding *outside* the
+ * 680 px column, while a bar had `max-w-reading px-8` — a 680 px box with the padding inside it,
+ * so every bar's content began 32 px to the right of the column's and ended 32 px short of it.
+ * Three left edges on one page, which is what the owner saw on the channel screen (2026-09-21).
+ *
+ * The max-width therefore carries the padding: the content box is exactly `--container-reading`
+ * wide at both padding steps, and the bar and the column share one left edge at every width. */
+@utility bar-column {
+  margin-inline: auto;
+  width: 100%;
+  max-width: calc(var(--container-reading) + 2.5rem);
+  padding-inline: 1.25rem;
+
+  /* Nested, because `@utility` may not itself be nested inside `@media`. */
+  @media (width >= 48rem) {
+    max-width: calc(var(--container-reading) + 4rem);
+    padding-inline: 2rem;
+  }
+}
+
 @layer base {
   /**
    * daisyUI paints the page from `--color-base-100`, which is `--panel` here so its components land
