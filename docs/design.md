@@ -679,6 +679,18 @@ the page — a dense table is not a measure, it is the absence of one.
 The invitation's sentence is set in **`text-ui`**, not the reading serif. It is interface rather than something
 written to be read (§2.7), and at body size in serif it needed the whole reading column to itself.
 
+**The box is §2.4's, not daisyUI's.** `.alert` paints itself `--color-base-200` and borders itself in the same
+token — and that token *is* `--ground`, so the component arrives the exact colour of the page with an invisible
+border, reading as loose text with a button beside it. `alert-quiet` sets daisyUI's own `--alert-color` hook to
+`--panel` and adds the 1 px `--edge`, which is the bordered box the product already uses for a reader's own
+controls, and trims the padding: a standing invitation on every page is not an event, and 12 px top and bottom on
+each of them adds up.
+
+**Two doors of unequal weight.** *Sign up* is the button and *or sign in* is a link beside it. A stranger is the
+audience of a public page, so the returning reader gets the smaller target; both go to `/sign-in`, because a first
+sign-in is what creates the account. The sentence says what an account *adds* — the bar has already said what the
+product *is*, and two pitches in the same words would be one too many.
+
 It carries **no `role="alert"`**, which daisyUI's own examples do: that role is a live region, announced over
 whatever a screen reader is currently reading, and this is a standing invitation rather than something that just
 happened. The class styles it; the semantics are an ordinary piece of the page.

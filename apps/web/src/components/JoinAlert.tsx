@@ -1,5 +1,9 @@
 import { useLocation } from "preact-iso";
-import { PUBLIC_INVITE_COPY, PUBLIC_JOIN_COPY } from "../lib/copy";
+import {
+  PUBLIC_INVITE_COPY,
+  PUBLIC_JOIN_COPY,
+  PUBLIC_SIGN_IN_COPY,
+} from "../lib/copy";
 import { useSession } from "../session";
 
 /**
@@ -26,24 +30,27 @@ export function JoinAlert() {
   const { path } = useLocation();
   const { state } = useSession();
   if (state.status !== "none") return null;
+  const signIn = `/sign-in?next=${encodeURIComponent(path)}`;
   // Side by side only from `md`. At `sm` the sentence and the button share 640 px and the result
   // is a cramped row; below that they stack, which reads better than either folding.
   return (
-    <div class="alert alert-vertical mb-8 md:alert-horizontal">
+    <div class="alert alert-quiet alert-vertical mb-6 md:alert-horizontal">
       {/* `text-ui`, not the reading serif: this is interface, not something written to be read
           (docs/design.md §2.7 — `font-reading` is for titles, excerpts, summaries, takeaways and
           empty states). At body size in serif the sentence needed 680 px to itself and wrapped
           inside the reading column. */}
       <span class="text-ui text-ink">{PUBLIC_INVITE_COPY}</span>
-      {/* `shrink-0` and `whitespace-nowrap` together: in the horizontal layout the sentence takes
-          the free space and the button is what gives, which folded "Sign up / Sign in" onto two
-          lines. The sentence may wrap — it is prose; the control may not. */}
-      <a
-        class="btn btn-quiet shrink-0 whitespace-nowrap"
-        href={`/sign-in?next=${encodeURIComponent(path)}`}
-      >
-        {PUBLIC_JOIN_COPY}
-      </a>
+      {/* Two doors of unequal weight, and `shrink-0` on both: in the horizontal layout the
+          sentence takes the free space and the controls are what give, which folded a label onto
+          two lines once already. The sentence may wrap — it is prose; a control may not. */}
+      <span class="flex shrink-0 items-center gap-3 whitespace-nowrap">
+        <a class="btn btn-quiet btn-sm" href={signIn}>
+          {PUBLIC_JOIN_COPY}
+        </a>
+        <a class="link link-hover text-meta text-ink-2" href={signIn}>
+          {PUBLIC_SIGN_IN_COPY}
+        </a>
+      </span>
     </div>
   );
 }

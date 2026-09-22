@@ -545,10 +545,19 @@ export function staleCopy(loadedAt: number | null, now = Date.now()): string {
  * pitch on every page but the landing one, so it names the three things an account adds rather
  * than saying "sign in" twice.
  */
+/**
+ * What an account adds — a sentence rather than three nouns in the product's own vocabulary, and
+ * deliberately not the tagline: the bar says what this *is*, and this says what joining gives you.
+ */
 export const PUBLIC_INVITE_COPY =
-  "Follow channels · keep a queue · ask about any episode";
-/** One door: a first sign-in creates the account, so the button names both ways of arriving. */
-export const PUBLIC_JOIN_COPY = "Sign up / Sign in";
+  "An account keeps your place: follow channels, build a queue, ask any episode a question.";
+/**
+ * One door, two ways of arriving. A stranger is the audience of a public page, so signing up is
+ * the button and signing in is a link — the returning reader needs a smaller target, not an equal
+ * one. Both go to `/sign-in`, because a first sign-in is what creates the account.
+ */
+export const PUBLIC_JOIN_COPY = "Sign up";
+export const PUBLIC_SIGN_IN_COPY = "or sign in";
 
 /** The one name for narrowing a channel list — placeholder and accessible name both. */
 export const FIND_CHANNEL_COPY = "Find a channel";
