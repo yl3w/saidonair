@@ -270,6 +270,9 @@ function ReadingScreen() {
                 </a>
               )}
 
+            {/* Renders nothing for a reader, whose Done and Ask follow instead. */}
+            <SignInAction />
+
             {/* Only on a summary that still needs dealing with. A read one carries no receipt control
               at all: undo lives in History, where the row is and where it says "Read"
               (docs/design.md §4). */}
