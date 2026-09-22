@@ -11,7 +11,7 @@ import {
 import { FollowButton } from "../components/FollowButton";
 import { Icon } from "../components/Icon";
 import { MetaLine } from "../components/MetaLine";
-import { Page, useBarTop } from "../components/Page";
+import { Page } from "../components/Page";
 import {
   fullDate,
   SummaryRow,
@@ -269,9 +269,8 @@ function SourceBar({
   onFollow?: () => void;
 }) {
   const { route } = useLocation();
-  const barTop = useBarTop();
   return (
-    <header class={`sticky ${barTop} z-20 border-b border-rule bg-ground`}>
+    <header class="sticky top-0 z-20 border-b border-rule bg-ground">
       {/* Constrained to this screen's own measure, as the reading column's bar and a chat's are:
           a bar belongs to the column beneath it, not to the window (2026-09-17). */}
       <div class="mx-auto flex h-14 max-w-list items-center gap-2 px-5 md:px-8">

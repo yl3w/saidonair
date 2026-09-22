@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useSession } from "../session";
+import { JoinAlert } from "./JoinAlert";
 import { Nav } from "./Nav";
 import { PublicShell } from "./PublicShell";
 
@@ -53,6 +54,9 @@ export function Page({
 }) {
   const column = (
     <main class={`w-full min-w-0 ${MEASURES[measure]} ${COLUMNS[measure]}`}>
+      {/* On every public page, in one place, so no screen can be the one that forgets it
+          (docs/specs/public-reading.md §4.2). A reader gets nothing. */}
+      <Invitation />
       {desktopOnly && (
         <p class="font-reading text-body text-ink-2 lg:hidden">
           Curate needs a wider screen than this one. What is waiting is on your
@@ -69,18 +73,7 @@ export function Page({
   );
   return (
     <div class="min-h-dvh">
-      {bar === undefined ? (
-        <Frame />
-      ) : (
-        <>
-          {/* A screen with a bar of its own still owes a visitor the invitation: the band is on
-              every public page, and `bar ?? <Frame/>` quietly excused the two screens a shared
-              link actually lands on (found 2026-09-21, one step after it was introduced). The band
-              is fixed and these bars are sticky, so they stick *beneath* it — see `barTop`. */}
-          <PublicBand />
-          {bar}
-        </>
-      )}
+      {bar ?? <Frame />}
       <div class="mx-auto w-full px-5 pt-6 pb-28 md:px-8 md:pt-8 md:pb-16 lg:w-fit">
         {rail === undefined ? (
           <div class={`mx-auto ${MEASURES[measure]}`}>{column}</div>
@@ -115,19 +108,8 @@ function Frame() {
   return state.status === "none" ? <PublicShell /> : <Nav />;
 }
 
-/** The same band above a screen that brought its own bar, and nothing for a reader. */
-function PublicBand() {
+/** The invitation, for a visitor, wherever a column is drawn. */
+function Invitation() {
   const { state } = useSession();
-  return state.status === "none" ? <PublicShell /> : null;
-}
-
-/**
- * Where a screen's own sticky bar comes to rest. A visitor has the fixed invitation band above it,
- * so the bar stops beneath the band rather than under it; a reader has nothing above it at all.
- * Exported because the bars are the screens' own markup (docs/design.md §3) and this is the one
- * fact about the frame they need.
- */
-export function useBarTop(): string {
-  const { state } = useSession();
-  return state.status === "none" ? "top-14" : "top-0";
+  return state.status === "none" ? <JoinAlert /> : null;
 }

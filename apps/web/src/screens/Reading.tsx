@@ -6,7 +6,6 @@ import { api } from "../api";
 import { Choice } from "../components/Choice";
 import { Icon } from "../components/Icon";
 import { MetaLine } from "../components/MetaLine";
-import { useBarTop } from "../components/Page";
 import { Retry } from "../components/Retry";
 import { Sheet } from "../components/Sheet";
 import { setAskScope } from "../lib/ask-scope";
@@ -72,7 +71,6 @@ function ReadingScreen() {
   const { route } = useLocation();
   const { state } = useSession();
   const signedIn = state.status === "ready";
-  const barTop = useBarTop();
   const episodeId = params.episodeId ?? "";
   const [settings, setSettings] = useState<ReaderSettings>(readSettings);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -197,7 +195,7 @@ function ReadingScreen() {
         role="presentation"
       />
 
-      <header class={`sticky ${barTop} z-20 border-b border-rule bg-ground`}>
+      <header class="sticky top-0 z-20 border-b border-rule bg-ground">
         <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
           <a href={back.href} class="btn btn-ghost btn-square">
             <Icon of={ArrowLeft} size={20} label={back.label} />

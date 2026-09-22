@@ -127,19 +127,18 @@ caller's eligible channels).
 
 ### 4.2 The shell
 
-Two stacked bars on every public page:
+One bar, and one alert (revised twice on 2026-09-21; the arc is in `docs/design.md` §9b):
 
-1. **The invitation band** — `position: fixed`, full width, inverted. *Follow channels · keep a queue · ask about any
-   episode* and a **Sign in** button. On a phone the line shortens to *Follow · queue · ask*. It never scrolls away.
-2. **The nav row** — the wordmark and **Channels**, in the ordinary page flow directly beneath the band. It scrolls
-   off with the content and is present again only at the top of the page.
+1. **The bar** — the wordmark alone, sticky, in the product's own palette. No pitch, no controls, no `Channels`
+   item: the landing page lists every channel, and `/sources` is the reader's. A screen that brings its own bar —
+   the channel page, the reading page — keeps it and shows no second one.
+2. **The invitation** — a daisyUI `alert` at the top of every public column: *Follow channels · keep a queue · ask
+   about any episode*, in full at every screen size, and one **Sign up / Sign in** button. `Page` renders it, not
+   the screens, so no screen can be the one that forgets it. It carries no `role="alert"`: that role is a live
+   region and this is a standing invitation, not something that just happened.
 
-**The reading page has two bars, not three** (resolved by this spec, 2026-09-21 — the owner's instruction was
-"branding + navbar below, scrollable out of view", and the reading page already replaces the nav with a bar of its
-own). The band is fixed; beneath it the reading page's own bar carries the wordmark, the way back to **Channels**,
-`Aa` and *Watch on YouTube*, and scrolls away like the nav row does elsewhere. `Done` and `Ask` are absent from it.
-A third row stacking the product's nav above the reading bar would put 150 px of chrome over a reading column whose
-standing rule is that it carries no chrome it can live without.
+The reading page keeps its own bar — the way back, `Aa`, *Watch on YouTube* — with `Done` and `Ask` absent, and the
+alert sits at the top of the reading column beneath it.
 
 There is no bottom tab bar for a visitor: it exists to put three reader destinations under a thumb, and a visitor
 has one.
@@ -238,7 +237,8 @@ is identical for everyone, so the edge absorbs crawlers and unfurls without touc
     and retry.
 11. The guarded routes — `/sources`, `/queue`, `/history`, `/chats`, `/account`, `/curate` — return the shell from
     the Worker and redirect to `/sign-in` in the browser with no session.
-12. The invitation band is present on all three public pages and absent for a signed-in reader.
+12. The invitation alert is present on all three public pages, in its long form, and absent for a signed-in
+    reader.
 13. Signing in from `/read/:episodeId` returns to that episode, now with the reader's nav, `Done` and `Ask`.
 14. A signed-in reader loading `/` is sent to `/queue`.
 15. `/robots.txt` disallows every guarded path; `/sitemap.xml` lists every public channel and every available

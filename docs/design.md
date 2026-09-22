@@ -649,14 +649,19 @@ Added 2026-09-21 with the public reading experience (`docs/specs/public-reading.
 through a long list rather than arriving at one. This section is the frame they arrive into; the screens themselves are §3 and §5 as before, with the
 reader's controls absent.
 
-**One bar, fixed, inverted.** The wordmark, a line naming what an account is *for*, and **Sign in**. It never
-scrolls away, so a visitor four screens into a summary still has it, and inverting it marks the mode: a signed-out
-page should not read as a reader's page with pieces missing.
+**A plain bar, and the invitation in the column.** The bar carries the wordmark and nothing else. The invitation is
+a daisyUI **alert** at the top of every public column — the long sentence naming what an account is for, and one
+button that names both doors, *Sign up / Sign in*.
 
-It was built as **two** bars — a fixed invitation band above a wordmark row that scrolled away — and revised the
-same day, in a browser. Two rows put three different left edges on a wide window, and the second row's only content
-was a wordmark and a `Channels` link that the landing page, which lists every channel, had already made
-unnecessary. The revision costs the reader nothing and returns 56 px to the page.
+It took three goes in one afternoon, and the arc is the useful part. A fixed invitation band above a wordmark row
+put three different left edges on a wide window. Combining them into one inverted bar fixed the alignment and still
+spent a permanent strip of every window on a sentence a visitor had already read. The alert keeps the invitation on
+every page, in the reading measure, where it is part of the page rather than furniture around it — and it is a
+component the library already has, themed in all three palettes, rather than a bar of our own.
+
+It carries **no `role="alert"`**, which daisyUI's own examples do: that role is a live region, announced over
+whatever a screen reader is currently reading, and this is a standing invitation rather than something that just
+happened. The class styles it; the semantics are an ordinary piece of the page.
 
 **A visitor is shown no control they cannot use.** No Follow, no Ask, no Add a channel, nothing disabled with a
 tooltip. This is principle 7 applied to a stranger: the page says what an account adds, in words, once, and the

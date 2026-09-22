@@ -545,10 +545,10 @@ export function staleCopy(loadedAt: number | null, now = Date.now()): string {
  * pitch on every page but the landing one, so it names the three things an account adds rather
  * than saying "sign in" twice.
  */
-export const PUBLIC_BAND_COPY =
+export const PUBLIC_INVITE_COPY =
   "Follow channels · keep a queue · ask about any episode";
-export const PUBLIC_BAND_COPY_SHORT = "Follow · queue · ask";
-export const PUBLIC_SIGN_IN_COPY = "Sign in";
+/** One door: a first sign-in creates the account, so the button names both ways of arriving. */
+export const PUBLIC_JOIN_COPY = "Sign up / Sign in";
 
 /** The one name for narrowing a channel list — placeholder and accessible name both. */
 export const FIND_CHANNEL_COPY = "Find a channel";
