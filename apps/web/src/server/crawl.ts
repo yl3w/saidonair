@@ -51,9 +51,14 @@ const EPISODE_LIMIT = 200;
  * | **Hundreds of thousands of episodes** | The isolate runs out of memory, and long before that on the JSON: this fetches whole episodes, summaries included, to read their ids. |
  *
  * At the size this product is built for — a personal tool, tens of channels — none of that binds,
- * and the cache absorbs the N+1. The shape that does scale is a sitemap index over paged children
- * fed by a lean `(id, lastmod)` read, or generation on a cron into R2. Neither is worth building
- * for a catalog that fits on one screen.
+ * and the cache absorbs the N+1.
+ *
+ * **TODO(owner): precompute this into R2** (owner, 2026-09-21; `docs/specs/public-reading.md` §7 has
+ * the shape). A scheduled handler writes the file — a `<sitemapindex>` and its children past 50,000
+ * URLs — into a bucket, and this route serves from there with the per-request build as the fallback
+ * for an empty bucket. **The trigger is any channel passing 200 episodes**, because that is where
+ * this silently stops being complete and no fix here can help: the public episodes read has no
+ * cursor.
  */
 export async function sitemap(origin: string, api: Fetcher): Promise<string> {
   const get = async <T>(path: string): Promise<T | null> => {

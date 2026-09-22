@@ -270,6 +270,22 @@ Any change to a reader's screens beyond the `main.tsx` split. A visitor-facing F
 Proxying the API through the web origin, and the single-origin deployment behind it (`auth-phase.md` §8).
 Component and DOM tests (§3, decision 17).
 
+**Precomputing the sitemap into R2 — owner's, 2026-09-21, deferred not declined.** The sitemap is built per
+request and its ceiling is in `src/server/crawl.ts`: one API call per channel, a Worker's subrequest cap, the
+protocol's 50,000-URL limit, and an isolate that runs out of memory long before a million episodes. The durable
+answer is to stop building it in the request at all.
+
+What it involves, when it is worth doing: an **R2 bucket bound in all three environments** on the `x` /
+`x-staging` / `x-dev` rule; a **scheduled handler** that walks the catalog and writes `sitemap.xml` — or a
+`<sitemapindex>` and its children once there are more than 50,000 URLs — into the bucket; and `/sitemap.xml`
+serving from R2 with the per-request build kept as the fallback for an empty bucket. The walk wants a lean
+`(episodeId, summaryAvailableAt)` read on the API rather than the full episode shape this fetches today, which is
+where most of the cost is. Cron triggers live in `env.production` only (`AGENTS.md` → Environments), so staging
+and dev would keep the per-request build.
+
+**What should trigger the work:** any channel passing 200 episodes, since that is the point at which the current
+sitemap is silently incomplete and no API change short of a cursor fixes it.
+
 **Paging the landing page's catalog**, deferred with its cap and its *See all* link (§3, decision 2a). At today's
 size every channel fits; the three of them return together when it stops fitting, and `/sources` — which already
 pages at 25 — is the pattern to copy when they do.
