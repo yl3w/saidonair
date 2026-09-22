@@ -146,6 +146,7 @@ function SourceScreen() {
 
   return (
     <Page
+      measure="reading"
       bar={
         <SourceBar
           channel={record}
@@ -273,7 +274,10 @@ function SourceBar({
     <header class="sticky top-0 z-20 border-b border-rule bg-ground">
       {/* Constrained to this screen's own measure, as the reading column's bar and a chat's are:
           a bar belongs to the column beneath it, not to the window (2026-09-17). */}
-      <div class="mx-auto flex h-14 max-w-list items-center gap-2 px-5 md:px-8">
+      {/* The same measure as the column beneath it — a bar belongs to its column, not to the
+          window (docs/design.md §3), and the column became the reading measure when the public
+          surface was given one width (2026-09-21). */}
+      <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
         <button
           type="button"
           class="btn btn-ghost btn-square"

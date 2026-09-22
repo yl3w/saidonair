@@ -659,6 +659,15 @@ spent a permanent strip of every window on a sentence a visitor had already read
 every page, in the reading measure, where it is part of the page rather than furniture around it — and it is a
 component the library already has, themed in all three palettes, rather than a bar of our own.
 
+**One measure across the public surface.** The landing page, a channel and a summary are all the reading measure
+(680 px), and each screen's own bar matches its column. The list measure is 80 px wider, and with two measures the
+same invitation wrapped on one page and not on the next — which is what a visitor notices about a component that
+is supposed to be the same everywhere. The reader's own catalog at `/sources` keeps the list measure: it is a
+working list, not a page somebody arrives at.
+
+The invitation's sentence is set in **`text-ui`**, not the reading serif. It is interface rather than something
+written to be read (§2.7), and at body size in serif it needed the whole reading column to itself.
+
 It carries **no `role="alert"`**, which daisyUI's own examples do: that role is a live region, announced over
 whatever a screen reader is currently reading, and this is a standing invitation rather than something that just
 happened. The class styles it; the semantics are an ordinary piece of the page.

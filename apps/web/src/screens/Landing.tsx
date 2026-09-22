@@ -48,7 +48,7 @@ export function Landing() {
   const [load, reload] = useLoad(() => api.listChannels(), []);
 
   return (
-    <Page measure="list">
+    <Page measure="reading">
       <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
         Said on Air
       </h1>

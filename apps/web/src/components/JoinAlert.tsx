@@ -30,7 +30,11 @@ export function JoinAlert() {
   // is a cramped row; below that they stack, which reads better than either folding.
   return (
     <div class="alert alert-vertical mb-8 md:alert-horizontal">
-      <span class="font-reading text-body text-ink">{PUBLIC_INVITE_COPY}</span>
+      {/* `text-ui`, not the reading serif: this is interface, not something written to be read
+          (docs/design.md §2.7 — `font-reading` is for titles, excerpts, summaries, takeaways and
+          empty states). At body size in serif the sentence needed 680 px to itself and wrapped
+          inside the reading column. */}
+      <span class="text-ui text-ink">{PUBLIC_INVITE_COPY}</span>
       {/* `shrink-0` and `whitespace-nowrap` together: in the horizontal layout the sentence takes
           the free space and the button is what gives, which folded "Sign up / Sign in" onto two
           lines. The sentence may wrap — it is prose; the control may not. */}
