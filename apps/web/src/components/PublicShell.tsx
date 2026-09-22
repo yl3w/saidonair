@@ -14,7 +14,11 @@
 export function PublicShell() {
   return (
     <header class="sticky top-0 z-20 border-b border-rule bg-panel">
-      <div class="mx-auto flex h-14 w-full items-center px-5 md:px-8">
+      {/* Capped to the measure, like every screen-specific bar: a bar belongs to the column
+          beneath it, not to the window (docs/design.md §3). Spanning the window put the wordmark
+          on the window's edge while the content sat centred 680 px wide, which is two left edges
+          on one page. */}
+      <div class="mx-auto flex h-14 w-full max-w-reading items-center px-5 md:px-8">
         <a
           href="/"
           class="flex min-h-11 items-center font-serif text-section font-semibold tracking-tight text-ink"
