@@ -412,30 +412,17 @@ export function momentCopy(seconds: number): string {
 }
 
 /**
- * The end of the queue, which says what is waiting rather than fading out (docs/specs/design-phase.md
- * §4.4). **It counts what is here**, not what is elsewhere: the line used to end "— 5 summaries sit
- * in History", where 5 was every summary the reader is eligible for, the four above it included.
- * Read quickly that is five *more*, somewhere else, which is the opposite of true (owner decision
- * 2026-09-15, docs/PRD.md §9). Counts are switched off with every other count.
+ * The day's fuller record, under the day being read. The number is named only when History actually
+ * holds more of this day than the queue is showing, because "all 3" over three rows on screen reads
+ * as three *more* and means the opposite — the rule the queue's own ending was written to and which
+ * outlived it (owner decision 2026-09-15, and again 2026-09-22 when that ending was removed).
  */
-export function endOfQueueCopy(waiting: number | null): string {
-  if (waiting === null) return "That is everything waiting.";
-  return waiting === 1
-    ? "That is the one summary waiting."
-    : `That is all ${waiting} unread summaries.`;
-}
-
-/**
- * The way on from the end of the queue. History holds these *and* everything already read, so its
- * number is named only when it is actually larger — otherwise the two lists are the same set and a
- * second number would invite the same misreading in reverse.
- */
-export function browseHistoryCopy(
-  inHistory: number | null,
+export function dayInHistoryCopy(
+  onThisDay: number | null,
   waiting: number,
 ): string {
-  if (inHistory === null || inHistory <= waiting) return "Browse History";
-  return `Browse all ${inHistory} in History`;
+  if (onThisDay === null || onThisDay <= waiting) return "This day in History";
+  return `Browse all ${onThisDay} in History`;
 }
 
 export const QUEUE_EMPTY_TITLE = "You are through everything";
@@ -451,6 +438,23 @@ export const HISTORY_NOT_A_DAY_NOTE =
   "That is not a date this product recognises. A day looks like 2026-09-12.";
 
 /** What a day's contents depend on — worth saying once, where a reader can be surprised by it. */
+/**
+ * What History holds, under its date, where the Queue says what it is missing. The two screens
+ * became one shape on 2026-09-22 — a date, a picker, rows — and the last thing telling them apart
+ * was the link a reader happened to arrive by. A day bookmarked in either one has to say which it
+ * is without being counted row by row.
+ *
+ * **It names the follows as well as the receipts**, because "everything on this day" is the one
+ * thing this list is not: it is drawn from the channels followed at the moment of reading, which is
+ * what `HISTORY_SCOPE_NOTE` below exists to warn about. A label that overstates and a footnote that
+ * takes it back are worse than either alone, so the label states the scope and the footnote states
+ * what follows from it.
+ */
+export const HISTORY_DAY_SCOPE_NOTE =
+  "Read and unread, from the channels you follow now.";
+export const HISTORY_ALL_SCOPE_NOTE =
+  "Every day, read and unread, from the channels you follow now.";
+
 export const HISTORY_SCOPE_NOTE =
   "A day shows the channels you follow now, so following or unfollowing one changes what a past day holds. Your receipts are kept either way.";
 

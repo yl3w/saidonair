@@ -65,6 +65,7 @@ export function App() {
               (A5, docs/specs/auth-phase-plan.md). */}
           <Route path="/auth/callback" component={AuthCallback} />
           <Route path="/queue" component={Queue} />
+          <Route path="/queue/:day" component={Queue} />
           <Route path="/read/:episodeId" component={Reading} />
           <Route path="/history" component={History} />
           <Route path="/history/:day" component={History} />

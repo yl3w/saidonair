@@ -1,16 +1,16 @@
 import type { Episode } from "@media-digest/shared";
-import { Calendar as CalendarIcon } from "lucide-preact";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
-import { Calendar, type DayCount } from "../components/Calendar";
-import { Icon } from "../components/Icon";
+import type { DayCount } from "../components/Calendar";
+import { DateFilter } from "../components/DateFilter";
 import { Page } from "../components/Page";
-import { Sheet } from "../components/Sheet";
 import { SummaryRow, SummaryRowSkeleton } from "../components/SummaryRow";
 import {
   actionErrorCopy,
+  HISTORY_ALL_SCOPE_NOTE,
   HISTORY_DAY_EMPTY_NOTE,
+  HISTORY_DAY_SCOPE_NOTE,
   HISTORY_EMPTY_NOTE,
   HISTORY_NOT_A_DAY_NOTE,
   HISTORY_SCOPE_NOTE,
@@ -20,20 +20,18 @@ import {
   dayBounds,
   dayKeyOf,
   dayLabel,
-  fullDate,
   groupByDay,
   isDayKey,
   todayKey,
   weekWindow,
 } from "../lib/day";
+import { useDayCounts } from "../lib/day-counts";
 import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
 import { readSettings } from "../lib/settings";
 import { useDocumentTitle } from "../lib/title";
 import { Guard } from "../session";
 
 const PAGE = 50;
-/** The calendar's window is one read; this bounds it when a catalog is deep (plan §Risks). */
-const COUNT_PAGES = 5;
 
 export function History() {
   return (
@@ -56,8 +54,6 @@ function HistoryScreen() {
   const showCounts = readSettings().showCounts;
 
   const [anchor, setAnchor] = useState<DayKey>(validDay ?? todayKey());
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetDay, setSheetDay] = useState<DayKey | null>(null);
 
   useEffect(() => {
     if (validDay !== null) setAnchor(validDay);
@@ -73,20 +69,9 @@ function HistoryScreen() {
   // and on a day it is the day — a bookmark of one day of history should say which day.
   useDocumentTitle(validDay === null ? "History" : dayLabel(validDay));
 
-  const calendar = (
-    <Calendar
-      anchor={anchor}
-      selected={validDay}
-      counts={counts}
-      showCounts={showCounts}
-      onAnchorChange={setAnchor}
-      onPick={(picked) => route(`/history/${picked}`)}
-    />
-  );
-
   if (day !== undefined && validDay === null) {
     return (
-      <Page rail={calendar} railMeasure="rail-wide">
+      <Page>
         <h1 class="font-reading text-screen-title font-semibold tracking-tight text-ink">
           History
         </h1>
@@ -106,34 +91,48 @@ function HistoryScreen() {
   }
 
   const days = groupByDay(rows.rows, (row) => row.summaryAvailableAt ?? 0);
+  // Every view of this screen is headed by a date and the picker, which is what makes it and the
+  // Queue one shape. On every day that date is the first one in the list, hoisted out of its own
+  // group so the row reads the same as a single day's — and still a link to that day, as the
+  // headings below it are. The screen's name goes where the other named-by-the-bar screens keep
+  // theirs; there is no date only while the list is empty or still arriving.
+  const leadDay = validDay ?? days[0]?.key ?? null;
 
   return (
-    <Page rail={calendar} railMeasure="rail-wide">
+    <Page>
       <header class="flex flex-wrap items-center gap-3">
-        <h1 class="mr-auto font-reading text-screen-title font-semibold tracking-tight text-ink">
-          {validDay === null ? "History" : dayLabel(validDay)}
-        </h1>
-        <button
-          type="button"
-          class="btn btn-quiet-secondary lg:hidden"
-          onClick={() => {
-            setSheetDay(validDay);
-            setSheetOpen(true);
-          }}
-        >
-          <Icon of={CalendarIcon} size={16} />
-          Browse by date
-        </button>
+        {leadDay === null ? (
+          <h1 class="sr-only">History</h1>
+        ) : (
+          <h1 class="mr-auto font-reading text-screen-title font-semibold tracking-tight text-ink">
+            {validDay === null ? (
+              <a
+                class="inline-flex min-h-11 items-center"
+                href={`/history/${leadDay}`}
+              >
+                {dayLabel(leadDay)}
+              </a>
+            ) : (
+              dayLabel(validDay)
+            )}
+          </h1>
+        )}
+        <DateFilter
+          selected={validDay}
+          anchor={anchor}
+          counts={counts}
+          showCounts={showCounts}
+          onAnchorChange={setAnchor}
+          onPick={(picked) => route(`/history/${picked}`)}
+          onClear={() => route("/history")}
+        />
       </header>
 
-      {validDay !== null && (
-        <p class="mt-1 text-meta text-ink-3">
-          {fullDate(validDay)} ·{" "}
-          <a class="link link-hover link-primary" href="/history">
-            every day
-          </a>
-        </p>
-      )}
+      {/* Where the Queue puts its way through to this screen. Both are a date over rows now, so
+          each says in one line what it holds that the other does not. */}
+      <p class="mt-1 text-meta text-ink-3">
+        {validDay === null ? HISTORY_ALL_SCOPE_NOTE : HISTORY_DAY_SCOPE_NOTE}
+      </p>
 
       {rows.error !== null && (
         <p class="mt-3 text-ui text-consequence">{rows.error}</p>
@@ -155,7 +154,7 @@ function HistoryScreen() {
 
       {days.map((group) => (
         <section key={group.key} class="mt-8" id={`day-${group.key}`}>
-          {validDay === null && (
+          {validDay === null && group.key !== leadDay && (
             <h2 class="font-reading text-section font-semibold text-ink">
               <a
                 class="inline-flex min-h-11 items-center"
@@ -203,32 +202,6 @@ function HistoryScreen() {
           {HISTORY_SCOPE_NOTE}
         </p>
       )}
-
-      <Sheet
-        open={sheetOpen}
-        title="Browse by date"
-        confirm={
-          sheetDay === null ? "Pick a day" : `Go to ${dayLabel(sheetDay)}`
-        }
-        onConfirm={
-          sheetDay === null
-            ? undefined
-            : () => {
-                setSheetOpen(false);
-                route(`/history/${sheetDay}`);
-              }
-        }
-        onClose={() => setSheetOpen(false)}
-      >
-        <Calendar
-          anchor={anchor}
-          selected={sheetDay}
-          counts={counts}
-          showCounts={showCounts}
-          onAnchorChange={setAnchor}
-          onPick={setSheetDay}
-        />
-      </Sheet>
     </Page>
   );
 }
@@ -336,52 +309,6 @@ function useHistoryRows(day: DayKey | null): HistoryRows {
     markRead: (episode) => void write(episode, true),
     clearRead: (episode) => void write(episode, false),
   };
-}
-
-/**
- * How many summaries each day of the calendar's window holds, and how many are unread. One compact
- * request per page — four fields a row — walked to the end of the window or to `COUNT_PAGES`,
- * whichever comes first; a deeper catalog than that wants a per-day aggregate, not more paging.
- */
-function useDayCounts(anchor: DayKey): ReadonlyMap<DayKey, DayCount> {
-  const [counts, setCounts] = useState<ReadonlyMap<DayKey, DayCount>>(
-    new Map(),
-  );
-  const { fromMs, toMs } = weekWindow(anchor);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const tally = new Map<DayKey, DayCount>();
-      let cursor: string | undefined;
-      for (let page = 0; page < COUNT_PAGES; page++) {
-        const answer = await api.getDigestRows({
-          fromMs,
-          toMs,
-          limit: 200,
-          cursor,
-        });
-        for (const row of answer.rows) {
-          const key = dayKeyOf(row.summaryAvailableAt);
-          const day = tally.get(key) ?? { total: 0, unread: 0 };
-          day.total += 1;
-          if (!row.read) day.unread += 1;
-          tally.set(key, day);
-        }
-        if (answer.nextCursor === null) break;
-        cursor = answer.nextCursor;
-      }
-      if (!cancelled) setCounts(tally);
-    })().catch(() => {
-      // A calendar nobody can vouch for is worse than a calendar with no counts on it.
-      if (!cancelled) setCounts(new Map());
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [fromMs, toMs]);
-
-  return counts;
 }
 
 function rangeOf(day: DayKey | null): { fromMs?: number; toMs?: number } {

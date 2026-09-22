@@ -134,7 +134,13 @@ export function shiftAnchor(anchor: DayKey, windows: number): DayKey {
   return dayKeyOf(date.getTime());
 }
 
-/** What a window of days is called: one month, or the two it straddles. */
+/**
+ * What a window of days is called: one month, or the two it straddles. Abbreviated — "Sep 2026",
+ * "Aug – Sep 2026" — because a five-week window straddling two months put two full month names and
+ * a year across the top of a 288 px control (owner decision 2026-09-22). Still the month by name,
+ * never a number, and still the reader's own language: `short` is the locale's abbreviation, not a
+ * three-letter slice of ours. A cell's accessible name keeps the full month (`fullDate`).
+ */
 export function windowLabel(days: readonly DayKey[]): string {
   const first = days[0];
   const last = days[days.length - 1];
@@ -143,7 +149,7 @@ export function windowLabel(days: readonly DayKey[]): string {
   const to = new Date(dayBounds(last).fromMs);
   const month = (date: Date, withYear: boolean) =>
     date.toLocaleDateString(undefined, {
-      month: "long",
+      month: "short",
       ...(withYear ? { year: "numeric" } : {}),
     });
   if (
