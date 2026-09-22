@@ -77,13 +77,18 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 ├── .cursor/rules/            # pointer to AGENTS.md
 ├── docs/PRD.md               # canonical product specification
 ├── docs/design.md            # the design guide: principles, tokens, patterns, the scale playbook, the a11y floor
-├── docs/specs/               # design reasoning and plans behind the PRD, each with its -plan.md: design-phase,
-│                             # home-read-experience,
-│                             # api-reference, channel-simplification, follows-single-owner, summary-json-mode,
-│                             # chat-origin-scope, auth-phase, route-visibility,
-│                             # summary-quality, summary-coverage, and M3 as the decision record m3-ingestion (its
-│                             # -plan.md is the roadmap) plus seven child chunks m3-1-transcripts-chunking, m3-2-attempt-ledger,
-│                             # m3-3-ai-vectorize, m3-4-discovery, m3-5-episode-workflow, m3-6-recovery, m3-7-owner-ux
+├── docs/specs/               # design reasoning and plans behind the PRD, nearly all as a spec + its -plan.md.
+│                             #   phases: home-read-experience, api-reference, channel-simplification,
+│                             #     follows-single-owner, design-phase, auth-phase (+ auth-2-registry-rekey),
+│                             #     route-visibility, public-reading, m6-hardening
+│                             #   M3, as the decision record m3-ingestion (its -plan.md is the roadmap) plus seven
+│                             #     child chunks m3-1-transcripts-chunking, m3-2-attempt-ledger, m3-3-ai-vectorize,
+│                             #     m3-4-discovery, m3-5-episode-workflow, m3-6-recovery, m3-7-owner-ux
+│                             #   M4: chat-origin-scope (the record) + m4-1-chat-routes, m4-2-chat-answering,
+│                             #     m4-3-chat-web, chat-relevance-rerank
+│                             #   quality and cleanups: summary-json-mode, summary-quality, summary-coverage,
+│                             #     discovery-long-form-feed, vector-generation-cleanup
+│                             #   tooling: clean-local (plan only), conversation-capture
 ├── docs/prompts/             # generated: every agent conversation that built this, prompts and replies verbatim,
 │                             # one file per session plus a generated README index. Written by the
 │                             # capture-conversation skill — never hand-edit a capture or the index; titles and
@@ -101,6 +106,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   ├── middleware/user.ts    # bearer session → registry + per-user DO stub on context; requireIdentity
 │   │   │   │                         # and optionalIdentity (the five public reads) over one resolution
 │   │   │   ├── middleware/errors.ts  # typed DomainError (and Hono's malformed-JSON 400) → HTTP status
+│   │   │   ├── middleware/owner.ts   # the nine operations that are the owner's → 403 FORBIDDEN for anyone else
+│   │   │   ├── types/                # types shared across the Worker that are not request/response shapes
 │   │   │   ├── routes/               # one file per entity (me, catalog, channels, digest, follows, chat, ...);
 │   │   │   │                         # every handler carries describeRoute + validate; docs.ts is the Scalar page.
 │   │   │   │                         # channels.ts exports three routers — registration order in index.ts is what
@@ -128,6 +135,11 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   │   │                         # (pre-flight once per batch, one ledger row and one instance per episode, k × 3 s
 │   │   │   │                         # apart); closeLostEpisodeAttempt; preflight and startDelaySec are pure
 │   │   │   ├── lib/email.ts          # identity normalization (pure)
+│   │   │   ├── lib/auth.ts           # the better-auth instance over the D1 binding; the only module that knows
+│   │   │   │                         # the providers exist (Auth phase)
+│   │   │   ├── lib/handoff.ts        # the one-time code that carries a session from the API's origin to the web's
+│   │   │   ├── lib/eligibility.ts    # the caller's eligible channel set, resolved once per request
+│   │   │   ├── lib/chat.ts           # answering: retrieve, validate, rerank, prompt, settle (M4.2)
 │   │   │   ├── lib/errors.ts         # DomainError (both DOs) + code recovery across RPC; codes are the shared ErrorCode enum
 │   │   │   ├── lib/sql.ts            # bound-parameter chunking for DO SQLite
 │   │   │   ├── lib/chunk.ts          # transcript chunking (pure)
@@ -152,21 +164,34 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 │   │   ├── wrangler.jsonc            # three environments: the top level is staging, env.dev is local, env.production
 │   │   │                             # is live; bindings repeat per environment (see Environments)
 │   │   └── vitest.config.ts
-│   └── web/                  # Cloudflare Worker with static assets: Vite + Preact + TypeScript text UI
+│   └── web/                  # Cloudflare Worker with static assets: Vite + Preact + TypeScript, a designed UI
 │       ├── src/
-│       │   ├── server/               # the Worker: serves the built client, and from step 8 renders the public
-│       │   │                         # routes. Its own tsconfig.json — workerd's globals, no DOM
-│       │   ├── main.tsx              # mount + router
+│       │   ├── server/               # the Worker: serves the built client and renders the three public routes.
+│       │   │                         # Its own tsconfig.json — workerd's globals, no DOM. crawl.ts is robots +
+│       │   │                         # sitemap, head.ts the unfurl tags, load.ts the anonymous reads
+│       │   ├── main.tsx              # mount
+│       │   ├── app.tsx               # the router: every route, and `Guard` around the ones needing a session
 │       │   ├── api.ts                # typed fetch wrapper; the only fetch caller; sends the session
-│       │   ├── account.ts            # selected email + recent emails in localStorage
+│       │   ├── session-store.ts      # the session token in localStorage (an address was never stored)
 │       │   ├── session.tsx           # GET /me once; role is for rendering only
-│       │   ├── lib/                  # time.ts (relative times), copy.ts (channel status, episode, skip and wait phrases),
-│       │   │                         # use-load.ts (per-section loading/error state)
-│       │   ├── screens/              # Account.tsx, Home.tsx, Channel.tsx, Owner.tsx, OwnerChannel.tsx
-│       │   └── components/           # Nav, Time, EpisodeItem, OwnerCard, Digest, ChannelList, RequestQueue, AttentionList,
-│       │                             # CatalogHealth, CatalogTable, AddChannel, Chat (M4)
+│       │   ├── styles.css            # the single stylesheet: Tailwind, the daisyUI theme, the tokens, the faces
+│       │   ├── lib/                  # pure modules, all tested: day.ts and day-counts.ts (the browser's day
+│       │   │                         # boundaries), time.ts, copy.ts (every user-facing phrase), settings.ts
+│       │   │                         # (per-browser reading prefs), use-load.ts, use-media-query.ts, back.ts,
+│       │   │                         # title.ts, next-path.ts, public-routes.ts, public-view.ts, ask-scope.ts,
+│       │   │                         # chat-rows.ts, reading-origin.ts, bootstrap.tsx
+│       │   ├── screens/              # one per route: Landing, SignIn, AuthCallback, Queue, Reading, History,
+│       │   │                         # Chats, Chat, Sources, Source, Settings, Curate, CurateChannel
+│       │   └── components/           # Nav, Page, PublicShell, Avatar, Icon, Sheet, Calendar, DateFilter,
+│       │                             # ChannelFilter, ChannelRow, ChannelStatusActions, SummaryRow, SourceCards,
+│       │                             # MetaLine, Time, FollowButton, FindChannel, AddChannel, RequestQueue,
+│       │                             # AttentionList, CatalogHealth, CatalogTable, ChatMessage, ScopeChip,
+│       │                             # Choice, ConfirmDialog, JoinAlert, SignInAction, Retry
+│       ├── test/                     # Vitest in a Node environment: the pure modules above, the server render,
+│       │                             # the wrangler drift test, and component render tests (see Testing)
 │       ├── index.html
 │       ├── wrangler.jsonc            # three environments, same rule as the API; assets + the API service binding
+│       ├── vitest.config.ts
 │       └── vite.config.ts
 └── packages/
     └── shared/               # Zod schemas for every API request/response shape (XSchema) and the types inferred
@@ -274,7 +299,7 @@ Run everything from the repo root through Turborepo. Workspace-level `pnpm --fil
 
 ```
 pnpm install
-pnpm dev            # turbo run dev --parallel: wrangler dev --env dev (api) + vite with the Worker (web)
+pnpm dev            # turbo run dev (the task is persistent, so both run): wrangler dev --env dev (api) + vite (web)
 pnpm build          # turbo run build: shared → web (vite: dist/client + dist/ssr) ; api has no build step
 pnpm typecheck      # turbo run typecheck
 pnpm lint           # turbo run lint (biome check)
@@ -579,9 +604,9 @@ design are `docs/specs/design-phase.md`. In code:
 - **Day boundaries are the browser's**, worked out once in `lib/day.ts`: the API takes instants and never a
   timezone (`docs/PRD.md` §4.4). Build a day's end from the next local midnight, never `from + 24 h`, which is an
   hour out on the two days a year the clocks move.
-- Because daisyUI is CSS only, component behaviour is ours to get right and the web's tests deliberately stop short
-  of components (see Testing), so every interactive component is verified by hand under `pnpm dev` before its
-  commit. A cheap check that does not need a runner: after `pnpm build`, every `class=` token in `apps/web/src`
+- Because daisyUI is CSS only, component behaviour is ours to get right. Since 2026-09-22 what a component
+  *decides* from its props is covered by render tests (see Testing); **interaction is still verified by hand under
+  `pnpm dev` before its commit**, because there is no DOM in the test environment. A cheap check that does not need a runner: after `pnpm build`, every `class=` token in `apps/web/src`
   should resolve to a rule in the built CSS — a typo'd utility is silently nothing, and that scan is what caught
   `input-bordered`, which daisyUI 5 dropped. Pure modules under `lib/` now belong in `apps/web/test/` rather than in
   a scratch file.
@@ -613,11 +638,22 @@ Vitest with `@cloudflare/vitest-pool-workers` for everything in `apps/api`; bind
 **`apps/web` has Vitest too, since 2026-09-21** (owner decision, `docs/specs/public-reading.md` §3, decisions
 16–17), reversing the typecheck-and-lint-only rule it had until then. A plain Node environment in its own
 `vitest.config.ts` — **no pool-workers**, because nothing there needs a binding and the Worker's own behaviour is
-proven under `wrangler dev`; **no jsdom and no component tests**, because daisyUI is CSS only and a jsdom test of a
-Preact component mostly asserts that the component is the component. What it covers is pure modules — the public
-route matcher, the list filters, the head-tag builder — the `wrangler.jsonc` drift test, and from step 8 of
-`public-reading-plan.md` the server render, which is also the check that catches browser globals reaching the
-server bundle. Components stay hand-verified under `pnpm dev`.
+proven under `wrangler dev`. What it covers is pure modules — the public route matcher, the list filters, the
+head-tag builder — the `wrangler.jsonc` drift test, the server render, which is also the check that catches
+browser globals reaching the server bundle, and **component render tests**.
+
+**Component tests were forbidden until 2026-09-22, and the rule is reversed** (owner decision, `docs/PRD.md` §8
+and §9). The old argument — daisyUI is CSS only, so a component test mostly asserts that the component is the
+component — holds for *appearance* and does not hold for what a component decides: whether the owner's control is
+rendered at all, which of two sentences a state produces, what an `aria-label` says. Those are product rules
+living in a `.tsx` file, and §8 had criteria resting on them with nothing asserting them.
+
+**They are render tests, and there is still no DOM.** `preact-render-to-string` is already a dependency — the
+server render uses it — so a component test renders the tree to a string and asserts over it, in the same Node
+environment, with **no new dependency** (owner decision 2026-09-22; `happy-dom` and a testing library were
+offered and declined). What that reaches is everything a component decides from its props. What it does not reach
+is interaction — clicks, focus, the escape key — which **stays hand-verified under `pnpm dev`** before its commit.
+Test what a component *decides*, never how it looks: an assertion on a Tailwind class is a test of daisyUI.
 
 - Workers AI, Vectorize, DownSub, Workflows, and YouTube's feed are not available locally. Fakes are selected by
   test-only env bindings — `AI_FAKE` (`{ embedThrows? }`; prompt markers `[[invalid-once]]`, `[[invalid]]`,
@@ -643,8 +679,9 @@ server bundle. Components stay hand-verified under `pnpm dev`.
   JSON validation), migrations (a fresh DO runs them idempotently; the check constraints reject what they should), and
   the API document (`test/openapi.test.ts`; each route test parses one response per shared schema with `expectShape`
   from `test/helpers.ts`; `test/validation.test.ts` pins the 400 contract in one place). Add or extend tests whenever a route or data path is introduced.
-- Tests are focused, not exhaustive. Don't write tests for Hono plumbing, Preact components, or Workflow step
-  ordering.
+- Tests are focused, not exhaustive. Don't write tests for Hono plumbing or Workflow step ordering. ~~Preact
+  components.~~ **Reversed 2026-09-22** — see the web paragraph above for what a component test may and may not
+  assert.
 
 ## Code style
 

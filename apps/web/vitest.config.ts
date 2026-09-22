@@ -8,9 +8,11 @@ import { defineConfig } from "vitest/config";
  * - **No `@cloudflare/vitest-pool-workers`**, unlike `apps/api`. Nothing here needs a binding — the
  *   Worker's own behaviour is proven under `wrangler dev`, as `CLAUDE.md` requires, and what is
  *   tested here are pure modules and `preact-render-to-string`, which runs in Node.
- * - **No jsdom and no component tests.** daisyUI is CSS only and component behaviour is verified by
- *   hand under `pnpm dev`; a jsdom test of a Preact component mostly asserts that the component is
- *   the component.
+ * - **Component tests, but no DOM** (owner decision 2026-09-22, reversing "no component tests";
+ *   `docs/PRD.md` §8 and §9). A component renders to a string through `preact-render-to-string` —
+ *   already a dependency for the server render — so what a component *decides* from its props is
+ *   testable with no new dependency. Interaction needs a DOM and stays hand-verified under
+ *   `pnpm dev`; `happy-dom` was offered and declined.
  *
  * Its own config file rather than `vite.config.ts`, which carries the Cloudflare plugin and would
  * try to stand a Worker up around a unit test.

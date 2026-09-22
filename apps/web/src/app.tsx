@@ -70,8 +70,9 @@ export function App() {
           <Route path="/history" component={History} />
           <Route path="/history/:day" component={History} />
           {/* `/chats/new` is declared before the parameterised route, or preact-iso matches "new"
-              as a chat id. It is the composer before a chat exists: Ask lands here with its scope in
-              `?about=`, and the first question mints the id (docs/specs/m4-3-chat-web.md §2). */}
+              as a chat id. It is the composer before a chat exists: Ask lands here with its scope
+              handed over through `lib/ask-scope.ts` — never a query parameter, owner decision
+              2026-09-16 — and the first question mints the id (docs/specs/m4-3-chat-web.md §2). */}
           <Route path="/chats" component={Chats} />
           <Route path="/chats/new" component={Chat} />
           <Route path="/chats/:chatId" component={Chat} />

@@ -4,8 +4,12 @@ import { Icon } from "./Icon";
 
 /**
  * The scope a question will be sent under (docs/specs/m4-3-chat-web.md §3.4). **Sticky until
- * dismissed** and carried in the URL as `?about=`, so it survives a reload and the chat stays
- * linkable; a second `Ask` replaces it rather than stacking, because scope is one episode or none.
+ * dismissed**; a second `Ask` replaces it rather than stacking, because scope is one episode or none.
+ *
+ * It is **not** in the URL. This said "carried in the URL as `?about=`, so it survives a reload and
+ * the chat stays linkable" until 2026-09-22, describing a design the owner replaced on 2026-09-16
+ * before it was built: scope is component state, handed over through `lib/ask-scope.ts`, and a
+ * reload of an existing chat recovers it from the last question instead (`Chat.tsx`).
  *
  * The line beneath the composer is not decoration. **It is the only thing telling a reader that
  * widening exists** — the `✕` reads as "remove this", not "search everything I follow" — and the

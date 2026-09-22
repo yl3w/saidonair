@@ -13,8 +13,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "vars": {
-    // TODO(owner): WEB_ORIGINS for the deployed staging web (the Pages preview origin) once it exists. Unset, CORS
-    // allows only the local Vite origins (lib/cors.ts), which is enough to drive staging from a local web.
+    // TODO(owner): WEB_ORIGINS for the deployed staging web (the media-digest-web-staging Worker) once it
+    // exists. Unset, CORS allows only the local Vite origins (lib/cors.ts), which is enough to drive
+    // staging from a local web.
   },
   "ai": { "binding": "AI", "remote": true },
   "workflows": [
@@ -87,7 +88,7 @@
     "production": {
       "name": "media-digest-api",
       "vars": {
-        // TODO(owner): WEB_ORIGINS for the production web (the Pages production origin) before the first deploy.
+        // TODO(owner): WEB_ORIGINS for the production web (the media-digest-web Worker) before the first deploy.
       },
       "ai": { "binding": "AI", "remote": true },
       "workflows": [

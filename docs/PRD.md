@@ -84,9 +84,10 @@ deployment, and general admin dashboards beyond owner catalog management.
   receipts. An address is now an attribute of an identity, and may be absent entirely. ~~No authentication is added, and
   none should be: no login, sessions, JWTs, or Cloudflare Access.~~ **Reversed 2026-09-20** (§9). Cloudflare Access
   stays declined, now for a different reason than that sentence gave.
-- Browser clients on another origin (the Pages web app, Vite locally) are admitted by CORS from the `WEB_ORIGINS`
-  configuration: comma-separated origins, with `scheme://*.host` matching any subdomain for Pages previews; unset
-  means the local Vite origins. No credentials are involved, so this is hygiene, not a guard, and preflights never
+- Browser clients on another origin (the deployed web Worker, Vite locally) are admitted by CORS from the
+  `WEB_ORIGINS` configuration: comma-separated origins, with `scheme://*.host` matching any subdomain — which is
+  what admits a `workers.dev` preview; unset means the local Vite origins. (It said "the Pages web app" and "Pages
+  previews" until 2026-09-22; the web left Pages on 2026-09-21, §9.) No credentials are involved, so this is hygiene, not a guard, and preflights never
   reach the identity layer.
 - A user has zero or more follows and chats. Registration creates an identity, not an ingestion subscription: cron
   iterates shared catalog channels, not users, and registration triggers nothing.
@@ -120,7 +121,7 @@ Cloudflare Worker + static assets: Vite + Preact + TypeScript, daisyUI over Tail
                          |
        +-----------------+------------------+
        |                                    |
-Global Registry DO                    User DO per email
+Global Registry DO                    User DO per user_id
 catalog, follows, episodes,            read receipts,
 shared summaries, discovery runs,      chats/messages/sources, preferences
 episode processing attempts
@@ -154,7 +155,7 @@ Chat query: current follows ∩ approved channels, narrowed to one episode when 
 | Vectors | Vectorize, cosine, explicit `shared-catalog` namespace, `channelId` and `episodeId` metadata indexes; one index per environment: `media-rag` (production), `media-rag-staging`, `media-rag-dev` (decided 2026-09-13) |
 | Transcripts | DownSub's API behind one transcript seam (`DOWNSUB_API_KEY` secret); a canned fake in tests |
 | UI | A **Cloudflare Worker with static assets** (moved from Pages 2026-09-21, §9), Vite + Preact + TypeScript, `preact-iso` history routing; three environments on the API's rule, each with a service binding to the API Worker of its own tier, which is how the three public routes are rendered on the edge without leaving the machine; daisyUI 5 components over Tailwind CSS 4 with one custom theme, in the single `styles.css`; no state library (decided 2026-09-14, §9) |
-| Tests | Vitest + `@cloudflare/vitest-pool-workers`; env-selected fakes for Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds |
+| Tests | `apps/api`: Vitest + `@cloudflare/vitest-pool-workers`, with env-selected fakes for Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds. `apps/web`: Vitest in a plain Node environment, no pool-workers and no DOM — pure modules, the server render, and component *render* tests over `preact-render-to-string` (2026-09-21 and 2026-09-22, §9) |
 | Formatting | Biome |
 
 Each DO owns its SQLite database. Local relationships use foreign keys and transactions; cross-DO references are
@@ -740,7 +741,7 @@ somewhere extra to go. **A screen prints its name only where the frame does not 
 and their own controls lead; History, which is in neither, keeps a visible title. Every route names itself in the
 browser tab — `Queue · Said on Air` — which is what a bookmark and a history entry read.
 
-- **Sign in `/`:** one button per provider this environment has credentials for — Google today, Meta when it has
+- **Sign in `/sign-in`:** one button per provider this environment has credentials for — Google today, Meta when it has
   an App ID (§10, Auth phase). ~~"Who is this for?" — an email and the ones this browser has used before. There is
   no password because there is nothing to authenticate.~~ **Replaced 2026-09-20.** Each button is a **plain link**
   to the API's `/session/start`, never a `fetch`: beginning a sign-in sets a `SameSite=Lax` cookie on the API's
@@ -1032,11 +1033,16 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   cross-references are filtered at display time.
 - Migrations run idempotently on a fresh DO, and the check constraints reject what they are meant to reject: an
   approved channel with no `approved_at`, a paused channel that is not approved, a skipped episode with no reason, an
-  owner skip with no email. `GET /openapi.json` lists exactly the registered routes, and each route's responses parse
+  owner skip naming nobody — the column is `skipped_by_user_id`, and has been since the Auth rekey (§9, 2026-09-20);
+  it said "with no email" until 2026-09-22. `GET /openapi.json` lists exactly the registered routes, and each route's responses parse
   against the shared schemas, so the document and the Worker cannot disagree about a shape.
 - Real DO SQLite tests cover migrations and isolation. Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds
   are replaced by env-selected fakes so no test reaches the network; retain pure-function tests for chunking, RSS/URL
-  parsing, and summary validation. Do not add tests for UI components, Hono plumbing, or Workflow step ordering.
+  parsing, and summary validation. Do not add tests for Hono plumbing or Workflow step ordering. ~~UI components.~~
+  **Reversed 2026-09-22 (§9):** a component's *decisions* — whether an owner control renders at all, which sentence
+  a state produces, what a label says — are product rules living in a `.tsx` file, and criteria here rested on them
+  with nothing asserting them. They are render tests over `preact-render-to-string` with no DOM and no new
+  dependency; interaction stays hand-verified under `pnpm dev`, and appearance is not tested at all.
 - **Route visibility (2026-09-21, §9).** With no `Authorization` header the five public reads answer 200; `management`
   is absent from the channel list and detail, `processing` from every episode shape while `waitReason`, `status` and
   `skipReason` stay, `following` is `false`, `followerCount` unchanged, `read` absent and `related` empty. With **any**
@@ -1051,6 +1057,24 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
 
 ## 9. Decisions and retention
 
+- **Component tests are allowed, and they are render tests — decided 2026-09-22.** The rule forbidding tests for UI
+  components (§8) is reversed. It was written on 2026-09-21 with a good argument that turned out to cover only half
+  the ground: daisyUI is CSS only, so a component test that asserts *appearance* mostly asserts that the component
+  is the component. But a component also **decides** things — whether the owner's control is rendered at all, which
+  of two sentences a state produces, what an `aria-label` says — and those are product rules that happen to live in
+  a `.tsx` file. §8 had criteria resting on exactly those rules with nothing asserting them, and the M6 sweep had to
+  mark two of them unverified-and-accepted purely because of this rule. That is the wrong reason to accept a gap.
+
+  **No DOM, and no new dependency.** `preact-render-to-string` is already a dependency — the server render uses it —
+  so a component test renders the tree to a string and asserts over it in the existing Node environment.
+  `happy-dom` and a testing library were offered and **declined**, which fixes the boundary: what a component
+  decides from its props is tested; **interaction — clicks, focus, the escape key — stays hand-verified under
+  `pnpm dev`** before its commit, as `AGENTS.md` → Web UI code has always required. Appearance is still not tested,
+  and an assertion on a Tailwind class is a test of daisyUI rather than of this product.
+
+  This closes the two gaps the sweep had accepted: the web offering the owner's operations to the owner alone (§8
+  bullet 3), and the scope chip's dismissal (§8 bullet 9). It does not reopen the third, the `wrangler dev`
+  exercise, which no test can assert.
 - **Route visibility: a public catalog, and two reads that are the owner's — decided and done 2026-09-21.** Every
   route behind identity was reviewed one at a time with the owner. Twenty-four stayed. Seven moved, in both
   directions, and each direction reverses something this document had promised.
@@ -2025,9 +2049,17 @@ step that quietly does not happen.
 original items largely answered already — isolation is covered by eight test files exercising two identities,
 migrations are tested for both Durable Objects, `wrangler dev` has verified every chunk since M3 with a walkthrough
 record in each plan, and the API document is generated and guarded by `openapi.test.ts`. What it also found is that
-§8's **first line has no test**: "two users following one channel produce one shared episode/summary/vector set with
+§8's **first line had no test**: "two users following one channel produce one shared episode/summary/vector set with
 independent read receipts" is true by construction, because episodes carry no user dimension, and true by
 construction is exactly what stops being true after a refactor.
+
+**~~It still has none.~~ It has had one since the Auth phase — found by the sweep itself, 2026-09-22.**
+`apps/api/test/isolation.test.ts` arrived in `5d9f234` and its header says in so many words that it closes §8's
+first two criteria; the phase was not looking for them. So the sentence that named M6's whole purpose was answered
+four days before M6 began, and **that is the fifth document found to have outlived its work** — after the M4
+unread-receipts line, the empty M5, `chat-origin-scope.md` §5's impossible criterion, and the Chats nav item. The
+argument survives the correction: the vector third of that same line still had nothing asserting it, which is why
+the sweep closed it rather than striking it.
 
 So M6's work is to take each criterion and mark it **tested** (name the test), **structural** (say what makes it
 impossible to violate), or **unverified** (and decide whether to close it or accept it). The value is the third

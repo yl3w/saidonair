@@ -69,14 +69,14 @@ app.get("/docs", describeRoute({ hide: true }), docsPage);
 // the identity middleware for the same reason /health is: signing in cannot require being signed
 // in. Hidden from the API document — these routes are the library's, described by its own docs, and
 // openapi.test.ts asserts this one exclusion rather than letting it drift (docs/specs/auth-phase.md
-// §4.7). Nothing consumes the session yet; chunk A7 is where it becomes the identity.
+// §4.7). The session this mints is the identity every guarded route below resolves (A7, 2026-09-21).
 app.all("/auth/*", describeRoute({ hide: true }), (context) =>
   makeAuth(context.env).handler(context.req.raw),
 );
 
 // Ours, beside better-auth's: begin a sign-in, hand the session to the web, exchange the code for
 // it. Public for the same reason — obtaining a token cannot require one (docs/specs/auth-phase.md
-// §4.5). Nothing consumes the session yet; A7 is where it becomes the identity.
+// §4.5). The token the web receives here is what `middleware/user.ts` resolves (A7, 2026-09-21).
 app.route("/session", sessionRoutes);
 
 // The reads a signed-out caller may make (docs/specs/route-visibility.md §4.2). Registration order
