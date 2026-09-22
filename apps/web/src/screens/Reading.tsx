@@ -232,7 +232,24 @@ function ReadingScreen() {
               href={back.href}
               class="btn btn-ghost btn-square -ml-3"
               onClick={(event) => {
-                if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                // Let the browser have the clicks it owns: a new tab, a new window, a download.
+                // `preact-iso` ignores these too (its `handleNav` returns early on any modifier or
+                // a non-primary button), so nothing else acts on them either.
+                if (
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.altKey ||
+                  event.shiftKey ||
+                  event.button !== 0
+                ) {
+                  return;
+                }
+                // **`stopPropagation`, not just `preventDefault`.** preact-iso listens for clicks
+                // on `window` and its handler never checks `defaultPrevented` — it finds the `<a>`
+                // in the composed path and calls `pushState` regardless. Preventing the default
+                // alone left both happening: this popped an entry and the router pushed one, which
+                // is why `/` stayed unreachable after the first attempt at this fix (2026-09-21).
+                event.stopPropagation();
                 event.preventDefault();
                 goBack(() => route(back.href));
               }}
