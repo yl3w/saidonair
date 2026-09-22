@@ -30,14 +30,30 @@ Sitemap: ${origin}/sitemap.xml
 `;
 }
 
+/** The API's own ceiling (`MAX_EPISODE_LIMIT`). Its default is 20, which is not enough. */
+const EPISODE_LIMIT = 200;
+
 /**
  * Every page a visitor can reach: the landing page, each public channel, and each episode with a
  * summary to read. A `pending` episode is left out — it is worth showing on a channel page, where
  * it says the archive is alive, and not worth sending a crawler to a page with nothing on it yet.
  *
- * **It costs one call per channel.** There is no public read that returns episodes across
- * channels, so this is N+1 by construction. That is why it is cached like a page; if the catalog
- * ever makes it expensive, the fix is a bulk read on the API rather than a cleverer loop here.
+ * ## What this does not scale to, and in what order it breaks
+ *
+ * Written down because none of it fails loudly, and the first one was already happening: this
+ * asked for a channel's episodes without a `limit`, so it silently listed the newest **20**.
+ *
+ * | Scale | What happens |
+ * |---|---|
+ * | **> 200 episodes in one channel** | Silently short. `MAX_EPISODE_LIMIT` is 200 and the public episodes read exposes no cursor, so completeness needs an API change, not a change here. |
+ * | **> ~50 channels (free plan) or ~1000 (paid)** | Hard failure: this is `1 + N` subrequests and a Worker is capped. |
+ * | **> 50,000 URLs** | Crawlers reject or truncate the file — the sitemap protocol's limit. A `<sitemapindex>` over paged children is the answer. |
+ * | **Hundreds of thousands of episodes** | The isolate runs out of memory, and long before that on the JSON: this fetches whole episodes, summaries included, to read their ids. |
+ *
+ * At the size this product is built for — a personal tool, tens of channels — none of that binds,
+ * and the cache absorbs the N+1. The shape that does scale is a sitemap index over paged children
+ * fed by a lean `(id, lastmod)` read, or generation on a cron into R2. Neither is worth building
+ * for a catalog that fits on one screen.
  */
 export async function sitemap(origin: string, api: Fetcher): Promise<string> {
   const get = async <T>(path: string): Promise<T | null> => {
@@ -63,7 +79,7 @@ export async function sitemap(origin: string, api: Fetcher): Promise<string> {
       lastmod: channel.lastIngestedAt,
     });
     const episodes = await get<EpisodesResponse>(
-      `/channels/${encodeURIComponent(channel.channelId)}/episodes`,
+      `/channels/${encodeURIComponent(channel.channelId)}/episodes?limit=${EPISODE_LIMIT}`,
     );
     for (const episode of episodes?.episodes ?? []) {
       if (episode.status !== "available") continue;

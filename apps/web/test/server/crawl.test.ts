@@ -102,6 +102,22 @@ describe("sitemap", () => {
     expect(xml).not.toContain("/read/pend");
   });
 
+  it("asks for the API's maximum, not its default of 20", async () => {
+    // Without this the sitemap silently lists a channel's newest twenty episodes and nothing
+    // else — which it did, and which no test and no crawler would have reported.
+    const fetcher = api({
+      "/channels": { channels: [CHANNEL] },
+      "/channels/UC1/episodes": { episodes: [EPISODE] },
+    });
+    await sitemap(ORIGIN, fetcher);
+    const calls = (fetcher.fetch as unknown as { mock: { calls: [Request][] } })
+      .mock.calls;
+    const episodesCall = calls.find(([request]) =>
+      request.url.includes("/episodes"),
+    );
+    expect(episodesCall?.[0].url).toContain("limit=200");
+  });
+
   it("is still valid when the catalog cannot be read", async () => {
     const xml = await sitemap(ORIGIN, api({}));
     expect(xml).toContain("<urlset");
