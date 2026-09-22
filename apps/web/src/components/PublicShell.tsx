@@ -31,10 +31,16 @@ export function PublicShell() {
         >
           Said on Air
         </a>
-        {/* Below `md` the bar is the wordmark alone: the sentence needs about 330 px and a phone
+        {/* The promise, and it is meant to be read rather than glanced past: the reading serif
+            at `text-excerpt`, in `--ink-2`, separated from the wordmark by a rule instead of a
+            gap. It was `text-meta text-ink-3` — the treatment for counts and times — which is the
+            quietest pair in the product and made the one sentence explaining what this is the
+            faintest thing in the bar.
+
+            Below `md` the bar is the wordmark alone: the sentence needs about 330 px and a phone
             has neither that nor anything to spare. It is not truncated — half a promise reads
             worse than none. */}
-        <p class="ml-3 hidden text-meta text-ink-3 md:block">
+        <p class="ml-4 hidden border-l border-rule pl-4 font-reading text-excerpt text-ink-2 md:block">
           {PRODUCT_TAGLINE}
         </p>
       </div>
