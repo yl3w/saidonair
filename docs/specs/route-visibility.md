@@ -193,7 +193,10 @@ richer shape without asking. The screens stay behind the guard until §7's open 
 
 Rate limiting. Caching or CDN rules for the public reads. Any change to the web.
 
-**TODO(owner): does a public catalog imply a public web? — answered in principle 2026-09-21, open in detail.** The
+**~~TODO(owner): does a public catalog imply a public web?~~ — ANSWERED and BUILT 2026-09-21, the same day
+(`docs/specs/public-reading.md`). Yes: the landing page, a channel and a summary render without a session, at
+these routes. The detail below was the question, and the spec answers each part of it — with one correction, that
+`/sources` is *not* among the public screens, because signed out it repeated the landing page.** The
 owner's answer in review: **yes, a landing page is coming** — channel → episodes → summaries, readable signed out —
 as a future iteration, and these five routes are its API. What it still needs is the shape: which statuses it
 presents (the API answers all three), whether a withdrawn channel is browsable there, the shell, the nav and the

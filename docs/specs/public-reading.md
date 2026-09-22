@@ -1,8 +1,14 @@
 # Feature spec — The public reading experience
 
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **SPECCED** — requirements gathered with the owner on 2026-09-21, question by question. Not yet
-approved for implementation; the plan is `public-reading-plan.md`.
+**Status:** **IMPLEMENTED 2026-09-21**, in ten steps and twenty-odd commits (`public-reading-plan.md` → status
+and walkthrough record). 51 web tests, 417 API tests. Exercised under `wrangler dev`; the owner's browser
+walkthrough of the three public screens and the Google round trip are owed, as are the two deploy-time actions.
+
+**Revised while it was built, and the plan records each**: `/sources` left the public set, the shell went from two
+bars to one to a bar and an alert, the tagline moved into the bar and then out of the product, and sign-in moved
+into the corner where a reader's account sits. Requirements were gathered with the owner question by question
+before any of it.
 **PRD:** §2 (who may do what — a visitor is a new actor), §3 (architecture: the web's hosting changes), §7 (the
 screens, which gain three public renderings), §9, §10.
 **Depends on:** `route-visibility.md`, implemented 2026-09-21, which made five API reads public. This is the other

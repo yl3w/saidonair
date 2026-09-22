@@ -70,6 +70,12 @@ deployment, and general admin dashboards beyond owner catalog management.
 
 ## 2. Users and ownership
 
+- **A visitor is an actor, since 2026-09-21** (`docs/specs/public-reading.md`). Somebody with no session may
+  browse the catalog, open a channel and read any summary in full, at the same URLs a reader uses — the landing
+  page at `/`, a channel at `/sources/:id`, a summary at `/read/:episodeId`. They may do nothing else: there are
+  no controls on a public page at all, not even disabled ones. Everything else still answers `401`, and the
+  reader's own catalog at `/sources` is guarded like the rest of their screens.
+
 - Identity is a **verified session**, proved by a bearer token and resolved to a Registry `user_id`
   (`docs/specs/auth-phase.md`). A caller with no session, or one this API does not accept, is `401
   UNAUTHENTICATED` and reaches neither Durable Object. ~~Identity is normalized email, supplied through
@@ -104,8 +110,9 @@ deployment, and general admin dashboards beyond owner catalog management.
 ## 3. Architecture
 
 ```text
-Cloudflare Pages: Vite + Preact + TypeScript, daisyUI over Tailwind
-    Sign in /  →  /auth/callback  →  Queue /queue · History /history, /history/:day · Sources /sources, /sources/:id
+Cloudflare Worker + static assets: Vite + Preact + TypeScript, daisyUI over Tailwind
+    Public, server-rendered:  Landing /  ·  Channel /sources/:id  ·  Summary /read/:episodeId
+    Sign in /sign-in  →  /auth/callback  →  Queue /queue · History /history, /history/:day · Sources /sources
                   Chats /chats · Account /account · Curate /curate, /curate/:id (owner rendering, desktop)
     A queue row, a day, or a source opens Reading /read/:episodeId, whose Ask is the only way into a chat
                          |
@@ -146,7 +153,7 @@ Chat query: current follows ∩ approved channels, narrowed to one episode when 
 | Embeddings | Workers AI `@cf/baai/bge-base-en-v1.5`, 768 dimensions, 512-token input cap (the deployed model id carries `.5`, corrected 2026-09-08) |
 | Vectors | Vectorize, cosine, explicit `shared-catalog` namespace, `channelId` and `episodeId` metadata indexes; one index per environment: `media-rag` (production), `media-rag-staging`, `media-rag-dev` (decided 2026-09-13) |
 | Transcripts | DownSub's API behind one transcript seam (`DOWNSUB_API_KEY` secret); a canned fake in tests |
-| UI | Cloudflare Pages, Vite + Preact + TypeScript, `preact-iso` history routing; daisyUI 5 components over Tailwind CSS 4 with one custom theme, in the single `styles.css`; no state library (decided 2026-09-14, §9) |
+| UI | A **Cloudflare Worker with static assets** (moved from Pages 2026-09-21, §9), Vite + Preact + TypeScript, `preact-iso` history routing; three environments on the API's rule, each with a service binding to the API Worker of its own tier, which is how the three public routes are rendered on the edge without leaving the machine; daisyUI 5 components over Tailwind CSS 4 with one custom theme, in the single `styles.css`; no state library (decided 2026-09-14, §9) |
 | Tests | Vitest + `@cloudflare/vitest-pool-workers`; env-selected fakes for Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds |
 | Formatting | Biome |
 
@@ -716,6 +723,15 @@ something readers do not, that is still the web's rendering: the API returns the
 identity, because reading is open to all. The user-facing phrases for channel statuses, skip reasons, and
 wait reasons live in one place in the web app.
 
+**Three of these screens render without a session, since 2026-09-21** (`docs/specs/public-reading.md`): the
+landing page at `/`, a channel at `/sources/:id`, and a summary at `/read/:episodeId`. They are the same screens,
+with the reader's parts added rather than a visitor's removed — no Follow, no Ask, no Done, no Add a channel, and
+`management`, `processing` and `read` absent because the API omits them for an anonymous caller. A visitor's frame
+is the wordmark, a **Sign in** in the corner where a reader's own account sits, and one invitation in the column
+saying what an account adds. `/` was the sign-in screen until then; the door is `/sign-in`, and `Guard` sends an
+expired session there carrying where it was. Those three routes are **server-rendered**, because a shared summary
+is how this product travels and neither a crawler nor a link unfurl runs the bundle.
+
 The screens below are the ones the Design phase built (`docs/specs/design-phase.md`, 2026-09-15); how they look
 and behave in detail is `docs/design.md`, which this section does not repeat. There are four reader destinations
 and one more for the owner. **There is no role gate**: one navigation for everyone, and the owner simply has
@@ -1071,6 +1087,43 @@ deletion, and per-channel chats. The on-demand discovery route is `POST /channel
   the owner's. CORS is untouched, so the five are public to any client but not to another origin's JavaScript.
 
   Reasoning and the route-by-route review are `docs/specs/route-visibility.md`; the five steps are its plan.
+
+- **The product can be read before it is joined — built 2026-09-21** (`docs/specs/public-reading.md`). A visitor
+  browses the catalog at `/`, opens a channel, and reads any summary entire, at the same URLs a reader uses. This
+  is the other half of the route-visibility decision of the same day: those five API reads were correct, tested
+  and invisible until a screen existed that a signed-out person could reach.
+
+  **What it is for**, in the owner's words: a shareable read, a browsable showcase, and a public archive worth
+  finding from a search engine. Explicitly *not* a demo that converts — no teaser, no cap, no paywall by another
+  name. A visitor is treated as a reader who has not signed in.
+
+  **Two decisions were reversed the same day they were made, and both reversals are the interesting part.** A
+  hidden channel first answered `404`; then the next decision kept a declined channel's summaries readable, which
+  made the 404 incoherent — the channel name printed on a shared summary would have led nowhere — so a hidden
+  channel renders, minus the owner's review note, and stays out of the catalog list. And **"sign in, then resume
+  the action"** was struck entirely along with the Ask composer that motivated it: it would have serialised an
+  intent before the OAuth redirect and replayed it after, which was the most fragile thing in the feature and
+  existed to save one click. A visitor now has no controls at all.
+
+  **`/sources` came back out of the public set after a few hours.** Signed out it showed the same rows as the
+  landing page, which lists every channel uncapped, and its sort and paging answer a reader's questions rather
+  than an arriving stranger's. The API route stays public; this is the web's gate.
+
+  **Two changes larger than the feature came with it.** The three public routes are **server-rendered**, because a
+  shared summary that unfurls as a grey line is not shareable and a crawler does not run the bundle — which forced
+  the hosting question, settled while nothing was deployed: **`apps/web` is a Worker with static assets**, not a
+  Pages site, with a service binding to the API. And **`apps/web` gained a test runner**, reversing the standing
+  typecheck-and-lint-only rule, because this adds pure modules worth pinning and a second rendering path invisible
+  to both existing gates.
+
+  **Accepted with it:** the summaries are scrapeable and now indexed, which is the point rather than a side
+  effect; a signed-in reader's first paint on a cached public page is the anonymous one, settling a moment later;
+  and there is still no rate limiting, which is a deploy-time configuration rather than code.
+
+  **Deferred and named:** link-preview images, until there is a source-agnostic place to keep an image URL —
+  deriving one from the YouTube id is correct only while YouTube is the only source, and fails as a broken image
+  rather than an error; paging the landing page's catalog; and precomputing the sitemap into R2, whose trigger is
+  any channel passing 200 episodes.
 
 - **Apple is not a sign-in provider — decided 2026-09-21.** It was planned as the Auth phase's last chunk and is
   withdrawn rather than deferred. The cost was never the code: `better-auth` supports it and the provider is three
@@ -1957,6 +2010,14 @@ real code was written: better-auth takes a D1 binding directly so the phase adds
 the sign-in entry is a `POST` answering JSON rather than a navigable link; and better-auth's own `user.email` is
 `not null unique`, so a provider that returns no email gets a synthesized placeholder there while this product's
 Registry holds null.
+
+**The public reading phase is complete — 2026-09-21.** Ten steps
+(`docs/specs/public-reading-plan.md`), between the Auth phase and M6, carrying no number for the reason the Design
+phase carries none. A visitor can browse the catalog, open a channel and read any summary, at the same URLs a
+reader uses; the three public routes are server-rendered; `apps/web` moved from Pages to a Worker with static
+assets and gained a test runner. Step 5 ended as a deletion — the signed-out catalog was withdrawn the day it was
+built — and the plan records why, because a step that removes what the previous one added is worth more than a
+step that quietly does not happen.
 
 **M6 is next and last. Redefined 2026-09-17 after an audit** (§9): it is **a sweep of §8**, not a build.
 

@@ -2,8 +2,9 @@
 
 **Implements:** `docs/specs/public-reading.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **IN PROGRESS.** Steps 1–9 complete 2026-09-21; step 10 (the product record) outstanding, and with
-it the owner's browser walkthrough and the two deploy-time owner actions. Step 3's Google round trip
+**Status:** **COMPLETE 2026-09-21.** All ten steps. What is still owed is the owner's: a browser walkthrough of
+the three public screens, the Google round trip, and the two deploy-time actions (create the Worker, configure
+rate limiting). Step 3's Google round trip
 is the owner's to walk; step 4's landing page was walked by the owner in a browser and produced two changes — the
 client-side refusal of the public reads, and the shell collapsing from two bars to one.
 **Shape:** ten steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
