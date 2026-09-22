@@ -1,6 +1,6 @@
 import { Calendar as CalendarIcon } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { type DayKey, dayLabel, shortDayLabel } from "../lib/day";
+import { type DayKey, shortDayLabel } from "../lib/day";
 import { useMediaQuery, WIDE } from "../lib/use-media-query";
 import { Calendar, type DayCount } from "./Calendar";
 import { Icon } from "./Icon";
@@ -12,9 +12,12 @@ import { Sheet } from "./Sheet";
  * this, beside the heading, which is where `docs/design.md` §3 named the date picker in the first
  * place — a popover on a desktop, a bottom sheet on a phone (owner decision 2026-09-22).
  *
- * The two forms differ in when the choice lands, as they do for the channel picker: a popover goes
- * the moment a day is pressed, and a sheet has a footer, so it holds the day as a draft and the
- * footer names where it will go — "Go to 12 September".
+ * Both forms go the moment a day is pressed. The channel picker's sheet holds a draft and commits
+ * on its footer, because a set of channels is assembled a tap at a time and is not a choice until
+ * it is finished; one day is the whole choice, so a footer asking a reader to confirm the tap they
+ * just made is ceremony (owner decision 2026-09-22). That leaves the sheet with no primary action,
+ * and its one button says where it goes rather than "Cancel" — there is no draft to abandon
+ * (docs/design.md §3, as the reading sheet's `Aa` already works).
  */
 export function DateFilter({
   selected,
@@ -36,7 +39,6 @@ export function DateFilter({
   onClear?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<DayKey | null>(selected);
   const wide = useMediaQuery(WIDE);
   const container = useRef<HTMLDivElement>(null);
 
@@ -64,10 +66,7 @@ export function DateFilter({
       class="btn btn-quiet-secondary"
       aria-expanded={open}
       aria-haspopup="true"
-      onClick={() => {
-        setDraft(selected);
-        setOpen(!open);
-      }}
+      onClick={() => setOpen(!open)}
     >
       <Icon of={CalendarIcon} size={16} />
       {selected === null ? "All days" : shortDayLabel(selected)}
@@ -83,24 +82,19 @@ export function DateFilter({
         <Sheet
           open={open}
           title="Browse by date"
-          confirm={draft === null ? "Pick a day" : `Go to ${dayLabel(draft)}`}
-          onConfirm={
-            draft === null
-              ? undefined
-              : () => {
-                  setOpen(false);
-                  onPick(draft);
-                }
-          }
+          dismiss="Back to the list"
           onClose={() => setOpen(false)}
         >
           <Calendar
             anchor={anchor}
-            selected={draft}
+            selected={selected}
             counts={counts}
             showCounts={showCounts}
             onAnchorChange={onAnchorChange}
-            onPick={setDraft}
+            onPick={(day) => {
+              setOpen(false);
+              onPick(day);
+            }}
           />
           <EveryDay
             onClear={onClear}

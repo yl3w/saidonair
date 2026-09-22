@@ -104,7 +104,7 @@ sentences. The split is the fastest way to tell a reader what is content and wha
 | Role | Size / family | Notes |
 |---|---|---|
 | Reading title | 36 px serif 600, `-0.015em`, 1.16 | 25 px on a phone |
-| Screen title | 27 px serif 600, `-0.01em` | History and a channel — the screens the frame does not name. **Account lost its heading 2026-09-17**: the reader's own email and monogram sit in the bar and mark it current, so the frame does name it after all |
+| Screen title | 27 px serif 600, `-0.01em` | History and a channel — the screens the frame does not name. **Account lost its heading 2026-09-17**: the reader's own monogram sits in the bar and marks it current, so the frame does name it after all |
 | Section head | 18–19 px serif 600 | day headers, chat titles |
 | Row title, full | 20 px serif 600, 1.25 | 17 px on a phone |
 | Row title, compact | 16 px serif 600 | a channel's name in a list — Sources, a feed just verified |
@@ -294,7 +294,10 @@ first paint, so dark never starts white.
 ## 3. Layout patterns
 
 **The frame.** A 56 px top bar: wordmark, then Queue · Sources (and Curate for the owner, desktop only, with
-a count that renders only when something waits), then the reader's email and monogram on the right.
+a count that renders only when something waits), then the reader's monogram on the right. **The address beside
+it is gone (2026-09-22):** it was the one thing in the bar that grew with the person rather than the product, it
+made 680 px the tightest measure the frame has, and it named the reader at every width to nobody but themselves.
+The monogram is keyed on the same address (§2.5), so the slot still says who is signed in.
 **A screen that is *about* one object takes its own bar instead** — a way back on the left, that object's own acts
 on the right, and no wordmark and no destinations (2026-09-15, PRD §9). **The bar takes its column's measure**, not
 the window's (2026-09-17): its contents line up with what is beneath them, so a reading column's bar is 680 px and a
@@ -423,12 +426,18 @@ date names its month.
 
 **Sheets** (phone). Anything that would be a popover on a desktop is a bottom sheet on a phone: the channel picker,
 the date picker, the reading column's `Aa`. A handle, a title, a search field where the list is long, and a footer
-whose primary action names what it will do — "Show these two", "Go to 12 September".
+whose primary action names what it will do — "Show these two".
 
 **The footer's other button depends on when the content lands.** A sheet holding a draft the footer commits says
 "Cancel", because there is something to abandon. A sheet whose controls apply as they are tapped — `Aa`, where the
 page behind is the preview — has no primary action at all, and its one button says where it goes: "Back to reading".
 Never "OK", and never "Done" on the reading view, where Done is the receipt and sits inches away.
+
+**Which category a sheet falls in is decided by the shape of the choice, not by the control** (2026-09-22). A set
+of channels is assembled a tap at a time and is not a choice until it is finished, so the channel picker holds a
+draft and commits on its footer. One day is the whole choice, so the date picker commits the moment a day is
+pressed — a footer asking a reader to confirm the tap they just made is ceremony. That moves it beside `Aa`: no
+primary action, and one button saying where it goes, "Back to the list".
 
 **One shape at a time.** A popover and its sheet are the same control in two forms, so only the one in use belongs
 in the document. Rendering both leaves duplicate ids, duplicate labels, and — where the control is built from
@@ -692,7 +701,7 @@ controls, and trims the padding: a standing invitation on every page is not an e
 each of them adds up.
 
 **The two doors sit where their audiences look** (revised 2026-09-21). **Sign in** is in the bar's top-right
-corner, which is the "who you are" slot — a reader's email and monogram are there, and for a visitor it holds the
+corner, which is the "who you are" slot — a reader's monogram is there, and for a visitor it holds the
 way to become one. A returning reader looks there without reading anything, which is the whole argument. **Sign up**
 is the alert's one button, for the stranger who needs telling first. Both go to `/sign-in`, because a first sign-in
 is what creates the account, and the door says so in a line of its own so that whichever word was clicked was the

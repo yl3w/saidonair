@@ -43,7 +43,9 @@ export function Nav() {
         {/* `bar-column`, like every other bar: one measure for the product means the wordmark
             lands on the same left edge as the column beneath it (owner decision 2026-09-21). This
             bar holds the most of any — wordmark, three destinations, Curate, and the reader — so
-            it is the one where 680 px is tightest; the email below truncates rather than wraps. */}
+            it is the one where 680 px is tightest. The reader is their avatar alone: the address
+            beside it was the one thing here that grew with the person rather than the product, and
+            it named them at every width to nobody but themselves (owner decision 2026-09-22). */}
         <div class="bar-column flex h-14 items-center gap-6">
           <a
             href="/queue"
@@ -85,7 +87,6 @@ export function Nav() {
               }`}
               aria-current={isCurrent(path, "/account") ? "page" : undefined}
             >
-              <span class="hidden max-w-48 truncate lg:inline">{email}</span>
               <Avatar id={email} name={localPart(email)} size={28} />
               <span class="sr-only">Account</span>
             </a>

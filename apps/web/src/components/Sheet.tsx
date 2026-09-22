@@ -50,7 +50,10 @@ export function Sheet({
       onClose={onClose}
       onCancel={onClose}
     >
-      <div class="modal-box modal-edge-bottom max-h-[85dvh] pb-[env(safe-area-inset-bottom)]">
+      {/* The inset is *added* to the box's own 1.5rem. `pb-[env(safe-area-inset-bottom)]` alone
+          replaced that padding with the inset, which is zero on everything without a notch — so the
+          footer sat against the bottom of the screen on most phones (2026-09-22). */}
+      <div class="modal-box modal-edge-bottom max-h-[85dvh] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
         <div
           class="mx-auto mb-3 h-1 w-10 rounded-full bg-edge"
           aria-hidden="true"
