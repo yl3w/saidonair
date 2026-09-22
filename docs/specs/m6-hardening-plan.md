@@ -143,13 +143,61 @@ Then this plan gains a Record section, the way the other plans carry theirs.
 - **Step 4 existed because Step 5 was being written.** Recording *why* a gap was accepted is what
   exposed that the reason was a rule nobody had re-examined. That is the whole method of this
   milestone applied to the milestone itself.
-- **A flake, and a stale cache.** One `pnpm check` run failed with `no such table: global_users`
-  and passed on every run since; `test/setup.ts` wipes both Durable Objects after each test and
-  aborts their instances, and an aborted instance can touch storage mid-wipe. Separately, `pnpm
-  check` replayed a cached success while `biome` was reporting unused imports in `app.tsx`,
-  `History.tsx` and `Sources.tsx` — five warnings that predate M6 and remain. Both are noted rather
-  than fixed: neither is §8's, and a hardening milestone that quietly repairs what it audits is one
-  nobody can read afterwards.
+- **A flake, and a stale cache.** One `pnpm check` run failed with `no such table: global_users`;
+  separately, `pnpm check` replayed a cached success while `biome` reported unused imports in
+  `app.tsx`, `History.tsx` and `Sources.tsx` that predate M6. Both were left out of M6 on purpose —
+  neither is §8's, and a hardening milestone that quietly repairs what it audits is one nobody can
+  read afterwards — and **both were then fixed on the owner's instruction, in a commit of their
+  own.** See the postscript.
+
+## Postscript — the two findings, fixed 2026-09-22
+
+Not M6's work; recorded here because M6 is where they were found.
+
+**The unused imports** were three files, not the five warnings first reported: `app.tsx` (the call
+to `applyReaderSettings` had moved to `main.tsx`, where it still runs, and only the import stayed
+behind), `Sources.tsx` (`channelStateCopy`, `summaryCountCopy`, `relativeTime`), and `History.tsx`
+(`dayKeyOf`, `weekWindow`). Each was checked for the thing an unused import can be hiding — a
+dropped call — before removal; `applyReaderSettings` was the one worth checking, and it is still
+invoked at `main.tsx:9`.
+
+**The flake's diagnosis above was wrong**, and the correction is the useful part. It was not "an
+aborted instance touching storage mid-wipe". A Durable Object applies its migrations — and the
+Registry seeds the owner — exactly once, in a constructor, under `blockConcurrencyWhile`.
+`afterEach` called `deleteAll()`, which takes the tables away but **cannot make a live instance
+forget that it already ran**: the object goes on believing it is migrated while its storage is
+empty, and anything reaching it in that state fails with `no such table: global_users`.
+`abortAllDurableObjects()` was what prevented it, and it is a race to rely on — it settles after
+the wipe, and nothing stops a surviving stub from routing to the old instance first.
+
+The fix is for the wipe to leave storage exactly as a fresh constructor would: `deleteAll()`, then
+re-apply the migrations and re-seed the owner, inside the same `runInDurableObject` call. The abort
+stays, as an optimisation rather than as the thing correctness rests on.
+
+**Both halves of that were proved before the fix was believed**, with a throwaway test that built
+the race by hand: a live instance whose storage is wiped throws `no such table` on its next call,
+and the same instance with the rebuild in place keeps serving with no abort at all.
+
+### A second flake, still open
+
+Reproduction runs turned up a different failure that this fix does **not** address, and it was
+first written up here as the same cause wearing a different face. **That was wrong, and the
+evidence that corrected it is that it happened again after the fix.**
+
+`routes-follows-digest.test.ts` → `bounds the range, filters unread and by channel, pages by
+cursor, and answers compact rows` fails roughly **twice in twenty-four full-suite runs**, once
+before this fix and once after. It is always that test, and always at about **5,126 ms**.
+
+That number is the finding. The test takes **394 ms** when it passes, so the failure is not slow
+machinery under load — 5,000 ms is Vitest's default `testTimeout`, and the test is **hanging into
+it**, not overrunning a budget. A thirteen-fold jump is a stall, and the obvious place to look is
+the Durable Object input gate: a call that never settles blocks every later caller, and this is the
+heaviest test in the file, running immediately after another that exercises the same object.
+
+What is *not* yet known is the error the runner prints when it happens, because ten consecutive
+runs after the fix were clean and the capture never fired. Left open deliberately rather than
+papered over: raising the timeout would turn a 394 ms test into a 10 s one and throw away the only
+signal there is.
 
 ---
 

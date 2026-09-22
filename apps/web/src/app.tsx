@@ -1,7 +1,6 @@
 import { useEffect } from "preact/hooks";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 import { useTrackNavigation } from "./lib/back";
-import { applyReaderSettings, readSettings } from "./lib/settings";
 import { AuthCallback } from "./screens/AuthCallback";
 import { Chat } from "./screens/Chat";
 import { Chats } from "./screens/Chats";

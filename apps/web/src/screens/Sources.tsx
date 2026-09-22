@@ -9,14 +9,11 @@ import { FollowButton } from "../components/FollowButton";
 import { Page } from "../components/Page";
 import {
   actionErrorCopy,
-  channelStateCopy,
   NO_CHANNEL_BY_THAT_NAME,
   reviewCopy,
   SOURCE_SORTS,
   SOURCES_TABS,
-  summaryCountCopy,
 } from "../lib/copy";
-import { relativeTime } from "../lib/time";
 import { useDocumentTitle } from "../lib/title";
 import { useLoad } from "../lib/use-load";
 import { Guard, useReadySession } from "../session";

@@ -2,7 +2,6 @@ import type { Episode } from "@media-digest/shared";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { useLocation, useRoute } from "preact-iso";
 import { api } from "../api";
-import type { DayCount } from "../components/Calendar";
 import { DateFilter } from "../components/DateFilter";
 import { Page } from "../components/Page";
 import { SummaryRow, SummaryRowSkeleton } from "../components/SummaryRow";
@@ -18,12 +17,10 @@ import {
 import {
   type DayKey,
   dayBounds,
-  dayKeyOf,
   dayLabel,
   groupByDay,
   isDayKey,
   todayKey,
-  weekWindow,
 } from "../lib/day";
 import { useDayCounts } from "../lib/day-counts";
 import { rememberOrigin, useReturnAnchor } from "../lib/reading-origin";
