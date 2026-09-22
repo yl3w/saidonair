@@ -16,7 +16,8 @@
     "@media-digest/shared": "workspace:*",
     "lucide-preact": "^1.46.0",
     "preact": "^10.29.8",
-    "preact-iso": "^2.12.2"
+    "preact-iso": "^2.12.2",
+    "preact-render-to-string": "^6.7.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.57.1",

@@ -16,5 +16,7 @@
     "noEmit": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["."]
+  // The server's own tests compile here too: they exercise code whose globals are
+  // workerd's, and the browser program excludes them for the same reason.
+  "include": [".", "../../test/server"]
 }

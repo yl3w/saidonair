@@ -7,8 +7,7 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  // `src/server` is the Worker's, and it compiles under `src/server/tsconfig.json` instead: its
-  // globals are workerd's, not a browser's (docs/specs/public-reading-plan.md step 1.1).
   "include": ["src", "test", "vite.config.ts", "vitest.config.ts"],
-  "exclude": ["src/server"]
+  // `src/server` and its tests are the Worker's program: workerd globals, no DOM.
+  "exclude": ["src/server", "test/server"]
 }
