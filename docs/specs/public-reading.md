@@ -16,7 +16,7 @@ routes keep theirs.
 
 | URL | Signed out | Signed in |
 |---|---|---|
-| `/` | Landing: the wordmark, the one-line promise, then every channel in the catalog | Redirects to `/queue`, as today |
+| `/` | Landing: every channel in the catalog, narrowable by name | Redirects to `/queue`, as today |
 | `/sources` | **Guarded** — a visitor is sent to `/sign-in?next=/sources` (revised 2026-09-21, §3 decision 2b) | Today's Sources screen, unchanged |
 | `/sources/:id` | A channel: title, counts, followers, then its `available` and `pending` episodes | Unchanged |
 | `/read/:episodeId` | The whole summary — lede, takeaways with their timestamps, topics | Unchanged |
@@ -104,8 +104,8 @@ All 2026-09-21, with the owner, unless stated.
 
 ### 4.1 What each public screen shows
 
-**`/` — the landing page.** The wordmark, the promise (*What was said on the air, in text, with the minute it was
-said*), then the catalog in full: channel title, summary count, and a greyed row for a channel with nothing yet. No
+**`/` — the landing page.** The catalog in full, under a heading, with no brand block of its own — the wordmark is
+in the bar and what an account adds is in the invitation (revised 2026-09-21): channel title, summary count, and a greyed row for a channel with nothing yet. No
 cap and no *See all* link (§3, decision 2a); the nav's **Channels** reaches `/sources` for search and sort. No
 sign-in button in the body — the band above carries it. Signed in, this route redirects to `/queue` exactly as
 `SignIn.tsx` does today.

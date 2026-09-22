@@ -1,12 +1,12 @@
-import { PRODUCT_TAGLINE } from "../lib/copy";
 import { SignInAction } from "./SignInAction";
 
 /**
  * The frame a signed-out visitor arrives into (docs/design.md → The signed-out shell).
  *
- * **The wordmark and the tagline** (owner, 2026-09-21). The landing page carried both in its body
- * and now carries neither: a visitor meets the name and the promise once, in the frame, on every
- * page rather than only on the one they may never see.
+ * **The wordmark, and the way in.** The landing page carried a wordmark and a tagline in its body;
+ * both left it, the tagline passed through this bar for an hour, and then it was dropped entirely
+ * (owner, 2026-09-21). What a visitor is told about the product is now the invitation's one
+ * sentence, said once, in the column — not a second line of brand above it.
  *
  * **No controls.** It carried the invitation for part of 2026-09-21 — first as a fixed band
  * above a nav row, then as one combined bar — and the owner reverted it: the invitation is now a
@@ -32,18 +32,6 @@ export function PublicShell() {
         >
           Said on Air
         </a>
-        {/* The promise, and it is meant to be read rather than glanced past: the reading serif
-            at `text-excerpt`, in `--ink-2`, separated from the wordmark by a rule instead of a
-            gap. It was `text-meta text-ink-3` — the treatment for counts and times — which is the
-            quietest pair in the product and made the one sentence explaining what this is the
-            faintest thing in the bar.
-
-            Below `md` the bar is the wordmark alone: the sentence needs about 330 px and a phone
-            has neither that nor anything to spare. It is not truncated — half a promise reads
-            worse than none. */}
-        <p class="ml-4 hidden border-l border-rule pl-4 font-reading text-excerpt text-ink-2 md:block">
-          {PRODUCT_TAGLINE}
-        </p>
         <SignInAction />
       </div>
     </header>

@@ -660,9 +660,14 @@ padding and its icon is 20 px, so the arrow sits 12 px inside the button's edge 
 column below it. Those buttons carry `-ml-3` to put the glyph on the column's own edge; the 44 px target is
 untouched.
 
-**A plain bar, and the invitation in the column.** The bar carries the wordmark and nothing else. The invitation is
-a daisyUI **alert** at the top of every public column — the long sentence naming what an account is for, and one
-button that names both doors, *Sign up / Sign in*.
+**A plain bar, and the invitation in the column.** The bar carries the wordmark and the way in, and nothing else.
+The invitation is a daisyUI **alert** at the top of every public column: one sentence naming what an account adds,
+and **Sign up**.
+
+A tagline sat in the bar between the two for about an hour on 2026-09-21 and was then dropped entirely (owner). It
+had already been moved out of the landing page's body to avoid saying the same thing twice on one screen; the
+alert's sentence does that job, in the column, where it is read rather than glanced past. The product's name is the
+only brand the frame carries.
 
 It took three goes in one afternoon, and the arc is the useful part. A fixed invitation band above a wordmark row
 put three different left edges on a wide window. Combining them into one inverted bar fixed the alignment and still
