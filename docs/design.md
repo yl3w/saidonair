@@ -649,6 +649,11 @@ Added 2026-09-21 with the public reading experience (`docs/specs/public-reading.
 through a long list rather than arriving at one. This section is the frame they arrive into; the screens themselves are §3 and §5 as before, with the
 reader's controls absent.
 
+**The leading control in a bar aligns by its glyph, not its box.** A square button is 44 px with no horizontal
+padding and its icon is 20 px, so the arrow sits 12 px inside the button's edge and reads as indented against the
+column below it. Those buttons carry `-ml-3` to put the glyph on the column's own edge; the 44 px target is
+untouched.
+
 **A plain bar, and the invitation in the column.** The bar carries the wordmark and nothing else. The invitation is
 a daisyUI **alert** at the top of every public column — the long sentence naming what an account is for, and one
 button that names both doors, *Sign up / Sign in*.
@@ -659,11 +664,11 @@ spent a permanent strip of every window on a sentence a visitor had already read
 every page, in the reading measure, where it is part of the page rather than furniture around it — and it is a
 component the library already has, themed in all three palettes, rather than a bar of our own.
 
-**One measure across the public surface.** The landing page, a channel and a summary are all the reading measure
-(680 px), and each screen's own bar matches its column. The list measure is 80 px wider, and with two measures the
-same invitation wrapped on one page and not on the next — which is what a visitor notices about a component that
-is supposed to be the same everywhere. The reader's own catalog at `/sources` keeps the list measure: it is a
-working list, not a page somebody arrives at.
+**One measure, product-wide** (owner decision 2026-09-21, superseding §2.3's two). Every screen is 680 px, and
+each screen's own bar is capped to match its column. A list measure of 760 px sat beside the reading one until
+then, and the cost showed on the invitation: the same component wrapped on one page and not on the next, which is
+what anyone notices about something meant to be identical everywhere. The only exception is Curate, which is given
+the page — a dense table is not a measure, it is the absence of one.
 
 The invitation's sentence is set in **`text-ui`**, not the reading serif. It is interface rather than something
 written to be read (§2.7), and at body size in serif it needed the whole reading column to itself.

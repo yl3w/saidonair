@@ -14,7 +14,6 @@ import { PublicShell } from "./PublicShell";
  */
 const MEASURES = {
   reading: "max-w-reading",
-  list: "max-w-list",
   wide: "",
 } as const;
 
@@ -27,12 +26,11 @@ const MEASURES = {
  */
 const COLUMNS = {
   reading: "lg:w-reading",
-  list: "lg:w-list",
   wide: "",
 } as const;
 
 export function Page({
-  measure = "list",
+  measure = "reading",
   rail,
   railMeasure = "rail",
   desktopOnly = false,

@@ -146,7 +146,6 @@ function SourceScreen() {
 
   return (
     <Page
-      measure="reading"
       bar={
         <SourceBar
           channel={record}
@@ -280,7 +279,7 @@ function SourceBar({
       <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
         <button
           type="button"
-          class="btn btn-ghost btn-square"
+          class="btn btn-ghost btn-square -ml-3"
           // A visitor has no Sources to go back to — it is the reader's screen and guarded — so
           // their way out is the landing page, which is the catalog they came from.
           onClick={() => goBack(() => route(signedIn ? "/sources" : "/"))}

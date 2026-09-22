@@ -156,7 +156,7 @@ export function Guard({
   }
   if (state.status === "error") {
     return (
-      <main class="mx-auto w-full max-w-list px-5 pt-8 md:px-8">
+      <main class="mx-auto w-full max-w-reading px-5 pt-8 md:px-8">
         <p class="text-ui text-consequence">
           Couldn't load your account: {state.error.message}.{" "}
           <Retry onClick={retry} />
@@ -165,7 +165,7 @@ export function Guard({
     );
   }
   return (
-    <main class="mx-auto w-full max-w-list px-5 pt-8 md:px-8">
+    <main class="mx-auto w-full max-w-reading px-5 pt-8 md:px-8">
       <div class="skeleton h-8 w-48" />
     </main>
   );

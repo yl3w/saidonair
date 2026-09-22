@@ -181,8 +181,9 @@
   --text-label--letter-spacing: 0.09em;
 
   /* The measures of docs/design.md §2.3, as `max-w-*` and (for the rail) `w-*`. */
+  /* One measure for every screen (owner decision 2026-09-21). A list measure of 47.5rem sat beside
+     this one until then, and the same component was a different width from page to page. */
   --container-reading: 42.5rem; /* 680 px */
-  --container-list: 47.5rem; /* 760 px */
   --container-rail: 14.5rem; /* 232 px */
   --container-rail-wide: 18rem; /* 288 px, when it holds the calendar */
   --width-rail: 14.5rem;

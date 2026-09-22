@@ -66,7 +66,7 @@ export function AuthCallback() {
   }, [adopt, route]);
 
   return (
-    <main class="mx-auto w-full max-w-list px-5 pt-8 md:px-8">
+    <main class="mx-auto w-full max-w-reading px-5 pt-8 md:px-8">
       {failed ? (
         <p class="text-ui text-consequence">
           That sign-in could not be completed — the link may have been used

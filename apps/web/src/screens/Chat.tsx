@@ -152,12 +152,12 @@ function ChatScreen() {
            link and has nowhere to return to. */
         <header class="sticky top-0 z-20 border-b border-rule bg-ground">
           {/* Constrained to the reading measure, as the reading column's bar is: the arrow and the
-              name line up with the conversation beneath rather than with the window. A channel's
-              bar spans the window because its column is a list measure; this one is not. */}
+              name line up with the conversation beneath rather than with the window. Every screen
+              is one measure since 2026-09-21, so every bar is capped the same way. */}
           <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
             <button
               type="button"
-              class="btn btn-ghost btn-square"
+              class="btn btn-ghost btn-square -ml-3"
               onClick={() => goBack(() => route("/chats"))}
             >
               <Icon of={ArrowLeft} size={20} label={BACK_COPY} />

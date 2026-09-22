@@ -198,7 +198,7 @@ function ReadingScreen() {
 
       <header class="sticky top-0 z-20 border-b border-rule bg-ground">
         <div class="mx-auto flex h-14 max-w-reading items-center gap-2 px-5 md:px-8">
-          <a href={back.href} class="btn btn-ghost btn-square">
+          <a href={back.href} class="btn btn-ghost btn-square -ml-3">
             <Icon of={ArrowLeft} size={20} label={back.label} />
           </a>
 
