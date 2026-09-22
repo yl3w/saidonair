@@ -5,11 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="What was said on the air, in text, with the minute it was said." />
     <title>Said on Air</title>
-  </head>
-  <body>
-    <div id="app"></div>
     <!--
-      The reader's theme before first paint, so dark never starts white. Deliberately duplicated
+      The reader's theme before first paint, so dark never starts white. In `<head>` since
+      2026-09-21: the Worker renders the public pages, so there is now markup the browser can paint
+      before a script at the end of `<body>` would have run. Deliberately duplicated
       from lib/settings.ts rather than imported: the module bundle loads after paint, which is the
       whole flash this avoids. Defensive throughout — blocked storage, a corrupt value and an
       unknown name all fall through to the light default the stylesheet already carries.
@@ -35,6 +34,9 @@
         }
       })();
     </script>
+  </head>
+  <body>
+    <div id="app"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

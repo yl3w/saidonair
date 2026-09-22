@@ -44,7 +44,9 @@ export function Landing() {
   }, [signedIn, route]);
 
   const [needle, setNeedle] = useState("");
-  const [load, reload] = useLoad(() => api.listChannels(), []);
+  const [load, reload] = useLoad(() => api.listChannels(), [], {
+    bootstrapKey: "landing",
+  });
 
   return (
     <Page>

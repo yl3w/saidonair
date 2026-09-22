@@ -1,3 +1,4 @@
+import preact from "@preact/preset-vite";
 import { defineConfig } from "vitest/config";
 
 /**
@@ -15,6 +16,10 @@ import { defineConfig } from "vitest/config";
  * try to stand a Worker up around a unit test.
  */
 export default defineConfig({
+  // The same preset the app is built with. Without it the default JSX runtime is React's, and the
+  // server render test — which renders the real application tree — cannot resolve it. Setting
+  // `esbuild.jsxImportSource` does not help: Vitest 4 on Vite 8 transforms with oxc, not esbuild.
+  plugins: [preact()],
   test: {
     environment: "node",
     include: ["test/**/*.test.ts", "test/**/*.test.tsx"],

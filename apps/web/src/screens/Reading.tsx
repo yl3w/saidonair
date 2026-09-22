@@ -108,6 +108,7 @@ function ReadingScreen() {
   const [load, reload] = useLoad(
     () => api.getEpisodeById(episodeId),
     [episodeId],
+    { bootstrapKey: `episode:${episodeId}` },
   );
 
   useDocumentTitle(load.status === "ready" ? load.data.episode.title : null);

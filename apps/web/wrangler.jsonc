@@ -10,7 +10,7 @@
   // environments, so each one repeats `assets` and `services`; test/wrangler-config.test.ts fails
   // when they drift.
   "name": "media-digest-web-staging",
-  "main": "src/server/worker.ts",
+  "main": "src/server/worker.tsx",
   "compatibility_date": "2026-08-22",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
@@ -18,7 +18,14 @@
     "binding": "ASSETS",
     // Deep links and reloads: a path with no file behind it is the SPA's to route, exactly as Pages
     // served index.html for unknown paths (AGENTS.md → the web section).
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // **Every public route, not just `/`.** The plan expected `/` alone to need reclaiming,
+    // because it is the one path with a file behind it. That was wrong and `wrangler dev` said so:
+    // `not_found_handling: "single-page-application"` answers *every* unmatched path with
+    // index.html before the Worker is invoked, so a channel and a summary were served as the bare
+    // shell while `/` rendered. `/sources` itself is absent on purpose — it is the reader's screen
+    // and guarded (docs/specs/public-reading.md §3, decision 2b).
+    "run_worker_first": ["/", "/sources/*", "/read/*"]
   },
   // In-process calls to the API: no DNS, no TLS, no public hop, and no CORS. Unused until step 8.
   "services": [{ "binding": "API", "service": "media-digest-api-staging" }],
@@ -28,7 +35,9 @@
       "assets": {
         "directory": "./dist/client",
         "binding": "ASSETS",
-        "not_found_handling": "single-page-application"
+        "not_found_handling": "single-page-application",
+        // Every public route: the SPA fallback answers unmatched paths before the Worker runs.
+        "run_worker_first": ["/", "/sources/*", "/read/*"]
       },
       "services": [{ "binding": "API", "service": "media-digest-api-dev" }]
     },
@@ -37,7 +46,9 @@
       "assets": {
         "directory": "./dist/client",
         "binding": "ASSETS",
-        "not_found_handling": "single-page-application"
+        "not_found_handling": "single-page-application",
+        // Every public route: the SPA fallback answers unmatched paths before the Worker runs.
+        "run_worker_first": ["/", "/sources/*", "/read/*"]
       },
       "services": [{ "binding": "API", "service": "media-digest-api" }]
     }

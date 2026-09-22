@@ -80,10 +80,12 @@ function SourceScreen() {
   const [channel, reloadChannel] = useLoad(
     () => api.getChannel(channelId),
     [channelId],
+    { bootstrapKey: `channel:${channelId}` },
   );
   const [episodes, reloadEpisodes] = useLoad(
     () => api.listEpisodes(channelId, EPISODE_LIMIT),
     [channelId],
+    { bootstrapKey: `episodes:${channelId}` },
   );
 
   // Coming back from a summary: this history is publication-ordered and nothing leaves it, so the

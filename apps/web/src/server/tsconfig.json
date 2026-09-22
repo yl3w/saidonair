@@ -14,7 +14,9 @@
     "jsxImportSource": "preact",
     "lib": ["ES2022"],
     "noEmit": true,
-    "types": ["@cloudflare/workers-types"]
+    // `vite/client` as well as workerd's: this program compiles the application tree, and
+    // `src/api.ts` reads `import.meta.env.VITE_API_URL`.
+    "types": ["@cloudflare/workers-types", "vite/client"]
   },
   // The server's own tests compile here too: they exercise code whose globals are
   // workerd's, and the browser program excludes them for the same reason.

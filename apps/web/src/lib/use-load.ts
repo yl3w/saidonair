@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useBootstrap } from "./bootstrap";
 
 export type Load<T> =
   | { status: "loading" }
@@ -21,11 +22,25 @@ export type Load<T> =
 export function useLoad<T>(
   loader: () => Promise<T>,
   deps: readonly unknown[],
-  options: { enabled?: boolean; retainDataOnReload?: boolean } = {},
+  options: {
+    enabled?: boolean;
+    retainDataOnReload?: boolean;
+    /**
+     * What the server rendered this screen from, if it did (lib/bootstrap.tsx). It seeds the first
+     * state so the client's first paint is the markup it was handed rather than a skeleton over
+     * the top of it; the loader still runs, and its answer replaces this.
+     */
+    bootstrapKey?: string;
+  } = {},
 ): [Load<T>, () => void] {
   const enabled = options.enabled ?? true;
   const retainDataOnReload = options.retainDataOnReload ?? false;
-  const [state, setState] = useState<Load<T>>({ status: "loading" });
+  const booted = useBootstrap<T>(options.bootstrapKey);
+  const [state, setState] = useState<Load<T>>(
+    booted === undefined
+      ? { status: "loading" }
+      : { status: "ready", data: booted, refreshing: true, refreshError: null },
+  );
   const [tick, setTick] = useState(0);
   const reloadRequested = useRef(false);
   const previousDeps = useRef<readonly unknown[] | null>(null);

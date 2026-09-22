@@ -23,6 +23,7 @@ type WranglerEnv = {
     directory?: string;
     binding?: string;
     not_found_handling?: string;
+    run_worker_first?: string[];
   };
   services?: Named[];
 };
@@ -105,6 +106,11 @@ describe("apps/web/wrangler.jsonc", () => {
         directory: "./dist/client",
         binding: "ASSETS",
         not_found_handling: "single-page-application",
+        // Every public route, because `not_found_handling: "single-page-application"` answers an
+        // unmatched path with index.html *before* the Worker is invoked — so without this a
+        // channel and a summary are served as the bare shell while `/` renders. `/sources` is
+        // absent on purpose: it is the reader's screen and guarded.
+        run_worker_first: ["/", "/sources/*", "/read/*"],
       });
     }
   });

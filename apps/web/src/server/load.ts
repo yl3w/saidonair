@@ -40,7 +40,10 @@ export async function load(route: PublicRoute, api: Fetcher): Promise<Loaded> {
         headers: { accept: "application/json" },
       }),
     );
-    if (response.status === 404) return null;
+    // 404 and 400 are both "this URL names nothing": the API answers 400 for an id of the wrong
+    // shape — `/read/nosuchepisode` is eleven characters short of a YouTube id — and a reader who
+    // followed a mangled link wants a 404 page, not a page saying the service is unavailable.
+    if (response.status === 404 || response.status === 400) return null;
     if (!response.ok) throw new Error(`API ${response.status} on ${path}`);
     return (await response.json()) as T;
   };

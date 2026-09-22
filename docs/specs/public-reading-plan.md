@@ -2,8 +2,8 @@
 
 **Implements:** `docs/specs/public-reading.md` under `AGENTS.md`.
 **Written:** 2026-09-21, against `main` at `04d5d85`.
-**Status:** **IN PROGRESS.** Steps 1–7 complete 2026-09-21 — the feature works client-rendered; steps 8–10
-(server rendering, the crawl surface, the product record) outstanding. Step 3's Google round trip
+**Status:** **IN PROGRESS.** Steps 1–8 complete 2026-09-21 — the three public routes are rendered on the edge;
+steps 9–10 (the crawl surface, the product record) outstanding. Step 3's Google round trip
 is the owner's to walk; step 4's landing page was walked by the owner in a browser and produced two changes — the
 client-side refusal of the public reads, and the shell collapsing from two bars to one.
 **Shape:** ten steps, each one or more commits when the owner asks, each ending with `pnpm check` green **and the
@@ -516,6 +516,24 @@ through the service binding (the probe was deleted in the same commit); and touc
 `[vite] (client) hmr update /src/styles.css` alongside an `(ssr) hmr update` of the worker entry, so hot reload
 survives too. Risk 2 did not materialise — the Cloudflare plugin, the Preact preset and the Tailwind plugin
 coexist. Risk 3 did not either, once the process table was clean.
+
+**Step 8, 2026-09-21.** Under `pnpm dev`: `/`, a channel and a summary each answer with their own
+`<title>`, description, `og:*` and canonical; a summary's markup carries its lede and its takeaways, so a crawler
+and an unfurl read the thing itself. An unknown episode id answers **404**, a guarded path answers the bare shell,
+a font is served without invoking the Worker, and `grep -ril zod apps/web/dist/client` finds nothing.
+
+**Risk 1 was understated, and `wrangler dev` said so.** The plan expected `/` alone to need `run_worker_first`,
+being the one public path with a file behind it. In fact `not_found_handling: "single-page-application"` answers
+**every** unmatched path with `index.html` before the Worker is invoked — so a channel and a summary were served
+as the bare shell while `/` rendered. All three public routes are named now, and the drift test pins them.
+
+**Two more found the same way.** The API answers **400**, not 404, for an id of the wrong shape, so a mangled link
+rendered as "unavailable" with a 200; 400 and 404 are now both "this URL names nothing". And the shell's own
+`<meta name="description">` survived beside the injected one, so every rendered page carried two and a crawler
+reads the first — the generic one. The shell's is stripped before the head tags go in.
+
+**Not verified under `wrangler dev`:** the `unavailable` branch — the shell, uncached, when the API is down. It is
+unit-tested in `test/server/load.test.ts` and its six lines in the handler are not.
 
 **A trap found by a dry run, not by reading** — and the reason step 1's scripts do not look like the API's.
 `@cloudflare/vite-plugin` flattens **one** environment into a generated config under `dist/ssr/`, and writes
