@@ -1,4 +1,5 @@
 import { PRODUCT_TAGLINE } from "../lib/copy";
+import { SignInAction } from "./SignInAction";
 
 /**
  * The frame a signed-out visitor arrives into (docs/design.md → The signed-out shell).
@@ -43,6 +44,7 @@ export function PublicShell() {
         <p class="ml-4 hidden border-l border-rule pl-4 font-reading text-excerpt text-ink-2 md:block">
           {PRODUCT_TAGLINE}
         </p>
+        <SignInAction />
       </div>
     </header>
   );

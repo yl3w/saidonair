@@ -686,10 +686,19 @@ border, reading as loose text with a button beside it. `alert-quiet` sets daisyU
 controls, and trims the padding: a standing invitation on every page is not an event, and 12 px top and bottom on
 each of them adds up.
 
-**Two doors of unequal weight.** *Sign up* is the button and *or sign in* is a link beside it. A stranger is the
-audience of a public page, so the returning reader gets the smaller target; both go to `/sign-in`, because a first
-sign-in is what creates the account. The sentence says what an account *adds* — the bar has already said what the
-product *is*, and two pitches in the same words would be one too many.
+**The two doors sit where their audiences look** (revised 2026-09-21). **Sign in** is in the bar's top-right
+corner, which is the "who you are" slot — a reader's email and monogram are there, and for a visitor it holds the
+way to become one. A returning reader looks there without reading anything, which is the whole argument. **Sign up**
+is the alert's one button, for the stranger who needs telling first. Both go to `/sign-in`, because a first sign-in
+is what creates the account, and the door says so in a line of its own so that whichever word was clicked was the
+right one.
+
+The alert's sentence says what an account *adds* — the bar has already said what the product *is*, and two pitches
+in the same words would be one too many.
+
+The sign-in control belongs to three bars — the public shell's, the channel's and the summary's — so like the
+alert it **decides for itself whether to render**. A control each bar has to remember to add is a control one bar
+will not have; that failure happened four times on the day this was built.
 
 It carries **no `role="alert"`**, which daisyUI's own examples do: that role is a live region, announced over
 whatever a screen reader is currently reading, and this is a standing invitation rather than something that just

@@ -1,9 +1,5 @@
 import { useLocation } from "preact-iso";
-import {
-  PUBLIC_INVITE_COPY,
-  PUBLIC_JOIN_COPY,
-  PUBLIC_SIGN_IN_COPY,
-} from "../lib/copy";
+import { PUBLIC_INVITE_COPY, PUBLIC_JOIN_COPY } from "../lib/copy";
 import { useSession } from "../session";
 
 /**
@@ -40,17 +36,14 @@ export function JoinAlert() {
           empty states). At body size in serif the sentence needed 680 px to itself and wrapped
           inside the reading column. */}
       <span class="text-ui text-ink">{PUBLIC_INVITE_COPY}</span>
-      {/* Two doors of unequal weight, and `shrink-0` on both: in the horizontal layout the
-          sentence takes the free space and the controls are what give, which folded a label onto
-          two lines once already. The sentence may wrap — it is prose; a control may not. */}
-      <span class="flex shrink-0 items-center gap-3 whitespace-nowrap">
-        <a class="btn btn-quiet btn-sm" href={signIn}>
-          {PUBLIC_JOIN_COPY}
-        </a>
-        <a class="link link-hover text-meta text-ink-2" href={signIn}>
-          {PUBLIC_SIGN_IN_COPY}
-        </a>
-      </span>
+      {/* One door here. Signing in moved to the bar's top-right corner, where a returning reader
+          looks without reading anything (components/SignInAction.tsx); this is for the stranger
+          who needs telling first, so it says Sign up and nothing else. `shrink-0` and
+          `whitespace-nowrap` because the sentence takes the free space and a control may not
+          fold. */}
+      <a class="btn btn-quiet btn-sm shrink-0 whitespace-nowrap" href={signIn}>
+        {PUBLIC_JOIN_COPY}
+      </a>
     </div>
   );
 }

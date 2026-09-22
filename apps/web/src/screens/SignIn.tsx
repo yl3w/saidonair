@@ -1,7 +1,7 @@
 import { useEffect } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { API_BASE_URL } from "../api";
-import { PRODUCT_TAGLINE } from "../lib/copy";
+import { PRODUCT_TAGLINE, SIGN_IN_CREATES_ACCOUNT_COPY } from "../lib/copy";
 import { safeNextPath } from "../lib/next-path";
 import { useDocumentTitle } from "../lib/title";
 import { useSession } from "../session";
@@ -50,8 +50,8 @@ export function SignIn() {
           Continue with Google
         </a>
         <p class="mt-3 text-meta text-ink-3">
-          We ask Google only for your name and email address, and never post
-          anything.
+          {SIGN_IN_CREATES_ACCOUNT_COPY} We ask Google only for your name and
+          email address, and never post anything.
         </p>
       </div>
     </main>

@@ -12,6 +12,7 @@ import { FollowButton } from "../components/FollowButton";
 import { Icon } from "../components/Icon";
 import { MetaLine } from "../components/MetaLine";
 import { Page } from "../components/Page";
+import { SignInAction } from "../components/SignInAction";
 import {
   fullDate,
   SummaryRow,
@@ -312,6 +313,8 @@ function SourceBar({
             </a>
           </div>
         )}
+        {/* Renders nothing for a reader, whose own account sits in this corner instead. */}
+        <SignInAction />
       </div>
     </header>
   );

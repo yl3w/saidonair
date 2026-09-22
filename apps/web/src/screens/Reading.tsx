@@ -9,6 +9,7 @@ import { MetaLine } from "../components/MetaLine";
 import { Page } from "../components/Page";
 import { Retry } from "../components/Retry";
 import { Sheet } from "../components/Sheet";
+import { SignInAction } from "../components/SignInAction";
 import { setAskScope } from "../lib/ask-scope";
 import {
   ASK_COPY,

@@ -557,7 +557,10 @@ export const PUBLIC_INVITE_COPY =
  * one. Both go to `/sign-in`, because a first sign-in is what creates the account.
  */
 export const PUBLIC_JOIN_COPY = "Sign up";
-export const PUBLIC_SIGN_IN_COPY = "or sign in";
+export const PUBLIC_SIGN_IN_COPY = "Sign in";
+/** On the door itself, so whichever word they clicked was the right one. */
+export const SIGN_IN_CREATES_ACCOUNT_COPY =
+  "New here? Signing in creates your account.";
 
 /** The one name for narrowing a channel list — placeholder and accessible name both. */
 export const FIND_CHANNEL_COPY = "Find a channel";
