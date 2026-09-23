@@ -56,10 +56,20 @@ export function registry() {
  * bypass behind a flag is still a bypass that shipped (docs/specs/auth-phase.md §3) — so a test
  * inserts the rows a real sign-in would have written and presents the session's own token, which
  * A0 proved the bearer plugin accepts. Idempotent per address, so repeated calls are one identity.
+ *
+ * **The rows are written once per address per isolate, not once per call** (2026-09-22). Every
+ * request helper in the suite calls this, so it ran twice per HTTP call — and the heaviest test in
+ * the suite makes twenty-seven of them, which was fifty-four D1 writes to prove one identity
+ * twenty-seven times. `afterEach` wipes the two Durable Objects and never D1, so the rows outlive
+ * the test that made them and re-writing them was always redundant. The cache is per isolate, and
+ * `beforeAll` builds the schema per isolate, so the two agree.
  */
+const signedInEmails = new Set<string>();
+
 export async function signedIn(email: string): Promise<Record<string, string>> {
   const slug = email.replace(/[^a-z0-9]/gi, "_");
   const token = `test-token-${slug}`;
+  if (signedInEmails.has(email)) return { Authorization: `Bearer ${token}` };
   const now = new Date().toISOString();
   const later = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
   await env.AUTH_DB.prepare(
@@ -74,6 +84,7 @@ export async function signedIn(email: string): Promise<Record<string, string>> {
   )
     .bind(`sess_${slug}`, later, token, now, now, `auth_${slug}`)
     .run();
+  signedInEmails.add(email);
   return { Authorization: `Bearer ${token}` };
 }
 

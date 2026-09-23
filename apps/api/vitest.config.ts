@@ -47,5 +47,24 @@ export default defineConfig({
   test: {
     pool: cloudflarePool(workersOptions),
     setupFiles: ["./test/setup.ts"],
+    /**
+     * Vitest's default is 5,000 ms, and this suite's slowest tests live right under it — which is
+     * what made `routes-follows-digest` → "bounds the range…" fail about twice in twenty-four full
+     * runs, always that test, always at ~5,050 ms (2026-09-22).
+     *
+     * It is not a hang. Measured across sixteen full-suite runs it costs **2.6 s to 5.1 s**, a
+     * continuous spread, against **394 ms** when its file runs alone — the difference is the other
+     * forty-three files competing for the machine. Two tests are in that band, not one:
+     *
+     *     4,967 ms  routes-follows-digest  bounds the range, filters unread and by channel…
+     *     4,091 ms  registry-episodes      holds together past the bound-parameter ceiling
+     *     2,444 ms  routes-channels        answers one episode, and records or undoes its receipt…
+     *
+     * Both are heavy on purpose: the first makes twenty-seven requests over a seeded catalog, and
+     * the second deliberately blows past the 100 bound-parameter ceiling. A budget equal to the
+     * worst case is not a budget, so this is three times the worst measured. A real hang still
+     * fails, fifteen seconds later.
+     */
+    testTimeout: 15_000,
   },
 });

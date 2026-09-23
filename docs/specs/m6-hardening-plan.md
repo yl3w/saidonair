@@ -191,40 +191,40 @@ stays, as an optimisation rather than as the thing correctness rests on.
 the race by hand: a live instance whose storage is wiped throws `no such table` on its next call,
 and the same instance with the rebuild in place keeps serving with no abort at all.
 
-### A second flake, still open
+### A second flake, found and closed
 
-Reproduction runs turned up a different failure that this fix does **not** address, and it was
-first written up here as the same cause wearing a different face. **That was wrong, and the
-evidence that corrected it is that it happened again after the fix.**
+Reproduction runs turned up a different failure that the wipe fix did **not** address, and it was
+first written up here as the same cause wearing a different face. That was wrong, and the evidence
+that corrected it is that it happened again after the fix.
 
 `routes-follows-digest.test.ts` → `bounds the range, filters unread and by channel, pages by
-cursor, and answers compact rows` fails roughly **twice in twenty-four full-suite runs**, once
-before this fix and once after. It is always that test, and always at about **5,126 ms**.
+cursor, and answers compact rows` failed about **twice in twenty-four** full-suite runs. Always
+that test, always at about 5,050 ms.
 
-That number is the finding. The test takes **394 ms** when it passes, so the failure is not slow
-machinery under load — 5,000 ms is Vitest's default `testTimeout`, and the test is **hanging into
-it**, not overrunning a budget. A thirteen-fold jump is a stall, and the obvious place to look is
-the Durable Object input gate: a call that never settles blocks every later caller, and this is the
-heaviest test in the file, running immediately after another that exercises the same object.
+**It is not a hang, and the diagnosis took two wrong turns worth recording.** First reading: a
+stall, because 5,126 ms against a 394 ms baseline is thirteen times the work. Second reading, after
+ten samples: bimodal, because nothing landed between 2.9 s and 4.9 s and a load-driven spread would
+fill that band. Both wrong. Sixteen samples fill it — 4,563 and 4,908 among them — and the shape is
+one continuous spread from **2.6 s to 5.1 s**. The gap was small-sample noise, read as structure.
 
-What is *not* yet known is the error the runner prints when it happens, because ten consecutive
-runs after the fix were clean and the capture never fired. Left open deliberately rather than
-papered over: raising the timeout would turn a 394 ms test into a 10 s one and throw away the only
-signal there is.
+What is actually true: the test costs **394 ms when its file runs alone and 2.6–5.1 s inside the
+full suite**, because forty-three other files are competing for the machine, and Vitest's default
+`testTimeout` is **5,000 ms**. The budget cuts through the top of the distribution. Two tests are
+in that band, not one — `registry-episodes` → "holds together past the bound-parameter ceiling"
+measures 4,091 ms — and both are heavy deliberately: twenty-seven seeded requests in the first, a
+deliberate breach of the 100 bound-parameter ceiling in the second.
 
----
+So `testTimeout` is **15,000 ms**, three times the worst measured, recorded with the numbers in
+`vitest.config.ts`. A real hang still fails, fifteen seconds later. Raising a timeout is usually
+how a defect gets hidden, which is why the measurement is in the file: the claim is not "it is
+slow sometimes" but "its worst case is 5.1 s and the budget was 5.0 s".
 
-## Risks
-
-- **Step 3 finds a defect.** Plausible: it is the first enumeration of response shapes. The plan's answer is to
-  stop and report rather than to fix inside M6 — a hardening milestone that quietly repairs what it audits is a
-  milestone nobody can read afterwards.
-- **The ledger rots.** Spec §3 names 75 tests by their `it(...)` strings, and a rename breaks the link silently.
-  Accepted in spec §8 with the reason; the alternative was a half-prose test file. Worth revisiting only if a test
-  named there is renamed and the drift goes unnoticed.
-- **A verdict is wrong.** The sweep was one reader's pass. The structural verdicts are the ones to doubt first —
-  eight claims rest on an argument rather than an assertion, and §2 sets the bar deliberately high for exactly that
-  reason. Any of the eight can be promoted to a test later without disturbing anything.
+**And one genuine waste came out of the hunt.** `helpers.ts` `signedIn` wrote two D1 rows on
+*every* call, and the request helpers call it per request — fifty-four writes to establish one
+identity twenty-seven times in that one test. `afterEach` wipes the two Durable Objects and never
+D1, so the rows already outlived the test that made them. It is memoised per isolate now. That is
+not what was failing — the test still timed out with the memoisation in place, which is how we know
+— but it was worth keeping.
 
 ## What this leaves open
 
