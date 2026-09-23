@@ -143,18 +143,31 @@ Then this plan gains a Record section, the way the other plans carry theirs.
 - **Step 4 existed because Step 5 was being written.** Recording *why* a gap was accepted is what
   exposed that the reason was a rule nobody had re-examined. That is the whole method of this
   milestone applied to the milestone itself.
-- **A flake, and a stale cache.** One `pnpm check` run failed with `no such table: global_users`;
-  separately, `pnpm check` replayed a cached success while `biome` reported unused imports in
-  `app.tsx`, `History.tsx` and `Sources.tsx` that predate M6. Both were left out of M6 on purpose —
-  neither is §8's, and a hardening milestone that quietly repairs what it audits is one nobody can
-  read afterwards — and **both were then fixed on the owner's instruction, in a commit of their
-  own.** See the postscript.
+- **A flake, and some unread warnings.** One `pnpm check` run failed with `no such table:
+  global_users`; separately, `biome` was reporting unused imports in `app.tsx`, `History.tsx` and
+  `Sources.tsx` that predate M6. Both were left out of M6 on purpose — neither is §8's, and a
+  hardening milestone that quietly repairs what it audits is one nobody can read afterwards — and
+  **both were then fixed on the owner's instruction, in a commit of their own.** See the
+  postscript, which also corrects what was first written here about the second one.
 
 ## Postscript — the two findings, fixed 2026-09-22
 
 Not M6's work; recorded here because M6 is where they were found.
 
-**The unused imports** were three files, not the five warnings first reported: `app.tsx` (the call
+**The unused imports, and a claim about `pnpm check` that was wrong.** This plan first recorded
+them as a case of `pnpm check` "replaying a cached success" while lint was broken. **It was not.**
+`noUnusedImports` is a *warning* under biome's `recommended: true`, and biome exits `0` on
+warnings — checked by restoring one of the imports and running both `biome check` and `pnpm lint`,
+which report `Found 1 warning` and exit `0`. So the gate was never green while failing; it was
+green because it is configured to tolerate warnings. Turbo's `9 cached, 9 total` was an ordinary,
+honest cache hit and hid nothing. The `pnpm check` failure that prompted the theory was caused by
+formatting errors in the two component test files written minutes earlier — my own, and
+misattributed.
+
+What survives of the finding is smaller and still worth having: **warnings accumulate here and
+nobody reads them**, because the gate does not stop for them.
+
+The imports themselves were three files, not the five warnings first reported: `app.tsx` (the call
 to `applyReaderSettings` had moved to `main.tsx`, where it still runs, and only the import stayed
 behind), `Sources.tsx` (`channelStateCopy`, `summaryCountCopy`, `relativeTime`), and `History.tsx`
 (`dayKeyOf`, `weekWindow`). Each was checked for the thing an unused import can be hiding — a
