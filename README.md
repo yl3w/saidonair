@@ -1,15 +1,21 @@
 # Said on Air
 
+## Releases
+
+- [v0](https://github.com/yl3w/saidonair/tree/v0) — Web hosted on Cloudflare Pages.
+- [v1](https://github.com/yl3w/saidonair/tree/v1) — Web hosted on Cloudflare Workers with static assets.
+
+## Overview
+
 Said on Air is a personal media digest assistant for a small, trusted group of
 people. It maintains one shared catalog of YouTube channels, processes each
 long-form episode once, and gives every user their own follows, digest, read
 state, and conversations.
 
 The project is a long-lived personal tool rather than a hosted public service.
-Every feature milestone is built: the shared catalog, ingestion and summaries,
-the reader's queue and reading column, owner curation, and chats that answer
-from the channels you follow. What remains is a verification sweep of the
-criteria in [`docs/PRD.md`](docs/PRD.md) §8.
+The v1 feature milestones and the M6 verification sweep are complete. The current
+behavior and its known limits are documented in the
+[feature guide](docs/features/v1/README.md).
 
 ## What it does
 
@@ -30,10 +36,11 @@ criteria in [`docs/PRD.md`](docs/PRD.md) §8.
   recover episode processing failures.
 - Publishes an OpenAPI 3.1 document and an interactive API reference.
 
-Said on Air is intended for trusted deployments. Identity is supplied as an
-email address by the client; the application deliberately does not implement
-authentication or API authorization. The web app shows owner controls to the
-owner role, and that is the only gate.
+Said on Air uses Google sign-in through better-auth. The API verifies a bearer
+session, assigns a stable `user_id`, and enforces owner permissions for catalog
+management and operational reads. The web also offers public catalog and summary
+reading without a session. The API supports Facebook when configured, although
+the current sign-in screen offers only Google.
 
 ## Screens
 
@@ -42,33 +49,30 @@ navigation for everyone; the owner simply has one more destination.
 
 | Route | Screen |
 |---|---|
-| `/` | Who this is for — an email, and the ones this browser has used |
-| `/queue` | Unread summaries, grouped by the day they became readable |
-| `/read/:episodeId` | One reading column, with `Ask` and `Done` |
-| `/history`, `/history/:day` | The library, and the only place a read receipt is undone |
-| `/sources`, `/sources/:id` | Following, catalog and declined channels; and one channel |
-| `/chats`, `/chats/:id` | Conversations, each named by its first question |
-| `/account` | Which email is reading, the reading type, size and theme |
-| `/curate`, `/curate/:id` | The owner's decisions, catalog health, and recovery (desktop) |
+| `/` | Public channel catalog |
+| `/sign-in`, `/auth/callback` | Google sign-in and session handoff |
+| `/queue`, `/queue/:day` | Unread summaries, one local day at a time |
+| `/read/:episodeId` | Public summary reading; personal `Ask` and `Done` when eligible |
+| `/history`, `/history/:day` | Personal history and read receipts |
+| `/sources`, `/sources/:id` | Personal source list and public channel detail |
+| `/chats`, `/chats/new`, `/chats/:chatId` | Personal conversations and composer |
+| `/account` | Account details, appearance settings, and chat instructions |
+| `/curate`, `/curate/:id` | Owner decisions, catalog health, and recovery (desktop) |
 
 ## Architecture
 
 ```text
-          Cloudflare Pages (Vite + Preact + daisyUI)
-                            |
-                     Hono API Worker
-                            |
-        +-------------------+--------------------+
-        |                   |                    |
-  Registry DO          User DO per email   Cloudflare Workflows
-  catalog, follows,    read receipts,      one instance per attempt
-  episodes, attempts,  chats, preferences   |-- YouTube public RSS
-  runs, summaries                           |-- DownSub transcripts
-                                            |-- Workers AI
-                                            `-- Vectorize
-                            |
-  chat: embed the question -> Vectorize, filtered to eligible channels
-  or one episode -> cross-encoder rerank -> Workers AI answer
+Public and signed-in browser
+        |
+Cloudflare web Worker (static Vite/Preact assets + server-rendered public routes)
+        | API service binding for server rendering; browser API calls use session bearer
+Hono API Worker + better-auth
+        |-- D1: authentication sessions and accounts
+        |-- Registry DO: shared catalog, follows, episodes, attempts, summaries
+        |-- User DO per user_id: receipts, chats, preferences
+        |-- Workflows: one instance per episode attempt
+        |-- Workers AI and Vectorize: summaries and grounded chat
+        `-- YouTube public RSS and DownSub transcripts
 ```
 
 The Registry Durable Object owns the shared catalog, follows, episodes,
@@ -81,16 +85,16 @@ generation and deletes the generations it supersedes.
 ## Technology
 
 - TypeScript, pnpm workspaces, and Turborepo
-- Cloudflare Workers, Pages, SQLite Durable Objects, Workflows, Workers AI, and
-  Vectorize
+- Cloudflare Workers with static assets, D1, SQLite Durable Objects,
+  Workflows, Workers AI, and Vectorize
 - Hono, Zod 4, and `hono-openapi` for the API, with Scalar as the reference page
 - Preact, `preact-iso`, and Vite for the web app; Tailwind CSS 4 with daisyUI 5
   under one custom theme, and Lucide icons
 - Workers AI: `@cf/meta/llama-3.3-70b-instruct-fp8-fast` for summaries and chat,
   `@cf/baai/bge-base-en-v1.5` for embeddings, `@cf/baai/bge-reranker-base` for
   chat relevance
-- Vitest and the Cloudflare Workers test pool for the API; the web app is
-  typechecked and linted
+- Vitest with the Cloudflare Workers test pool for the API; Node Vitest tests for
+  web logic, server rendering, and component rendering; TypeScript and Biome checks
 - Biome for formatting and linting
 
 ## Local development
@@ -114,16 +118,22 @@ cp apps/api/.dev.vars.example apps/api/.dev.vars
 pnpm dev
 ```
 
-Set `OWNER_EMAIL` in `apps/api/.dev.vars`. `DOWNSUB_API_KEY` is optional for
-starting the app, but transcript retrieval is unavailable without it. Never
-commit secrets.
+Set `OWNER_EMAIL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, and
+`GOOGLE_CLIENT_SECRET` in `apps/api/.dev.vars` to sign in locally. Register
+`http://localhost:8787/auth/callback/google` with Google: the dev API uses
+`API_BASE_URL=http://localhost:8787` from `apps/api/wrangler.jsonc`, and the
+callback origin must match. Before the first sign-in, apply
+[`apps/api/migrations/auth/0001_better_auth.sql`](apps/api/migrations/auth/0001_better_auth.sql)
+to the local auth D1 database using the command in that file. Durable Object
+migrations do not initialize D1. `DOWNSUB_API_KEY` is optional for starting the
+app, but transcript retrieval is unavailable without it. Never commit secrets.
 
 The development servers are available at:
 
 - Web app: <http://localhost:5173>
-- API: <http://127.0.0.1:8787>
-- Interactive API reference: <http://127.0.0.1:8787/docs>
-- OpenAPI document: <http://127.0.0.1:8787/openapi.json>
+- API: <http://localhost:8787>
+- Interactive API reference: <http://localhost:8787/docs>
+- OpenAPI document: <http://localhost:8787/openapi.json>
 
 To start over with empty local state, ask an agent to run the `clean-local`
 skill, which wipes the dev environment's Durable Object storage and, on
@@ -157,42 +167,50 @@ metadata index returns zero matches rather than an error, so run
 
 ## Environments and deployment
 
-The Worker has isolated `dev`, `staging`, and `production` environments, each
-with its own Durable Objects, Vectorize index, and Workflow. The top-level
-Wrangler configuration is staging so a bare deployment cannot reach
-production. Cron triggers exist in production only; staging and dev are driven
-by hand.
+The API and web Workers each have isolated `dev`, `staging`, and `production`
+environments. The API has tier-specific Durable Objects, an auth D1 database, a
+Vectorize index, and a Workflow. Cron triggers exist in production only; staging
+and dev are driven by hand. The API's top-level Wrangler configuration is staging.
+The web build selects its tier with `CLOUDFLARE_ENV` and embeds the matching API
+service binding; use the package deploy scripts, which rebuild for that tier.
 
 ```sh
 pnpm --filter api deploy             # staging
 pnpm --filter api deploy:production  # production
+pnpm --filter web deploy             # staging web
+pnpm --filter web deploy:production  # production web
 ```
 
-Deployment requires the environment's Cloudflare resources and secrets to be
-provisioned first. See the [environment guide](AGENTS.md#environments) before
-deploying.
+Deployment requires each tier's Cloudflare resources, auth D1 schema, OAuth
+secrets and callback origins, and web/API origin configuration to be provisioned
+first. See the [environment guide](AGENTS.md#environments) and
+[auth phase](docs/specs/auth-phase.md) before deploying.
 
 ## Repository structure
 
 ```text
 apps/api/        Cloudflare Worker, Durable Objects, Workflows, and tests
-apps/web/        Preact web application
+apps/web/        Preact web Worker, public server rendering, and tests
 packages/shared/ Shared Zod schemas and TypeScript API types
-docs/            Product requirements, the design guide, and implementation plans
+docs/            Product overview, v1 features, design guide, and historical plans
 skills/          Repository-specific agent skills
 scripts/         Skill and hook installation, and Vectorize verification
 ```
 
 ## Documentation
 
-- [`docs/PRD.md`](docs/PRD.md) is the canonical product specification and
-  records the current implementation milestones.
+- [`docs/PRD.md`](docs/PRD.md) records goals, shared constraints, and roadmap
+  context; it links to the owning feature documents.
+- [`docs/features/v1/`](docs/features/v1/README.md) describes implemented v1
+  behavior, source references, tests, and known limits. The earlier
+  [`docs/features/`](docs/features/README.md) snapshot is retained for history.
 - [`docs/design.md`](docs/design.md) is the design guide: the principles, tokens,
   layout patterns, scale playbook, and accessibility floor every screen follows.
 - [`AGENTS.md`](AGENTS.md) contains the engineering rules, environment model,
   commands, and contribution guidance for this repository.
-- [`docs/specs/`](docs/specs/) contains design reasoning and implementation
-  plans subordinate to the PRD.
+- [`docs/specs/`](docs/specs/) contains historical design reasoning and
+  implementation plans. The [API reference guide](docs/specs/api-reference.md)
+  points to the current generated contract.
 - [`docs/prompts/`](docs/prompts/) is the record of how this was built: every
   agent conversation that produced it, prompts and replies verbatim. Written by
   the `capture-conversation` skill, not by hand.

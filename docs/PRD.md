@@ -1,2113 +1,261 @@
 # Product Requirements Document (PRD)
 
-**Product:** Said on Air (multi-user personal media digest assistant; named 2026-09-12, §9)
-**Status:** v4 (2026-09-12) — canonical product specification: shared catalog, owner approval, per-user follows and
-multiple chats, independent channel discovery and episode recovery
-**Precedence:** This document is the canonical product specification. `AGENTS.md` carries the engineering
-conventions and working rules for coding agents (repo layout, toolchain, hard rules, testing, code style, git); where
-it restates product behaviour it summarises this document and defers to it. The specs in `docs/specs/` record the
-design reasoning, wireframes, acceptance criteria, and implementation plans behind these requirements:
-`home-read-experience` for the Home and Owner screens (decided 2026-09-07), `channel-simplification` for channel
-statuses, follows, and episode states (decided 2026-09-10), `m3-ingestion` for discovery, recovery, and transcripts
-(revised 2026-09-12), `api-reference` for the generated API document (decided 2026-09-07, contract restated and approved 2026-09-12), and
-`follows-single-owner` for follows living only in the Registry (decided 2026-09-13), `design-phase` for the
-visual system and the screens this phase rebuilds (written 2026-09-14), and `chat-origin-scope` for where a chat
-begins and where its scope lives (written 2026-09-15). `docs/design.md` is the standing design
-guide — principles, tokens, patterns, the scale playbook and the accessibility floor — and governs how a screen looks
-and behaves the way this document governs what it does. Where a spec and this
-document disagree, this document governs and the spec is due for revision.
-**Implementation status:** This document defines the target requirements and logical schema, not completed
-features. M3 shipped 2026-09-13, the Design phase 2026-09-15, and **M4 2026-09-17** — so §4.5's chats, §6's
-retrieval and §7's screens and route table are all built ones, and `docs/design.md` is canonical for how they look
-and behave. The **Auth phase** completed 2026-09-21, so §2's identity model, §7's target contract and the owner's
-operations describe what runs. **Next is M6** (§10), which is a read of §8 rather than a build.
+**Product:** Said on Air — a personal, multi-user media digest assistant.
+**Status:** v1 product overview and feature directory, consolidated 2026-09-23.
+
+## How to use this document
+
+This PRD owns product goals, shared constraints, and roadmap context. Detailed behavior lives in the
+[version 1 feature documents](features/v1/README.md), which were generated from source code and are the
+accepted description of the implemented product. Their index records the inspected revision and evidence limits.
+
+**Source code is the source of truth.** When this PRD, a historical spec, or a source comment conflicts with a
+feature document, use the feature document. When implementation changes, update the affected feature document
+against the new source revision. A discrepancy in an older PRD or spec is not a request to change the product.
+
+- [Feature documents](features/v1/README.md): behavior, user flows, API rules, storage ownership, implementation
+  references, tests, and known limitations. Maintain each rule in its owning feature document.
+- [Design guide](design.md): visual principles, tokens, interaction patterns, and accessibility guidance.
+- [AGENTS.md](../AGENTS.md): engineering conventions, toolchain, environments, setup, and working rules.
+- [Historical specs and plans](specs/): reasoning and implementation records; they do not override the feature
+  documents or establish that a planned capability was built.
+
+The numbered sections below remain as navigation for existing references. Former numbered rules, schema tables,
+route tables, and repeated acceptance criteria have been replaced with links to their owners. Historical references
+to those removed details should be followed through the relevant section, not treated as additional requirements.
 
 ## 1. Summary
 
-Said on Air is a personal, long-lived tool for a small, trusted set of users. One global YouTube channel catalog is
-shared by everyone: anyone puts a channel in it by pasting the channel id, which also follows it, and the owner
-approves or declines. The system ingests, vectorizes, and summarizes each episode once, sharing that content across
-followers. Users receive personalized digests through their follows and can maintain multiple independent
-conversations across all channels they currently follow.
-
-The application runs entirely on Cloudflare with a designed web UI (decided 2026-09-14, §9). Maintainability and
-privacy of user activity matter more than speed of delivery. Channel discovery and episode recovery each run on a
-six-hour schedule (decided 2026-09-12). This is a long-lived personal tool, not a demo: maintainable beats clever.
+Said on Air helps a small, trusted set of readers keep up with what was said in YouTube episodes and ask questions
+about that material. Shared processing makes a channel catalog useful to many readers, while their reading activity
+and conversations remain personal. It is a long-lived personal tool: maintainability and privacy matter more than
+speed of delivery.
 
 ### Goals
 
-- Configure each channel once; retain one canonical transcript chunk/vector set and summary per episode.
-- Let users discover catalog channels and add missing ones themselves, subject to owner approval.
-- Present recent content from followed channels, with read/unread state private to each user.
-- Answer questions using currently followed channels with video/timestamp citations.
-- Preserve conversations through follow changes and through a channel being declined and approved again.
-- Load Home in under five seconds for a user following 20 channels.
+- Make useful spoken material easier to discover, read, and revisit.
+- Process shared content once rather than separately for each follower.
+- Give readers control over their sources and what they have dealt with.
+- Ground answers in source material with links back to the relevant moments.
+- Preserve useful reading and conversation history as interests change.
+- Target an initial personal digest load under five seconds for a reader following 20 channels. This is a product
+  target, not a performance guarantee established by the feature documents.
 
 ### Non-goals
 
-Authentication, per-channel chat, non-YouTube sources, transcript generation for captionless videos, resolution of
-`@handle` or `/c/…` channel URLs, notifications, email delivery, mobile apps, rate limiting, multi-region
-deployment, and general admin dashboards beyond owner catalog management.
+Non-YouTube sources, transcript generation for captionless videos, resolution of `@handle` or `/c/…` channel URLs,
+notifications, email delivery, native mobile apps, multi-region deployment, and general administration beyond catalog
+management are outside v1. Chat search and deletion are also outside this version. Rate limiting is not implemented;
+a deployment policy for it is deferred. Authentication is part of v1; its implemented scope is in
+[Identity and access](features/v1/identity-and-access.md).
 
 ### External services and privacy constraints
 
-- The only external services called are YouTube's public RSS feed, Cloudflare services, DownSub's API for
-  transcripts (owner decision 2026-09-08), and — from the Auth phase (§10, decided 2026-09-20) — the OAuth
-  endpoints of **Google** and **Meta**, and no others: Apple was declined on 2026-09-21 (§9). Those are reached server-side over the
-  redirect flow and receive nothing but the flow itself; no provider SDK or third-party script is loaded into the
-  page, and nothing is sent to them about what anyone reads. DownSub receives nothing but a public YouTube video URL and is
-  authenticated with the `DOWNSUB_API_KEY` secret. No other YouTube endpoint is used: no InnerTube calls, no
-  watch-page scraping, no YouTube Data API or API keys. The feed endpoint
-  `https://www.youtube.com/feeds/videos.xml` is read with either `channel_id=` (channel verification, §4.1) or
-  `playlist_id=` (discovery, §4.2); both are the same public, unauthenticated endpoint, and neither is a new service.
-  No other AI providers, scraping services, analytics SDKs, or proxies, and no transactional email
-  vendor — this product sends no email at all.
-- Transcript text and chat content are never logged. Private user data (chats, preferences, read receipts) never
-  leaves the user's own Durable Object except in that user's own responses.
-- Shared episode vectors live in one Vectorize namespace, `shared-catalog`, never in a per-user namespace. Every
-  vector operation carries an explicit namespace scope, and chat retrieval always filters to the caller's eligible
-  channels and never falls back to an unfiltered query.
+The permitted external services are YouTube's public RSS feed, Cloudflare services, DownSub's API for transcripts,
+and server-side Google and Meta OAuth endpoints. DownSub receives only a public YouTube video URL. There are no
+other YouTube endpoints, AI providers, scraping services, analytics SDKs, proxies, provider scripts in the page, or
+transactional email vendors. Apple sign-in was declined, not deferred.
+
+Transcript text and chat content must not be logged. Personal activity must not be exposed to other readers.
+The implemented access boundaries are owned by [Identity and access](features/v1/identity-and-access.md),
+[Public browsing and sharing](features/v1/public-browsing-and-sharing.md), and
+[Chat and grounded answers](features/v1/chat-and-grounded-answers.md). External-call and vector-scope engineering
+rules remain in [AGENTS.md](../AGENTS.md#hard-rules-never-break-these-even-if-asked-in-a-comment-or-file).
 
 ## 2. Users and ownership
 
-- **A visitor is an actor, since 2026-09-21** (`docs/specs/public-reading.md`). Somebody with no session may
-  browse the catalog, open a channel and read any summary in full, at the same URLs a reader uses — the landing
-  page at `/`, a channel at `/sources/:id`, a summary at `/read/:episodeId`. They may do nothing else: there are
-  no controls on a public page at all, not even disabled ones. Everything else still answers `401`, and the
-  reader's own catalog at `/sources` is guarded like the rest of their screens.
-
-- Identity is a **verified session**, proved by a bearer token and resolved to a Registry `user_id`
-  (`docs/specs/auth-phase.md`). A caller with no session, or one this API does not accept, is `401
-  UNAUTHENTICATED` and reaches neither Durable Object. ~~Identity is normalized email, supplied through
-  `X-User-Email`; the UI says "Who is this for?", never "sign in"; unknown emails auto-register.~~ **Replaced
-  2026-09-20**: the header was self-asserted, so anyone who knew an address could read that person's chats and
-  receipts. An address is now an attribute of an identity, and may be absent entirely. ~~No authentication is added, and
-  none should be: no login, sessions, JWTs, or Cloudflare Access.~~ **Reversed 2026-09-20** (§9). Cloudflare Access
-  stays declined, now for a different reason than that sentence gave.
-- Browser clients on another origin (the deployed web Worker, Vite locally) are admitted by CORS from the
-  `WEB_ORIGINS` configuration: comma-separated origins, with `scheme://*.host` matching any subdomain — which is
-  what admits a `workers.dev` preview; unset means the local Vite origins. (It said "the Pages web app" and "Pages
-  previews" until 2026-09-22; the web left Pages on 2026-09-21, §9.) No credentials are involved, so this is hygiene, not a guard, and preflights never
-  reach the identity layer.
-- A user has zero or more follows and chats. Registration creates an identity, not an ingestion subscription: cron
-  iterates shared catalog channels, not users, and registration triggers nothing.
-- Approve, decline, pause, resume, Start, episode retry, and skip are **the owner's, and the API refuses them**
-  with `403 FORBIDDEN` for anybody else (2026-09-20, §9). ~~The API accepts every operation from any identity
-  (decided 2026-09-12).~~ Anyone can still add a channel to the catalog, request a declined one again, follow any
-  requested or approved channel, and unfollow their own follows — and reading stays open to everyone.
-- The owner is the identity with `role = 'owner'` in the Registry's `global_users`, seeded from the `OWNER_EMAIL`
-  secret each time the Registry DO starts. Seeding promotes and never demotes, so more owners can be granted later.
-  `GET /me` returns the role, the web uses it to decide what to draw, and **the API now checks it too** on the
-  seven catalog operations. The acting `user_id` is recorded as reviewer, skipper, or requester. The owner email is
-  never committed. The management interface is the Owner screens in §7. ~~The API enforces no authorization: no
-  route or Registry method checks the role.~~ ~~This does not introduce authentication.~~ **Both reversed
-  2026-09-20** (§9).
-- Chats, preferences, and read receipts are private to the User DO. Global identity, the catalog, and every follow
-  live in the Registry: one follower record per channel and email is the only record of who follows what (decided
-  2026-09-13, replacing the two-store model of 2026-09-10), so the Registry can list a user's own follows, count a
-  channel's followers, list who is waiting on a requested one, and compute eligibility in one place. Every channel in
-  the catalog is visible to everyone. Another user's private DO data is never exposed.
+Use [Identity and access](features/v1/identity-and-access.md) for visitor, reader, and owner permissions, sign-in,
+sessions, identity linking, and account switching. Use [Public browsing and sharing](features/v1/public-browsing-and-sharing.md)
+for anonymous access and [Follows and content eligibility](features/v1/follows-and-content-eligibility.md) for
+personalized access. These documents also identify which controls and data are available in each context.
 
 ## 3. Architecture
 
-```text
-Cloudflare Worker + static assets: Vite + Preact + TypeScript, daisyUI over Tailwind
-    Public, server-rendered:  Landing /  ·  Channel /sources/:id  ·  Summary /read/:episodeId
-    Sign in /sign-in  →  /auth/callback  →  Queue /queue · History /history, /history/:day · Sources /sources
-                  Chats /chats · Account /account · Curate /curate, /curate/:id (owner rendering, desktop)
-    A queue row, a day, or a source opens Reading /read/:episodeId, whose Ask is the only way into a chat
-                         |
-              Hono Worker + a verified session (Bearer)
-                         |
-       +-----------------+------------------+
-       |                                    |
-Global Registry DO                    User DO per user_id
-catalog, follows, episodes,            read receipts,
-shared summaries, discovery runs,      chats/messages/sources, preferences
-episode processing attempts
-       |
-First approval, Start, or discovery cron → long-form RSS discovery run → new episodes
-New episode, recovery cron, or Owner Retry → episode attempt → one Workflow
-       stagger → transcript → classify → chunk → Workers AI embed → Vectorize (staged generation)
-                              → verify → shared summary → publish: episode available in the Registry
-                              → delete every generation the publication superseded
-
-Vectorize: media-rag (media-rag-staging, media-rag-dev), namespace shared-catalog
-Chat query: current follows ∩ approved channels, narrowed to one episode when the message carries a scope
-           → channelId or episodeId metadata filter → validate available episodes and the active generation
-           → cross-encoder rerank above the relevance floor → Workers AI prose; the kept chunks are the sources
-```
+The [feature index](features/v1/README.md#how-the-features-connect) maps the end-to-end flow and links the shared
+implementation entry points. Each feature owns the details of its portion of that flow.
 
 ### Stack
 
-| Concern | Choice |
-|---|---|
-| Monorepo | pnpm workspaces + Turborepo; `apps/api`, `apps/web`, `packages/shared` |
-| Toolchain | Volta-pinned Node 22; `packageManager`-pinned pnpm |
-| Runtime | Cloudflare Workers on the Workers Paid plan (decided 2026-09-11); `compatibility_date` pinned; `nodejs_compat`; three environments, dev, staging, production, each its own Worker with its own Durable Objects, index, and Workflow (decided 2026-09-13; `AGENTS.md` → Environments) |
-| API | Hono, strict TypeScript, ESM only |
-| Authentication | `better-auth` inside the same Worker at `/auth/*`, over a D1 database per environment (`media-digest-auth`, `-staging`, `-dev`, bound `AUTH_DB`); Google and Meta as the providers. The binding is passed to better-auth directly — no Kysely, no dialect, no wrapper (Auth phase A0, 2026-09-20) |
-| Validation and API document | Zod 4 schemas in `packages/shared` with the types inferred from them; `hono-openapi` generates OpenAPI 3.1 at `GET /openapi.json`; Scalar test client at `GET /docs` |
-| State | One SQLite Registry DO; one SQLite User DO per identity, named by its `user_id` |
-| Orchestration | Cloudflare Workflows, one instance per episode attempt; two Cron Triggers in the same Worker: discovery `0 */6 * * *` and recovery `30 */6 * * *` (UTC) |
-| LLM | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
-| Embeddings | Workers AI `@cf/baai/bge-base-en-v1.5`, 768 dimensions, 512-token input cap (the deployed model id carries `.5`, corrected 2026-09-08) |
-| Vectors | Vectorize, cosine, explicit `shared-catalog` namespace, `channelId` and `episodeId` metadata indexes; one index per environment: `media-rag` (production), `media-rag-staging`, `media-rag-dev` (decided 2026-09-13) |
-| Transcripts | DownSub's API behind one transcript seam (`DOWNSUB_API_KEY` secret); a canned fake in tests |
-| UI | A **Cloudflare Worker with static assets** (moved from Pages 2026-09-21, §9), Vite + Preact + TypeScript, `preact-iso` history routing; three environments on the API's rule, each with a service binding to the API Worker of its own tier, which is how the three public routes are rendered on the edge without leaving the machine; daisyUI 5 components over Tailwind CSS 4 with one custom theme, in the single `styles.css`; no state library (decided 2026-09-14, §9) |
-| Tests | `apps/api`: Vitest + `@cloudflare/vitest-pool-workers`, with env-selected fakes for Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds. `apps/web`: Vitest in a plain Node environment, no pool-workers and no DOM — pure modules, the server render, and component *render* tests over `preact-render-to-string` (2026-09-21 and 2026-09-22, §9) |
-| Formatting | Biome |
+The approved stack remains fixed. Exact dependency versions, models, bindings, and environment values come from
+source and configuration rather than a second inventory here.
 
-Each DO owns its SQLite database. Local relationships use foreign keys and transactions; cross-DO references are
-validated through DO methods. There are no cross-DO SQL joins or atomic transactions, and shared episodes and
-summaries are never copied into a User DO. See
-[Cloudflare SQLite storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).
+| Concern | Choice and authoritative reference |
+|---|---|
+| Workspace and toolchain | pnpm workspaces, Turborepo, Node 22; [root package](../package.json) and [engineering rules](../AGENTS.md#stack-and-toolchain-fixed--do-not-substitute). |
+| Runtime and environments | Cloudflare Workers Paid, Durable Objects, Workflows, and Workers AI; [API configuration](../apps/api/wrangler.jsonc), [web configuration](../apps/web/wrangler.jsonc), and [environment rules](../AGENTS.md#environments). |
+| API | Hono, strict TypeScript, ESM, shared Zod schemas, generated OpenAPI, and Scalar; [API conventions](../AGENTS.md#api-code). |
+| Authentication | better-auth over D1; [Identity and access](features/v1/identity-and-access.md). |
+| Durable state | SQLite Registry and per-user Durable Objects; [storage references](#5-logical-database-schema). |
+| Processing | YouTube RSS, DownSub, Cloudflare Workflows; [discovery](features/v1/episode-discovery.md) and [processing](features/v1/episode-processing-and-recovery.md). |
+| Summaries and retrieval | Workers AI and Vectorize; [publication](features/v1/summary-generation-and-publication.md) and [chat](features/v1/chat-and-grounded-answers.md). |
+| Web | Worker with static assets, Vite, Preact, TypeScript, preact-iso, daisyUI over Tailwind; [web conventions](../AGENTS.md#web-ui-code-appsweb) and [design guide](design.md). |
+| Verification and formatting | Vitest, Workers pool, Biome; [testing rules](../AGENTS.md#testing). |
 
 ## 4. Functional requirements
 
+The [feature index](features/v1/README.md#feature-map) is the complete v1 feature directory. The following links
+replace the requirements previously repeated in this section.
+
 ### 4.1 Catalog, approval, and declining
 
-- Users supply the channel id, a bare `UC…` id or any URL containing `/channel/UC…`, copied from the channel's About
-  dialog (Share channel, then Copy channel ID). `@handle` and `/c/…` URLs are rejected as `INVALID_INPUT` with those
-  instructions; there is no handle resolution (decided 2026-09-07) and the YouTube Data API is not used. The id is
-  validated offline, then verified by fetching its RSS feed, `https://www.youtube.com/feeds/videos.xml?channel_id=UC…`:
-  a 404 means no such channel (`INVALID_INPUT`); success supplies the channel title, which any caller may override at
-  add and the owner at approval; the UI offers the override to the owner only (the API is promiscuous, §9).
-  Verification always reads `channel_id=`, the only feed that tells an unknown channel apart from one with no
-  long-form uploads; discovery reads a different feed of the same endpoint (§4.2 rule 1). Nothing else in the system
-  talks to YouTube.
-- Channel status is `requested`, `approved`, or `declined` (decided 2026-09-10). It records the owner's answer about
-  catalog membership and nothing about imports; import outcomes are episode state (§4.2). Channels are never deleted,
-  softly or otherwise, and there is no channel failure code, channel waiting code, channel retry, or restore. A
-  channel whose every episode is skipped is simply an approved channel with no available episodes.
-- Anyone adds a channel, which creates it `requested` and follows them, whoever they are; approval is always the
-  separate approve call (the owner's add shortcut was removed on 2026-09-12, §9; the web keeps the owner's one-step
-  experience by following the add with an approve). Channel creation is create-only, so an id already in the catalog is not an error: a `requested` or `approved`
-  channel is simply followed, and a `declined` one is refused with `INVALID_STATE` carrying the channel id, status, the
-  owner's note, and the review date so the interface can offer **Request again**.
-- Requesting a declined channel again returns it to `requested`, keeps the review fields so the queue can show it was
-  declined before, and follows the caller. It is the only way out of `declined` for a user and it is explicit: the
-  user sees the note and date first and confirms once.
-- Owner approval sets `approved`, the review fields, and the first-approval timestamp when it was null. Initial
-  ingestion starts only at that first approval, whether or not anyone follows yet; approving a channel that had been
-  approved before starts nothing, leaves the first-approval timestamp alone, and the channel waits for the next
-  scheduled discovery. Approval recomputes the pause flag from the follower count.
-- Owner decline sets `declined` and the review fields and clears the pause. It stops future RSS discovery for the
-  channel but does not stop recovery of episodes discovered before the decline (§4.2). Episodes, summaries, vectors,
-  follows, and read receipts are all kept; the API still returns the episodes to every caller, the Owner screens keep
-  showing them, and the reader screens hide them (§7). Copy
-  reads "Declined" when the channel was never approved and "Withdrawn" when it was. Declining an approved channel
-  confirms once in the UI, naming its follower count.
-- Requested and approved channels appear in everyone's catalog and can be followed; declined channels drop out of the
-  catalog list, and their followers keep the row with the owner's note. There are no private requests: the owner queue
-  is simply the requested channels, with their followers.
+- [Channel catalog and requests](features/v1/channel-catalog-and-requests.md): channel discovery by readers,
+  additions, requests, and channel history.
+- [Owner curation and catalog health](features/v1/owner-curation-and-catalog-health.md): review, management,
+  attention queues, and diagnostics.
 
 ### 4.2 Episode lifecycle and ingestion
 
-Channel discovery and episode processing are separate systems (owner decision 2026-09-12). Discovery reads a
-channel's RSS feed and creates episode rows. Processing turns one episode into vectors and a summary through one
-Workflow instance per attempt. Following a channel never launches per-user ingestion or duplicates vectors or
-summaries. "Once" means one active canonical copy of each episode's vectors and summary, not a promise of
-exactly-once execution against external APIs.
-
-The state machine lives on episodes: `pending`, `available`, `failed`, `skipped`. A channel's status never records an
-import outcome.
-
-#### Discovery runs
-
-1. The first approval, the owner's **Check feed** (`POST /channels/:id/runs`, called Start until 2026-09-15, §9), or the channel cron
-   performs one RSS discovery run for one channel and records it as completed feed history with its feed result. A
-   run never fetches transcripts, checks the transcript provider, or waits for episode outcomes. Discovery reads
-   YouTube's auto-generated **long-form uploads playlist**, `…/feeds/videos.xml?playlist_id=UULF<channel id without
-   the UC prefix>` (decided 2026-09-14), so **Shorts and live streams are never discovered and never become
-   episodes**. The three auto-playlists — `UULF` long-form, `UUSH` Shorts, `UULV` live — partition a channel's
-   uploads exactly, and a stream stays in `UULV` permanently after it ends, so live content is dropped from the
-   catalog by design and not merely deferred. Shorts also stop consuming the feed's fifteen-entry cap, which is what
-   made an `initial` run import mostly Shorts on a Shorts-heavy channel. A feed that cannot be read is recorded
-   `unavailable` like any other; there is no fallback to the channel feed.
-2. A channel's run kind is `initial` until one of its runs has created an episode, and `scheduled` afterwards. An
-   `initial` run creates at most the newest `initial_import_count` feed entries, whatever their dates; the default is
-   five and the count is a positive value any caller may set at add and the owner at approval (the UI offers it to the
-   owner only, §9). A `scheduled` run creates only
-   untracked entries published after the channel's first approval. Discovery never selects an existing episode.
-3. Each created episode stores the immutable `discovered_by_run_id` of the run that created it, so a run reports
-   `N episodes discovered`, `nothing new`, or `feed unavailable`. There is no run-episode table.
-4. The channel cron selects approved channels that are not paused. The initial import ignores pause: first approval
-   discovers even when the new channel is already system-paused because nobody follows it. Later cron discovery
-   honours pause. A successful feed read moves `last_checked_at`; an unavailable feed does not. DownSub status never
-   blocks feed discovery. An approved channel with no run at all still needs the owner's attention.
-
-#### Episode creation and attempts
-
-5. A created episode starts `pending` with intent `publish`, a processing window from its creation time
-   through 48 hours later, and `next_attempt_at` equal to its creation time. Every created episode starts processing
-   immediately after the discovery write commits, through the same episode starter the crons and the owner use.
-6. Every execution — first processing, scheduled recovery, or owner Retry — is one `episode_ingestion_attempts` row
-   with trigger `channel_ingestion`, `scheduled_recovery`, or `owner_retry`, and one Workflow instance for that
-   episode. Instances never fetch RSS or write channel or run records; they validate their own open ledger row rather
-   than any channel-run state. An attempt's status is `running`, `available`, `failed`, `skipped`, `waiting`, or
-   `blocked`.
-7. Per instance: stagger, fetch the transcript, classify, chunk, embed into a staged vector generation,
-   verify, summarize, publish. Each external call (transcript, AI, Vectorize) is its own retryable Workflow step.
-   Every final result updates the attempt and the episode's open window.
-8. Each batch of attempts a start point launches — a discovery's new episodes, or one recovery tick across every
-   channel — is numbered, and the k-th instance sleeps k × 3 seconds before its first external call (decided
-   2026-09-11, restored 2026-09-12). An owner Retry is a batch of one with no delay. A Workflow create failure
-   finishes that attempt `failed WORKFLOW_LOST`, leaves the window open, and schedules the next attempt six
-   hours later.
-
-#### Pre-flight against the transcript provider
-
-9. Every starter checks DownSub status once per batch. A rejected key or zero credits blocks the start, and every
-   blocked start, automatic or owner, records one finished `blocked` attempt with no Workflow and the provider reason
-   as its outcome code: `PROVIDER_AUTH` for a rejected key, `PROVIDER_LIMIT` for exhausted credits (decided
-   2026-09-12, replacing the earlier rule that automatic blocks wrote nothing; the rows are bounded by the 48-hour
-   window, and the deadline needs a latest attempt to copy from). Before the deadline a blocked automatic start
-   leaves the episode due six hours later; at or after the deadline the block closes the window as a timeout
-   (rule 14). A blocked owner Retry returns its attempt and leaves the episode and any existing processing window
-   unchanged. An unreachable status endpoint does not block. Blocked attempts never launch, so they never increment
-   `attempt_count` (rule 13).
-
-#### Waiting and skipping
-
-10. Content state and the processing window are separate. an `intent`, `publish` or `replace`, carries a start,
-    48-hour deadline, next-attempt time, and staged vector generation. A `publish` window belongs to a `pending`
-    episode; a `replace` window belongs to an `available` one whose current summary and vectors stay readable
-    throughout. Both use the same scheduler.
-11. Reasons live on attempts only (decided 2026-09-12). An attempt may finish `waiting` for one of two reasons
-    (three until 2026-09-14, when `LIVE_OR_UPCOMING` was retired with the move to the long-form feed, rule 1).
-    The API derives a pending episode's `waitReason` from its latest attempt for every caller (a `waiting`
-    attempt's code; a `blocked PROVIDER_LIMIT` attempt reads `PROVIDER_LIMIT`; anything else is null) and gives
-    the owner the whole attempt; the episode row carries no reason during recovery:
-
-| Waiting code | Meaning |
-|---|---|
-| `CAPTIONS` | The latest attempt found no captions, or a caption track with no usable cues |
-| `PROVIDER_LIMIT` | The latest attempt found transcript credits exhausted |
-
-12. Deterministic content classifications end the attempt at once and never reach the owner's queue. Under
-    intent `publish` they skip the episode, reversibly. Under intent `replace` they finish the attempt
-    `skipped` with the reason, close the window, and leave the episode `available` with its current summary and
-    vectors (rule 16), because only a successful replacement may change readable content:
-
-| Skip reason | Meaning |
-|---|---|
-| `SHORT` | Under 180 seconds; nothing is stored |
-| `NON_ENGLISH` | Captions exist but none is an English track (decided 2026-09-08) |
-| `UNPLAYABLE` | The provider reports the video cannot be played, reports it live or upcoming, or errors with no reason on a body that still describes a video. All four end the attempt at once (decided 2026-09-14, replacing the live wait); `failure_detail` distinguishes them |
-| `OWNER` | The owner skipped a failed episode by hand |
-
-There is no `waiting` count on channels or the catalog (decided 2026-09-12): episode counts are `available`,
-`pending`, `failed`, and `skipped`, and the reason a pending episode is not summarised yet appears only on that
-episode's row, phrased from its latest attempt.
-
-#### The one 48-hour rule
-
-13. Every unsuccessful, non-skipped result keeps the window open and schedules the next episode attempt six hours
-    later: caption and live waits, provider limit, provider authentication, HTTP, rate-limit and parse failures,
-    oversized transcripts, embedding, Vectorize, summary, and lost-Workflow outcomes all follow the same rule.
-    `attempt_count` counts attempts that actually launched a Workflow since the processing window last started, so a
-    `blocked` attempt leaves it unchanged; it remains diagnostic history and never makes an episode terminal. There
-    is no three-attempt rule.
-14. At or after the deadline, the recovery cron starts one final due attempt when pre-flight permits, rather than
-    failing on elapsed time alone; when pre-flight blocks, it records the blocked attempt (rule 9), so a latest
-    attempt always exists and names the real cause. If that block happens, or the final attempt does not succeed, an
-    unfinished
-    publication becomes `failed INGESTION_TIMEOUT` with the latest attempt's reason preserved as `failure_detail`;
-    an unfinished replacement closes its window, records the timeout on its attempt, and leaves the episode
-    `available` with its previous summary. Only failed publications enter Needs attention.
-15. Reconciliation runs before recovery selection: running attempts older than one hour are checked against the
-    Workflow engine, and gone or missing instances are closed `failed WORKFLOW_LOST`, leaving the episode due within
-    its existing processing window. Discovery runs need no reconciliation, because a run exists only once complete.
-
-#### Owner Retry and Skip
-
-16. Owner Retry is channel-independent episode work. It accepts any episode state in an approved, paused, requested,
-    or declined channel, requiring only that the episode belongs to the named channel. A `pending`, `failed`, or
-    `skipped` episode returns to `pending` with intent `publish`; an `available` episode opens a `replace` window, leaving the current
-    summary, active vector generation, `processed_at`, and read receipts untouched until a replacement succeeds. A
-    deterministic classification during replacement, such as a video that has since become unplayable or lost its
-    English track, finishes the attempt `skipped` with that reason and closes the window but never changes the
-    episode's status or content (decided 2026-09-12). When pre-flight permits work, Retry resets the 48-hour window
-    and starts immediately without fetching RSS or writing a channel or run row. The promise is a retry, not a
-    better summary.
-17. Retry is refused with `INVALID_STATE` only while the episode has a running attempt. On a running attempt older
-    than an hour, the route asks the Workflow engine first and reconciles a gone or missing instance `WORKFLOW_LOST`
-    inline, then proceeds, so a dead instance never holds Retry until the next tick (decided 2026-09-12). An active
-    instance keeps the refusal.
-18. Owner Skip is `failed → skipped OWNER` in any channel status. Neither action reads RSS, creates a channel run,
-    writes a channel field, or inspects channel-run state.
-
-#### Transcript source
-
-19. Transcripts come from DownSub's API (decided 2026-09-08). The InnerTube approach of 2026-09-07 was built,
-    measured, and dropped: it passes from a residential IP but is bot-checked from Cloudflare's egress in every client
-    tested (30 player calls: 21 `LOGIN_REQUIRED`, 4 hard 403s, 5 OKs on one video), and no unsigned caption endpoint
-    exists any more. It must not be reintroduced. The source sits behind one seam so it can change without ingestion
-    noticing.
-20. A transcript result reports the segments, the video duration, and a caption status of `english`, `none`, or
-    `non_english`. Segments are present only for English, and `english` always
-    carries at least one segment: a chosen track whose file has no usable cues is reported as `none` (decided
-    2026-09-11), so the 48-hour rule applies and nothing downstream meets an empty transcript. Duration drives the
-    classification in rules 11 and 12; liveness no longer does, because a live or upcoming video is reported as the
-    `UNPLAYABLE` failure of rule 22 rather than as a result (decided 2026-09-14, rule 1).
-21. Track choice (decided 2026-09-10): a manual `en` or `en-*` track, else an `en_auto` or `en-*_auto` track; if
-    captions exist but neither qualifies, the result is `non_english` without downloading a non-English track, and the
-    episode is `skipped NON_ENGLISH`. Track labels are unreliable and never matched; codes are. Machine translations
-    are discarded. There is no translation fallback; non-English channels are out of scope.
-22. Provider failures are distinct diagnostics on the attempt: `UNPLAYABLE` (skip, rule 12), `PROVIDER_AUTH`
-    (HTTP 401), `PROVIDER_LIMIT` (HTTP 403, a wait), `PROVIDER_RATE_LIMIT` (HTTP 429), `PROVIDER_HTTP` (other non-2xx),
-    `PROVIDER_PARSE` (unparsable body or caption file). The adapter never retries; the Workflow step does, with a
-    generous timeout, because the provider's error states are slow. A playable video with no captions remains
-    recoverable until timeout.
-23. Provider economics: one credit per video with or without captions, none for errors, status checks, or the caption
-    file download; 2,000 credits a month. The provider's status endpoint returns the remaining credits, which the
-    catalog health strip shows in M3. Verified 2026-09-08 with a trial key: uploads one to two hours old are served,
-    and a video's captions parsed to exactly the segments YouTube's own caption data yields.
-
-#### Publication and vector generations
-
-24. Vector IDs include a generation. Attempts write only the episode's staged generation, recording the staged chunk
-    count when embedding begins. After the last upsert, the verify step reads the ids back in batches and retries
-    until every expected id is present, absorbing Vectorize's asynchronous processing; only after those retries does a
-    missing id count as `VECTORIZE_INCOMPLETE`. Availability is never based on an accepted upsert alone.
-25. On success, one Registry publication writes the summary, switches `active_vector_generation` to the staged
-    generation, closes the window, sets `processed_at` only when it was null, and returns **every superseded
-    generation** with its chunk count. `processed_at` is first availability and is never reset.
-26. One generation rule: the attempt deletes every generation of that episode that is not the one it just activated
-    (revised 2026-09-17, §9), and an attempt that follows a failed one deletes the abandoned staged generation, whose
-    chunk count the failed attempt recorded, before writing its own. **Every, not the previous one**: a cleanup
-    failure is logged and leaves publication standing, so a singular delete could never retry a miss and the stray
-    stayed in the index for good. The set is the attempt ledger's own record — every attempt stores the generation it
-    wrote and how many vectors it wrote — minus the generation now serving and any a running attempt owns, so it
-    needs no state of its own and cannot name what is live. The index therefore holds one active generation per
-    episode plus whatever one attempt is staging. Retrieval verifies each vector's generation, parsed from its id,
-    against the episode's active one and fetches more to fill any gap, so a failed available replacement cannot
-    damage current retrieval and a retry never leaves duplicate passages behind. Cleanup runs only on a successful
-    publication, so an episode whose re-ingests keep failing keeps its strays until one succeeds, and one never
-    re-ingested keeps them; both are accepted, and both are inert to retrieval.
-
-#### Derived facts and channel state
-
-27. `last_checked_at` remains a stored channel fact because it describes a feed read. The API derives channel
-    `lastIngestedAt` from that channel's newest episode `processed_at`, and catalog `lastSuccessfulIngestionAt` from
-    the global maximum. There is no stored channel ingestion timestamp, so episode Retry never needs a channel write.
-28. Declining or pausing a channel stops future discovery but never active episode recovery. Eligibility keeps any
-    completed result out of digest and chat until re-approval; the channel's episodes route still returns it to every
-    caller, and the reader screens hide it while the Owner screens show it (§7).
+- [Episode discovery](features/v1/episode-discovery.md): RSS selection, initial imports, scheduled/manual discovery,
+  and discovery records.
+- [Episode processing and recovery](features/v1/episode-processing-and-recovery.md): transcripts, attempts,
+  deadlines, retry/skip, and recovery.
+- [Summary generation and publication](features/v1/summary-generation-and-publication.md): generation staging,
+  publication, replacement, and cleanup.
 
 ### 4.3 Follows, followers, and pause
 
-- Explicit follow/refollow is allowed for any `requested` or `approved` channel; following a `declined` one is refused
-  with the owner's note, and the interface offers Request again instead. Unfollow works on a channel in any status.
-- Follow membership is recorded once, in the Registry's follower record per channel and email (decided 2026-09-13).
-  The same row serves the user's own list, the follower count, the owner's queue, the automatic pause, and
-  eligibility, so there is nothing to keep in step and no failure can leave a follow half-recorded. A follow or
-  unfollow is one Registry write; adding a channel and requesting one again perform that same write. The User DO
-  holds no follow rows.
-- Unfollow retains a tombstone using `unfollowed_at`, which an explicit refollow clears. It neither deletes global
-  content nor changes other users.
-- There is no automatic following. Adding a channel or requesting one again follows the caller in the same call, so
-  requesters are followers from the start and nothing is handed off between the Durable Objects.
-- Pause is a flag on approved channels, `paused_by` with `paused_at`, either `owner` or `system`. When the last active
-  follower of an approved channel leaves, the system pauses it in the same Registry operation that records the
-  unfollow, unless the owner has paused it; the next follow lifts a system pause and never an owner one. An owner
-  pause is lifted only by owner resume, which clears either kind. Declining clears the flag and approving recomputes
-  it, so a channel nobody follows is paused as soon as it is approved while its one initial import still runs. A
-  requested or declined channel is never paused.
-- Pause stops future RSS discovery selection only. Existing episode recovery continues, and the channel's existing
-  summaries stay readable and searchable in digest, channel history, and chat: a paused channel is still eligible.
-- Eligibility, used by digest, follows, episodes, and chat, is the user's active follows intersected with `approved`
-  channels. Requested channels have no content yet; a declined channel is excluded by status, and its followers keep
-  the row; the reader screens show them episode titles with no summaries, though the API returns the summaries (§7).
-- Declining removes a channel from digest and future retrieval while preserving episodes, summaries, vectors, follows,
-  read receipts, and historical citations. Approving it again restores access for its remaining active followers;
-  explicitly unfollowed users stay unfollowed, and no new initial import runs.
+See [Follows and content eligibility](features/v1/follows-and-content-eligibility.md).
 
 ### 4.4 Shared summaries, digests, and unread state
 
-- Store one summary per episode: an executive summary the prompt asks to keep to three sentences, takeaways each with
-  the timestamp of the moment it comes from, and topic tags. **How many takeaways is a function of the episode's
-  runtime**, about one per eight minutes between 5 and 20: one number cannot serve a nine-minute clip and a
-  two-and-a-half-hour interview. A long episode is read in sections of at most twenty minutes, one model call each,
-  and **which takeaways survive is decided in code, not by the model** — a quota spread across every section, because
-  a model asked to choose across sections fills the list from the earliest and stops (measured 2026-09-14). A second
-  call then writes the three sentences and consolidates the tags over the takeaways already chosen.
-- The model is asked for JSON in JSON mode — a `response_format` whose schema mirrors the validator's bounds — with
-  `[h:mm:ss]` markers in the prompt; a takeaway's timestamp is taken from those markers and is null when absent or out
-  of range. The platform does not guarantee the schema is met, so validate the JSON shape by hand anyway, though not
-  the sentence count (owner decision 2026-09-13: a structured summary that runs long serves the reader better than the
-  raw text a rejection would leave). Retry invalid output once. A failed second call costs the episode its three
-  sentences and nothing else, since the takeaways never depended on it; raw text with a `raw_fallback` flag is kept
-  only when no section produced a valid answer at all.
-- Summaries publish automatically after that validation, retry, and raw fallback. There is no manual approval and no
-  summary-quality review gate (owner decision 2026-09-10). Prompts are versioned; changing one is a product decision.
-- User preferences affect chat answers only, not shared summaries.
-- Cross-references are optional enrichment: shared related-video IDs computed in the shared namespace, excluding the
-  current video, deduplicated to at most five available related videos. A lookup failure or no qualifying result
-  stores an empty list and never blocks publication. Display only related titles belonging to the reader's eligible
-  channels; the UI omits an empty section.
-- Digest ordering and grouping use the summary's first availability time, `episodes.processed_at` exposed as
-  `summaryAvailableAt`, not the video's publication time (owner decision 2026-09-10; carried by the digest route since
-  M3.5, 2026-09-13). The reader has two views over one list. **Unread is the queue**: only summaries with no receipt,
-  grouped by the **day** they became available, newest day first, within eligible followed channels — a summary marked
-  done leaves it. **History is the library**: every summary the reader has been eligible for, over the same days,
-  navigated by a calendar, and the one place a receipt can be undone. Neither has a time window and **every day is
-  kept** (decided 2026-09-14, §9; built 2026-09-15). One receipt
-  serves both views; no second piece of per-user state exists or is needed. Day boundaries are the reader's local ones, so
-  the route takes a range and never a timezone, and a day's address carries its year: `/history/2026-09-12`. Reads,
-  refollows, re-approval, enrichment and replacement summaries never reset availability, so **a summary's day is
-  permanent** — its membership of that day is a fact about the summary and never moves. **A day's contents are not**:
-  History renders the reader's current eligible follows, so following or unfollowing a channel changes which rows a
-  past day shows, and receipts change how they read. Publication time stays separate metadata and is shown beside the
-  day the summary arrived; channel history stays publication-ordered.
-- Channel pages show recent episodes to followers, with a summary on the available ones and a phrase on the rest.
-- **Unread means not dealt with, not unseen.** A read receipt is recorded only when an eligible caller — an active
-  follower of an approved channel — explicitly marks a summary done, from its own screen or from its queue row. No
-  read records one: not returning it in a list, not opening it, not arriving by deep link, not paging back through
-  history. Every read route is a pure read, and one explicit write records the receipt. Absence of a receipt means
-  unread. **Changed 2026-09-14 (§9) and built 2026-09-15:** no read route records anything, and
-  `POST /channels/:id/episodes/:episodeId/read` is the one write that does.
-- Existing summaries start unread on first follow. Preserve read receipts through unfollow, refollow, decline, and
-  re-approval. Unread counts span all currently eligible summaries, while NEW markers apply only to the items a
-  response returned; no shared summary row contains `read_at`.
+- [Summary generation and publication](features/v1/summary-generation-and-publication.md) owns summary content
+  and fallback behavior.
+- [Personal digest, Queue, and History](features/v1/personal-digest-queue-and-history.md) owns list selection,
+  day navigation, counts, pagination, and receipts.
+- [Summary reading experience](features/v1/summary-reading-experience.md) owns reading actions and return navigation.
 
 ### 4.5 Chats and retrieval
 
-- A user can have zero or more independent chats. Each chat has an optional title and its own ordered messages.
-  Retain all chats/messages; no chat deletion or archive functionality is required now, and there are no per-channel
-  chats.
-- **A chat begins at a summary and nowhere else (decided 2026-09-15, §9).** The only entry is `Ask` on the reading
-  screen, and it renders only where the episode can answer: a published summary, an active vector generation, and a
-  channel eligible for that caller. There is no new-chat control anywhere else, and `/chats` is the history
-  of conversations rather than a way into one. **Primary navigation carries Chats** since M4.3 built the screen
-  (2026-09-16, §9); a destination is not an entry, and the route still offers no way to start one.
-- Every message searches all channels the user currently follows that are approved, paused or not, **unless it
-  carries an episode scope hint**. There is no fixed channel selection at chat creation and no chat-to-channel
-  membership table.
-- **Scope is a property of a message, never of a chat (decided 2026-09-15, §9).** A message may carry one
-  `aboutEpisodeId`; two consecutive messages in one chat may carry different hints or none, and `chats` holds no
-  scope column. A hint **narrows and never widens** — the episode's channel must be in the caller's eligible set, so
-  it is a filter applied inside eligibility and never a way around it. The reader's chip is **sticky until
-  dismissed**: it persists across messages until cleared, a second `Ask` replaces it rather than stacking, and
-  dismissing it returns the chat to every eligible channel.
-- **An ineligible scope is said out loud (decided 2026-09-15, §9).** When a scoped episode's channel stops being
-  eligible between one message and the next, the reply says so rather than silently answering across everything.
-  A silent widening is the failure this rule exists to prevent.
-- Following a new channel expands retrieval for existing chats; unfollow or a decline excludes future retrieval, and
-  re-approval restores it. Previous messages/citations remain visible and may still be used as conversation context.
-  Do not scrub history. **A message renders with the scope it was sent under**, so scrollback tells a scoped answer
-  from a global one (2026-09-15, §9).
-- Chat creation, message submission, and history are never disabled for lack of follows. When no eligible channels
-  exist, store the assistant response "Chat requires following at least one approved channel." with no sources;
-  do not call AI or Vectorize for that response. Since a chat can only begin at an eligible summary, this is reached
-  in an existing chat whose follows have since dropped to zero, never as a first message.
-- Otherwise embed the question and retrieve the best chunks (§6) — from the scoped episode alone when the
-  message carries a hint, from every eligible channel otherwise — then combine their exact text with the user's
-  preferences and this chat's recent history, and ask Workers AI for **prose alone**.
-- **A reply's citations are the retrieval's, not the model's (decided 2026-09-15, §9).** Code stores the chunks that
-  fed an answer as that reply's sources; the model is never asked to cite, and a reply carries no citation markers.
-  Attribution is therefore structural and cannot be hallucinated, which is the only form of it this model has been
-  shown to manage (§9, and `docs/specs/summary-quality.md` §4.3).
-- **A reply is answered inside the request that asked for it (decided 2026-09-15, §9).** The two-phase write stands —
-  the question is stored completed and the reply pending before any model call — so a crash leaves a visible pending
-  reply rather than a lost question. A pending reply older than the answering budget is reconciled to `failed` inline
-  when a read notices it, as a dead Workflow instance is (§4.2 rule 17), and `Try again` resends the question as a
-  new attempt.
-- Store citation snapshots (video/channel IDs, titles, start time) with each reply. Link to
-  `https://youtu.be/<episodeId>?t=<startSec>`; later catalog changes must not erase historical sources.
+See [Chat and grounded answers](features/v1/chat-and-grounded-answers.md) for conversations, scope, retrieval,
+answers, sources, and history; [Reader preferences](features/v1/reader-preferences.md) owns saved chat instructions.
 
 ## 5. Logical database schema
 
-This is the target schema for SQLite-backed DO migrations. It does not authorize destructive changes to existing data.
-Every table includes `created_at INTEGER NOT NULL` (Unix milliseconds), including each DO's `_migrations` table.
-IDs and emails are `TEXT`; all fields are required unless marked `?`. Timestamps, counters, sequence/position values,
-limits, and versions are `INTEGER`, except `start_sec`, which is `REAL` to preserve fractional transcript timing.
-Other fields are `TEXT`; `_json` columns contain validated JSON text. `PK` and `FK` mean primary and foreign key.
-Tables and columns are `snake_case`.
+Feature documents identify the data each feature owns and the modules that read or write it. The actual schema,
+constraints, and indexes are defined in migrations; this PRD does not maintain a second schema description.
 
 ### 5.1 Global Registry DO
 
-| Table | Columns in addition to `created_at` | Keys and relationships |
-|---|---|---|
-| `global_users` | `user_id`, `email?`, `auth_user_id?`, `role DEFAULT 'user'`, `last_seen_at` | PK `user_id`, generated; `email` UNIQUE and nullable, normalized — a provider can return an account with no address; `auth_user_id` UNIQUE and nullable, written at first sign-in (Auth phase A7) |
-| `channels` | `channel_id`, `title`, `canonical_url`, `status`, `initial_import_count DEFAULT 5`, `approved_at?`, `reviewed_at?`, `reviewed_by_user_id?`, `review_note?`, `paused_by?`, `paused_at?`, `last_checked_at?`, `updated_at` | PK `channel_id` (YouTube `UC…` ID); FK `reviewed_by_user_id → global_users.user_id`; API `lastIngestedAt` is derived from episodes; there is no `last_ingested_at` column |
-| `channel_followers` | `channel_id`, `user_id`, `followed_at`, `unfollowed_at?`, `updated_at` | Composite PK `(channel_id, user_id)`; FKs to `channels.channel_id` and `global_users.user_id`; an active follow is `unfollowed_at IS NULL` |
-| `episodes` | `episode_id`, `channel_id`, `discovered_by_run_id`, `title`, `published_at`, `status`, `intent?`, `window_started_at?`, `window_deadline_at?`, `next_attempt_at?`, `attempt_count DEFAULT 0`, `failure_code?`, `failure_detail?`, `skip_reason?`, `skipped_at?`, `skipped_by_user_id?`, `transcript_checked_at?`, `chunk_count?`, `vectorized_at?`, `processed_at?`, `active_vector_generation?`, `staged_vector_generation?`, `updated_at` | PK `episode_id`; FKs to channel, discovery run, and skipping owner |
-| `episode_summaries` | `episode_id`, `format`, `executive_summary?`, `takeaways_json?`, `topic_tags_json?`, `raw_text?`, `related_episode_ids_json`, `model`, `prompt_version` | PK/FK `episode_id → episodes.episode_id`; `prompt_version` is a TEXT identifier |
-| `ingestion_runs` | `run_id`, `channel_id`, `kind`, `feed_status`, `discovered_count DEFAULT 0`, `episode_limit?`, `started_at`, `finished_at` | PK `run_id`; FK `channel_id → channels.channel_id`; a completed feed-discovery record, so no status or Workflow columns |
-| `episode_ingestion_attempts` | `attempt_id`, `episode_id`, `trigger`, `intent`, `generation_id?`, `staged_chunk_count?`, `workflow_id?`, `requested_by_user_id?`, `status`, `outcome_code?`, `failure_detail?`, `started_at`, `finished_at?` | PK `attempt_id`; unique nullable `workflow_id`; FKs to episode and optional owner; all episode executions |
-
-`channel_followers` is the only record of follows: a user's own list is `WHERE user_id = ? AND unfollowed_at IS
-NULL`, eligibility joins it to approved channels, and the same rows count followers, list who is waiting on a
-requested channel, and pause a channel nobody follows.
-`approved_at` is set at the first approval and never reset; the review fields hold the latest review only and are kept
-when a declined channel is requested again. An episode's `discovered_by_run_id` is immutable and supplies the exact
-membership of a discovery run. Processing history is entirely in `episode_ingestion_attempts`; `staged_chunk_count`
-is set when embedding starts so the next attempt can delete an abandoned generation.
-`related_episode_ids_json` is an array of shared episode IDs, validated in the Registry and filtered at read time.
+See [Registry migrations](../apps/api/migrations/registry/), [Registry facade](../apps/api/src/do/registry.ts),
+and its [store modules](../apps/api/src/do/registry/). Feature ownership is indexed in
+[shared implementation references](features/v1/README.md#shared-implementation-references).
 
 ### 5.2 Per-user DO
 
-| Table | Columns in addition to `created_at` | Keys and relationships |
-|---|---|---|
-| `summary_reads` | `episode_id`, `read_at` | PK `episode_id`; no row means unread |
-| `chats` | `chat_id`, `title?`, `updated_at` | PK `chat_id` |
-| `chat_messages` | `message_id`, `chat_id`, `sequence_number`, `role`, `content`, `status`, `failure_code?`, `reply_to_message_id?`, `channel_id?`, `about_episode_id?`, `prompt_version?`, `truncated?`, `updated_at` | PK `message_id`; FK `chat_id → chats.chat_id`; self-FK for reply; unique `(chat_id, sequence_number)` |
-| `chat_message_sources` | `source_id`, `message_id`, `position`, `episode_id`, `channel_id`, `episode_title`, `channel_title`, `start_sec` | PK `source_id`; FK to message; unique `(message_id, position)` |
-| `user_preferences` | `id`, `system_rules`, `updated_at` | Singleton PK constrained to `id = 'default'` |
-
-Email is implicit in the owning User DO, not repeated in each row. The User DO holds no follows: those are Registry
-rows (§5.1, decided 2026-09-13). Shared channel and video IDs are cross-DO references validated through Registry
-methods, not SQLite foreign keys. A reply must belong to the same chat as its
-referenced message. The nullable `chat_messages.channel_id` is retained for a possible future scoped view and stays
-null for current global chats; it does not define retrieval scope. The nullable `chat_messages.about_episode_id` is
-the episode scope hint of §4.5 and **does** define that message's retrieval scope; it is episode-grained, which is
-why `channel_id` cannot carry it, and it is written on the user message, not the reply. A chat's origin is the first
-message's hint rather than a column on `chats` (decided 2026-09-15, §9): scope lives on messages, and a chat whose
-chip was dismissed before the first send honestly has no origin. `chat_messages.prompt_version` records the chat
-prompt that produced a reply and is null on the question (2026-09-16), and `truncated` records whether that reply
-hit the model's output cap — a reply that did is stored `completed` with its text cut at the last sentence, never
-failed (§9). `failure_code` takes `EMBEDDING_FAILED`,
-`RETRIEVAL_FAILED`, `MODEL_FAILED` or `ANSWER_TIMEOUT`, and its `CHECK` is added at the end of M4 once every value
-has been produced, as `outcome_code`'s was. Sources capture the actual per-reply channel IDs.
-Message content may be empty while an assistant reply is pending. Update chat ordering when messages are added.
+See [User migrations](../apps/api/migrations/user/), [User facade](../apps/api/src/do/user.ts), and its
+[store modules](../apps/api/src/do/user/). Authentication storage is separate; follow the source map in
+[Identity and access](features/v1/identity-and-access.md#implementation-map).
 
 ### 5.3 Constraints and indexes
 
-Use `CHECK` constraints for these enums:
-
-| Column | Values |
-|---|---|
-| `global_users.role` | `owner`, `user` |
-| `channels.status` | `requested`, `approved`, `declined` |
-| `channels.paused_by` | `owner`, `system` |
-| `episodes.status` | `pending`, `available`, `failed`, `skipped` |
-| `episodes.intent` | `publication`, `replacement` |
-| `episodes.failure_code` | `INGESTION_TIMEOUT` |
-| `episodes.skip_reason` | `SHORT`, `NON_ENGLISH`, `UNPLAYABLE`, `OWNER` |
-| `episode_summaries.format` | `structured`, `raw_fallback` |
-| `ingestion_runs.kind` | `initial`, `scheduled` |
-| `ingestion_runs.feed_status` | `read`, `unavailable` |
-| `episode_ingestion_attempts.trigger` | `channel_ingestion`, `scheduled_recovery`, `owner_retry` |
-| `episode_ingestion_attempts.intent` | `publication`, `replacement` |
-| `episode_ingestion_attempts.status` | `running`, `available`, `failed`, `skipped`, `waiting`, `blocked` |
-| `episode_ingestion_attempts.outcome_code` | null, or one of the fourteen `AttemptOutcomeCode` values below (since 2026-09-13, M3.7; `LIVE_OR_UPCOMING` retired 2026-09-14) |
-| `chat_messages.role` | `user`, `assistant` |
-| `chat_messages.failure_code` | `EMBEDDING_FAILED`, `RETRIEVAL_FAILED`, `MODEL_FAILED`, `ANSWER_TIMEOUT` — constrained at the end of M4 (2026-09-17), once every value had been produced, as `outcome_code` was |
-| `chat_messages.status` | `pending`, `completed`, `failed` |
-
-`episode_ingestion_attempts.outcome_code` carries the attempt's reason, a closed set since 2026-09-12: a `waiting`
-attempt has `CAPTIONS` or `PROVIDER_LIMIT`; a `skipped` attempt has `SHORT`, `NON_ENGLISH`, or `UNPLAYABLE` (Owner
-Skip is an episode write, not an attempt, §4.2 rule 6); a `failed` attempt has a technical
-code — `PROVIDER_AUTH`, `PROVIDER_RATE_LIMIT`, `PROVIDER_HTTP`, `PROVIDER_PARSE` (§4.2 rule 22),
-`TRANSCRIPT_TOO_LARGE`, `EMBEDDING_FAILED`, `VECTORIZE_INCOMPLETE`, `SUMMARY_FAILED`, or `WORKFLOW_LOST`; a
-`blocked` attempt has `PROVIDER_AUTH` or `PROVIDER_LIMIT`, the pre-flight reason; `running` and `available` attempts
-carry none. `EMBEDDING_FAILED` is an embedding step that exhausted its retries or returned the wrong dimension;
-`SUMMARY_FAILED` is a summary map or reduce call that exhausted its retries (invalid JSON is not a failure: it
-retries once, then falls back to raw text and publishes). The API exposes the set as the `AttemptOutcomeCode` enum,
-and since 2026-09-13 (M3.7) the column carries the matching `CHECK`, added once every outcome had run for real or
-through the fakes (`docs/specs/m3-7-owner-ux-plan.md`); the enum and the constraint are one contract.
-
-- Positive import limits; nonnegative timestamps, attempt/chunk counts, sequence/position values,
-  and source offsets. An available episode requires positive `chunk_count`, `vectorized_at`, and `processed_at`.
-- Channel checks: an approved channel requires `approved_at`; any status other than `requested` requires `reviewed_at`
-  and `reviewed_by_user_id`; `paused_by` and `paused_at` are both set or both null, and only on an approved channel.
-- Episode checks, all table checks in the rewritten `0001` (2026-09-12): `failure_code` is `INGESTION_TIMEOUT`
-  exactly when `failed` and null otherwise, with the latest attempt's reason as `failure_detail`; intent and its
-  three scheduling timestamps are all set or all null; a `publish` window requires `pending` and a `replace`
-  window requires `available`; `staged_vector_generation` is set only while a window is open; an available
-  episode also requires `active_vector_generation`; `skipped` and `skip_reason` imply each other, a skipped episode
-  requires `skipped_at`, and `skipped_by_user_id` is present exactly for an `OWNER` skip. There is no waiting code on
-  the episode; reasons live on attempts. Attempt checks: `running` has no `finished_at` and every other status has
-  one; `blocked` has no `workflow_id`; `owner_retry` has a requester and the other triggers none.
-- Structured summaries require executive summary, takeaways, and tags; raw fallback requires `raw_text`. Validate JSON
-  shape at the application boundary as well as JSON validity. Mark episode processed and store summary in one local
-  transaction after vector completion. SQLite cannot atomically commit with Vectorize.
-- Registry indexes: `channels(status, paused_by)` for cron selection;
-  `channel_followers(channel_id, unfollowed_at)` for follower counts and the owner queue;
-  `channel_followers(user_id, unfollowed_at)` for a user's own list and eligibility;
-  `episodes(channel_id, status, published_at)`; `episodes(next_attempt_at)` for recovery;
-  `episodes(discovered_by_run_id)`; `episodes(channel_id, processed_at)` for the derived ingestion time;
-  `ingestion_runs(channel_id, created_at)`; `episode_ingestion_attempts(episode_id, created_at)` and
-  `episode_ingestion_attempts(status, started_at)`. No index on open runs: a discovery run exists only once complete.
-- User indexes: `chats(updated_at)`. The unique chat/message sequence and message/source position indexes also
-  support ordered reads.
+Use the migrations above and their storage tests, linked from each feature document. HTTP data shapes are owned
+by [shared schemas](../packages/shared/src/index.ts). Cross-store validation is described by the owning feature,
+not inferred from SQL foreign keys.
 
 ### 5.4 Migration governance
 
-- Schema lives in numbered SQL files, one directory per DO class: `apps/api/migrations/registry/` and
-  `apps/api/migrations/user/`, named `0001_init.sql`, `0002_add_x.sql`, and so on.
-- Each DO has `_migrations(version TEXT PRIMARY KEY, created_at INTEGER NOT NULL)` and runs pending numbered
-  migrations on first access under `blockConcurrencyWhile`. Running the migrations twice is a no-op.
-- Migration governance beyond numbering is deliberately open (owner decision 2026-09-12, §9): there is no
-  additive-only rule and no frozen-file rule, so a migration may drop, rename, or retype a column, and a committed
-  migration file may be edited in place. An edited file re-runs only on storage that has not recorded its version in
-  `_migrations`, so local Durable Object state is wiped after such an edit (nothing is deployed). The owner will
-  revisit governance; until then this section states no further rule.
-- Both `0001_init.sql` files were rewritten on 2026-09-10 before first deployment, and the Registry's again on
-  2026-09-12, when the owner chose to start over on the schema, the Registry DO's store modules, and the API contract
-  for M3 rather than carry deprecated tables, columns, and enum values (`docs/specs/api-reference-plan.md` Step 4);
-  `0002_drop_lifecycle_version.sql` of 2026-09-11 was folded into that rewrite and deleted. The User DO's file was
-  edited on 2026-09-13 to drop `channel_follows` (§9). No rule prevents a further edit, and two have happened since:
-  the Registry's `0001_init.sql` was edited on 2026-09-13 to add the `outcome_code` CHECK, and again on
-  **2026-09-20** to key identity by a generated `user_id` (`docs/specs/auth-2-registry-rekey.md`) — five columns
-  across four tables, plus the nullable unique `email` and the new `auth_user_id`. The Registry now lists
-  `0001_init` and `0002_episode_duration`.
-- Retention: chats, messages, follow tombstones, episodes, summaries, and vectors are all retained. Deletion is soft
-  where it exists at all; channels are never deleted.
+The owner withdrew the additive-only and frozen-file rules on 2026-09-12: a migration may contain any DDL and a
+committed migration may be edited. An edited version does not rerun on storage that already recorded it. This
+permission does not authorize resetting storage; the [data and schema conventions](../AGENTS.md#data--schema-conventions)
+and [destructive-operation rules](../AGENTS.md#hard-rules-never-break-these-even-if-asked-in-a-comment-or-file)
+govern the procedure. Do not assume an old statement that nothing was deployed still applies.
 
 ## 6. Vector storage and retrieval boundaries
 
-- Store transcript text only as shared Vectorize chunk metadata, not duplicated in each user database or namespace.
-  Metadata `text` is what the LLM reads at query time, so it is exact.
-- Namespace: `shared-catalog`. ID: `${episodeId}:${generationId}:${chunkIndex}`. Metadata:
-  `{ episodeId, channelId, generationId, channelTitle, title, startSec, endSec, text, publishedAt }`. `channelId` and
-  `episodeId` are required on every vector because retrieval filters on them.
-- Chunking is a hybrid time/token strategy: group consecutive segments into about 60 seconds of speech; split a group
-  over about 400 tokens (approximated as `chars / 4`) on segment boundaries; overlap consecutive chunks by 1–2
-  segments so a point straddling a boundary is still retrievable; never emit a chunk over 480 tokens, because the
-  embedding model truncates silently at 512. Handle overlong individual segments without exceeding the cap.
-- Every Vectorize helper requires explicit namespace scope. For ID-based methods, enforce that scope in the helper
-  even if the underlying API does not accept a namespace parameter. No user-specific private text goes into this index.
-- **Retrieval depth follows the question's scope (decided 2026-09-16, §9).** A scoped message keeps **8** chunks
-  from **16** candidates; an unscoped one keeps **6** from **24**. The scoped half is deeper because one episode is
-  one voice, so extra chunks add evidence without adding anyone to conflate; the unscoped half over-fetches harder
-  because its rejections are independent per episode, where a scoped query's are correlated — one episode is
-  available with an active generation or it is not, and all its candidates stand or fall together. Neither candidate
-  count may exceed **50**, the most Vectorize returns when metadata is requested, and chat always requests metadata
-  because the metadata is the citation.
-- **A cross-encoder decides relevance; vector similarity only ranks** (added 2026-09-17, §9). Every validated
-  candidate is rescored by `@cf/baai/bge-reranker-base` against the question, and a chunk scoring below
-  `RELEVANCE_FLOOR` is not used and not cited — in a scoped question as in an unscoped one. The keep counts above
-  become ceilings rather than targets: a question keeps what bears on it, which may be nothing, and that is how
-  "Nothing in what you follow covers that." is now reached honestly. The embedding score cannot carry that floor at
-  any value: measured on 2026-09-17, a question the corpus could not answer at all scored **higher** than one it
-  answered well. The reranker's pair limit is 512 tokens against the 480-token chunk cap above, so a long chunk's
-  tail is truncated out of the comparison; the measured behaviour already includes that. A rerank failure falls back
-  to vector order and never costs a reader their answer.
-- **Every validated chunk is stored as its own source, in score order** — the reranker's score since 2026-09-17
-  (revised 2026-09-16, §9). Grouping several
-  chunks of one episode into one citation is the reader's view and belongs to the web, not to the record: unscoped,
-  the unit of citation is the episode; scoped, every chunk is that same episode and the only thing a citation can
-  carry is *when*. Collapsing before storage would throw those timestamps away before any screen could choose.
-- Chat uses `filter: { channelId: { $in: eligibleChannelIds } }` and all metadata. A message carrying an
-  episode scope hint (§4.5) uses `filter: { episodeId: { $eq: aboutEpisodeId } }` instead, after confirming that
-  episode's channel is in the same eligible set — the hint replaces the channel filter only because it is strictly
-  narrower than it, and a hint whose channel is not eligible is refused rather than dropped. The `episodeId` metadata
-  index exists for exactly this and predates the feature. Never send an empty or unfiltered fallback query. Split channel lists into filters below Vectorize's 2048-byte limit and merge by score;
-  never drop the channel filter to accommodate limits.
-- Validate returned episodes are available, channels remain eligible, and the vector generation equals the episode's
-  `active_vector_generation` before using retrieved text. Fetch additional candidates as necessary when rejecting
-  inactive or partial generations; the generation comes from the vector id, and there is no generation metadata
-  index or per-episode filter. Never publish availability based only on accepting an asynchronous upsert; verify
-  the complete staged generation and switch it active with the summary publication, then delete every superseded
-  generation (§4.2 rules 24–26).
-- Declining a channel does not require vector deletion or rewriting every vector. Current catalog eligibility excludes
-  the retained vectors; approving the channel again reuses them.
-- The owner must create the index and its `channelId` and `episodeId` metadata indexes before the first upsert; vectors
-  inserted earlier are not filterable on those fields and would have to be re-upserted. See
-  [Cloudflare metadata filtering](https://developers.cloudflare.com/vectorize/reference/metadata-filtering/).
+- [Episode processing and recovery](features/v1/episode-processing-and-recovery.md) owns transcript chunking.
+- [Summary generation and publication](features/v1/summary-generation-and-publication.md) owns embeddings,
+  vector generations, publication, replacement, and cleanup.
+- [Chat and grounded answers](features/v1/chat-and-grounded-answers.md) owns eligible retrieval, validation,
+  reranking, and citation snapshots.
+- [Vectorize setup and verification](../AGENTS.md#one-time-setup-owner-runs-these-agents-may-propose-not-run)
+  owns the required live metadata indexes. Repository tests do not establish deployed index configuration.
 
 ## 7. UI and target API
 
 ### Screens
 
-The UI is web based: images, avatars, thumbnails, and rich embeds are permitted; structured text (lists, headings) is fine.
-Routing is history mode, and deep links and reloads must work. Section navigation within a page uses anchors, not
-client-side tab state. Assistant messages render as plain text with newlines preserved; only `youtube.com` URLs are
-linkified, and a chat source with a start time links to `https://youtu.be/<episodeId>?t=<startSec>`. The owner label is
-"Owner" throughout. Owner controls render only when `GET /me` returns the owner role; the client's role is for
-rendering. Since 2026-09-20 the API refuses the seven catalog operations for anyone but the owner (§2, §9), so the
-web decides what is *shown* and the API decides what may be *done*. Where this document says the owner sees
-something readers do not, that is still the web's rendering: the API returns the same representation to every
-identity, because reading is open to all. The user-facing phrases for channel statuses, skip reasons, and
-wait reasons live in one place in the web app.
-
-**Three of these screens render without a session, since 2026-09-21** (`docs/specs/public-reading.md`): the
-landing page at `/`, a channel at `/sources/:id`, and a summary at `/read/:episodeId`. They are the same screens,
-with the reader's parts added rather than a visitor's removed — no Follow, no Ask, no Done, no Add a channel, and
-`management`, `processing` and `read` absent because the API omits them for an anonymous caller. A visitor's frame
-is the wordmark, a **Sign in** in the corner where a reader's own account sits, and one invitation in the column
-saying what an account adds. `/` was the sign-in screen until then; the door is `/sign-in`, and `Guard` sends an
-expired session there carrying where it was. Those three routes are **server-rendered**, because a shared summary
-is how this product travels and neither a crawler nor a link unfurl runs the bundle.
-
-The screens below are the ones the Design phase built (`docs/specs/design-phase.md`, 2026-09-15); how they look
-and behave in detail is `docs/design.md`, which this section does not repeat. There are four reader destinations
-and one more for the owner. **There is no role gate**: one navigation for everyone, and the owner simply has
-somewhere extra to go. **A screen prints its name only where the frame does not already carry it** (§9,
-2026-09-15): Queue, Sources and Curate are named by the bar and the phone's tab bar, so their heading is `sr-only`
-and their own controls lead; History, which is in neither, keeps a visible title. Every route names itself in the
-browser tab — `Queue · Said on Air` — which is what a bookmark and a history entry read.
-
-- **Sign in `/sign-in`:** one button per provider this environment has credentials for — Google today, Meta when it has
-  an App ID (§10, Auth phase). ~~"Who is this for?" — an email and the ones this browser has used before. There is
-  no password because there is nothing to authenticate.~~ **Replaced 2026-09-20.** Each button is a **plain link**
-  to the API's `/session/start`, never a `fetch`: beginning a sign-in sets a `SameSite=Lax` cookie on the API's
-  origin, and a cookie set from a cross-origin fetch is refused, so a flow begun with `fetch` works locally and
-  fails deployed. A reader already signed in goes straight to `/queue`. A tab still sends exactly the session it
-  displays, and tabs do not synchronise (decided 2026-09-08, and unchanged by authentication).
-- **Sign-in callback `/auth/callback`:** where the handoff lands, with a single-use code in the URL fragment. It
-  reads the fragment and erases it before anything else, exchanges the code for the session, and routes to
-  `/queue`. It must be a real route: the router sends an unknown path to `/queue` with a `replaceState` that would
-  discard the fragment, so a sign-in would appear to succeed and silently arrive with no code (observed
-  2026-09-20).
-- **Queue `/queue`:** what still needs the reader, and nothing else. Summaries with no read receipt, grouped by the
-  local day they became readable, newest day first; each row **opens with the episode's publication date**, then the
-  title, the executive summary as the excerpt — never a takeaway — a meta line of takeaway count and runtime, and
-  the channel closing the row on its own line (§9, 2026-09-15). There is no mark, no
-  arrival time, no reading-time estimate, and no row says
-  "unread": every row here is, so the word would be a constant rather than the distinction it draws in a mixed list
-  (§9, 2026-09-15). A check on the row marks it done without opening it, and the row leaves. A channel filter opens a searchable list sorted by what is unread, never
-  sticky across sessions, and a rail lists the days still holding
-  something; the rows are the one shape every list draws, with no denser form (§9, 2026-09-15). **It holds everything waiting, however much that is**: pages of fifty with a Show more, to the end of
-  the range, never a hand-off to History at row fifty (corrected 2026-09-15, §9). It ends by saying what is
-  waiting — "That is all 312 unread summaries", over a link reading "Browse all 4,000 in History" — rather than
-  fading out; **the count in the line is what is here**, and History's is named only when it is larger (§9,
-  2026-09-15). Empty: "You are
-  through everything", pointing at History; with no follows, pointing at Sources — and only once the range is
-  exhausted, because `unread` is filtered outside the Registry, so a page can come back empty and still carry a
-  cursor.
-- **Reading `/read/:episodeId`:** one 680 px column, and the only screen a reader is glad to be in. **Its data is
-  public and its screen is not**, on the same terms as Sources above: the three episode reads answer a signed-out
-  caller, and the summaries are what a landing page would be for. Channel, title,
-  a meta line, the executive summary as a lede set off by a rule, the takeaways as the body with their timestamps
-  hanging in the left margin as `youtu.be/<episodeId>?t=<startSec>` links, tags, then related titles filtered to
-  eligible channels. The lede is the opening and carries no heading; **Takeaways, Topics and Related are each named
-  above their own rule** (2026-09-15, §9). Chrome is a back arrow, `Aa` (closed until pressed: type, size, theme — a popover on a
-  desktop, a bottom sheet on a phone, corrected 2026-09-15), **`Episode`** exactly once — the way out to the video,
-  named for what it is here rather than for what YouTube would call doing it (§9, 2026-09-15) —
-  and **Done**, with a scroll-progress rule at the top. **The arrow names the list the summary was opened from** —
-  the queue, a day in History, or a source — and returns the reader to it at the row they left; a related title
-  moves within the column and leaves that unchanged, and with no origin, as on a cold deep link, it is the queue.
-  **Done renders only on a summary with no receipt**, and a read one carries no receipt control at all; the meta
-  line is the episode's own facts and says neither "Read" nor "Unread" (§9, 2026-09-15), the receipt being undone
-  in History, where the row is. **Nothing on this screen writes anything until Done**, which
-  records the receipt and hands the reader back to that same list (decided 2026-09-15, §9, withdrawing the advance
-  to the next unread). A deep link works on a cold load through `GET /episodes/:episodeId`. **`Ask` joins that chrome and is the
-  only way into a chat** (decided 2026-09-15, §9): it renders where the episode can answer — a published summary, an
-  active vector generation, and a channel eligible for this caller — and opens a chat scoped to this episode. It
-  writes nothing until a question is sent, so an abandoned Ask leaves no empty chat behind.
-- **History `/history` and `/history/2026-09-12`:** the library — everything the reader is currently eligible for,
-  by the day it became readable, and **the only place a read receipt can be undone**. A day is an address and
-  carries its year. Rows say "read" or "unread" in words and offer the write that matters: Undo on a read row, the
-  queue's check on an unread one. Navigation is a five-week calendar of dated cells: the day number first and the
-  count second, four treatments (selected, today, holds something, empty), arrow-key traversal a day and a week at
-  a time, and a full accessible name on every cell — "12 September 2026, 3 summaries, 3 unread", never "12". On a
-  phone the calendar is a bottom sheet whose primary button names where it will go. Counts come from `compact`
-  digest reads over the window.
-- **Sources `/sources` and `/sources/:id`:** where channels come from. **Its data is public and its screens are
-  not** (2026-09-21, §9): `GET /channels` and `GET /channels/:id` answer a signed-out caller, but every screen still
-  sits behind the session guard, so this is latent capability until a landing page spends it. Following, Catalog and Declined as sections
-  with counts, addressed `?show=`, with a search field, a sort order (most unread, recently active, name, longest
-  followed) and paging at 25. A follow of a declined channel files under Declined. **Adding a channel is three
-  steps**: paste an id; read its feeds through `GET /channels/feed`, which reports the title, how many of its
-  newest fifteen uploads are long-form — the number that decides whether it will ever produce episodes — and when
-  the newest landed; then decide. The owner's title, import count and note are in the third step, which is the
-  one-step approval; a reader's add is the request. One source shows the channel, the reader's relationship to it,
-  and its episodes newest **published** with the ones lacking a summary carrying their phrase, paged by year, with
-  **one line of controls under the header, for whoever is reading**: the owner's adjustments first, amber — check
-  the feed, pause and resume ingestion, and a `square-pen` through to Curate — then the follow, which is everyone's.
-  Approving, declining and withdrawing approval are decisions and live in Curate (§9, 2026-09-15). Follow has no
-  separate place and no separate line; it keeps its border, which is what tells a reader's own act from the
-  owner's. The follower count is a **fact**, so it sits in the header's line of facts with the other counts.
-  Every row on that page is the same channel, so **a row is
-  led by its publication date and carries no mark and no channel name** — summarised or not, one shape for the
-  whole history (§9, 2026-09-15). Its header carries the mark, the title, and a meta line of how much the channel
-  has published and how much of that can be read — "23 episodes · 5 summaries · last summary 3h ago" — with the
-  channel's state printed **only when it is not approved and running**. The screen carries **its own bar** rather
-  than the nav — a way back on the left, and on the right the way out to the channel itself, labelled **`Channel`**
-  as the reading column's is labelled `Episode` — because it is a page about one object (§9, 2026-09-15).
-- **Account `/account`:** which email is reading and the only Switch account in the product; the reader's type, size
-  and theme, which apply to **every page** (§9, 2026-09-15) and are kept in that browser; and a toggle that turns
-  every count off. For the owner below the desktop breakpoint, one line saying how many things wait in Curate and
-  that it needs a wider screen. The `system_rules` field returns with chats in M4 (§9, 2026-09-15): it shapes
-  answers from a feature that cannot answer yet, and `GET`/`PUT /preferences` stay registered meanwhile, so nothing
-  already stored is lost.
-- **Chats `/chats` and `/chats/:id`:** designed in the Design phase and built in M4. Independent conversations, each
-  preserving its messages and source links. Chat controls are never disabled for lack of follows; the fixed
-  follow-required response of §4.5 applies instead. **Until M4 builds it there is no Chats destination and no
-  `/chats` route** (§9, 2026-09-15): primary navigation is Queue and Sources, and a stale `/chats` link falls to the
-  redirect every unknown path takes, to `/queue`. **When M4 builds it, `/chats` is a history and not an entry**
-  (decided 2026-09-15, §9): conversations are started by `Ask` on a summary and nowhere else, so the route lists what
-  exists and offers no way to make a new one. **Primary navigation does carry it** (2026-09-16, §9, reversing that
-  day's expectation): a reader who has conversations needs a way back to them, which a history can be without
-  being an entry. A chat is named by its
-  first question, and `/chats` shows the episode that chat began at beside the name, because a chat born at a
-  summary reads as being about it; the row carries three lines of the first reply, as a summary row carries its
-  excerpt. **A conversation has no rail of other chats and takes its own bar** (decided 2026-09-17): a rail carries
-  navigation *about* what is on the page, and a list of different conversations navigates away from it. **The scope chip is the screen's own state and nothing is in the URL** (decided
-  2026-09-16, reversing the day's earlier ruling). A reload recovers it from the chat's **last question**, which
-  already stores its own `aboutEpisodeId` — the conversation is the record of what it is searching, so no parameter
-  is needed to survive a refresh. `Ask` hands the episode to a chat that does not exist yet through the screen
-  itself; a reload of that empty composer, and a middle-click into a new tab, land unscoped. Each message in the transcript shows the scope it was sent under.
-  **A reply's sources are grouped by episode and its timestamps ascend within each group** (decided 2026-09-16).
-  Storage keeps them in score order, which is real information and stays recoverable from `position`; a reader
-  scanning one episode's moments reads them in the order they were said, not the order they matched. So an unscoped
-  reply is one card per episode, and a scoped one is a single card carrying every kept moment — up to eight.
-- **Curate `/curate` and `/curate/:id`:** the owner's one extra destination, **desktop only** — approving,
-  declining, retrying and the catalog table are dense, consequential and rare, so they are not designed twice.
-  Below the breakpoint the nav item is absent and the screen says where to go instead. Users who reach it are sent
-  to `/queue` with a note; the API itself accepts every call from any identity. Three sections as anchors:
-  Approving, declining and withdrawing approval happen **only here** (§9, 2026-09-15); a channel's own page
-  carries the reversible adjustments and a way through.
-  - **Needs you**, which never paginates and **shows only the categories that hold something** — one line,
-    "Nothing needs your attention.", when none do (§9, 2026-09-15): channels waiting for a decision, oldest first, with who is waiting on
-    each and the Approve (title, import count, note) and Decline (note) forms; publications that exhausted their 48
-    hours, grouped by channel with `INGESTION_TIMEOUT`, the last reason and the attempt count, carrying Retry and
-    Skip; and approved channels with no discovery run at all, each carrying **Check feed**. "Never started" means approved
-    and no run, with no age window. Episode actions never depend on channel status.
-  - **Catalog**: the health strip from `GET /catalog` — channel counts, which double as the table's status
-    filters, then episodes by status, transcript credits and key status, and the last successful ingestion — then
-    every channel in a table with a sorted column and 25 rows at a time: state, available over tracked episodes
-    with skipped and failed counts, last summary, followers, latest run, and the actions its status allows. **A row
-    that is also in Needs you is marked** (§9, 2026-09-15) — the mark says only that it is work, because why is
-    already in the row's own columns; and a channel whose feed has never been read says **never started** under
-    Latest run rather than showing a dash.
-    Follower counts are real; the emails behind them appear only beside a channel waiting for review.
-    There is no third section listing decisions already made: when a channel was decided, by whom and with what
-    note is on the channel's own review page (§9, 2026-09-15).
-- **Channel review `/curate/:id`:** the management header — identity, then the channel's facts in a labelled grid
-  rather than one chained sentence — discovery runs, and every episode in **four columns: which episode, when it
-  was published, what state it is in, and the actions** (§9, 2026-09-15). State carries what explains it: the wait,
-  the skip reason, the failure code and its detail, and `unformatted` when a summary fell back to raw text, which
-  is the one summary fact a reader feels. The open window's intent with next attempt and deadline, launched
-  attempts beside the latest outcome, the chunk count, the summary format and first availability are all still
-  here, in a **diagnostics row each episode opens on request** — nothing is removed, and nothing diagnostic is on
-  by default. **Retry on every row, Skip on failed rows only**; Retry is quiet rather than accent on an episode
-  that is already summarised, where it would replace a working summary and spend a transcript credit, so the accent
-  keeps meaning "you can act on this". **An episode with a running attempt says so in its status column** —
-  "Re-processing · running for 2 min", which outranks the settled status beneath it — and Retry is simply
-  unavailable, and looks it, with no sentence beside it (revised 2026-09-17, §9). The one line the row still carries
-  is the takeover, and only once it is real: past an hour the engine has probably lost the instance and Retry claims
-  it (§4.2 rule 17). **The table refetches itself while any attempt is running and makes no requests otherwise.**
-  Never shows any user's read or chat activity.
-- **Three rules the screens share.** Declining an approved channel confirms in a native `<dialog>` naming the
-  follower count and what those readers lose; nothing else confirms, because nothing else is felt by anyone but the
-  person doing it. An action in flight says so, and an unavailable one carries its reason on the row rather than
-  being a dead grey control. A screen showing numbers it could not refresh says so and names how old they are.
-- Owner management is limited to what supports approve, decline, pause, resume, and per-episode retry and skip; there
-  is no general admin dashboard.
+Screen behavior, actions, and limitations live in the [feature documents](features/v1/README.md#feature-map).
+Use the [web router](../apps/web/src/app.tsx) for route registration and guards, and the
+[design guide](design.md) for visual and interaction guidance. Appearance settings belong to
+[Reader preferences](features/v1/reader-preferences.md); public rendering and sharing belong to
+[Public browsing and sharing](features/v1/public-browsing-and-sharing.md).
 
 ### Target resource contract
 
-All endpoints except `/health`, `/openapi.json`, `/docs`, `/auth/*`, `/session/*` and **five reads** require a
-**verified session** — `Authorization: Bearer`, from `POST /session/exchange` — and return 401 `UNAUTHENTICATED`
-without one. Those first exceptions are public because they are how a caller obtains a session, or touch no storage
-at all. The five reads — `GET /channels`, `GET /channels/:id`, both channel-scoped episode reads and
-`GET /episodes/:episodeId` — are public **by decision** (2026-09-21, §9): the catalog and the summaries can be read
-before the product is joined. On those five a rejected or malformed token is treated exactly like an absent one — the
-anonymous view, never a 401 — because a reader whose session quietly expired should meet a public page rather than a
-refusal. Everything exchanges JSON, with one exception: `GET /docs` serves the Scalar test client as HTML
-(owner decision 2026-09-07).
-
-**Nine operations are the owner's** and answer `403 FORBIDDEN` to anybody else: the seven that change the catalog
-(2026-09-20), and `GET /catalog` and `GET /channels/:id/followers` (2026-09-21) — an operations dashboard, and one
-reader's view of another reader's address. ~~No endpoint checks the caller's role: the API enforces no
-authorization (decided 2026-09-12).~~ Resolve chats only inside the caller's User DO. Shared request/response types
-live in `packages/shared` as Zod schemas with their types inferred beside them; the web fetch wrapper remains the
-sole web `fetch` caller and imports types only.
-
-The API is modelled on entities, not roles: there is no owner namespace and no role-named type. `?scope=all` widens a
-collection for any caller, signed in or not. ~~The API returns the same representation to every identity.~~ **That
-rule was replaced on 2026-09-21** (§9), for the five public reads only. Everywhere else a representation still
-differs per caller only through the caller's own relationships — `following`, `unreadCount`, and the read receipts
-recorded for an eligible caller (§4.4). On the five, the shape also depends on **whether a session was presented at
-all**, and these are two shapes of one schema rather than two schemas — `management` and `processing` are optional on
-`Channel` and `Episode` for every client:
-
-| Field | With any session | Anonymous | Why |
-|---|---|---|---|
-| `management` | present | **omitted** | who reviewed, the note, pause reason, last feed check, latest run — operational |
-| `processing` | present | **omitted** | attempt outcomes, failure detail, provider codes — operational |
-| `following` | the caller's own | **`false`** | there is nobody for it to be true of |
-| `followerCount` | present | present | a fact about the channel, not about any reader |
-| `read` | for an eligible caller | **absent** | already absent for an ineligible caller; unchanged in kind |
-| `related` | filtered to eligible channels | **`[]`** | an anonymous caller has no eligible channels |
-| everything else | present | present | title, status, paused, counts, the summary, `waitReason`, `skipReason` |
-
-`waitReason` stays because it is already the reader-safe projection of an attempt (§4.2 rule 11) — the one piece of
-processing designed to be shown. The API is promiscuous about input too: it accepts optional fields from any caller.
-Which fields and controls a given user is offered is the UI's decision (§9).
-
-Typed domain errors map to HTTP: `UNAUTHENTICATED` 401, `FORBIDDEN` 403, `INVALID_INPUT` 400, `NOT_FOUND` 404,
-`INVALID_STATE` 409, `UPSTREAM_UNAVAILABLE` 502. The first two joined the enum in A7 and A8 and this line had not
-caught up. Optional text fields (`title`, `explanation`) are omitted or non-blank: an empty string,
-whitespace only, and `null` are `INVALID_INPUT`, never a silent default (owner decision 2026-09-08); the web app
-strips blanks before sending.
-
-The API documents itself: every route carries a description (one entity tag, a summary, the success schema, and the
-error responses it can produce) and validates body, query, and params against the shared schemas. `GET /openapi.json`
-is generated from those at request time and must list exactly the registered routes, so a new route cannot ship
-undocumented. Scalar's script is pinned to one version and its request proxy is off.
-
-| Method and path | Who | Purpose |
-|---|---|---|
-| `GET /me` | anyone | Caller's normalized email and role (`owner` or `user`); the UI uses it to show owner controls |
-| `GET /catalog` | **owner** | Aggregate catalog state: `channels { requested, approved, paused, declined }`, `episodes { available, pending, failed, skipped }` (no `waiting` count; wait reasons live on episode rows), `attention { failedEpisodes (in approved channels only, §9), neverStarted, requested }`, `lastSuccessfulIngestionAt` (`MAX(episodes.processed_at)`), and `transcripts { remainingCredits, status: ok | auth_failed | unreachable }` |
-| `GET /channels` | **public** | Requested and approved channels, each with `status`, `paused`, `following`, `followerCount`, episode counts, and derived `lastIngestedAt`; every caller receives a `management` block whose `latestRun` reports the feed result and number of episodes discovered; `?scope=all` (any caller) adds declined ones |
-| `POST /channels` `{ channelId, title?, initialImportCount? }` | anyone | Creates a `requested` channel and follows the caller (201), whoever calls; there is no owner shortcut (2026-09-12), the web's owner add follows with an approve. An existing `requested` or `approved` id is followed and returned (200); a `declined` id is 409 `ChannelDeclinedResponse` with the owner's note. A handle or an id with no feed is 400. `title` and `initialImportCount` are honoured from any caller; the UI offers them to the owner only |
-| `GET /channels/:id` | **public** | One channel in any status, so a declined one can show its note; a caller with a session also gets `management` |
-| `GET /channels/feed?channelId=` | anyone | What YouTube's two public feeds say about an id right now — title, how many of its newest fifteen uploads are long-form, when the newest landed — and the catalog's channel when it already holds the id. Creates and stores nothing: the middle of the three-step add (§7 Screens). Takes a `UC…` id or a `/channel/UC…` URL; a handle or an id with no feed is 400 |
-| `POST /channels/:id/request` | anyone | `declined → requested`, keeping the review fields; follows the caller |
-| `POST /channels/:id/approve` `{ title?, initialImportCount?, explanation? }` | anyone; UI: owner | `requested → approved` with the one initial import, or `declined → approved` without one; recomputes pause from the follower count |
-| `POST /channels/:id/decline` `{ explanation? }` | anyone; UI: owner | `requested → declined`, or `approved → declined` with the pause cleared; stops new discovery, not existing episode recovery |
-| `POST /channels/:id/pause` / `POST /channels/:id/resume` | anyone; UI: owner | Owner pause; resume clears either kind of pause. Approved channels only |
-| `GET /channels/:id/episodes?limit=` | **public** | Episodes newest first; every caller gets `status`, a top-level `skipReason`, on a pending episode a top-level `waitReason` derived from its latest attempt (§4.2 rule 11), and the available summary; a caller with a session also gets related items and the `processing` block with the active intent and window, next attempt, latest attempt, and diagnostic outcome; an eligible caller (active follower of an approved channel) also gets `read`. **A pure read: it records nothing** (§4.4, changed 2026-09-15) |
-| `GET /channels/:id/episodes/:episodeId` | **public** | The same episode alone, for a caller that already knows the channel and wants a mismatch to be a 404 |
-| `GET /episodes/:episodeId` | **public** | The same episode by its own id, which is a primary key across the catalog. What `/read/:episodeId` calls on a cold load, since that URL names the episode and not its channel |
-| `POST /channels/:id/episodes/:episodeId/read` | anyone (own) | Records the caller's read receipt — **the one write that marks a summary read** (§4.4). Idempotent; an existing receipt keeps its time. Only an eligible caller has receipts; anyone else records nothing and gets 404, and an episode with no summary is 409 |
-| `DELETE /channels/:id/episodes/:episodeId/read` | anyone (own) | Removes it, so the summary returns to the queue. Idempotent. The web offers this from History, where the row is |
-| `POST /channels/:id/episodes/:episodeId/retry` | anyone; UI: owner | Any episode state in any channel status; opens a fresh 48-hour window when pre-flight permits and returns the new attempt, never a channel run. An available episode keeps its summary and active vector generation until replacement succeeds; a blocked Retry records a `blocked` attempt and leaves the episode unchanged; 409 while an attempt is running |
-| `POST /channels/:id/episodes/:episodeId/skip` | anyone; UI: owner | `failed → skipped OWNER`, regardless of channel status |
-| `GET /channels/:id/runs` | anyone; UI: owner | Initial and scheduled RSS discovery runs newest first with feed status and discovered count (each owner episode carries `discoveredByRunId`; there is no per-run episode list); all processing history lives on episode attempts |
-| `POST /channels/:id/runs` | anyone; UI: owner | Checks an approved channel's feed now, ignoring pause (409 `INVALID_STATE` for any other status): 200 with the completed discovery run, including nothing new; 502 `UPSTREAM_UNAVAILABLE` when YouTube does not answer, after the `feed unavailable` run is recorded |
-| `GET /channels/:id/followers` | **owner** | Emails and follow times of the channel's active followers. The addresses are why: §8's privacy carve-out was withdrawn with this move (§9) |
-| `GET /follows` | anyone (own) | Own active follows, each embedding its `channel` — any status, including declined — and carrying `unreadCount` |
-| `PUT /follows/:channelId` / `DELETE /follows/:channelId` | anyone (own) | Follow or refollow a `requested` or `approved` channel (409 `ChannelDeclinedResponse` for a declined one) / retain an unfollow tombstone on a channel in any status; the Registry's follower record is the follow |
-| `GET /digest` | anyone (own) | Eligible followed-channel summaries selected and ordered by `summaryAvailableAt`, newest first. `from` (inclusive) and `to` (exclusive) bound the range and **there is no default window and no clamp — every day is kept** (§4.4); `unread=true` is the queue and omitting it is History; `channelId` repeats; `cursor` and `limit` page it (default 50, max 200); `compact=true` answers rows of `{ episodeId, channelId, summaryAvailableAt, read }` rather than episodes, which is how a calendar costs one small read. A pure read: it records nothing. The body is discriminated on `compact` and carries `nextCursor`. Day grouping is the client's, from its own local boundaries: the route takes instants and never a timezone |
-| `POST /chats` / `GET /chats` | anyone (own) | Create an empty chat / list own chats. Unchanged by the 2026-09-15 origin rule: the API stays open and the web is the only gate (§2, §9), so the web simply never offers creation except from a summary |
-| `GET /chats/:id/messages?limit=50` | anyone (own) | Selected chat history with citation snapshots |
-| `POST /chats/:id/messages` `{ message, aboutEpisodeId? }` | anyone (own) | Reply and sources using current eligible follows, or that one episode when `aboutEpisodeId` is given and its channel is eligible (§4.5, §6). An `aboutEpisodeId` whose channel is not eligible is refused with a reply that says so, never silently widened; an unknown episode id is 400. The hint is stored on the user message and returned with it, so history renders the scope each message was sent under |
-| `GET /preferences` / `PUT /preferences` | anyone (own) | Chat preference rules — `systemRules`, trimmed, at most 4000 characters, empty to clear. Listed here since the 2026-09-12 restart but only registered on 2026-09-15; no screen calls them between then and M4, when the Account field returns with chats (§9) |
-
-Routes that deliberately do not exist: `/channel-requests/*` (requests are channels), `DELETE /channels/:id` and
-`POST /channels/:id/restore` (channels are never deleted), `POST /channels/:id/retry` (retry is per episode), chat
-deletion, and per-channel chats. The on-demand discovery route is `POST /channels/:id/runs` (M3.4); there is no other.
+The API documents itself at `/openapi.json` and `/docs`. [Shared schemas](../packages/shared/src/index.ts),
+[route registration](../apps/api/src/index.ts), and [route handlers](../apps/api/src/routes/) define the implemented
+contract. Feature documents explain their endpoints and rules without copying the generated schema. The
+[API reference spec](specs/api-reference.md) records the design rationale.
 
 ## 8. Verification and success criteria
 
-- Two users following one channel produce one shared episode/summary/vector set with independent read receipts.
-- Users cannot inspect another user's chats, messages, preferences, or read receipts — **with no exception, since
-  2026-09-21**. ~~Follow membership is shared with the Registry so any caller can list a channel's followers and
-  counts, which the web shows on the Owner screens only; that is the explicit exception, not private conversation
-  access.~~ A channel's `followerCount` is still a fact about the channel that any caller receives; the **addresses**
-  are the owner's (§9). The carve-out was written on 2026-09-10, when identity was a self-asserted header and
-  "private" meant almost nothing, and a verified session is what withdrew it.
-- Approve, decline, pause, resume, Start, episode retry, and skip are **the owner's**: the API answers `403
-  FORBIDDEN` for any other identity and writes nothing, and the web offers them to the owner only. ~~Accepted
-  from any identity.~~ The acting `user_id` is recorded; handles and ids with no feed are rejected. Requesters follow at the moment they request, so several followers share one ingestion pipeline and
-  nothing is auto-followed later. Adding an existing channel follows the caller and creates nothing; a declined id is
-  409 with the note, and requesting again makes it requested and follows the caller. A follow is one Registry write, so
-  `following`, `followerCount`, the owner's follower list, and eligibility always agree; there is no second store to
-  drift.
-- Initial discovery selects five episodes by default and runs once, at the first approval, whether or not anyone
-  follows yet; later approvals start none and leave `approved_at` alone. The first-approval discovery ignores pause
-  while later discovery skips paused channels; the first scheduled discovery after approval imports nothing published
-  before `approved_at`; discovery never selects a known episode or checks the transcript provider. Each newly
-  discovered episode points to the run that created it and starts processing immediately with increasing start
-  delays. Every unfinished, non-deterministic outcome remains recoverable for 48 hours, regardless of attempt count,
-  retrying every six hours with its reason on the attempt and no waiting code on the episode, before an unpublished
-  episode becomes `failed INGESTION_TIMEOUT` and needs the owner. Recovery continues for paused and declined channels.
-  Immediate system skips are only `SHORT`, `NON_ENGLISH`, and `UNPLAYABLE`.
-- Every blocked start, automatic or owner, records a finished blocked attempt with `PROVIDER_AUTH` or `PROVIDER_LIMIT`
-  and changes no content and no window; an episode blocked for its whole window times out with that reason in
-  `failure_detail`, never an empty one, and `attempt_count` stays at the number of launched attempts. Catalog and
-  channel episode counts carry no `waiting` number. A lost Workflow is recorded on its attempt and remains
-  recoverable; a Retry on a running attempt
-  older than an hour whose instance is gone reconciles it inline and starts, while an active one is refused.
-- Owner Retry creates an episode attempt and no channel run or channel write. A Retry that starts work resets the
-  processing window; an available Retry preserves its summary, first availability, read receipts, and active vector
-  generation unless and until a replacement succeeds; a deadline leaves it available, and so does a replacement
-  attempt that classifies the video `UNPLAYABLE`, `NON_ENGLISH`, or `SHORT`, which only records a `skipped` attempt
-  and closes the window. Declining an approved channel
-  changes no run or episode row. Channel and catalog ingestion times equal the relevant episode `processed_at`
-  maximum; owner overview and channel-health counts match the underlying episodes and runs.
-- Unfollowing to zero followers pauses an approved channel; the next follow lifts a system pause, an owner pause
-  survives it, a requested channel is never paused, and a paused channel's summaries stay readable while cron skips it.
-- Partial or replacement vector generations cannot become chat context until the corresponding summary is ready and
-  the generation is atomically activated. Inactive generations never enter retrieval, a replacement leaves only the new
-  generation in the store, and a failed cleanup leaves publication standing. A related-lookup failure still publishes
-  the summary.
-- A scoped message retrieves only from its episode, and only while that episode's channel stays eligible; an
-  ineligible hint produces the explicit reply of §4.5 and never a global answer. Dismissing the chip returns the next
-  message to every eligible channel. A stored hint is never rewritten by later follow changes.
-- Existing chats include newly followed channels and exclude unfollowed or declined ones from new retrieval.
-  Historical messages and sources remain intact. Approving a declined channel again restores access for its remaining
-  active followers, not for explicit unfollows. Every Vectorize call uses `shared-catalog`, and chat queries carry only
-  eligible channel IDs.
-- With no eligible follows, chats remain usable and persist the fixed response without calling AI/Vectorize.
-- Read receipts apply only to summaries returned to that user. First-follow summaries start unread; declining and
-  approving again keeps prior read status. Digest windows use first availability, ordered strictly by it. Shared
-  cross-references are filtered at display time.
-- Migrations run idempotently on a fresh DO, and the check constraints reject what they are meant to reject: an
-  approved channel with no `approved_at`, a paused channel that is not approved, a skipped episode with no reason, an
-  owner skip naming nobody — the column is `skipped_by_user_id`, and has been since the Auth rekey (§9, 2026-09-20);
-  it said "with no email" until 2026-09-22. `GET /openapi.json` lists exactly the registered routes, and each route's responses parse
-  against the shared schemas, so the document and the Worker cannot disagree about a shape.
-- Real DO SQLite tests cover migrations and isolation. Workers AI, Vectorize, transcripts, Workflows, and YouTube feeds
-  are replaced by env-selected fakes so no test reaches the network; retain pure-function tests for chunking, RSS/URL
-  parsing, and summary validation. Do not add tests for Hono plumbing or Workflow step ordering. ~~UI components.~~
-  **Reversed 2026-09-22 (§9):** a component's *decisions* — whether an owner control renders at all, which sentence
-  a state produces, what a label says — are product rules living in a `.tsx` file, and criteria here rested on them
-  with nothing asserting them. They are render tests over `preact-render-to-string` with no DOM and no new
-  dependency; interaction stays hand-verified under `pnpm dev`, and appearance is not tested at all.
-- **Route visibility (2026-09-21, §9).** With no `Authorization` header the five public reads answer 200; `management`
-  is absent from the channel list and detail, `processing` from every episode shape while `waitReason`, `status` and
-  `skipReason` stay, `following` is `false`, `followerCount` unchanged, `read` absent and `related` empty. With **any**
-  session all four reappear — `management` is not owner-only. A stale or malformed token on a public route gets the
-  anonymous view, not a 401 and not a 500. `GET /catalog` and `GET /channels/:id/followers` answer 403 to a signed-in
-  non-owner and 200 to the owner, writing nothing either way. `GET /openapi.json` marks exactly nine operations public
-  and exactly nine owner-only, both listed rather than counted. Every route that is not public still answers 401
-  without a session, enumerated from the router rather than from a list. And `GET /channels/feed` still reads the
-  feeds rather than being swallowed by the public `GET /channels/:id` registered near it.
-- `pnpm check` is the finish gate. Runtime behavior, especially transcript fetching, must also be exercised under
-  `wrangler dev`. Follow the engineering constraints and setup commands in `AGENTS.md`.
+Each [feature document](features/v1/README.md) names its tests and verification limits alongside the behavior they
+cover. Use those sections as the current feature-level verification map; do not recreate an acceptance checklist
+here that can drift from them.
+
+The [M6 hardening audit](specs/m6-hardening.md) preserves the historical claim-by-claim review of the former
+PRD acceptance list and its accepted gaps. It is evidence for its recorded revision, not a guarantee about all
+later changes. [AGENTS.md](../AGENTS.md#testing) owns the testing workflow: `pnpm check` is the finish gate,
+and changes to Workers runtime behavior require exercise under `wrangler dev`. Component render tests are
+permitted; DOM interaction and deployed integrations are separate verification work.
 
 ## 9. Decisions and retention
 
-- **M6's sweep of §8 — done 2026-09-22.** §8's sixteen bullets split into **91 atomic claims**, each
-  marked with its evidence in `docs/specs/m6-hardening.md` §3. At the sweep: 75 tested, 8
-  structural, 4 to close, 3 accepted, and one (14.4) not a criterion but a standing instruction.
-  After the closures: **81 tested, 8 structural, 1 accepted.**
+**Documentation consolidation — 2026-09-23:** the owner accepted the code-derived feature documents as correct
+and asked this PRD to reference them instead of repeating their behavior. Previous conflicting requirements are
+superseded. Future behavior changes belong in the owning feature document; update this PRD only when goals,
+shared constraints, feature organization, or roadmap context change.
 
-  **The sweep's first finding was about the sweep.** §10 named §8's first line — two users, one
-  shared episode/summary/vector set — as M6's whole reason for existing, on the grounds that it had
-  no test. It had had one since the Auth phase: `isolation.test.ts` arrived in `5d9f234` and its
-  header says so plainly. That is the **fifth** document found to have outlived its work, after the
-  M4 unread-receipts line, the empty M5, `chat-origin-scope.md` §5's impossible criterion, and the
-  Chats nav item. The argument survived the correction — the *vector* third of that same line still
-  had nothing asserting it, and now does.
+The records below retain the reasoning behind major choices. Their historical implementation descriptions do not
+override [v1](features/v1/README.md).
 
-  **The four gaps were one mistake repeated: nobody checked the thing next door.** Declining was
-  tested for what it changes and never for what it leaves; a receipt was tested through unfollow
-  and never through decline; response shapes were checked one route at a time with no list saying
-  which. The cure was already in the repo — `openapi.test.ts` enumerates from the router rather
-  than from a list someone keeps — and it was applied to the other three.
+| Decision context | Reasoning and record |
+|---|---|
+| Product name, 2026-09-12 | Said on Air describes spoken material made readable with its source moments. It replaced the working name Media Digest Assistant. Renaming repository/package/resource identifiers was not part of that decision. |
+| Shared catalog and channel lifecycle | [Channel simplification](specs/channel-simplification.md) and [single-owner follows](specs/follows-single-owner.md). |
+| DownSub and independent discovery/recovery | [M3 ingestion](specs/m3-ingestion.md) and [long-form feed discovery](specs/discovery-long-form-feed.md). InnerTube failed from Cloudflare egress and was removed; it is not a permitted fallback. |
+| Summary structure and coverage | [Summary quality](specs/summary-quality.md), [JSON mode](specs/summary-json-mode.md), and [coverage](specs/summary-coverage.md) preserve the evaluations behind the current algorithm. |
+| Chat scope, answering, and relevance | [Chat origin and scope](specs/chat-origin-scope.md), [answering](specs/m4-2-chat-answering.md), and [reranking](specs/chat-relevance-rerank.md). |
+| Vector cleanup | [Generation cleanup](specs/vector-generation-cleanup.md) records why cleanup follows publication and how superseded generations affected retrieval. |
+| Designed reading and owner workflows | [Design guide](design.md), [Design phase](specs/design-phase.md), and its [implementation record](specs/design-phase-plan.md). |
+| Authentication and authorization | [Auth phase](specs/auth-phase.md) and [Registry rekey](specs/auth-2-registry-rekey.md). Self-asserted email could not protect private activity; rendering owner controls conditionally could not authorize API writes. |
+| Apple sign-in declined, 2026-09-21 | Provider-account cost, deployed-only testing requirements, and one-time email delivery did not justify another provider. This withdrew Auth A9 rather than postponing it. |
+| Public reading and web hosting | [Route visibility](specs/route-visibility.md) and [public reading](specs/public-reading.md). The product should be shareable and discoverable without a teaser or paywall; server rendering motivated moving the web from Pages to a Worker. |
+| Isolated environments | [Environment rules](../AGENTS.md#environments) preserve the dev/staging/production separation and staging-default deployment decision of 2026-09-13. |
+| Component verification, 2026-09-22 | [M6 audit](specs/m6-hardening.md) records the reversal of the component-test prohibition; product decisions rendered by components deserve tests. |
 
-  **One criterion described a column that does not exist** (§8 bullet 13's "an owner skip with no
-  email", `skipped_by_user_id` since the Auth rekey), and the same read turned up seven more
-  documents contradicting the code: §3's diagram against its own Stack table, §1's CORS paragraph
-  against the move off Pages, §7's sign-in bullet against §7's own prose, `AGENTS.md`'s repo layout
-  naming five screens that no longer exist, `wrangler.jsonc`, `index.ts`, and a `?about=` URL
-  parameter described in `ScopeChip.tsx` that was never built. All corrected the same day.
-
-  **What is still accepted:** the route-level owner gate and the scope chip's click, which need a
-  DOM the owner declined, and where the consequence is a bad screen rather than an unauthorized
-  write — the API answers 403 either way. And 16.2, the `wrangler dev` exercise, which no test can
-  assert.
-- **Component tests are allowed, and they are render tests — decided 2026-09-22.** The rule forbidding tests for UI
-  components (§8) is reversed. It was written on 2026-09-21 with a good argument that turned out to cover only half
-  the ground: daisyUI is CSS only, so a component test that asserts *appearance* mostly asserts that the component
-  is the component. But a component also **decides** things — whether the owner's control is rendered at all, which
-  of two sentences a state produces, what an `aria-label` says — and those are product rules that happen to live in
-  a `.tsx` file. §8 had criteria resting on exactly those rules with nothing asserting them, and the M6 sweep had to
-  mark two of them unverified-and-accepted purely because of this rule. That is the wrong reason to accept a gap.
-
-  **No DOM, and no new dependency.** `preact-render-to-string` is already a dependency — the server render uses it —
-  so a component test renders the tree to a string and asserts over it in the existing Node environment.
-  `happy-dom` and a testing library were offered and **declined**, which fixes the boundary: what a component
-  decides from its props is tested; **interaction — clicks, focus, the escape key — stays hand-verified under
-  `pnpm dev`** before its commit, as `AGENTS.md` → Web UI code has always required. Appearance is still not tested,
-  and an assertion on a Tailwind class is a test of daisyUI rather than of this product.
-
-  This closes the two gaps the sweep had accepted: the web offering the owner's operations to the owner alone (§8
-  bullet 3), and the scope chip's dismissal (§8 bullet 9). It does not reopen the third, the `wrangler dev`
-  exercise, which no test can assert.
-- **Route visibility: a public catalog, and two reads that are the owner's — decided and done 2026-09-21.** Every
-  route behind identity was reviewed one at a time with the owner. Twenty-four stayed. Seven moved, in both
-  directions, and each direction reverses something this document had promised.
-
-  **Two became the owner's.** `GET /catalog` is an operations dashboard — an `attention` block naming what needs the
-  owner, and the transcript provider's `remainingCredits`, a third party's billing state about the owner's account,
-  which was being served to anyone signed in. `GET /channels/:id/followers` hands one reader another reader's email
-  address; **§8's second criterion carved that out of its own privacy promise, and the carve-out is withdrawn**. It
-  was written on 2026-09-10, when identity was a self-asserted header and "private" meant almost nothing; a verified
-  session is what changed what a reader may reasonably expect. `followerCount` stays public — a fact about the
-  channel, not about any reader — and `FollowersResponse` is unchanged, so the owner still sees addresses.
-
-  **Five became public**: the channel list, the channel detail, and the three episode reads. The summaries are the
-  product and can be read before it is joined. This introduces a visibility the codebase did not have — **public, but
-  richer when signed in** — and **replaces §7's rule that the API returns the same representation to every identity**
-  with the table in §7. `management` and `processing` become optional on `Channel` and `Episode` for every client,
-  which is the cost worth naming: a bug that omits one for a signed-in caller reads as missing data rather than as an
-  error.
-
-  **What the owner settled in review.** A signed-out caller sees **all three channel statuses**, `?scope=all`
-  included, so a declined channel's `reviewNote` — the owner's own words — is world-readable; the cost was named and
-  taken. The episode reads filter on **no** channel status, so a withdrawn channel's summaries stay readable: a
-  signed-out landing page, channel → episodes → summaries, is a future iteration and these routes are its API. That
-  is parity rather than a reversal — §4.1's "the reader screens hide them" is only the eligibility-driven screens
-  (Queue, History, the calendar, and read receipts), and a signed-in reader can already open those summaries from
-  Sources. A repeatable `?status=` filter to replace `?scope=all` was proposed and **deferred**: it existed to make
-  the anonymous rule an intersection, and "all three statuses" left nothing to intersect.
-
-  **What this does not do by itself.** Nothing a reader can see changes until the web changes too — every screen sits
-  behind the session guard, so this is correct, tested and invisible until a landing page exists (§7 Screens).
-  Accepted with it: **the summaries become scrapeable**, and there is still **no rate limiting anywhere**. The
-  exposure is read bandwidth rather than spend — nothing paid is reachable anonymously, since `/channels/feed`,
-  retry and chat all still need a session and `/catalog`, the only route that touched the transcript provider, is now
-  the owner's. CORS is untouched, so the five are public to any client but not to another origin's JavaScript.
-
-  Reasoning and the route-by-route review are `docs/specs/route-visibility.md`; the five steps are its plan.
-
-- **The product can be read before it is joined — built 2026-09-21** (`docs/specs/public-reading.md`). A visitor
-  browses the catalog at `/`, opens a channel, and reads any summary entire, at the same URLs a reader uses. This
-  is the other half of the route-visibility decision of the same day: those five API reads were correct, tested
-  and invisible until a screen existed that a signed-out person could reach.
-
-  **What it is for**, in the owner's words: a shareable read, a browsable showcase, and a public archive worth
-  finding from a search engine. Explicitly *not* a demo that converts — no teaser, no cap, no paywall by another
-  name. A visitor is treated as a reader who has not signed in.
-
-  **Two decisions were reversed the same day they were made, and both reversals are the interesting part.** A
-  hidden channel first answered `404`; then the next decision kept a declined channel's summaries readable, which
-  made the 404 incoherent — the channel name printed on a shared summary would have led nowhere — so a hidden
-  channel renders, minus the owner's review note, and stays out of the catalog list. And **"sign in, then resume
-  the action"** was struck entirely along with the Ask composer that motivated it: it would have serialised an
-  intent before the OAuth redirect and replayed it after, which was the most fragile thing in the feature and
-  existed to save one click. A visitor now has no controls at all.
-
-  **`/sources` came back out of the public set after a few hours.** Signed out it showed the same rows as the
-  landing page, which lists every channel uncapped, and its sort and paging answer a reader's questions rather
-  than an arriving stranger's. The API route stays public; this is the web's gate.
-
-  **Two changes larger than the feature came with it.** The three public routes are **server-rendered**, because a
-  shared summary that unfurls as a grey line is not shareable and a crawler does not run the bundle — which forced
-  the hosting question, settled while nothing was deployed: **`apps/web` is a Worker with static assets**, not a
-  Pages site, with a service binding to the API. And **`apps/web` gained a test runner**, reversing the standing
-  typecheck-and-lint-only rule, because this adds pure modules worth pinning and a second rendering path invisible
-  to both existing gates.
-
-  **Accepted with it:** the summaries are scrapeable and now indexed, which is the point rather than a side
-  effect; a signed-in reader's first paint on a cached public page is the anonymous one, settling a moment later;
-  and there is still no rate limiting, which is a deploy-time configuration rather than code.
-
-  **Deferred and named:** link-preview images, until there is a source-agnostic place to keep an image URL —
-  deriving one from the YouTube id is correct only while YouTube is the only source, and fails as a broken image
-  rather than an error; paging the landing page's catalog; and precomputing the sitemap into R2, whose trigger is
-  any channel passing 200 episodes.
-
-- **Apple is not a sign-in provider — decided 2026-09-21.** It was planned as the Auth phase's last chunk and is
-  withdrawn rather than deferred. The cost was never the code: `better-auth` supports it and the provider is three
-  lines. It was everything around it — a paid developer account, a Services ID and a `.p8` key; no `localhost` and
-  no non-HTTPS, so it could never be exercised under `wrangler dev` and needed a deployed staging origin that does
-  not exist; and an email emitted **only on the first authorization**, with no user-info endpoint to recover it, so
-  a single mishandled callback loses a person's address until they revoke the app in their Apple ID settings. Two
-  providers cover the audience, and the third was buying a schedule dependency and a one-shot failure mode for a
-  button. **This completes the Auth phase** (§10).
-
-- **The catalog operations became the owner's — done 2026-09-20**, the second half of the decision below. Seven
-  routes gained `403 FORBIDDEN`: approve, decline, pause, resume, Start, episode retry, episode skip. Nothing else
-  did, and that is deliberate — reading stays open to every caller, which is §7's design. The bug worth naming is
-  the one the tests pin: **a refusal must write nothing**, so `authorization.test.ts` compares the channel's
-  status and pause, the episodes' states and the run count before and after all seven refusals rather than only
-  reading status codes. PRD §8's first two criteria — one shared episode set for two followers, and no reader
-  reaching another's chats, messages, preferences or receipts — now have tests for the first time, which the M6
-  audit of 2026-09-17 said they never had.
-
-- **Authentication arrives, and the API starts refusing — decided 2026-09-20.** Two standing decisions are
-  reversed together: §2's *"No authentication is added, and none should be"*, and the 2026-09-12 ruling that the
-  API enforces no authorization. The argument is not that users expect a login. It is that `X-User-Email` is
-  **self-asserted**, so any caller who knows the API's address can send anyone else's and read that person's chats,
-  messages, preferences and read receipts out of their User DO — and §8's second criterion, that users cannot do
-  exactly this, has been true only because nobody tried. That defence held while the catalog was the interesting
-  surface and stopped holding when M4 put conversations in the User DO. Authentication alone does not close the
-  second half: a stranger with a valid Google account still has a valid session, and can still approve channels.
-  So owner routes gain a real `403` and rendering stops being the only gate. **The shape:** `better-auth` inside
-  the existing Worker over its own D1, with Google and Meta as the providers; a bearer token across the two
-  origins, carried by a one-time
-  code in a URL fragment and exchanged for the real token, so the long-lived credential never enters a URL or the
-  browser's history; and the Registry minting its own `user_id` with better-auth's as a link column, so the
-  domain's primary key is not a library's. **What was declined, and why:** Cloudflare Access, which is the least
-  code of anything but gates an *enumerated* set of people and cannot do open sign-up; a hosted identity vendor,
-  which puts a third party in the critical path and locks the primary key to its id space; and both a Registry-DO
-  adapter and hand-rolling OAuth outright, because the flow is not the hard part — the accumulating provider
-  quirks are, and those are what a library absorbs. **The cost, named rather than hidden:** the token lives in
-  `localStorage`, where XSS can read it. The one-time code closes the redirect leak, not the storage one; only a
-  first-party `HttpOnly` cookie closes that, and that needs a single origin, which is a deployment change this
-  product has not made. The phase is unnumbered, on the Design phase precedent, so no `M6` reference is disturbed.
-
-- **Work in progress is a state, not a footnote — decided 2026-09-17** after the owner watched a Retry they had just
-  started. The row said *"bhaskar.maddala@protonmail.com started this; Retry is available in 60 min"* beside a status
-  column still reading "Summarised" and a Retry button that looked pressable and was not. Every part of that was
-  wrong, and **the design guide had prescribed it**: its interaction rule asked an in-flight action to say who
-  started it and an unavailable one to carry a countdown, so the screen was obeying the guide rather than departing
-  from it. The email named the reader to themselves, since owner screens have one owner. The hour was the
-  force-takeover deadline for a background instance the engine appears to have lost, not an estimate — the attempt
-  finishes in two or three minutes and frees Retry then — so the line counted down to the wrong event, overstated it
-  twentyfold, and never ticked, because the screen had no refresh at all. **Elapsed, not remaining**: "running for
-  2 min" cannot be wrong and needs no estimate the product does not have. The status column now carries the
-  in-progress state, which outranks whatever the episode last came to rest as; an unavailable control looks
-  unavailable; and a screen showing background work refreshes while it lasts and only while it lasts. `docs/design.md`
-  §4 is rewritten, because a rule that produced this is the thing to fix.
-
-- **A cross-encoder decides what a chat answer is built from — decided 2026-09-17** after a live defect: an unscoped
-  question about a true-crime episode cited *What 12 Years of Failure Taught Steve Jobs About Success*. Nothing had
-  malfunctioned. Retrieval ranked by the embedder's cosine score and kept a fixed six, so the sixth slot was filled
-  by whatever came next once the genuinely relevant chunks ran out, and the source cards showed it as evidence.
-  **The finding worth keeping is that the cosine score cannot carry a relevance floor at any value**: replayed
-  against the live index, a question the corpus had zero coverage of scored **0.717** where the question it answered
-  well scored **0.681**, and the mis-cited chunk outranked three on-topic ones. A relative floor fails for the same
-  reason — at `0.95 × top` the wrong chunk survives, at `0.96 × top` two chunks survive and the answer loses its best
-  detail. Adding the BGE query-instruction prefix, which the model documents for retrieval, made it worse. So the
-  floor moved onto a model built to judge pairs: `@cf/baai/bge-reranker-base` put that same chunk 22nd of 24, and
-  separates a question with no coverage (top 0.0061) from one with coverage (top 0.5334). The floor applies to scoped
-  questions too — **the owner's call, against the first draft**, which had exempted them on the grounds that a weak
-  citation from the episode on screen misleads nobody: a reader who asks something an episode does not answer is owed
-  that sentence, not eight timestamps implying otherwise. It costs a fourth fixed reply, "Nothing in this episode
-  covers that." Retrieval now answers from as many chunks as bear on the question, from none upward, and the keep
-  counts are ceilings. Full reasoning and measurements: `docs/specs/chat-relevance-rerank.md`.
-- **A superseded vector generation could outlive its replacement — found and fixed 2026-09-17.** Episode
-  `pduZ-bfcKAQ` had two generations live in `media-rag-dev`; the dead one took **17 of 50** candidate slots in its
-  channel and cost two of twenty-four on a real question. Retrieval rejects them correctly on generation mismatch, so
-  no citation was wrong and nothing was user-visible — the cost was that the over-fetch was spent on vectors that
-  could not be used, which mattered newly, because the reranker above made candidate depth load-bearing where the
-  top six by cosine had been the whole answer. **Two faults, and the first was invisible behind the second.**
-  `DELETE_BATCH` was 1000, carried from the upsert ceiling and never measured, where Vectorize refuses more than 100
-  ids per delete — so an episode over 100 chunks could *never* have a superseded generation deleted, while every
-  shorter one always could. Four shorter episodes cleaning up correctly made a deterministic bug read as a transient
-  one. It stayed hidden because cleanup is designed to swallow its own failures, correctly, since a published episode
-  must not be marked failed over a delete that blipped — and because the delete named one generation, so a single
-  miss was permanent. Rule 26 now deletes every superseded generation, which
-  makes the next successful publication carry out whatever the last one failed to, using the attempt ledger as the
-  record of what exists. **The order is the part not to touch:** publish, then delete. Deleting first would empty an
-  episode that is on screen and answerable, and since the floor-both decision above the reader would be told
-  "Nothing in this episode covers that." about an episode they are reading — a confident and verifiable lie, where
-  deleting late costs only candidate slots nobody can see. Verified end to end on 2026-09-17: a publication reporting
-  `superseded: 3` deleted all three, and a 50-wide sweep of that channel went from 33 usable candidates to 50. What
-  **Detection was considered and declined — owner, 2026-09-17.** A cleanup that fails is
-  now self-correcting on the next successful publication, and still silent; the ledger computes the orphan set for
-  free, so saying so would have been cheap. It is not worth a surface at this size: the failure is inert to every
-  reader, the recurring path heals itself, and nothing here is deployed to anyone but the owner. What would reopen
-  it is a failure that is *not* self-correcting — episodes that stop being re-ingested, or a cleanup fault that is
-  intermittent rather than deterministic, since this one only stayed hidden because four short episodes succeeded
-  while the single long one could never have. Reasoning: `docs/specs/vector-generation-cleanup.md`.
-
-- **Lucide icons, and monograms where artwork is missing — decided 2026-09-14.** The icon set is Lucide, shipped as
-  `lucide-preact` (the dependency approved 2026-09-15): one stroke weight, one grid, and a name for every glyph, so a
-  screen never invents its own. The two type families are self-hosted rather than fetched from a font CDN, which would
-  tell a third party when each reader sat down to read. Channel avatars are **deterministic
-  monograms** — two letters on a tint derived from the channel id — because nothing in the product stores channel
-  artwork and no permitted source for it exists; if one is ever added, the monogram becomes the fallback rather than
-  the design. Adding a channel is three steps rather than one field: paste an id, verify it against the long-form feed
-  (the title, the count of long-form videos, when the newest landed), then decide — a reader files a request there,
-  and the owner gets the title, the import count and the note in the same step, which is the one-step approval §7
-  already describes.
-- **Owner operations are desktop only — decided 2026-09-14.** Curate and channel review have no phone breakpoint and
-  no phone entry point: a phone shows no Curate item at all, and Account tells the owner how many things are waiting
-  and that they need a larger screen. Approving, declining, retrying, skipping and the catalog table are dense,
-  consequential and rare; designing them twice would cost more than it returns. Every **reader** screen has a phone
-  breakpoint — queue, reading, history, sources, one source, account, the nothing-waiting state, and the channel and
-  date pickers as sheets.
-- **The design carries its own accessibility floor — decided 2026-09-14.** Four rules, checked at both sizes and both
-  breakpoints, because the paper-and-ink palette makes it easy to drift pale. Text meets 4.5:1 against the page — the
-  tertiary grey that carried most secondary labels sat at 2.8:1 and the meta grey at 4.0:1, and both moved. Nothing
-  bearing meaning is smaller than 12px, uppercase labels included, which are the hardest to read small. Every control
-  a finger reaches is 44px, and owner-table actions, which are text, carry the vertical padding and the weight to be
-  found. And **state is never colour alone**: a read summary says "read" and an unread one says "unread" in the same
-  ink, a calendar day still holding something is bold and underscored before it is tinted, and no row is dimmed with
-  opacity to mean anything. This is the concrete half of the state-mapping work the daisyUI decision below left open.
-- **The queue keeps every day, and splits from the library — decided 2026-09-14.** The digest's 24-hour window is
-  dropped, and what was one list becomes two views over the same data. **Unread** answers "what still needs me" and
-  holds nothing else: no greyed-out rows, no calendar, only the days that still carry something. **History** answers
-  "what arrived, and when": every day kept, newest first, each day its own address, navigated by the calendar, and the
-  only place a receipt can be undone. The first draft conflated them, showing done rows under a filter labelled
-  Unread, and called the second view "Everything" — a name that says what it contains rather than what it is for. Both
-  run off the single read receipt: no `archived_at` and no second pile. The first calendar was also unusable as a
-  calendar: its cells showed counts without dates, so no one could find Saturday the 12th in it. And the first owner
-  wireframe offered Skip on a pending episode, which §7 does not allow — Skip belongs to failed episodes alone, and a
-  pending one offers Retry with the wait named. The window was never a decision anyone took — "the last 24
-  hours" is in the founding PRD, in the paragraph that defines the word digest, and the seven-day expansion was added
-  with the Home read-experience spec (2026-09-07) as an escape hatch. Its one real effect was loss: because `since` is
-  clamped at seven days (`apps/api/src/routes/digest.ts`), an episode a reader did not get to became unreachable from
-  the queue and survived only on its channel page. A day is the right unit because this product's content genuinely
-  arrives in daily batches, because availability never resets so a day never changes once written, and because a
-  bounded day is a natural page where an unbounded list is not. **Channel becomes the only other filter** — time
-  within a day is not something a reader triages by — and at any catalog size it is one control opening a searchable
-  list sorted by what is unread, never a row of chips, which is four lines of chrome at thirty follows. Filters are
-  never sticky across sessions, so a quiet queue is never a filter someone forgot. Days are navigated by a
-  **calendar of the last five weeks** rather than a list, because a calendar's height is fixed whatever the depth of
-  the history and it shows where a week went; a day with nothing costs a pale cell instead of being skipped. The
-  calendar belongs to History: in Unread it would be mostly empty cells, so that view carries only the days still
-  holding something and a way through to browse by date. **A calendar cell is a date first**: the day of the month is
-  the glyph, what arrived that day is the number beneath it, and a tint marks a day still holding something unread.
-  Today, the open day, a day with nothing, and keyboard focus are four distinct treatments; each cell carries its full
-  date and counts as its accessible name, and arrow keys walk the grid. A **density switch** trades the excerpt away, never the
-  title, so a heavy day fits one screen — **withdrawn 2026-09-15** (below), the queue having been the only list that
-  ever had one. Counts can be switched off entirely, for a reader who would rather the queue
-  did not keep score. **Every screen is designed at two sizes** — a handful of follows and thirty, a few chats and
-  forty — because volume, not layout, is what breaks these screens: the controls that carry a long list (search, a
-  sort order, status tabs, pagination, a sheet on a phone) are invisible at the size a mockup flatters. This also retires Archive as a separate idea: with days kept,
-  permanence comes from the structure and triage from the read receipt, so the reading view's button is **Done** and
-  no `archived_at` is needed. Cost: `GET /digest` gains an end bound and a cursor and loses `MAX_WINDOW_MS`.
-
-- **Reading is a place, and reading is an act — decided 2026-09-14.** Three decisions settle the Design phase's
-  architecture before its spec is written, and the wireframes for both roles are drawn against them. **One:** a
-  summary is read only when the reader says so (§4.4). The digest's return-marks-read rule was right for a page that
-  expanded every summary inline and is wrong for a queue, which would empty itself the moment it was glanced at. The
-  first version of this decision had *opening* a summary mark it read as well, which left the Done button with
-  nothing left to do by the time it could be pressed; revised the same day. So **Done is the only write**, it is
-  available on the queue row as well as on the summary's own screen so nothing has to be opened to be dismissed, and
-  it advances to the next unread. Every read route stays a pure read, which is the simpler API and the testable one,
-  and an accidental open or a shared link cannot cost a reader an item. **Two:** a summary gets its own screen and its own URL,
-  `/read/:episodeId` — a measured column, the executive summary, the takeaways with their timestamps as the body, and
-  nothing else — so the API gains a single-episode read, since deep links and reloads must work (§7). **Three:**
-  Home splits in two. `/queue` is what is waiting to be read, one row per episode with the executive summary as the
-  excerpt; `/sources` holds following, the catalog, and adding a channel, and M4's chats become `/chats` rather than
-  a third section of Home. §7's one-page Home with jump links is retired. The reading experience is modelled on Instapaper: a queue rather than a wall, one screen per piece,
-  type and theme controls, archive as the act that clears an item.
-- **The owner does not choose a role — decided 2026-09-14.** There is no role selection at sign-in and no reader/owner
-  mode. The owner is a reader who also curates: one nav, one extra destination (`/curate`, holding Needs you, Catalog,
-  and the reviewed history) whose nav item carries a count only when something is waiting, and owner controls beside
-  the objects they govern — approve, decline, pause, resume, and start a run on the channel's own page. A role gate
-  would tax a daily act for a weekly one, duplicate the account switch the product already has, and invent a mode to
-  explain when a screen looks empty. Owner-ness attaches to objects, not to sessions. The API still answers every
-  identity the same way; this hierarchy is the web's rendering, and the web is the only gate.
-
-- **Nothing is owed outside §10 — recorded 2026-09-14.** Four items were reading as work in flight. Two had in fact
-  been settled the same day and the specs had not caught up; two are now skipped. **Settled:** the summary
-  regeneration (`summary-coverage-plan.md` Step 5) ran — thirteen episodes retried, eleven republished, three
-  sentences held 9/9 against 6/11 untouched, no republished summary opens by narrating the recording against 6 of 11,
-  median coverage gap 49% to 25% — and the owner accepted it as v1; and attribution (`summary-quality.md` §4.3) was
-  built, A/B'd against the live model and discarded uncommitted, because `llama-3.3-70b` keeps writing "The guest"
-  whether or not it is handed the name, 30% anonymous falling only to 22%. **Skipped:** M3.7's owner click-through of
-  the four screens and the long-form feed plan's Step 5 walkthrough, both of which exercise screens the Design phase
-  rebuilds, so they are walked through against the design instead; the feed split keeps its `YOUTUBE_FEEDS_FAKE`
-  coverage meanwhile. Two episodes of the regeneration failed `VECTORIZE_INCOMPLETE` under twelve simultaneous
-  retries, kept their old summaries, and want a manual Retry run on its own. The next work is the Design phase (§10),
-  with nothing trailing it.
-
-- **Twenty-minute sections, and the takeaways chosen in code — decided 2026-09-14.** A 146-minute episode's summary
-  reached 1:56:41 and stopped, losing 29 minutes that contained several concrete, quotable claims. Two independent
-  causes were measured and both are fixed. Sections of 45 minutes were too long: a model call trails off in its own
-  last third whatever its length, so a long section leaves a long hole. Across two episodes, 45-minute sections left
-  the last half hour unrepresented and touched 7 of 10 deciles, while 20-minute sections lost about a minute, touched
-  every decile, halved the widest gap, and — unexpectedly — repeated run to run where the 45-minute split had varied
-  by ten minutes. Twenty is the knee: thirty recovers most of the benefit for two fewer calls, twelve buys nothing and
-  makes the tail worse. And the model would not distribute: asked to select 15 to 18 takeaways across its sections it
-  filled the list from the earliest and stopped, twice measured, discarding whole sections. That selection now happens
-  in code — a quota round-robined across sections and spread within each — and the second model call is demoted to
-  writing the three sentences and consolidating the tags, which is what it is good at. Two consequences worth naming:
-  a failed second call no longer destroys the summary, because the takeaways were chosen before it ran, so
-  `raw_fallback` now means "no section parsed at all" rather than "the reduce failed"; and the cost of a long episode
-  roughly doubles, eight or nine model calls where there were four. Sections are divided by chunk count rather than by
-  filling each to a time target, because filling by time left a 2-minute remainder at some lengths that would have
-  drawn a full call and a full share of the budget. Reasoning and measurements: `docs/specs/summary-coverage.md`.
-- **Summary prompt v2, and both summary calls in JSON mode — decided 2026-09-14.** On 2026-09-13, the first day
-  summaries existed, two episodes fell back to raw text. One was our own three-sentence cap, since relaxed. The other
-  was the model's: a news clip came back as JSON whose `executiveSummary` value carried no quotation marks, twice, so
-  the validator could not read it and the reader saw JSON under "unformatted summary". Three changes answer that. The
-  map and reduce prompts are rewritten around a literal JSON skeleton with the rules numbered below it, because a model
-  copies a skeleton more reliably than it follows prose. Both calls now ask Workers AI for JSON mode, a
-  `response_format` carrying a JSON Schema built from the validator's own bounds, so the platform shapes the answer
-  before we see it and the two constraints cannot drift apart; Cloudflare does not guarantee conformance, so the hand
-  validation of §4.4, the one stricter retry, and the raw fallback all stay exactly where they were. And the takeaway
-  bound widens from 3–5 to 3–8, the map prompt asking for 3–6 and the reduce for 5–8: a three-minute clip cannot
-  honestly give five distinct points, while the reduce runs only on episodes past 45 minutes and has earned the room.
-  The sentence count is still not validated (the 2026-09-13 decision stands). The same edit fixes a latent defect the
-  reduce prompt had hidden since M3.5: the section summaries handed to the reduce call carried raw seconds where the
-  prompt promised `[h:mm:ss]` markers, so no multi-section episode could have kept its timestamps. `PROMPT_VERSION`
-  becomes `2026-09-14` and names the whole output contract, the texts and the schema together. Existing summaries are
-  not regenerated; owner Retry per episode is the path, one transcript credit each. A probe against the live model that
-  day recorded two platform behaviours worth keeping: in JSON mode the answer arrives as a parsed object rather than a
-  string, and a schema the model cannot satisfy produces no "JSON Mode couldn't be met" error but a best-effort answer
-  truncated at the token ceiling — which reaches us as an invalid answer, so the retry and the fallback are what handle
-  it. Reasoning and the probe record: `docs/specs/summary-json-mode.md` and its plan.
-- **daisyUI over Tailwind is the component library — decided 2026-09-14.** `daisyui` 5, `tailwindcss` 4, and
-  `@tailwindcss/vite` join the approved dependencies (`AGENTS.md`), and the rule requiring one plain CSS file with no
-  component library and no CSS framework is withdrawn (§3). daisyUI is pure CSS with no JavaScript bundle and is
-  framework agnostic, so it raises none of the Preact compatibility questions that ruled out the React-based
-  libraries: the web's JavaScript does not grow at all, and its CSS grows from about 1 kB compressed to an expected
-  12 to 20 kB. Its components cover what §7 already asks for, notably `badge` and `status` for the attempt-outcome
-  vocabulary, `stat` for the catalog health strip, `table` for the owner catalog, `collapse` for the reviewed
-  history, `skeleton` for the per-section loading states, `avatar` for channel avatars, `chat` for M4 conversations,
-  and `modal` on the native `<dialog>` element. Four conditions are rules rather than preferences and live in
-  `AGENTS.md`: one custom theme with all 35 built-ins excluded, so the product inherits no recognisable default look;
-  the native `<dialog>` modal method only, never the checkbox or anchor variants, which drop escape-key closing and
-  focus containment; the `tabs` component unused, because §7's section navigation is anchors and that rule stands;
-  and `lib/copy.ts` stays the single home for user-facing phrases, so daisyUI supplies form and our code supplies
-  words. Not installed yet: Tailwind's preflight reset would restyle the five screens built during M2 and M3 before
-  there is a design to rebuild them to, so the install is the Design phase's first step (§10). The library supplies
-  parts, not a system; mapping the channel, episode, wait, skip, and outcome states onto daisyUI's handful of
-  semantic colours is design work the phase still owes.
-- **A designed web UI, and a Design phase before M4 — decided 2026-09-14.** The UI is no longer text only. Images,
-  avatars, thumbnails, and rich embeds are permitted (§7), and rich media stops being a non-goal (§1). A Design phase
-  takes the place between M3 and M4 (§10): it produces the visual system and a design for every screen of §7, then
-  rebuilds the five screens built during M2 and M3 to match, so M5 keeps conversations alone. It is deliberately
-  unnumbered so that every existing `M4`, `M5`, and `M6` reference in the specs stays correct; renumbering would have
-  touched forty-three of them, sixteen inside closed records of past decisions. This entry originally recorded that
-  the stack was unchanged and the design had to be executable in hand-written CSS; that constraint was reversed
-  later the same day by the decision above. The screens of §7 describe what is built today; the Design phase's own
-  spec will carry the designed replacements, and neither the spec nor its plan is written yet.
-- **Follows have one owner — decided 2026-09-13.** The Registry's `channel_followers` is the only record of follows;
-  the User DO's `channel_follows` table is dropped (its `0001` edited in place, local state wiped). Since 2026-09-10
-  every follow was written twice, User DO first, with the promise that a failed second write would be corrected by
-  the next write of the same pair. That left two silent failure modes, a followed channel that stays system-paused
-  and never discovers, and a phantom follower that keeps a channel discovering for nobody, with nothing detecting
-  either. The copy bought nothing: both rows carried the same two timestamps, follows were already Registry data by
-  design, and every Home load already goes through the Registry. Eligibility becomes one SQL join there. Read
-  receipts, chats, and preferences stay private to the User DO. Spec: `docs/specs/follows-single-owner.md`.
-- **Channel state simplification — decided 2026-09-10** (`docs/specs/channel-simplification.md`). A channel is an
-  approval container with three statuses, `requested`, `approved`, and `declined`, and carries no import outcome.
-  Anyone adds a channel by pasting its id, which also follows it; the owner approves or declines. Declining is the one
-  answer to "no, not this channel" and "we are withdrawing this one": it stops scheduling, hides the channel from the
-  catalog list, keeps everything it produced, and is undone by the owner approving it again or a user requesting it
-  again after reading the note. Channels are never deleted. Pause is a flag on approved channels, set by the system
-  when the last follower leaves and by the owner by hand. Episodes carry the state machine — `pending`, `available`,
-  `failed`, `skipped` — with every unfinished, non-deterministic outcome retried for one 48-hour processing window and
-  deterministic outcomes skipped automatically, reversibly. Follows are recorded in the Registry as well as the User
-  DO, so follower counts are real. The initial import runs once, at the first approval, regardless of followers. Gone
-  with this decision: the request entity and its outcome phrases, automatic follows, channel failure codes, channel
-  retry, the channel waiting code, channel soft delete and restore, and the follow eligibility guard. Because nothing
-  was deployed, both `0001_init.sql` files were rewritten once, with owner approval, instead of extended (§5.4).
-  Merged the same day; the owner's browser walkthrough of the four screens passed.
-- **Transcript source — decided 2026-09-08: DownSub's API.** The InnerTube mechanism of 2026-09-07 was built and
-  measured and is bot-checked from Cloudflare's egress (§4.2 rule 19). The owner weighed a home relay behind a
-  Cloudflare Tunnel, Bright Data's Web Unlocker, and DownSub, and chose DownSub after a probe with a trial key passed
-  every check (`docs/specs/m3-ingestion.md` §2). The InnerTube code was removed and survives only on the throwaway
-  branch `spike/transcript-remote`.
-- **M3 execution model — decided 2026-09-12** (`docs/specs/m3-ingestion.md` §2). Channel ingestion and episode
-  recovery are independent. A channel discovery run is completed RSS history: it fetches one approved, unpaused
-  channel's feed, creates new episodes with immutable `discovered_by_run_id`, and starts their first attempts. It does
-  not own later episode outcomes. One episode Workflow instance represents one durable attempt, whether immediate,
-  scheduled, or owner-requested. The episode recovery scheduler ignores channel status and pause, and retries every
-  unfinished non-deterministic outcome for 48 hours with no three-attempt rule. DownSub pre-flight gates episode
-  attempts only, not discovery, and every blocked start is a recorded attempt (2026-09-12 review). Publication uses
-  staged vector generations so failed first publication exposes nothing
-  and failed replacement leaves current content readable. Lost running attempts reconcile after one hour and remain in
-  the same 48-hour window; "approved, never started" has no age window. A tick staggers the attempts it starts by
-  three seconds each. The schema, the Registry DO's stores, and the API contract were restarted for this model rather
-  than evolved (§5.4); the `lifecycle_version` fence is gone.
-- **Product name — decided 2026-09-12: Said on Air.** The name states what the product delivers: what was said on
-  the air, in text, with the minute it was said. It replaces the working title "Media Digest Assistant". When the name
-  was chosen, `saidonair.com`, `.app`, `.dev`, and `.io` were unregistered at their registries (RDAP and whois,
-  2026-09-12) and a web search found no product, company, or podcast using the name; no trademark database was
-  searched. The web brand text and the API document title follow the name. Whether the repository name, the
-  `@media-digest/*` package scope, the Worker name, and the browser storage keys follow it needs an owner decision.
-- **`episodeId`, not `videoId` — decided 2026-09-15.** The product's noun for a thing with a summary is an
-  *episode*, and every layer now says so: the shared schemas, every route and path parameter, both Durable Objects'
-  methods, the SQLite columns (`episodes.episode_id`, `summary_reads.episode_id`, `episode_summaries.episode_id` and
-  its `related_episode_ids_json`, `chat_message_sources.episode_id` and `episode_title`, and the attempt ledger), the
-  Vectorize metadata, the web, and the tests. An episode id is still the YouTube video id it was discovered as — that
-  is a fact about where it came from, not what it is — so `videoId` survives in exactly two places, both of them one
-  line wide: the feed parser reading `<yt:videoId>` into a `FeedEntry`, and the watch URL the transcript provider is
-  given. `AGENTS.md` → Ingestion implementation states the rule. The `0001_init.sql` of both Durable Objects was
-  rewritten rather than migrated, which is allowed while nothing is deployed (§5.4); dev state was wiped once.
-- **Reading preferences apply to every page — decided 2026-09-15**, reversing the Design phase's rule that the
-  theme belonged to the reading surface alone (`docs/design.md` §2.7, and §6 of the phase spec, which had put a
-  theme outside the reading column out of scope). Light, sepia and dark now repaint the whole product, and the
-  reader's type family and size govern everything written to be read. The reasoning is that someone who wants to
-  read in the dark wants to use the product in the dark, and light chrome around a dark column is the worst of both.
-  The cost was a palette: each theme needed its own ground, panel, three inks, two lines, accent, owner amber,
-  consequence red and six avatar tints, all measured against the 4.5:1 floor before being applied. Kept per browser,
-  never sent to the API: how a page looks is not something the product needs to know.
-- **The reading column gives the reader back to where they came from — decided 2026-09-15**, withdrawing
-  "it advances to the next unread" from the *Reading is a place, and reading is an act* entry above. A summary has
-  one URL and three ways in — the queue, a day in History, a source's own page — and `/read/:episodeId` names the
-  episode and nothing else, so the column could not tell which had been used: its arrow said "Back to the queue"
-  whatever the truth was, and Done threw a reader who was browsing the library into the queue's next item. Both now
-  follow one rule. **The arrow names the list the summary was opened from and returns the reader to it at the row
-  they left; Done writes the receipt and does the same.** A related title moves within the column and leaves the
-  origin alone, so the way out is still the list the reader came from. **Done renders only on a summary with no
-  receipt**, because advancing was the only answer it had left on one already read; a read summary states "Read" in
-  its meta line instead, and the receipt is undone in History, where the row is (`docs/design.md` §4). What the
-  advance was worth is flow, which is the right trade for a twenty-second triage item and the wrong one for a
-  four-minute read; what it cost is the queue visibly getting shorter — the only progress this product shows — and
-  the "You are through everything" ending, which a reader mostly arrived at sideways. The origin is kept per tab in
-  the browser and never reaches the API, like every other view preference (§7). The return anchors on **the row's
-  own id, never a scroll offset**, which an unfetched page of "Show more" and the row leaving the queue for having
-  been read each invalidate; when the row is genuinely gone, the day heading it sat under is
-  still there. Known limit: a row opened from a third page of "Show more" is not in the document when the list
-  reloads, so the return lands on its day, or at the top.
-- **Owner actions say what they do, and their form says what kind of act they are — decided 2026-09-15.** Three
-  words were wrong. **Start** never said what starts, and it starts nothing durable: it reads the feed now, so it
-  is **Check feed**. **Pause** is **Pause ingestion**, which names what stops — the channel's summaries stay
-  readable and its episodes keep recovering, and "Pause" alone suggested otherwise. And **Withdraw** sat a few
-  pixels from **Unfollow** and reads as the same act to anyone moving quickly; it is **Withdraw approval**, which
-  names what is withdrawn and separates the owner's decision about the shared catalog from one reader's decision
-  about their own queue. Form now carries the same distinction: the two reversible knobs nobody else feels are
-  **glyphs** — `rotate-cw`, and `pause`/`play` — while the one decision other readers feel keeps its word, in the
-  consequence red, and still confirms. That is also what buys the space the dense Curate table wanted; `docs/design.md`
-  §2.4 states the three conditions a control must meet before it may be a glyph, and withdrawing meets none of them.
-  The words remain the controls' names: a glyph carries its name for assistive technology and as its tooltip, and
-  the attention list, which has room, spells "Check feed" out. Last, the **follower count now sits beside the
-  controls** on a channel page rather than appearing for the first time in the confirmation dialog: a consequence
-  should be visible before it is chosen, not explained after.
-- **Adjustments attach to the object; decisions belong to Curate — decided 2026-09-15.** The 2026-09-14 rule that
-  capability attaches to objects stands, and this is it applied rather than reversed: it was read as "every owner
-  control beside every object", and only two of the six qualify. **Beside the channel**: check the feed, pause and
-  resume ingestion — reversible, felt by nobody else, and prompted by looking at the channel and finding it stale
-  or noisy. **In Curate**: approve, decline, withdraw approval — felt by other readers, driven by the queue of
-  requests rather than by browsing, and needing what only Curate carries. Nobody browses to a channel in order to
-  approve it. Three things go wrong together under the old arrangement, and all three are fixed by the split. The
-  object-side **Approve was a worse copy of the real one**: `approveChannel(id, {})` with no title override, no
-  import count and no note, where Curate's is a form with all three (§7). **Withdrawal was offered without its
-  context** — Curate shows the run history, the episode counts and who is waiting; the channel page showed a
-  follower count and a dialog, so a channel could be withdrawn from a page that never said whether its ingestion
-  was healthy. And the arrangement **had a hole in the phone rule**: `Curate` and `CurateChannel` are
-  `desktopOnly`, but the channel page's owner strip carried no breakpoint at all, so an owner on a phone was told
-  by Account that Curate needs a wider screen while that same phone let them approve, decline and withdraw. The
-  split closes it without a new guard, because what remains beside the object is exactly what the 2026-09-14
-  entry's own reasoning never called dense, consequential or rare. A channel that is not approved therefore offers
-  no controls beside itself at all — only the count, and the way through to Curate.
-- **The way out is named for what the thing is here — decided 2026-09-15.** A summary's bar said `Watch` and a
-  channel's said `On YouTube`: one named the verb the destination uses, the other named the destination. They do the
-  same job from the same place in the same bar, so they are now named the same way, by the product's own noun —
-  **`Episode`** and **`Channel`**. `Watch` was the odder of the two: it is YouTube's word, on the one screen whose
-  entire argument is that the reader does not have to watch. Where the link goes is the external-link glyph's job,
-  and the tooltip says "Opens on YouTube" for anyone who wants it spelled out. This applies to labelled controls
-  only; a channel id or an episode title that happens to be a link is an identifier, and keeps being itself.
-- **A page about one object carries its own bar — decided 2026-09-15.** The reading column had one from the start;
-  a channel's page now has the same. No wordmark and no destinations: a **way back** on the left, and on the right
-  the one act that belongs to the whole channel rather than to any row, the way out to YouTube, in the shape
-  `Watch` takes on a summary. The rule it generalises is worth stating because the next screen will meet it: a
-  destination a reader **navigates to** keeps the nav; a page they **opened something to get to** carries the way
-  back out. Back is the **browser's own**, not a remembered path — a breadcrumb that records "the previous page" on
-  every route change is wrong the moment someone presses the browser's back button, because the page they just left
-  becomes the one the app would send them to. What history cannot answer is whether there is anywhere to go, so a
-  reader who opened the URL directly, from a pasted link or a bookmark, lands on Sources instead of being thrown
-  out of the product. The cost, and it is real: **the channel page loses the nav, and on a phone the bottom tab
-  bar with it**, so Queue is reached by going back rather than across. The reading column has accepted that trade
-  since the Design phase; this extends it to the one other screen that is about a single object.
-- **A channel's header says what cannot be inferred — decided 2026-09-15.** It led with "Approved", which every
-  channel a reader can reach is, so the word was a constant with a label, the same fault as the reading-time
-  estimate. **Silence now means approved and running**, and only the states a reader cannot infer speak: "Awaiting
-  owner approval", "Paused", "Declined", "Withdrawn". A *list* of channels keeps the word on every row, because
-  there it tells one row from the next — `channelStateCopy` for lists, `channelExceptionCopy` for the page about
-  one channel. In its place the line gains what a reader actually wants to know about a channel before following
-  it: **how much it has published and how much of that can be read** — "23 episodes · 5 summaries" — the gap
-  between the two being the honest measure of a channel that will not summarise well. The four status counts add up
-  to every tracked episode (§5.3), so the total needs no new field. "Last summary 3h ago" keeps its place and gains
-  the noun it was missing; it had read "last 3h ago", which never said last what. And **the link to YouTube leaves
-  the meta line for the bar**, in the shape the reading column uses for `Watch`: a way out to the source is an
-  action, not a fact about the channel, and a line of facts should not have a control buried in it.
-- **Follow is a glyph and its word — decided 2026-09-15.** `+ Follow` and `− Unfollow`, on a source's row and on
-  its own page, through one `FollowButton` the two screens had been spelling out separately. The glyph leads, so the
-  scannability that made it worth doing survives — two shapes differ at a glance down a list of twenty-five where
-  "Follow" and "Unfollow" differ by a prefix — and the word removes the guessing. It went out glyph-only for half a
-  day and came back with its word: **a dash in a box reads as a dash** before it reads as "unfollow", and the answer
-  to an unreadable label is the word, not a different glyph. `user-round-plus`/`user-round-minus` was weighed and
-  refused for that reason: it is the *invite* glyph, an admin adding a person, and beside a follower count it reads
-  as "remove a follower", a capability that sounds plausible and does not exist. Wrongly specific is worse than
-  vague. **Not** the
-  commoner `plus`/`check` pair: `check` already means "mark this summary done" on every queue and History row, and
-  one glyph with two meanings on screens a reader crosses in a session is worse than a long word. Not the `user-*`
-  family either, which means *add a person* — on screens that also count followers, `user-plus` would read as "add
-  a follower". The control keeps its border where the owner's glyphs beside it have none, so a reader's own act and
-  a decision about the shared catalog are told apart by form; and its accessible name carries the channel, so a
-  reader tabbing twenty-five rows does not meet twenty-five buttons called "Follow". **Request again** stays a
-  word: it is a different act, it is rare, and no glyph means it. Whether a *state* marker should say "Following"
-  beside a channel's name — the list currently leaves that to the button's verb — is open in `docs/design.md` §9.
-- **A row is identified by what the list does not already say — decided 2026-09-15.** In a queue or a day of
-  History, which mix channels, that is the source: the mark, the name, and the time it arrived. On a channel's own
-  page it is not, and repeating one monogram and one name down thirty rows says nothing thirty times. Those rows
-  are led by the **publication date** instead, which also repairs a mismatch: the page is ordered by publication
-  date, but the date appeared last in the meta line and only when it differed from the day the summary arrived — so
-  it was hidden precisely when a channel is healthy and an episode is summarised the day it is published. One of
-  the five episodes in the dev catalog already showed it. The arrival time goes from that page with the channel
-  name: when a summary reached *you* is a queue fact, and a channel's history is about the channel. The rows with
-  no summary take the same shape — the date leading, the title, then the phrase where the excerpt would be — so a
-  history reads as one list rather than two interleaved ones; what still differs is only what such a row can offer,
-  a title in `--ink-2` linking to the video rather than to a summary that does not exist. The loading skeleton
-  drops its avatar circle there too, a skeleton being the real row's shape or nothing.
-- **Curate shows the catalog twice, not three times — decided 2026-09-15.** A **Reviewed** section listed every
-  channel already decided, newest first, with the reviewer, the time and the note — a third rendering of one
-  catalog, under Needs you (the outstanding handful) and the table (every channel). With one channel in the
-  catalog the screen named it twice, once in the table and once below it, which is what made the question
-  obvious. Every fact the section owned is **already on the channel's own review page**, in the same words under
-  the same label — `Reviewed · 2h ago by …`, note included — and the section's rows linked to exactly that page,
-  so it was a preview of somewhere one click away. Half of each row was a constant besides: one person decides
-  here, so "by …" is the same address on every row forever, the fault the queue row's "Unread" was. It had also
-  never been re-asked — `docs/specs/design-phase.md` §4.8 carried the three sections over from M3.7 "unchanged in
-  content", restyled only — and it was already half-abandoned, rendering an `id="reviewed"` anchor that nothing
-  on the page targeted. What goes with it is **decision order**: the table sorts by title, state, episodes, last
-  summary, followers and latest run, so "what did I rule on most recently" now has no answer on this screen.
-  Judged not worth a section at this catalog's size, against naming every decided channel twice. Nothing else is
-  lost: the Declined filter answers what has been turned away, and a declined channel's note is on its Sources
-  row through `reviewCopy`. `ReviewedList` and `decisionCopy`, which had no other caller, are deleted.
-- **A screen is named where the frame does not name it — decided 2026-09-15.** Queue, Sources and Curate each
-  printed their own name in a 27 px heading directly beneath a bar already carrying that word, marked current in
-  weight, in a rule and in `aria-current`; below 768 px the same words sit in the phone's tab bar. **Neither bar
-  ever scrolls away** — the top one is sticky, the tab bar fixed — so the heading was not orientation, it was a
-  constant on the one screen it named, which is the fault this product has now removed five times: the queue row's
-  "Unread", the reading-time estimate, `structured` in Curate's table, the three zeroes of Needs you, and this.
-  The heading is **`sr-only` on those three, not deleted**: a document whose first heading is an h2 day group has
-  no name for anyone navigating by headings, and `aria-current` names a link rather than a page. Each now leads
-  with what is actually its own — the channel filter, the Sources tabs, and in Curate the Needs you section itself:
-  the three anchor links went out with the heading, a table of contents over three headings already on one screen,
-  and one of the three (`#reviewed`) had no target on the page to scroll to at all. A phone gains about 40 px at
-  the top of the queue. **History keeps its visible title**: it is in neither bar, it is reached by
-  a link from the queue's ending and from a day heading, and on a day the title *is* the day. The rule generalises
-  the row rule of the same day — a row is identified by what its list does not already say, a screen by what the
-  frame does not. What the change turned up: **`document.title` was static**. `index.html` sets "Said on Air" and
-  no route had ever changed it, so every tab, every bookmark and every entry in the browser's history menu named
-  the product and not the screen — survivable only while each screen shouted its name in serif. Every route sets
-  it now, with the name it would have printed: `Queue`, `Sources`, `Curate`, `History` or the day, the episode's
-  title for a summary, the channel's for a source, the channel and `Curate` for its review, and the product alone
-  on the identity screen and while a name is still being fetched — never the previous screen's, which is wrong
-  rather than merely absent.
-- **The summary row has one shape — decided 2026-09-15.** Three lists draw a summary row — the queue, a day of
-  History, a channel's own page — and only the queue offered a second, compact form of it, which dropped the
-  excerpt and halved the row's padding so that more of a heavy day fit one screen. One list in three behaving
-  differently is a difference with nothing behind it, and the trade was the wrong way round: **the excerpt is the
-  row's content**, the three lines that say whether this summary is worth opening, so a compact row is a title, a
-  date and two counts — more rows on the screen, each of them worth less, and a reader who has to open things to
-  find out what they are. What a long list owes is **paging**, which this queue already does fifty at a time to the
-  end of the range, and a way for rows to leave, which the check on the row already is. It cost a second control in
-  the header too, sitting beside the channel filter as though the two were the same kind of thing: one narrows what
-  is in the list, the other was a preference about how it looked. `DensitySwitch` is deleted and the `density` prop
-  with it; the 16 px `--text-row-compact` step stays, because Sources and a just-verified feed name a channel at
-  that size. Unchanged, because it never rested on the switch alone: a return anchors on **the row's own id**, which
-  an unfetched page and a row leaving the list still invalidate on their own.
-- **The secondary ink ramp is darkened — decided 2026-09-15.** The palette put its **palest colour on its smallest
-  type**: `--ink-3` carries the 12 px uppercase label and the 12.5 px meta line — the metadata, the Curate metrics,
-  the calendar's counts — and measured 5.12:1, while `--owner` at 4.92:1 carried the owner's marks at the same size.
-  Both cleared the 4.5:1 floor, and that is the point worth recording: **WCAG's threshold does not scale with size**
-  below 18.66 px, so a 12 px label and a 17 px paragraph are held to the same number, which is how a palette can be
-  compliant everywhere and still be work to read at the small end. `--ink-3` is now 6.5:1 and `--owner` 6.0:1 in
-  every theme. **`--ink-2` moved with it** rather than staying put: darkened alone, `--ink-3` would have come within
-  1.15:1 of `--ink-2` and the two levels would have collapsed into one colour with two names, so both shifted and
-  the step between them is unchanged in all three themes — 1.47, 1.37, 1.46. Only the floor rose; the hierarchy did
-  not move. The palest text anywhere is now 6.01:1, up from 4.92:1. **Sizes were left alone**: 12 px is the floor
-  because uppercase labels are hardest to read small and it was chosen rather than drifted into, raising it moves
-  every row height and the table's density, and the contrast lift answers the same perceptual complaint far more
-  cheaply. `docs/design.md` §2.1 and §2.7 carry the nine values and their measurements, taken from the stylesheet
-  after the change rather than from the plan before it.
-- **The queue's ending counts what is here — corrected 2026-09-15.** It read "That is everything waiting — 5
-  summaries sit in History", where 5 was every summary the reader is eligible for, the four above it included. Read
-  at speed that is five *more*, somewhere else, which is the opposite of what it meant. The line now states what is
-  in front of the reader — "That is all 4 unread summaries" — and the way on names History's number only when it is
-  actually larger: "Browse all 5 in History", or plain "Browse History" when the two lists are the same set, since
-  a second identical number invites the same misreading in reverse. Two faults in the same three lines went with
-  it: the sentence ended "…in History." immediately above a link that also read "History", and that link carried no
-  44 px target though it is a standalone destination (`docs/design.md` §7).
-- **The inventory marks what the worklist holds — decided 2026-09-15.** Curate shows the same catalog twice: Needs
-  you is the handful outstanding, the table is every channel. A row in the table gave no sign it was also in the
-  worklist, so an owner scrolling the inventory could not tell what was urgent without scrolling back up. Each row
-  in both now carries an amber **Needs you** in the title cell, from the same `needsYou` derivation the section
-  renders from — passed in rather than recomputed, because two answers to one question is the fault being fixed.
-  The mark says only **that** a row is work; *why* is already in the columns that own it, so nothing is stated
-  twice. Which turned up the one fact no column stated: an approved channel whose feed has never been read showed a
-  dash under Latest run, and a dash reads as missing data rather than as a fault — it says **never started** now,
-  in words, in the column that owns it.
-- **`attention.failedEpisodes` counts approved channels only — corrected 2026-09-15.** It read `episodes.failed`,
-  the catalog-wide total, and a failed episode can outlive its channel's place in the catalog: declining stops
-  discovery but not recovery (§4.2 rule 28), so an episode can exhaust its 48 hours after the channel is gone.
-  Curate's Needs you has always filtered to approved channels, so the nav badge could say one while the section
-  showed none — visible only faintly while that section answered with three zeroes, and plainly once it answered
-  with a sentence. §4.2 rule 14 settles which side is right: only failed **publications** enter Needs attention,
-  and an episode of a channel that has left the catalog is not work to nudge anyone toward. `episodes.failed` is
-  unchanged and still counts everything, because it is a census rather than a worklist. A paused channel keeps
-  `status = 'approved'`, so its failures still count.
-- **Curate says nothing needs you, once — decided 2026-09-15.** Needs you rendered three categories whatever the
-  state of the catalog, so a healthy day was met with three headings, three zeroes and three sentences explaining
-  the zeroes. A healthy day is also the usual day, and the one an owner is most often looking at: the nav carries a
-  count and renders it only when something waits, so an owner who opens Curate without a badge was guaranteed all
-  three. A category now renders only when it holds something, and the section says it once when none do. `needsYou`
-  derives the three groups in one place, since deciding the section is empty needs all three counts and each list
-  had been filtering the channel array for itself.
-- **Curate's channel review shows what a decision needs, and opens the rest — decided 2026-09-15.** Nine columns
-  were on by default and five were diagnosis: the window reads `—` on every healthy row, attempts and chunks matter
-  only when something is wrong, "available since" answers nothing anyone asks there, and the summary format said
-  `structured` on every working row — a constant with a heading, the same fault as the reading-time estimate and
-  the queue's "Unread". Its opposite is not a constant: `raw_fallback` means the model's JSON never parsed and a
-  reader is looking at raw text, so that one is promoted into the episode's state as **unformatted**, where it can
-  be acted on. The four that remain are the ones a decision needs — which episode, when it was published, what
-  state it is in, what can be done — and the rest opens per row on a disclosure. **Nothing is removed**: the window,
-  the attempts, the chunk count, the format and first availability are all in that row, with the episode id beside
-  them, which is what correlates a row with a log line. The header's one sentence of up to nine clauses chained
-  with `·` at 12.5 px becomes an identity line over a labelled grid — density from structure rather than from small
-  type (`docs/design.md` principle 6). And **Retry stops asking to be pressed on a healthy episode**: it stays on
-  every row, findable and saying what it would do, but in `--ink-2` rather than the accent, because there it
-  replaces a working summary and spends a transcript credit for no promised gain, and the accent means "you can
-  act on this".
-- **A row opens with the episode's own date — decided 2026-09-15.** The queue groups by the day a summary landed in
-  front of the reader, and the row said "published Aug 4" at its foot, so a heading reading **Today** sat over an
-  August episode. Both facts were true and the pairing was jarring. The fix is not to restructure the pile around
-  publication — grouping by it would need a second ordering and cursor on `GET /digest` and an index that does not
-  exist, and would scatter an initial import across five single-row days — but to put the episode's date on the
-  episode. Every summary row now opens with it, in the uppercase label a channel's own history already used, so the
-  queue's row and a channel's row are one shape; the publication item leaves the meta line, since a row must never
-  state its date twice. **When a summary landed remains the structure** and when the episode was published remains
-  the content: the first is a fact about the pipeline and belongs to the heading, the second is a fact about the
-  episode and belongs to the row. They agree on most days — a cron every six hours means an episode published today
-  is summarised today — and diverge exactly where a reader notices, after an initial import carrying months of back
-  catalogue into one afternoon.
-- **A summary row leads with its title — decided 2026-09-15.** A row in the queue opened with a monogram and an
-  uppercase channel name, so the eye met furniture and reached the content second, and the mark pushed the title
-  and its excerpt 46 px right — measure taken from the one thing worth reading, worst where there is least of it.
-  Both are gone from a list. **The mark was a second, weaker copy of a fact the row already states**, and triaging
-  by channel is what the channel filter is for, not a scan of thirty tinted discs; the monogram survives where it
-  identifies rather than repeats — a Sources row, a channel's header, the reader's own in the nav (§2.5 of
-  `docs/design.md` stands). **The arrival time goes with it**: the day is the heading above the group, so the
-  minute said nothing, and it was what made a batch of rows look stamped out. The channel still has to be named,
-  because the queue and History mix channels — so it **closes the row on its own line**, in the same uppercase
-  label a channel's own history opens a row with. Not in the meta line, where it was tried on paper and would wrap
-  before it finished on a phone: sixty characters at 12.5 px does not fit 390 px beside three other facts. `list`
-  replaces `lead` on the row, naming what the row sits in — `mixed` or `channel` — and the row derives the rest. The executive summary ran straight into the
-  timestamped list with nothing between them but 32 px, so the reader had to work out for themselves that the kind
-  of content had changed; and the topic tags sat at the foot of the article as a bare row of words that never said
-  what they were. Related already had the treatment — a 1 px rule and a 12 px uppercase label — so this was one
-  section styled and two left bare rather than a missing idea. All three are named now. The lede keeps no heading,
-  being the opening: a magazine does not label its body, and the point of a heading here is the *transition*, from
-  three flowing sentences into a list of discrete claims each hanging off a timestamp. "Takeaways" is also the word
-  the queue row already used to promise them, so naming the section closes a loop the page had left open. No count
-  in the heading — the row gave one, the list is in front of the reader, and counts can be switched off, which would
-  leave a heading that changes shape with a setting. Weighed against principle 1, that the reading view carries no
-  chrome it can live without: three words and three hairlines buy a page a reader can scan, and the alternative
-  considered — a rule with no heading — leaves them knowing something changed without saying what.
-- **The `Aa` panel is a sheet on a phone — corrected 2026-09-15.** Not a new rule: `docs/design.md` §3 has said
-  since the Design phase that anything which is a popover on a desktop is a bottom sheet on a phone, and the channel
-  picker and the date picker both are. The reading column's `Aa` was missed, and shipped as a fixed 288 px box hung
-  under the bar — three quarters of a 390 px screen, covering the article whose type it was changing, so a reader
-  could not see the effect of their own tap. It is a `Sheet` below the breakpoint now. Two defects came out with it.
-  **Nothing closed the popover but the button that opened it** — no Escape, no press outside, on a desktop either —
-  which is the trap the channel filter had already been fixed for; it now closes on both. And the sheet's footer
-  would have said "Cancel", which is right for a draft the footer commits and a lie for controls that apply as they
-  are tapped: `Sheet` takes the word from its caller, and this one says **"Back to reading"**. Not "Done" — that is
-  the receipt, on the same bar, inches away, and irreversible from this screen. One shape is in the document at a
-  time, because `Choice` groups its radios by name and two copies would be one group with the visible half showing
-  nothing selected. The type, size and theme labels moved to `lib/copy.ts` in the same edit, the two screens that
-  offer them having each spelled them out.
-- **The read state is printed where it varies — decided 2026-09-15.** The same test as the entry below, applied to
-  the word beside it. A mixed list owes "read" or "unread" in words, and that is the accessibility floor talking:
-  the difference between the two kinds of row may never live in colour or a dimmed row alone. The queue is not a
-  mixed list. Every row in it is unread by definition — that is the screen — so the word was a constant with a
-  label, and it is gone from the queue's rows while staying on History's and a source's, which hold both kinds.
-  **The reading column shows neither word** (amended later the same day): the floor rule governs *lists*, where it
-  keeps one row distinguishable from the next, and a single article has no sibling to be told apart from, so citing
-  it there was applying a rule outside the case it governs. "Unread" above the text a reader is reading is also
-  faintly absurd, and the state is already carried by a labelled control, `Done` rendering exactly when there is no
-  receipt. The line that settles it: **the meta line describes the episode — its date, its length — not the
-  reader's standing with it**, which is a triage fact and lives where they triage, on the History row that says
-  "Read" and carries the Undo. What that costs is named rather than discovered: a summary read weeks ago offers no
-  `Done` and nothing explaining its absence, and if that ever bites the answer is a word where `Done` would have
-  been, not a state label on the meta line. The same reading fixed a
-  defect: `read` is **optional** in the API, absent for anyone who is not an active follower of an approved channel
-  (§7), and the row rendered absent as "Unread" — so browsing a source you do not follow labelled every episode
-  unread, asserting a receipt state the caller cannot have and the API never claimed. The word is now printed only
-  when the API supplied one.
-- **The reading-time estimate is removed — decided 2026-09-15.** Every summary in the dev catalog read "1 min",
-  including one carrying an executive summary and twelve takeaways: `Math.round(words / 220)` on 221 to 311 words,
-  all of which round down to one. The first fix considered was arithmetic — a ceiling, and a slower words-per-minute
-  for a list of discrete claims with timestamps rather than flowing prose — and it was the wrong instinct. §4.4's
-  takeaway budget, about one per eight minutes between 5 and 20, bounds a summary at roughly 220 to 540 words, so
-  the estimate could only ever say one, two or three minutes and in practice said two on nearly every row. That is a
-  constant with a unit, not a number a reader decides on, and no choice of divisor widens the band; the tell was
-  that defending the divisor needed a citation while the output never moved. It was also the one guess on a line of
-  measured facts, which is why being visibly wrong cost more than the item was worth: a wrong number among true ones
-  makes the true ones look negotiable. **The takeaway count answers how much is in there**, varies three times as
-  widely, and is counted. The runtime it was paired with — "1 h 39 m · 2 min read", the product's own case in one
-  line — stays; the reader is already on a page of summaries and does not need the pitch on every row forever. Not
-  kept anywhere: `docs/specs/design-phase.md` §4.5 never asked for it on the reading view, where it had arrived
-  during the build. Open, if a `raw_fallback` summary ever appears in front of a reader: those keep raw model text,
-  have no takeaways, and can run long, so the row loses its only size signal — the answer there is to say
-  "unformatted summary" in words, not to infer it from a minute count.
-- **The queue pages to the end of the range — corrected 2026-09-15.** Not a new decision: §7 has always said the
-  queue holds what still needs the reader and ends by saying what is waiting. The built screen stopped at fifty and
-  offered "More is waiting — browse it by day in History" instead, which breaks the one promise the queue makes.
-  History is the library: it mixes what has been dealt with into what has not, has no unread filter of its own, and
-  is navigated by date rather than by what is outstanding, so a reader sent there at row fifty-one cannot tell
-  which rows still need them. The queue now pages by cursor like every other long list in the product
-  (`docs/design.md` §5), fifty at a time behind a Show more, and the designed ending is reachable for the first
-  time. Two bugs fell out of the same read. **An empty page is not the end of the range**: receipts live in the
-  User DO, so the route filters `unread` after it selects, and a page that spends its ten passes on rows the reader
-  has already dealt with comes back empty *with* a cursor — the built screen would have answered "You are through
-  everything" over a queue that was not empty. And **a page can empty under the reader**, by their marking every
-  row on it done, which is the normal way to use the screen. The queue therefore keeps asking until it has rows or
-  the cursor is null, and claims the reader is through only on the second. Cost: a reader with hundreds waiting
-  presses Show more rather than scrolling forever; an explicit control was chosen over loading on scroll because it
-  is reachable from a keyboard and because History already uses exactly this one.
-- **M6 is a sweep of §8, not a build — decided 2026-09-17.** The milestone read "isolation/lifecycle tests ·
-  `wrangler` verification · docs", and an audit found all three largely answered: isolation is covered by eight test
-  files exercising two identities, both Durable Objects have migration tests, every chunk since M3 carries a
-  `wrangler dev` walkthrough record in its plan, and the API document is generated and guarded. The same audit found
-  §8's **first line untested** — one shared episode set for two followers, true by construction and therefore
-  unprotected against a refactor. §8 holds about sixty such criteria and has never been walked end to end, so the
-  milestone becomes that walk: each criterion marked tested, structural, or unverified. The pattern behind the
-  decision is this session's own record — two milestone lines outliving their work, one acceptance criterion
-  describing something the product could not do, another with no test — every one found by reading a list against
-  reality. Reading the biggest remaining list is worth more than the tests the original line would have produced.
-- **Chat search and chat deletion are not in this version, and a chat needs no title route — decided 2026-09-17.**
-  `docs/specs/design-phase.md` §4.9 had recorded three gaps for M4 to close, and M4 closed none of them, because
-  each dissolved rather than being built. **Naming** needed no route: a chat is named by its first question, which
-  `/chats` and a conversation's bar both render, and `chats.title` stays unset because a future rename route would
-  want the column and dropping it would cost a migration and a wiped Durable Object to remove something nothing
-  reads. **Search** was wanted for the chat rail's search box, and the rail was removed on 2026-09-17, so the
-  requirement left with the thing that needed it. **Deletion** is simply declined for now, and the cost is named
-  rather than hidden: the list only grows, and a reader who wants a conversation gone has no way to get it. This
-  empties M5 (§10), whose whole scope was conversations — which M4.3 built.
-- **Chats begin at a summary, and scope belongs to a message — decided 2026-09-15.** Chat was specified as a global
-  surface: an empty chat, a blank box, and every message searching everything the reader follows. Two faults follow
-  from that. A blank box has no cold start — the reader meets an empty input, tests it with the question it is worst
-  at ("summarise everything"), and judges the feature on its weakest answer. And `topK: 3` over an unguided pool is
-  the retrieval this product can least afford: three chunks drawn from thirty channels may be three unrelated shows,
-  and nothing in the question says which one was meant. Both are fixed by where a chat begins. **The only way into a
-  chat is `Ask` on a summary**, so every conversation is born in context and its first answer is retrieved from one
-  episode; `/chats` becomes the history of conversations rather than a way into one. The scope that entry creates is
-  **a property of each message, never of the chat**: one optional `aboutEpisodeId` on `POST /chats/:id/messages`, one
-  nullable `chat_messages.about_episode_id`, and no column on `chats`. That is the whole difference between this and
-  the per-channel chats §7 still refuses — a stored scope would owe the reader a policy for every unfollow, decline
-  and re-approval, per chat, and a per-message hint owes nothing: a past message keeps its hint as a record of what
-  happened, exactly as it keeps its citation snapshots. The hint **narrows and never widens**, since eligibility
-  still gates the query, so it can never reach a channel the caller does not follow. The chip is **sticky until
-  dismissed** rather than clearing after one message, which turns it into a standing disclosure of what is being
-  searched — the one thing a global chat could never tell a reader, whether a thin answer means nothing was said or
-  nothing was found. ~~It rides in the web URL as `?about=<episodeId>`.~~ **Reversed the same day**, when the owner asked why
-  the URL was carrying it at all. Three reasons had been given and two did not survive: a scoped chat is not
-  shareable, since chats live in the caller's own User DO and another identity gets a 404; and an honest address bar
-  is aesthetic. The third — that a reload would otherwise widen the search — turned out to be answered better by the
-  data: **every question stores its own `aboutEpisodeId`, so a chat's current scope is its last question's**, which
-  is more authoritative than a parameter and needs nothing in the URL. The chip is therefore the screen's state,
-  recovered from the conversation on load. Cost accepted: a dismissal that is never sent does not survive a reload —
-  the conversation still says scoped, so the chip returns. The API keeps the hint in the message body, where it
-  belongs to the message being created; a web decision and an API-resource decision were always separate questions. **Dismissing the chip widens the chat to every eligible channel**, which is the ruling here the owner is
-  most likely to want back: it makes "no way to start a global chat" a speed bump rather than a rule. It stands
-  because cross-source synthesis is the one thing chat does that a transcript search cannot, and forbidding it would
-  cut the feature's ceiling to buy very little. Costs accepted: a genuinely global question — "what has anyone said
-  about X lately" — now begins by opening some episode and dismissing its chip, which is backwards for that question;
-  and chat volume is bounded by reading volume, since reading is the only on-ramp. The fixed no-follows response of
-  §4.5 survives but moves, reachable now only in an existing chat whose follows have since dropped to zero. Spec:
-  `docs/specs/chat-origin-scope.md`.
-- **A cut-off answer is trimmed and kept, not failed — decided 2026-09-16.** An answer that reaches the model's
-  output cap stops mid-sentence. A probe that day settled the open question: the runtime returns a full
-  `chat.completion` including `choices[0].finish_reason`, so truncation is detectable, though that field is absent
-  from the platform's own declared output type and the token count is kept as a fallback for the day it vanishes.
-  The first instinct was to fail such a reply. That is wrong twice. It **discards the text** — failing a reply
-  leaves it empty by design — and a retrieval-grounded answer front-loads, so what gets cut is elaboration and what
-  gets thrown away is the answer. And `Try again` resends the same question, so an error is a **reproducible dead
-  end**: the only recovery the product offers is the one that cannot work. The reader is not deceived by truncation
-  either — a sentence ending mid-phrase is glaring; it is the system that was blind to it. So the reply is **trimmed
-  to its last complete sentence and stored `completed`** with its citations, marked `truncated`, and the web says
-  *"Answer shortened."* — rendered state, so it lives in the web under §7, unlike §4.5's three stored replies, which
-  are content. A reply with no sentence boundary at all is stored whole: a fragment beats nothing. Recovery is the
-  product's own mechanism — it is a chat, so the reader asks. Considered and declined: **auto-continuation**, which
-  doubles the latency of a call the reader is already waiting through, doubles its cost, needs a loop bound, and
-  seams visibly on this model class; and **instructing brevity**, which `docs/specs/summary-quality.md` §4.3 shows
-  this model ignoring. The mark is also the measurement: `CHAT_MAX_TOKENS` is a guess like the retrieval depths, and
-  a week of real questions says whether the cap binds on one answer in a hundred or one in three.
-- **Retrieval depth follows scope, and sources are deduplicated by episode — decided 2026-09-16.** Chat was
-  specified at `topK: 3` for every question. That is a reasonable drill-down into one episode and the thinnest
-  possible basis for the question a global chat exists to answer: three fragments, possibly from three unrelated
-  shows, asked to become a synthesis. The fix is not a longer answer — output length was never the constraint, and
-  raising it without raising the evidence buys words from the model rather than from the transcripts. It is more
-  evidence, sized to the question: **8 chunks from 16 candidates when scoped, 6 from 24 when not.** The depths run
-  opposite to intuition on purpose. One episode is **one voice**, so extra chunks there add evidence without adding
-  anyone to conflate, and `docs/specs/summary-quality.md` §4.3 is the measured reason to fear voices — this model
-  would not name a speaker with the name in its prompt. Unscoped, every extra chunk is another speaker, so depth is
-  bought more carefully. The **over-fetch ratios run opposite too**, for an unrelated reason: a scoped query's
-  rejections are correlated, since one episode is available with an active generation or it is not and all its
-  candidates stand or fall together, so a large over-fetch is wasted there and earns its keep only where rejections
-  are independent. **Neither count may exceed 50**, the most Vectorize returns when metadata is requested, which is
-  not negotiable because the metadata is the citation. Considered and declined: 24 kept chunks for an unscoped
-  question, which is about 9,600 tokens of source — enough that the middle of the context stops being read, enough
-  distinct voices to make conflation the normal case rather than the edge, and more source cards than
-  `docs/specs/design-phase.md` §4.9 ever drew. **Sources are therefore deduplicated by episode**, several chunks from
-  one episode becoming one citation at its best-scoring start time, because a reply cites sources and not passages —
-  which also keeps the common reply within the three cards the artboards show. Costs accepted: a reply may still
-  exceed three cards, so M4.3 owes that state a drawing; and these numbers are guesses too, cheaper ones, which the
-  click-through measure of `docs/specs/chat-origin-scope.md` §2.4 is what would actually settle.
-  **Amended 2026-09-16, after the first live scoped answer.** Deduplicating *before storage* was wrong, and the
-  fault only showed against real data: a scoped question's chunks are all one episode by construction, so the rule
-  collapsed evidence drawn from up to eight moments into a single jump point — in the one mode whose reader is
-  already inside the episode and whose only remaining question is *where*. It also inverted the depth the scoped
-  path had just paid for, retrieving more and showing less. Storage now keeps every validated chunk as its own
-  source and **the web groups by episode at render time**, which serves both modes under one rule: unscoped, one
-  card per episode; scoped, one card carrying several timestamps. `chat_message_sources` already allowed it — its
-  unique constraint is `(message_id, position)`, never `(message_id, episode_id)` — so the collapse was presentation
-  work done in the wrong layer, and no schema change was needed to undo it. Grouping also *reduces* the artboard
-  problem rather than adding to it: a scoped reply becomes one card where the unscoped path can already reach six.
-- **Chat answers inside the request, and code owns the citations — decided 2026-09-15.** Two questions the chat
-  contract had left to implementation, settled together because the same evidence decides both. **Answering is
-  inline**: one embed, one or two Vectorize queries and one model call is seconds of mostly-waiting, which fits a
-  request, where episode ingestion is minutes and needs a Workflow. `ctx.waitUntil` and a Workflow per message were
-  both considered and declined — the first buys a polling loop and a tail that can be cut short, the second pays
-  Workflow startup on every question, in the one place the reader is watching the clock. The two-phase write in the
-  User DO is kept for what it is actually good for: a crash leaves the question stored and the reply pending rather
-  than losing both, which is also what `Try again` reads. The cost is a pending reply that can outlive its request,
-  so one is reconciled to `failed` inline when a read notices it, the way a dead Workflow instance already is.
-  **Citations are attached by code**, from the chunks that fed the answer, and the model is asked for prose with no
-  markers to emit. Markers resolved from model output, and a JSON schema pairing claims to sources, were both
-  declined on measured grounds: `summary-quality.md` §4.3 shows this model ignoring an explicit ban on "the speaker"
-  and returning 0% named with the names in its prompt, so it is not a model to trust with index discipline; and the
-  JSON probe behind `summary-json-mode` found an unmeetable schema truncates rather than erroring, which in a reply
-  means a silently cut-off answer. Attribution that cannot be hallucinated is worth more here than per-sentence
-  provenance, and §7's source cards already carry channel and episode. Cost accepted: three cards attach to a reply
-  as a whole, and the reader cannot tell which sentence came from which. Per-sentence provenance is the v2 if the
-  click-through data of `docs/specs/chat-origin-scope.md` §2.4 ever asks for it.
-- **Nothing unfinished in primary navigation — decided 2026-09-15.** Chats had equal billing with Queue and
-  Sources in both the top bar and the phone's tab bar, and led to a placeholder whose body named a milestone —
-  "Built in M4" — which is our word, not a reader's. Account meanwhile offered **Chat rules**, a field that saved to
-  the server and reported it saved, shaping answers from a feature that cannot answer anything. A control that
-  accepts input it cannot honour is worse than a missing one, and a third of the navigation leading nowhere makes
-  the two destinations that do work read as unfinished too. So until M4 builds the screen there is **no Chats item,
-  no `/chats` route, and no chat-rules field**; `/chats` falls to the redirect every unknown path takes, to
-  `/queue`, so a stale bookmark lands somewhere real. The alternative — a deliberate "coming soon" treatment
-  outside primary navigation — was considered and declined: the honest version of "not yet" is absence, and the
-  wireframes are where the promise lives. Nothing is lost: `GET`/`PUT /preferences` stay registered, tested and
-  documented, so rules already stored come back with the field, and the chat artboards
-  (`docs/specs/design-phase.md` §4.9) are unchanged. The placeholder screen and the generic `Unbuilt` component it
-  used are deleted rather than commented out; M4 builds from the design, not from a stub. **Made permanent the same
-  day by the chat-origin decision above:** with chats beginning only at a summary, `/chats` never becomes a primary
-  destination, and the navigation stays two items after M4 rather than three. **That last clause was reversed on
-  2026-09-16**, when M4.3 built the screen (`docs/specs/m4-3-chat-web.md` §3.1): chats still begin only at a summary,
-  but a reader who has conversations needs a way back to them, so the history is a destination like Queue and
-  Sources without being an entry. Primary navigation is three items and the phone's tab bar three 44 px targets, and
-  the item shipped in the same commit as the screen (`de875d0`), never before it, which is what the ruling above
-  actually protects. Recorded here 2026-09-18: §4.5, §7 and this entry claimed two items for two days, because
-  `m4-3-chat-web.md` §6 judged that PRD §7 needed no edit and nothing re-read it against the shipped nav.
-- **Cron cadence — decided 2026-09-12:** channel discovery runs at `0 */6 * * *` UTC and episode recovery at
-  `30 */6 * * *` UTC; both have a six-hour cadence. The triggers exist in production only (2026-09-13, below).
-- **Environments — decided 2026-09-13: three, dev, staging, production.** Local `wrangler dev` runs as dev against
-  dev-only remote resources (its own Vectorize index, its own secrets), so nothing local can touch what production
-  or the deployed staging preview holds. Staging is the default target of a bare deploy, so a forgotten flag can never
-  reach production. Cron triggers run in production only; staging and dev are driven by hand. Per-environment
-  resources are named `x`, `x-staging`, `x-dev`. The mechanics are `AGENTS.md` → Environments.
-- **Workers plan — decided 2026-09-11: Workers Paid.** Per-step CPU and the concurrent-instance cap both fit.
-- **Owner management interface — decided 2026-09-07:** the Owner screens in §7 and
-  `docs/specs/home-read-experience.md`. Identification: `global_users.role` seeded from the `OWNER_EMAIL` secret.
-- **API reference — decided 2026-09-07:** the API is entity-modelled, documents itself through the shared Zod schemas
-  as OpenAPI 3.1 at `GET /openapi.json`, and serves Scalar at `GET /docs` (`docs/specs/api-reference.md`). The
-  contract was restated from this PRD with no legacy member and the spec and plan approved on 2026-09-12.
-- **Discovery-run collection name — decided 2026-09-12: `runs`.** `GET /channels/:id/runs` lists a channel's
-  completed discovery runs and `POST /channels/:id/runs` performs one now; the `GET` was `ingestion-runs` until
-  then. One resource, one name; the table and schemas keep `ingestion_runs` and `IngestionRun`.
-- **Reader-safe wait reason — decided 2026-09-12: `waitReason`.** A pending episode carries `waitReason` for every
-  caller, derived from its latest attempt (§4.2 rule 11), beside the reader-safe `skipReason`; the attempt itself is
-  in `processing.latestAttempt`, also for every caller since the same day. This resolves the Channel screen in §7, which phrases a pending episode from its latest attempt,
-  against the route row, which had given readers `status` and `skipReason` only. Chosen over owner-only copy so a
-  follower asking why there is no summary yet gets an answer.
-- **Attempt outcome codes — decided 2026-09-12: `EMBEDDING_FAILED` and `SUMMARY_FAILED`.** The two failed-attempt
-  codes §5.3 had left open, named in the style of `WORKFLOW_LOST` and `VECTORIZE_INCOMPLETE`; `TRANSCRIPT_TOO_LARGE`
-  from the M3 spec is mirrored at the same time. The set is closed, so the API document lists it as an enum and the
-  web's owner copy can be exhaustive.
-- **Processing window vocabulary — decided 2026-09-12: `intent` (`publish` | `replace`), `window_started_at`,
-  `window_deadline_at`, `staged_vector_generation`.** They replace `recovery_mode` (`publication` | `replacement`),
-  `recovery_started_at`, `recovery_deadline_at`, and `recovery_vector_generation` on episodes, and `recovery_mode` on
-  attempts; the API names are `ProcessingIntent`, `intent`, `windowStartedAt`, `windowDeadlineAt`. The window opens
-  when an episode is created, not after a failure, so "recovery" named the wrong thing and "mode" named nothing;
-  the value states what the open window is for. The recovery cron and the `scheduled_recovery` trigger keep their
-  names: they do only ever pick up episodes whose earlier attempt did not finish. Edited into `0001` in place
-  (§5.4); local Durable Object state is wiped by the owner.
-- **Migration governance — decided 2026-09-12: no additive-only rule and no frozen-file rule, until revisited.** The
-  rules that migrations only create tables, add columns, and create indexes, and that a committed migration file is
-  never edited, are withdrawn from every document, and `DROP` is struck from hard rule 4 in `AGENTS.md`. A migration
-  may contain any DDL and a committed file may be edited in place; an edited file re-runs only on storage that has
-  not applied it. The owner will revisit governance later.
-- **No authorization in the API — decided 2026-09-12.** The API enforces no authorization at all: no route or
-  Registry method checks the caller's role, there is no 403 and no `NOT_OWNER`, every operation is accepted from any
-  identity, `?scope=all`, the catalog, followers, and runs are readable by anyone, and every caller receives the full
-  representation (`management`, `processing`, summaries). Optional fields (`title`, `initialImportCount`) are honoured
-  from any caller. The web is the only gate: it offers owner controls and the Owner screens to the owner role from
-  `GET /me`. Read receipts are recorded only for eligible callers (§4.4). Kept as they are: the names `OWNER` (skip reason) and
-  `owner_retry` (attempt trigger), which now mean "by hand through the API". Replaces the 2026-09-07 rule that the
-  Registry re-checks the role inside owner-only methods.
-- **Owner add shortcut removed — decided 2026-09-12.** `POST /channels` creates a `requested` channel for every
-  caller and starts nothing; approval is always `POST /channels/:id/approve`, so the API reads the role nowhere. The
-  web keeps the owner's one-step experience by following the add with an approve carrying the title and import
-  count the owner entered.
-- **Chat history in the prompt should be sized by context budget, not counted (owner 2026-09-16).** M4.2 ships a
-  constant — the last ten exchanges — where the right answer is a calculation: fill the tokens left after the
-  retrieved chunks, the caller's preferences and the prompt scaffolding with as much recent history as fits. Ten is
-  a guess that is wrong in both directions, truncating a long conversation about a short episode and crowding the
-  chunks on a dense one. Spec: `docs/specs/m4-2-chat-answering.md` §5.
-- Retain all chats and all shared/user records for now. A future retention policy needs an owner decision.
-- Whether Home's chat input should be pinned to the bottom when the digest is long remains a UI decision.
+Retention mechanics belong to [follows](features/v1/follows-and-content-eligibility.md),
+[receipts](features/v1/personal-digest-queue-and-history.md),
+[chat](features/v1/chat-and-grounded-answers.md), and
+[publication](features/v1/summary-generation-and-publication.md). A new retention or deletion policy requires an
+owner decision; the absence of such a policy is not authorization to delete records.
 
 ## 10. Milestones
 
-```text
-M1 Foundation    pnpm/Turbo/Volta scaffold · Hono · identity · Registry/User DO migrations
-M2 Catalog       anyone adds a channel · owner approve/decline · pause · follows and followers
-M3 Ingestion     discovery runs · episode attempts · RSS/transcripts · chunking · embeddings · staged vector
-                 generations · shared summaries · one Workflow instance per episode attempt · two six-hour crons ·
-                 Start route · Retry/Skip · availability-ordered digest
-   Design        visual system · a design for every screen of §7 · the five built screens rebuilt to match
-M4 Intelligence  chats begun at a summary · per-message scope · filtered retrieval/citations   ✓ 2026-09-17
-M5 UI            conversations                                                                  ✓ 2026-09-17
-   Auth          better-auth sessions · Google/Meta · user_id keying · owner 403s        ✓ 2026-09-21
-M6 Hardening     a full sweep of §8: every criterion marked tested, structural, or unverified  ✓ 2026-09-22
-```
+The original v1 milestones are complete. Their plans remain historical records, not a second list of feature
+requirements or proof that every live integration has been verified.
 
-**M4 no longer lists unread receipts — audited 2026-09-16.** The line carried them from the original plan, but the
-Design phase delivered them: `POST`/`DELETE /channels/{id}/episodes/{episodeId}/read`, `read` on an eligible
-caller's episode, `unread=true` on `/digest` and `unreadCount` on `/follows`, over a tested `do/user/reads.ts`. The
-audit that found this opened M4.2's plan, which is why a milestone's first step is now a read of what it claims to
-owe.
+| Milestone | Record |
+|---|---|
+| M1 Foundation and M2 Catalog | Workspace, storage, and catalog foundation; [catalog design record](specs/channel-simplification-plan.md). |
+| M3 Ingestion — completed 2026-09-13 | [M3 plan](specs/m3-ingestion-plan.md). |
+| Design — completed 2026-09-15 | [Design plan and follow-up record](specs/design-phase-plan.md). |
+| M4 Intelligence and M5 Conversations — completed 2026-09-17 | [Chat plan](specs/chat-origin-scope-plan.md); M5's conversation work was delivered in M4. |
+| Auth — completed 2026-09-21 | [Auth plan](specs/auth-phase-plan.md); Apple was withdrawn. |
+| Route visibility and public reading — completed 2026-09-21 | [Visibility plan](specs/route-visibility-plan.md) and [public-reading plan](specs/public-reading-plan.md). |
+| M6 Hardening — completed 2026-09-22 | [Audit](specs/m6-hardening.md) and [plan](specs/m6-hardening-plan.md). |
 
-The Design phase sits between M3 and M4 and carries no number on purpose (decided 2026-09-14, §9): forty-three `M4`,
-`M5`, and `M6` references across `docs/specs/` and this document keep their meaning, and none has to be rewritten.
-It is a milestone in every other respect, with its own spec, plan, and owner approval before any web change. It
-rebuilds the Account, Home, Channel, Owner, and Owner channel detail screens against the new design, which is why M5
-now holds conversations alone: every other screen it once listed is built, and the Design phase is where it is
-rebuilt. Its first step is the daisyUI and Tailwind install (§3, §9), which no screen can be rebuilt without.
+### Deferred work and accepted limits
 
-**The Design phase is complete — declared by the owner 2026-09-15.** Its nine steps landed that day, and the owner's
-click-through against a live catalog then produced thirty-three further commits, every one of them a decision in §9;
-`docs/specs/design-phase-plan.md` → Record carries them by theme.
+Known implementation limitations and test gaps stay in their owning feature documents. The following product
+follow-ups remain context, not claims of implemented behavior or authorization to start new work:
 
-**M4 is complete — declared by the owner 2026-09-17.** Three chunks (`docs/specs/chat-origin-scope-plan.md`):
-M4.1 the chat routes, M4.2 retrieval and answering, M4.3 the screens. Unread receipts left the milestone's line on
-2026-09-16, having been delivered by the Design phase and never noticed. The owner's click-through closed M4.3 and
-produced eleven further commits, including two design reversals — a conversation has no rail of other chats and
-takes its own bar, and `/chats` carries no visible heading — which `docs/design.md` §2.2, §3 and §5 and
-`docs/specs/design-phase.md` §4.9 were amended to match.
+- Size chat history by available context budget instead of a fixed exchange count; see the
+  [answering design](specs/m4-2-chat-answering.md).
+- Revisit public link-preview images, landing-catalog pagination, and a precomputed sitemap when catalog scale
+  warrants them; the prior trigger for sitemap work was a channel exceeding 200 episodes. See
+  [public-reading decisions](specs/public-reading.md).
+- Decide whether repository, package, Worker, and browser-storage identifiers should follow the product name.
+- Revisit retention and migration governance explicitly before changing those policies.
 
-**One acceptance criterion is outstanding and was accepted anyway:** `chat-origin-scope.md` §5 criterion 19's second
-half — that `Try again` sends a new attempt and keeps the failed reply above it. The staleness half is tested;
-nothing has yet provoked a failed reply, in a test or in use, so the control has never run.
-
-**M5 is complete — audited 2026-09-17, and it was empty.** Its whole scope was conversations, which M4.3 built: the
-Design phase had taken the five screens M5 once held, leaving it that one subject, and §7's own entry says chats
-were "built in M4". The three gaps `design-phase.md` §4.9 reserved for it were settled the same day without routes —
-naming needs none, and search and deletion are not in this version (§9). This is the second milestone line to
-outlive its work, after unread receipts, which is why an audit now opens a milestone rather than closing one.
-**The Auth phase is complete — 2026-09-21.** Eight chunks, A0 through A8; A9 was Apple and was withdrawn rather
-than deferred (§9). The product is behind a real sign-in with Google and Meta, identity is a generated `user_id`
-rather than an email, and the seven catalog operations answer `403` to anyone but the owner. **M6 is next.** It
-carries no number for the same reason the Design phase does not: forty-odd `M6` references across `docs/specs/` and this document keep their meaning and none has to
-be rewritten. `docs/specs/auth-phase.md` and its plan hold nine chunks, A0–A9, under one ordering rule — every
-chunk ends with the product running. **A0 is complete**, and the spike overturned three things before a line of
-real code was written: better-auth takes a D1 binding directly so the phase adds one dependency rather than three;
-the sign-in entry is a `POST` answering JSON rather than a navigable link; and better-auth's own `user.email` is
-`not null unique`, so a provider that returns no email gets a synthesized placeholder there while this product's
-Registry holds null.
-
-**The public reading phase is complete — 2026-09-21.** Ten steps
-(`docs/specs/public-reading-plan.md`), between the Auth phase and M6, carrying no number for the reason the Design
-phase carries none. A visitor can browse the catalog, open a channel and read any summary, at the same URLs a
-reader uses; the three public routes are server-rendered; `apps/web` moved from Pages to a Worker with static
-assets and gained a test runner. Step 5 ended as a deletion — the signed-out catalog was withdrawn the day it was
-built — and the plan records why, because a step that removes what the previous one added is worth more than a
-step that quietly does not happen.
-
-**M6 is next and last. Redefined 2026-09-17 after an audit** (§9): it is **a sweep of §8**, not a build.
-
-§8 holds about sixty verification criteria and nobody has ever walked them end to end. The audit found its three
-original items largely answered already — isolation is covered by eight test files exercising two identities,
-migrations are tested for both Durable Objects, `wrangler dev` has verified every chunk since M3 with a walkthrough
-record in each plan, and the API document is generated and guarded by `openapi.test.ts`. What it also found is that
-§8's **first line had no test**: "two users following one channel produce one shared episode/summary/vector set with
-independent read receipts" is true by construction, because episodes carry no user dimension, and true by
-construction is exactly what stops being true after a refactor.
-
-**~~It still has none.~~ It has had one since the Auth phase — found by the sweep itself, 2026-09-22.**
-`apps/api/test/isolation.test.ts` arrived in `5d9f234` and its header says in so many words that it closes §8's
-first two criteria; the phase was not looking for them. So the sentence that named M6's whole purpose was answered
-four days before M6 began, and **that is the fifth document found to have outlived its work** — after the M4
-unread-receipts line, the empty M5, `chat-origin-scope.md` §5's impossible criterion, and the Chats nav item. The
-argument survives the correction: the vector third of that same line still had nothing asserting it, which is why
-the sweep closed it rather than striking it.
-
-So M6's work is to take each criterion and mark it **tested** (name the test), **structural** (say what makes it
-impossible to violate), or **unverified** (and decide whether to close it or accept it). The value is the third
-category. Two milestone lines have already outlived their work, `chat-origin-scope.md` §5 had a criterion describing
-something the product could not do, and another had no test at all — each found by reading a list against reality
-rather than by running one. §8 is the largest such list left.
-
-Known to be unverified before the sweep starts: `chat-origin-scope.md` §5 criterion 19's second half, that
-`Try again` sends a new attempt and keeps the failed reply above it.
-
-**M6 is complete — 2026-09-22, and it is the last milestone.** The sweep is
-`docs/specs/m6-hardening.md` §3: 91 atomic claims, each with its evidence, ending at **81 tested, 8
-structural, 1 accepted** (§9 has the findings). Its first finding was the stale sentence three
-paragraphs above this one. Its most useful was that two of the three gaps it had accepted were
-accepted because of a rule in §8 rather than because of a risk — writing down *why* is what exposed
-it, the owner reversed the rule the same day, and the repo gained its first component tests.
-
-That leaves one criterion genuinely open, the same one this section has named since 2026-09-17:
-`chat-origin-scope.md` §5 criterion 19's second half. Nothing has yet provoked a failed reply, in a
-test or in use, so the control has never run. It is a UI interaction and falls under the boundary
-§9 drew on 2026-09-22 — render tests, no DOM — so it stays hand-verified.
+New work needs its own scope and owner decision. Old PRD conflicts do not constitute a backlog.

@@ -8,12 +8,14 @@ work here**. `CLAUDE.md` and `.cursor/rules/` point here. Do not duplicate conte
 A personal, multi-user tool with a shared global YouTube channel catalog, per-user follows, digests, and chats,
 running entirely on Cloudflare with a designed web UI (PRD §7; the text-only rule was lifted 2026-09-14).
 
-**`docs/PRD.md` is the canonical product specification.** What the product does, the channel and episode models, the
-logical schema, the API contract, the screens, the acceptance criteria, the non-goals, and the decisions behind them
-all live there. This file covers only how to work in the repo: working rules, hard rules, layout, toolchain,
-engineering conventions, testing mechanics, and code style. Do not restate product behaviour here; link to the PRD
-section instead. If this file and the PRD ever disagree, the PRD governs and this file is the one to fix. The specs in
-`docs/specs/` hold design reasoning, wireframes, and implementation plans and are subordinate to the PRD too.
+**`docs/PRD.md` is the product overview and directory.** It owns goals, shared constraints, and roadmap context;
+`docs/features/v1/` owns the detailed feature descriptions, implementation references, tests, and limitations.
+Source code is the source of truth, and the code-derived feature documents take precedence over conflicting PRD
+or historical spec text (owner decision 2026-09-23). This file covers how to work in the repo: working rules, hard
+rules, layout, toolchain, engineering conventions, testing mechanics, and code style. Do not restate product
+behaviour here; link to its owning feature document. The specs in `docs/specs/` hold historical design reasoning,
+wireframes, and implementation plans, not competing requirements. The PRD retains numbered sections as navigation
+for older references.
 
 **`docs/design.md` is the design guide.** How the product looks and behaves lives there: the principles and the
 arguments behind them, the colour and type tokens with their contrast, spacing and shape, the icon set, avatars,
@@ -21,8 +23,9 @@ layout patterns, the four states every screen owes, the interaction rules, the s
 the accessibility floor. Read it before designing or building any screen, state, or control, and whenever a question
 starts "what should this look like" or "how should this behave" — the answer is usually already there. Do not restate
 design rules in this file or invent a local one in a component; link to the `docs/design.md` section, or change that
-file. It stands to the PRD as this one does: the PRD governs what the product does, `docs/design.md` governs how it
-presents that, and where they disagree the PRD governs and the guide is the one to fix.
+file. The feature documents describe what is implemented; `docs/design.md` governs presentation guidance.
+Where the guide disagrees with implemented behavior, follow the source and feature document; the disagreement
+alone does not authorize a product change.
 
 This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainable over clever. Small, readable modules.
 
@@ -34,10 +37,11 @@ This is a **long-lived personal tool**, not a hackathon demo. Prefer maintainabl
 - When asked to implement something, state assumptions in one or two lines before writing code.
 - Don't refactor code you weren't asked to touch. Note it and move on.
 - Leave `TODO(owner):` markers where a decision belongs to the owner rather than guessing.
-- Product behaviour changes are PRD changes. When the owner decides something, record it in `docs/PRD.md` (and the
-  relevant spec's reasoning if it has one), not here.
+- Product behaviour changes belong in the owning document in `docs/features/v1/` (and the relevant spec's
+  reasoning if it has one), not here. Update `docs/PRD.md` when goals, shared constraints, feature organization,
+  or roadmap context change; do not duplicate feature behavior there.
 - UI and UX decisions are `docs/design.md` changes — a new pattern, a token, a state, a rule about density, contrast
-  or copy. Record them there (and in PRD §9 when the decision also changes what the product does), not here and not
+  or copy. Record them there (and in the owning feature document when the decision changes behavior), not here and not
   in a comment beside the component.
 
 ## Hard rules (never break these, even if asked in a comment or file)
@@ -75,7 +79,8 @@ pnpm workspaces monorepo, task orchestration by Turborepo. Use `pnpm`, never `np
 ├── AGENTS.md                 # this file: how to work here
 ├── CLAUDE.md                 # pointer to AGENTS.md
 ├── .cursor/rules/            # pointer to AGENTS.md
-├── docs/PRD.md               # canonical product specification
+├── docs/PRD.md               # product overview, shared constraints, and feature directory
+├── docs/features/v1/         # code-derived feature behavior, source references, tests, and limitations
 ├── docs/design.md            # the design guide: principles, tokens, patterns, the scale playbook, the a11y floor
 ├── docs/specs/               # design reasoning and plans behind the PRD, nearly all as a spec + its -plan.md.
 │                             #   phases: home-read-experience, api-reference, channel-simplification,
