@@ -302,7 +302,7 @@ pnpm install
 pnpm dev            # turbo run dev (the task is persistent, so both run): wrangler dev --env dev (api) + vite (web)
 pnpm build          # turbo run build: shared → web (vite: dist/client + dist/ssr) ; api has no build step
 pnpm typecheck      # turbo run typecheck
-pnpm lint           # turbo run lint (biome check)
+pnpm lint           # turbo run lint (biome check --error-on-warnings)
 pnpm test           # turbo run test
 pnpm check          # turbo run typecheck lint test — the pre-finish gate
 pnpm --filter api deploy               # staging (the top level of wrangler.jsonc)
@@ -685,7 +685,15 @@ Test what a component *decides*, never how it looks: an assertion on a Tailwind 
 
 ## Code style
 
-- Biome defaults. Run `pnpm lint -- --write` before finishing.
+- Biome defaults, with one addition: **`lint` passes `--error-on-warnings`, so a warning fails the build**
+  (owner decision 2026-09-22). Biome exits `0` on warnings by default, and under `recommended: true` several
+  rules — `noUnusedImports` among them — are warnings rather than errors. Five of those accumulated unread
+  before M6 found them, because `pnpm check` was green the whole time and correctly so: the gate was not lying,
+  it was configured not to stop. Now it stops. A warning you genuinely want to keep is a deliberate
+  `biome-ignore` with a reason, not something left on the floor.
+- Run `pnpm lint -- --write` before finishing. It applies the safe fixes only; removing an unused import is an
+  *unsafe* fix and needs `--write --unsafe` or a hand edit — deliberately, because an unused import is sometimes
+  the symptom of a dropped call rather than dead weight. Check what used to call it before deleting it.
 - Named exports only. No default exports except where Cloudflare requires them (Worker entry, DO/Workflow classes).
 - No `any`. Use `unknown` and narrow. Validate all external input at the boundary: request bodies, queries, and params
   through `lib/validation.ts` and the shared schemas; RSS XML and AI JSON by hand.

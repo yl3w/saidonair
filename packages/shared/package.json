@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "lint": "biome check .",
+    "lint": "biome check --error-on-warnings .",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
