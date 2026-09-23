@@ -75,7 +75,10 @@ const apiDir = path.join(repoRoot, "apps", "api");
 const localBin = path.join(apiDir, "node_modules", ".bin", "wrangler");
 const wrangler = existsSync(localBin)
   ? { file: localBin, prefix: [] }
-  : { file: "pnpm", prefix: ["--filter", "@media-digest/api", "exec", "wrangler"] };
+  : {
+      file: "pnpm",
+      prefix: ["--filter", "@media-digest/api", "exec", "wrangler"],
+    };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -88,22 +91,31 @@ async function run(args, { allowFailure = false, attempts = ATTEMPTS } = {}) {
   let last = "";
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const { stdout } = await execFileAsync(wrangler.file, [...wrangler.prefix, ...args], {
-        cwd: apiDir,
-        encoding: "utf8",
-        maxBuffer: 256 * 1024 * 1024,
-      });
+      const { stdout } = await execFileAsync(
+        wrangler.file,
+        [...wrangler.prefix, ...args],
+        {
+          cwd: apiDir,
+          encoding: "utf8",
+          maxBuffer: 256 * 1024 * 1024,
+        },
+      );
       return { ok: true, stdout };
     } catch (error) {
       last = String(error.stderr ?? error.message);
       if (attempt < attempts) {
-        process.stderr.write(`  wrangler ${args[1] ?? args[0]} failed, retrying (${attempt}/${attempts - 1})\n`);
+        process.stderr.write(
+          `  wrangler ${args[1] ?? args[0]} failed, retrying (${attempt}/${attempts - 1})\n`,
+        );
         await sleep(RETRY_BACKOFF_MS[attempt - 1] ?? 5_000);
       }
     }
   }
   if (allowFailure) return { ok: false, stdout: "", stderr: last };
-  return fail(5, `wrangler ${args.join(" ")} failed after ${attempts} attempts:\n${last.trim()}`);
+  return fail(
+    5,
+    `wrangler ${args.join(" ")} failed after ${attempts} attempts:\n${last.trim()}`,
+  );
 }
 
 async function runJson(args) {
@@ -111,7 +123,10 @@ async function runJson(args) {
   try {
     return JSON.parse(stdout);
   } catch {
-    return fail(5, `wrangler ${args.join(" ")} did not return JSON:\n${stdout.slice(0, 400)}`);
+    return fail(
+      5,
+      `wrangler ${args.join(" ")} did not return JSON:\n${stdout.slice(0, 400)}`,
+    );
   }
 }
 
@@ -120,7 +135,10 @@ async function requireAuth() {
   const result = await run(["whoami"], { allowFailure: true, attempts: 1 });
   const text = `${result.stdout}${result.stderr ?? ""}`;
   if (!result.ok || /not authenticated/i.test(text)) {
-    fail(6, "refusing: wrangler is not authenticated. Run `wrangler login` first, then ask again.");
+    fail(
+      6,
+      "refusing: wrangler is not authenticated. Run `wrangler login` first, then ask again.",
+    );
   }
 }
 
@@ -140,10 +158,18 @@ async function listAllIds() {
     let cursor;
     let expired = false;
     for (;;) {
-      const args = ["vectorize", "list-vectors", INDEX, "--count", String(PAGE_SIZE), "--json"];
+      const args = [
+        "vectorize",
+        "list-vectors",
+        INDEX,
+        "--count",
+        String(PAGE_SIZE),
+        "--json",
+      ];
       if (cursor) args.push("--cursor", cursor);
       const page = await runJson(args);
-      for (const vector of page.vectors ?? []) if (vector?.id) ids.push(vector.id);
+      for (const vector of page.vectors ?? [])
+        if (vector?.id) ids.push(vector.id);
       if (!page.isTruncated || !page.nextCursor) return ids;
       const expiry = Date.parse(page.cursorExpirationTimestamp ?? "");
       if (Number.isFinite(expiry) && expiry <= Date.now()) {
@@ -153,9 +179,14 @@ async function listAllIds() {
       cursor = page.nextCursor;
     }
     if (!expired) return ids;
-    process.stderr.write("  cursor expired mid-walk; restarting the enumeration\n");
+    process.stderr.write(
+      "  cursor expired mid-walk; restarting the enumeration\n",
+    );
   }
-  return fail(5, "gave up: the list-vectors cursor expired twice. Nothing was deleted.");
+  return fail(
+    5,
+    "gave up: the list-vectors cursor expired twice. Nothing was deleted.",
+  );
 }
 
 async function deleteIds(ids) {
@@ -166,7 +197,10 @@ async function deleteIds(ids) {
     const result = await run(args, { allowFailure: true });
     if (!result.ok) {
       process.stderr.write(`${result.stderr ?? ""}\n`);
-      fail(5, `stopped after ${deleted} of ${ids.length} vectors: a delete batch failed ${ATTEMPTS} times.`);
+      fail(
+        5,
+        `stopped after ${deleted} of ${ids.length} vectors: a delete batch failed ${ATTEMPTS} times.`,
+      );
     }
     deleted += batch.length;
     process.stdout.write(`  deleted ${deleted}/${ids.length}\n`);
@@ -191,21 +225,30 @@ const reported = await reportedCount();
 const ids = await listAllIds();
 
 if (ids.length === 0) {
-  process.stdout.write(`Nothing to delete: ${INDEX} holds no vectors (index reports ${reported}).\n`);
+  process.stdout.write(
+    `Nothing to delete: ${INDEX} holds no vectors (index reports ${reported}).\n`,
+  );
   process.exit(0);
 }
 
-const drift = reported === ids.length ? "" : ` (the index reports ${reported}; writes are applied asynchronously)`;
+const drift =
+  reported === ids.length
+    ? ""
+    : ` (the index reports ${reported}; writes are applied asynchronously)`;
 
 if (!yes) {
-  process.stdout.write(`  ${INDEX} on Cloudflare  (${ids.length} vectors)${drift}\n`);
+  process.stdout.write(
+    `  ${INDEX} on Cloudflare  (${ids.length} vectors)${drift}\n`,
+  );
   process.exit(0);
 }
 
 process.stdout.write(`Deleting ${ids.length} vectors from ${INDEX}${drift}:\n`);
 await deleteIds(ids);
 
-process.stdout.write("Waiting for Vectorize to apply the deletes (asynchronous, 10-80 s is normal)...\n");
+process.stdout.write(
+  "Waiting for Vectorize to apply the deletes (asynchronous, 10-80 s is normal)...\n",
+);
 const remaining = await verifyEmpty();
 if (remaining > 0) {
   process.stdout.write(
@@ -218,7 +261,11 @@ if (remaining > 0) {
 }
 
 // The index and its metadata indexes are deliberately untouched; print them as proof.
-const metadata = await run(["vectorize", "list-metadata-index", INDEX], { allowFailure: true });
+const metadata = await run(["vectorize", "list-metadata-index", INDEX], {
+  allowFailure: true,
+});
 if (metadata.ok) {
-  process.stdout.write(`\nMetadata indexes kept on ${INDEX}:\n${metadata.stdout.trim()}\n`);
+  process.stdout.write(
+    `\nMetadata indexes kept on ${INDEX}:\n${metadata.stdout.trim()}\n`,
+  );
 }

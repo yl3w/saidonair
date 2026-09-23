@@ -302,9 +302,9 @@ pnpm install
 pnpm dev            # turbo run dev (the task is persistent, so both run): wrangler dev --env dev (api) + vite (web)
 pnpm build          # turbo run build: shared → web (vite: dist/client + dist/ssr) ; api has no build step
 pnpm typecheck      # turbo run typecheck
-pnpm lint           # turbo run lint (biome check --error-on-warnings); a warning fails it
-pnpm lint:fix       # the same run with --write --unsafe: applies every fix biome has, including
-                    #   the unsafe ones. Read the diff — see Code style for why `unsafe` is the word
+pnpm lint           # biome check --error-on-warnings over the WHOLE repo; a warning fails it
+pnpm lint:fix       # the same run with --write --unsafe: every fix biome has, including the unsafe
+                    #   ones. Read the diff — see Code style for why `unsafe` is the word
 pnpm test           # turbo run test
 pnpm check          # turbo run typecheck lint test — the pre-finish gate
 pnpm --filter api deploy               # staging (the top level of wrangler.jsonc)
@@ -693,8 +693,14 @@ Test what a component *decides*, never how it looks: an assertion on a Tailwind 
   before M6 found them, because `pnpm check` was green the whole time and correctly so: the gate was not lying,
   it was configured not to stop. Now it stops. A warning you genuinely want to keep is a deliberate
   `biome-ignore` with a reason, not something left on the floor.
-- **`pnpm lint:fix`** is `pnpm lint -- --write --unsafe`: every fix biome has, across all three workspaces.
-  Turbo puts the passed-through arguments in the task hash, so it does not collide with a cached `pnpm lint`.
+- **Lint is one invocation over the whole repository, not one per workspace** (owner decision 2026-09-22).
+  Biome is a repo-level tool with a single root config, and the per-workspace split was covering **209 files of
+  227**: everything under `skills/` and `scripts/`, and the root files, were outside the gate entirely — which is
+  how a formatting error sat in `skills/clean-local/scripts/clean-vectors.mjs` with `pnpm check` green. `lint` is
+  therefore a **root task** in `turbo.json` (`//#lint`) rather than a package one, the three workspace `lint`
+  scripts are gone, and it is `cache: false`: the whole run is 40 ms, so caching buys nothing and a stale lint
+  result is precisely what this gate must not have.
+- **`pnpm lint:fix`** is the same run with `--write --unsafe`.
 - **Read what `lint:fix` changed before committing it.** `--write` alone applies only the fixes biome calls safe;
   `--unsafe` adds the ones that can change behaviour, and removing an unused import is one of them. That
   classification is right: an unused import is sometimes the symptom of a *dropped call* rather than dead weight.

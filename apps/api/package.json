@@ -7,7 +7,6 @@
     "deploy": "wrangler deploy --env=\"\"",
     "deploy:production": "wrangler deploy --env production",
     "dev": "wrangler dev --env dev",
-    "lint": "biome check --error-on-warnings .",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },
