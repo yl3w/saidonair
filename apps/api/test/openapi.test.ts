@@ -10,7 +10,7 @@ type Operation = {
 };
 type Document = {
   openapi: string;
-  info: { title: string };
+  info: { title: string; description: string };
   tags?: { name: string }[];
   paths: Record<string, Record<string, Operation>>;
   components: {
@@ -152,6 +152,14 @@ describe("GET /openapi.json", () => {
     expect(
       Object.keys(doc.paths["/channels"]?.post?.responses ?? {}),
     ).toContain("502");
+  });
+
+  it("introduces the public, session, and owner access boundaries accurately", async () => {
+    const { info } = await fetchDocument();
+    expect(info.description).toContain("Protected operations require");
+    expect(info.description).toContain("five content reads are public");
+    expect(info.description).toContain("nine owner operations enforce it");
+    expect(info.description).not.toContain("no authorization");
   });
 
   it("documents 403 on the nine owner operations and nowhere else", async () => {
@@ -437,6 +445,9 @@ describe("GET /docs", () => {
     expect(html).toContain(SCALAR_CDN);
     expect(html).toContain("/openapi.json");
     expect(html).toContain("<title>Said on Air API</title>");
+    expect(html).toContain('"preferredSecurityScheme": "session"');
+    expect(html).toContain('"persistAuth": false');
+    expect(html).not.toContain("userEmail");
     expect(html).not.toContain("proxy.scalar.com");
   });
 });

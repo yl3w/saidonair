@@ -1,7 +1,6 @@
 # API reference and browser test client
 
-**Status:** Current v1 guide, refreshed 2026-09-23 against source at
-`d23e52087bdbc83d56440c48dde79a3405d223a1`.
+**Status:** Current v1 guide, refreshed 2026-09-23 against the source.
 **History:** The original API-reference implementation and its
 [plan](api-reference-plan.md) were completed in September 2026. That plan records
 the earlier email-header contract and is a historical implementation record.
@@ -123,19 +122,11 @@ cases, including the distinction between missing session and invalid input.
 version, disables Scalar's request proxy, and points the browser client at
 `/openapi.json`. The generated document declares the `session` bearer scheme.
 
-The current Scalar configuration still names the removed `userEmail` scheme as its
-preferred authentication field and sets `persistAuth: true`. The OpenAPI tests
-verify the generated bearer scheme and page rendering, but do not prove that
-Scalar automatically selects the correct field or completes a signed-in request
-in a browser. Until that runtime setting is corrected and exercised, select the
-`session` bearer scheme explicitly when using the try-it client and treat local
-browser persistence of the token as possible.
-
-The fixed prose in the generated document's `info.description` also still calls
-the bearer token “identity, not authentication” and says the API enforces no
-authorization. Those sentences are stale source metadata in
-`apps/api/src/lib/openapi.ts`; use the route security and `403` responses for the
-current contract until that runtime text is corrected.
+Scalar selects the `session` bearer scheme and does not persist its token across
+page reloads. The generated document's introduction describes the public reads,
+session requirement, and owner-only boundary. The OpenAPI tests verify the
+generated document and served HTML configuration; they do not prove that a
+signed-in try-it request succeeds in a browser.
 
 ## 8. Relationship to implementation plans
 
